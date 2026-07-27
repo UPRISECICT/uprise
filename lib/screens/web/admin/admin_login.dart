@@ -26,6 +26,7 @@ class AdminLogin extends StatefulWidget {
 
 class _AdminLoginState extends State<AdminLogin>
     with SingleTickerProviderStateMixin {
+  final _formKey = GlobalKey<FormState>();
   final TextEditingController _emailController    = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading       = false;
@@ -93,14 +94,7 @@ class _AdminLoginState extends State<AdminLogin>
   }
 
   Future<void> _login() async {
-    final email = _emailController.text.trim();
-    if (email.isEmpty) { _showError('Please enter your email address'); return; }
-    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
-      _showError('Please enter a valid email address'); return;
-    }
-    if (_passwordController.text.trim().isEmpty) {
-      _showError('Please enter your password'); return;
-    }
+    if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
     try {
       final user = await _auth.loginWithEmail(
@@ -292,7 +286,7 @@ class _AdminLoginState extends State<AdminLogin>
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 116, height: 116,
+          width: 152, height: 152,
           decoration: BoxDecoration(
             color: Colors.white,
             shape: BoxShape.circle,
@@ -302,11 +296,12 @@ class _AdminLoginState extends State<AdminLogin>
                   blurRadius: 24, offset: const Offset(0, 10)),
             ],
           ),
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(12),
           child: Image.asset('assets/images/logo.png',
               fit: BoxFit.contain,
+              filterQuality: FilterQuality.high,
               errorBuilder: (_, __, ___) => const Icon(
-                  Icons.shield_outlined, size: 48, color: _rust)),
+                  Icons.shield_outlined, size: 64, color: _rust)),
         ),
         const SizedBox(height: 26),
         Row(mainAxisSize: MainAxisSize.min, children: [
@@ -375,7 +370,7 @@ class _AdminLoginState extends State<AdminLogin>
               constraints: const BoxConstraints(maxWidth: 420),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 Container(
-                  width: 92, height: 92,
+                  width: 120, height: 120,
                   decoration: BoxDecoration(
                     color: Colors.white,
                     shape: BoxShape.circle,
@@ -385,10 +380,11 @@ class _AdminLoginState extends State<AdminLogin>
                           blurRadius: 20, offset: const Offset(0, 8)),
                     ],
                   ),
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(10),
                   child: Image.asset('assets/images/logo.png', fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
                       errorBuilder: (_, __, ___) => const Icon(
-                          Icons.shield_outlined, size: 40, color: _rust)),
+                          Icons.shield_outlined, size: 52, color: _rust)),
                 ),
                 const SizedBox(height: 16),
                 Row(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -452,30 +448,49 @@ class _AdminLoginState extends State<AdminLogin>
                 fontSize: 12.5, color: _slateMid, height: 1.5)),
           const SizedBox(height: 24),
 
-          _buildField(
-            controller: _emailController,
-            label: 'Email Address',
-            hint: 'admin@uprise.org',
-            icon: Icons.mail_outline_rounded,
-            type: TextInputType.emailAddress,
-          ),
-          const SizedBox(height: 13),
+          Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildField(
+                  controller: _emailController,
+                  label: 'Email Address *',
+                  hint: 'admin@uprise.org',
+                  icon: Icons.mail_outline_rounded,
+                  type: TextInputType.emailAddress,
+                  validator: (v) {
+                    final value = v?.trim() ?? '';
+                    if (value.isEmpty) return 'Please enter your email address';
+                    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(value)) {
+                      return 'Please enter a valid email address';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 13),
 
-          _buildField(
-            controller: _passwordController,
-            label: 'Password',
-            hint: '••••••••',
-            icon: Icons.lock_outline_rounded,
-            obscure: _obscurePassword,
-            suffix: IconButton(
-              icon: Icon(
-                _obscurePassword
-                    ? Icons.visibility_off_outlined
-                    : Icons.visibility_outlined,
-                color: _slateSoft, size: 18),
-              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                _buildField(
+                  controller: _passwordController,
+                  label: 'Password *',
+                  hint: '••••••••',
+                  icon: Icons.lock_outline_rounded,
+                  obscure: _obscurePassword,
+                  suffix: IconButton(
+                    icon: Icon(
+                      _obscurePassword
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                      color: _slateSoft, size: 18),
+                    onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                  ),
+                  onSubmit: (_) => _login(),
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'Please enter your password'
+                      : null,
+                ),
+              ],
             ),
-            onSubmit: (_) => _login(),
           ),
           const SizedBox(height: 13),
 
@@ -610,12 +625,14 @@ class _AdminLoginState extends State<AdminLogin>
     bool obscure = false,
     Widget? suffix,
     void Function(String)? onSubmit,
+    String? Function(String?)? validator,
   }) {
-    return TextField(
+    return TextFormField(
       controller: controller,
       keyboardType: type,
       obscureText: obscure,
-      onSubmitted: onSubmit,
+      onFieldSubmitted: onSubmit,
+      validator: validator,
       style: GoogleFonts.beVietnamPro(fontSize: 13.5, color: _slateDark),
       decoration: InputDecoration(
         labelText: label,

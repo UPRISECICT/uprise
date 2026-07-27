@@ -13,6 +13,7 @@ import '../../../services/activity_logger.dart' as activity_log;
 import 'dart:convert'; // for base64Decode, utf8
 import '../../../utils/platform_file_utils.dart'
     as platform_file_utils; // adjust path if needed
+import '../../../widgets/anchored_dropdown.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens — mirrors student_accounts.dart exactly
@@ -5422,35 +5423,37 @@ class _FilterDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE2E6EA)),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: value,
-          icon: const Icon(
-            Icons.keyboard_arrow_down_rounded,
-            size: 18,
-            color: Color(0xFF9AA5B4),
-          ),
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 13,
-            color: const Color(0xFF374151),
-          ),
-          items: items
-              .map(
-                (s) => DropdownMenuItem(
-                  value: s,
-                  child: Text(s, style: GoogleFonts.beVietnamPro(fontSize: 13)),
-                ),
-              )
-              .toList(),
-          onChanged: onChanged,
+    return AnchoredMenuTrigger<String>(
+      items: items,
+      labelOf: (s) => s,
+      selectedValue: value,
+      onSelected: onChanged,
+      trigger: Container(
+        height: 40,
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFE2E6EA)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              value,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                color: const Color(0xFF374151),
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 18,
+              color: Color(0xFF9AA5B4),
+            ),
+          ],
         ),
       ),
     );

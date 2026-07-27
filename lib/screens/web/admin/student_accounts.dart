@@ -8,7 +8,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:excel/excel.dart' hide Border;
+import 'package:excel/excel.dart' hide Border, TextSpan;
 import 'package:csv/csv.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:uprise/widgets/admin_export_button.dart';
@@ -18,6 +18,8 @@ import 'export_util.dart';
 import 'export_pdf.dart';
 import 'student_accounts_import_parser.dart';
 import '../../../theme/app_theme.dart';
+import '../../../utils/file_validation.dart';
+import '../../../widgets/anchored_dropdown.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -41,17 +43,33 @@ class _DS {
     String label, {
     String? hint,
     IconData? icon,
+    bool required = false,
   }) {
+    final labelTextStyle = GoogleFonts.beVietnamPro(
+      fontSize: 13,
+      color: const Color(0xFF64748B),
+    );
     return InputDecoration(
-      labelText: label,
+      label: required
+          ? Text.rich(
+              TextSpan(
+                text: label,
+                style: labelTextStyle,
+                children: [
+                  TextSpan(
+                    text: ' *',
+                    style: labelTextStyle.copyWith(color: UpriseColors.error),
+                  ),
+                ],
+              ),
+            )
+          : null,
+      labelText: required ? null : label,
       hintText: hint,
       prefixIcon: icon != null
           ? Icon(icon, size: 18, color: const Color(0xFF9AA5B4))
           : null,
-      labelStyle: GoogleFonts.beVietnamPro(
-        fontSize: 13,
-        color: const Color(0xFF64748B),
-      ),
+      labelStyle: labelTextStyle,
       hintStyle: GoogleFonts.beVietnamPro(
         fontSize: 13,
         color: const Color(0xFF9AA5B4),
@@ -1509,6 +1527,8 @@ class StudentAccountsState extends State<StudentAccounts> {
     bool resultIsError = false;
     Map<String, String>? previewHeaderMapping;
     List<Map<String, String>>? previewSampleRows;
+    int importDone = 0;
+    int importTotal = 0;
 
     showDialog(
       context: context,
@@ -1516,11 +1536,18 @@ class StudentAccountsState extends State<StudentAccounts> {
       barrierColor: Colors.black54,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => Dialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 32,
+            vertical: 24,
+          ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
           ),
-          child: SizedBox(
+          child: Container(
             width: 540,
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.85,
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -1571,14 +1598,42 @@ class StudentAccountsState extends State<StudentAccounts> {
                     ],
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.all(24),
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(24),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _sectionLabel(
-                        'Select File',
-                        icon: Icons.attach_file_rounded,
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          _sectionLabel(
+                            'Select File',
+                            icon: Icons.attach_file_rounded,
+                          ),
+                          TextButton.icon(
+                            onPressed: isUploading
+                                ? null
+                                : _downloadImportTemplate,
+                            icon: const Icon(
+                              Icons.download_rounded,
+                              size: 16,
+                            ),
+                            label: Text(
+                              'Download Template',
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            style: TextButton.styleFrom(
+                              foregroundColor: UpriseColors.primaryDark,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       GestureDetector(
                         onTap: isUploading
@@ -1590,6 +1645,16 @@ class StudentAccountsState extends State<StudentAccounts> {
                                       allowedExtensions: ['xlsx', 'xls', 'csv'],
                                     );
                                 if (result != null) {
+                                  final pickedSize = result.files.single.size;
+                                  if (pickedSize >
+                                      FileValidation.defaultMaxDocumentBytes) {
+                                    setDialogState(() {
+                                      resultMessage =
+                                          'File is too large. Max size is '
+                                          '${(FileValidation.defaultMaxDocumentBytes / (1024 * 1024)).toStringAsFixed(0)}MB.';
+                                    });
+                                    return;
+                                  }
                                   setDialogState(() {
                                     if (kIsWeb) {
                                       pickedFile = XFile.fromData(
@@ -1716,13 +1781,18 @@ class StudentAccountsState extends State<StudentAccounts> {
                         ClipRRect(
                           borderRadius: BorderRadius.circular(4),
                           child: LinearProgressIndicator(
+                            value: importTotal > 0
+                                ? importDone / importTotal
+                                : null,
                             backgroundColor: const Color(0xFFE2E6EA),
                             color: UpriseColors.primaryDark,
                           ),
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          'Importing students…',
+                          importTotal > 0
+                              ? 'Importing $importDone of $importTotal…'
+                              : 'Importing students…',
                           style: GoogleFonts.beVietnamPro(
                             fontSize: 12,
                             color: const Color(0xFF64748B),
@@ -1897,6 +1967,7 @@ class StudentAccountsState extends State<StudentAccounts> {
                       ],
                     ],
                   ),
+                  ),
                 ),
                 Container(
                   padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
@@ -1952,36 +2023,28 @@ class StudentAccountsState extends State<StudentAccounts> {
                                   });
 
                                   int success = 0, failed = 0, failedEmails = 0;
+                                  setDialogState(() {
+                                    importTotal = students.length;
+                                    importDone = 0;
+                                  });
                                   for (final s in students) {
                                     try {
+                                      // Credentials email is already sent
+                                      // (and queued on failure) inside
+                                      // _createStudentAccount — sending it
+                                      // again here was emailing every
+                                      // imported student twice.
                                       final cred = await _createStudentAccount(
                                         s,
                                       );
-                                      try {
-                                        final sent =
-                                            await _sendCredentialsEmail(
-                                              cred['email']!,
-                                              cred['studentId']!,
-                                              cred['password']!,
-                                            );
-                                        if (!sent) {
-                                          failedEmails++;
-                                          await _queueCredentialEmail(
-                                            cred['email']!,
-                                            cred['studentId']!,
-                                            cred['password']!,
-                                          );
-                                        }
-                                      } catch (e) {
+                                      if (cred['emailSent'] == 'false') {
                                         failedEmails++;
-                                        debugPrint(
-                                          "⚠️ Failed to send credentials to ${cred['email']}: $e",
-                                        );
                                       }
                                       success++;
                                     } catch (_) {
                                       failed++;
                                     }
+                                    setDialogState(() => importDone++);
                                   }
                                   setDialogState(() {
                                     isUploading = false;
@@ -2073,9 +2136,10 @@ class StudentAccountsState extends State<StudentAccounts> {
     final nameCtrl = TextEditingController();
     final emailCtrl = TextEditingController();
     // College and Program removed — no controllers needed.
-    final schoolYearCtrl = TextEditingController();
     final sectionCtrl = TextEditingController();
     String course = 'BSIT';
+    final schoolYearOptions = _generateSchoolYearOptions();
+    String schoolYear = schoolYearOptions[schoolYearOptions.length - 2];
     bool isCreating = false;
     String? errorMsg;
 
@@ -2166,6 +2230,7 @@ class StudentAccountsState extends State<StudentAccounts> {
                                     'Student ID',
                                     hint: 'e.g., 2021-00001',
                                     icon: Icons.badge_outlined,
+                                    required: true,
                                   ),
                                   style: GoogleFonts.beVietnamPro(fontSize: 13),
                                   validator: (v) =>
@@ -2182,6 +2247,7 @@ class StudentAccountsState extends State<StudentAccounts> {
                                     'Full Name',
                                     hint: 'e.g., Juan dela Cruz',
                                     icon: Icons.person_outline,
+                                    required: true,
                                   ),
                                   style: GoogleFonts.beVietnamPro(fontSize: 13),
                                   validator: (v) =>
@@ -2196,9 +2262,14 @@ class StudentAccountsState extends State<StudentAccounts> {
                           Row(
                             children: [
                               Expanded(
-                                child: DropdownButtonFormField<String>(
+                                child: AnchoredDropdownField<String>(
                                   value: course,
-                                  decoration: _DS.inputDecoration('Course'),
+                                  decoration: _DS.inputDecoration(
+                                    'Course',
+                                    required: true,
+                                  ),
+                                  validator: (v) =>
+                                      v == null ? 'Required' : null,
                                   style: GoogleFonts.beVietnamPro(
                                     fontSize: 13,
                                     color: const Color(0xFF1A202C),
@@ -2217,18 +2288,29 @@ class StudentAccountsState extends State<StudentAccounts> {
                               ),
                               const SizedBox(width: 12),
                               Expanded(
-                                child: TextFormField(
-                                  controller: schoolYearCtrl,
+                                child: AnchoredDropdownField<String>(
+                                  value: schoolYear,
                                   decoration: _DS.inputDecoration(
                                     'School Year',
-                                    hint: 'e.g., 2024-2025',
                                     icon: Icons.calendar_today_outlined,
+                                    required: true,
                                   ),
-                                  style: GoogleFonts.beVietnamPro(fontSize: 13),
                                   validator: (v) =>
-                                      v == null || v.trim().isEmpty
-                                      ? 'Required'
-                                      : null,
+                                      v == null ? 'Required' : null,
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 13,
+                                    color: const Color(0xFF1A202C),
+                                  ),
+                                  items: schoolYearOptions
+                                      .map(
+                                        (y) => DropdownMenuItem(
+                                          value: y,
+                                          child: Text(y),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (v) =>
+                                      setDialogState(() => schoolYear = v!),
                                 ),
                               ),
                             ],
@@ -2243,6 +2325,7 @@ class StudentAccountsState extends State<StudentAccounts> {
                                     'Section',
                                     hint: 'e.g., 3H-G1',
                                     icon: Icons.groups_outlined,
+                                    required: true,
                                   ),
                                   style: GoogleFonts.beVietnamPro(fontSize: 13),
                                   validator: (v) =>
@@ -2260,6 +2343,7 @@ class StudentAccountsState extends State<StudentAccounts> {
                               'Email Address',
                               hint: 'e.g., student@university.edu.ph',
                               icon: Icons.email_outlined,
+                              required: true,
                             ),
                             style: GoogleFonts.beVietnamPro(fontSize: 13),
                             keyboardType: TextInputType.emailAddress,
@@ -2357,8 +2441,8 @@ class StudentAccountsState extends State<StudentAccounts> {
                                     'studentId': idCtrl.text.trim(),
                                     'fullName': nameCtrl.text.trim(),
                                     'course': course,
-                                    'schoolYear': schoolYearCtrl.text.trim(),
-                                    'yearLevel': schoolYearCtrl.text.trim(),
+                                    'schoolYear': schoolYear,
+                                    'yearLevel': schoolYear,
                                     'section': sectionCtrl.text.trim(),
                                     'email': emailCtrl.text
                                         .trim()
@@ -2432,6 +2516,49 @@ class StudentAccountsState extends State<StudentAccounts> {
   }
 
   // ── Helpers ───────────────────────────────────────────────────────
+
+  Future<void> _downloadImportTemplate() async {
+    final excel = Excel.createExcel();
+    final defaultSheetName = excel.getDefaultSheet() ?? 'Sheet1';
+    excel.rename(defaultSheetName, 'Students');
+    final sheet = excel['Students'];
+    sheet.appendRow([
+      TextCellValue('Student ID'),
+      TextCellValue('Full Name'),
+      TextCellValue('Course'),
+      TextCellValue('School Year'),
+      TextCellValue('Section'),
+      TextCellValue('Email'),
+    ]);
+    sheet.appendRow([
+      TextCellValue('2021-00001'),
+      TextCellValue('Juan Dela Cruz'),
+      TextCellValue('BSIT'),
+      TextCellValue(_generateSchoolYearOptions()[3]),
+      TextCellValue('3H-G1'),
+      TextCellValue('juan.delacruz@example.com'),
+    ]);
+    final bytes = excel.encode();
+    if (bytes == null) return;
+    await AdminExportUtil.saveBytes(
+      bytes,
+      'student_import_template.xlsx',
+      mimeType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+  }
+
+  // Academic year runs Aug–Jul (see reports_management.dart's semester
+  // logic), so before August the "current" school year is still the one
+  // that started last calendar year. Offers a few years back and one ahead
+  // so admins can still add records for recently graduated/incoming batches.
+  List<String> _generateSchoolYearOptions() {
+    final now = DateTime.now();
+    final startYear = now.month >= 8 ? now.year : now.year - 1;
+    return [
+      for (var i = -3; i <= 1; i++) '${startYear + i}-${startYear + i + 1}',
+    ];
+  }
 
   String _generatePassword() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ0123456789';
@@ -2601,7 +2728,12 @@ class StudentAccountsState extends State<StudentAccounts> {
       module: 'User Directory',
       severity: 'info',
     );
-    return {'email': email, 'studentId': studentId, 'password': password};
+    return {
+      'email': email,
+      'studentId': studentId,
+      'password': password,
+      'emailSent': sent.toString(),
+    };
   }
 
   Future<bool> _sendCredentialsEmail(
@@ -2935,35 +3067,37 @@ class _FilterDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE2E6EA)),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: value,
-          icon: const Icon(
-            Icons.keyboard_arrow_down_rounded,
-            size: 18,
-            color: Color(0xFF9AA5B4),
-          ),
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 13,
-            color: const Color(0xFF374151),
-          ),
-          items: items
-              .map(
-                (s) => DropdownMenuItem(
-                  value: s,
-                  child: Text(s, style: GoogleFonts.beVietnamPro(fontSize: 13)),
-                ),
-              )
-              .toList(),
-          onChanged: onChanged,
+    return AnchoredMenuTrigger<String>(
+      items: items,
+      labelOf: (s) => s,
+      selectedValue: value,
+      onSelected: onChanged,
+      trigger: Container(
+        height: 40,
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFE2E6EA)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              value,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                color: const Color(0xFF374151),
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 18,
+              color: Color(0xFF9AA5B4),
+            ),
+          ],
         ),
       ),
     );

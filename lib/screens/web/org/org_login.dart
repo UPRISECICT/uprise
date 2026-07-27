@@ -365,8 +365,8 @@ class _OrganizationLoginState extends State<OrganizationLogin>
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 116,
-          height: 116,
+          width: 152,
+          height: 152,
           decoration: BoxDecoration(
             color: Colors.white,
             shape: BoxShape.circle,
@@ -378,12 +378,13 @@ class _OrganizationLoginState extends State<OrganizationLogin>
               ),
             ],
           ),
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(12),
           child: Image.asset(
             'assets/images/logo.png',
             fit: BoxFit.contain,
+            filterQuality: FilterQuality.high,
             errorBuilder: (_, __, ___) =>
-                const Icon(Icons.business_outlined, size: 48, color: _rust),
+                const Icon(Icons.business_outlined, size: 64, color: _rust),
           ),
         ),
         const SizedBox(height: 26),
@@ -500,8 +501,8 @@ class _OrganizationLoginState extends State<OrganizationLogin>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    width: 92,
-                    height: 92,
+                    width: 120,
+                    height: 120,
                     decoration: BoxDecoration(
                       color: Colors.white,
                       shape: BoxShape.circle,
@@ -513,13 +514,14 @@ class _OrganizationLoginState extends State<OrganizationLogin>
                         ),
                       ],
                     ),
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(10),
                     child: Image.asset(
                       'assets/images/logo.png',
                       fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
                       errorBuilder: (_, __, ___) => const Icon(
                         Icons.business_outlined,
-                        size: 40,
+                        size: 52,
                         color: _rust,
                       ),
                     ),

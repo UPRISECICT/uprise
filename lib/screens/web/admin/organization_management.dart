@@ -17,6 +17,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:uprise/widgets/admin_export_button.dart';
 import 'package:intl/intl.dart';
 import '../../../theme/app_theme.dart';
+import '../../../utils/file_validation.dart';
+import '../../../widgets/anchored_dropdown.dart';
 
 // ============ GLOBAL CONTEXT FOR SNACKBAR ============
 final GlobalKey<ScaffoldMessengerState> globalMessengerKey =
@@ -180,17 +182,33 @@ class _DS {
     String label, {
     String? hint,
     IconData? icon,
+    bool required = false,
   }) {
+    final labelTextStyle = GoogleFonts.beVietnamPro(
+      fontSize: 13,
+      color: UpriseColors.darkGray,
+    );
     return InputDecoration(
-      labelText: label,
+      label: required
+          ? Text.rich(
+              TextSpan(
+                text: label,
+                style: labelTextStyle,
+                children: [
+                  TextSpan(
+                    text: ' *',
+                    style: labelTextStyle.copyWith(color: UpriseColors.error),
+                  ),
+                ],
+              ),
+            )
+          : null,
+      labelText: required ? null : label,
       hintText: hint,
       prefixIcon: icon != null
           ? Icon(icon, size: 18, color: UpriseColors.darkGray)
           : null,
-      labelStyle: GoogleFonts.beVietnamPro(
-        fontSize: 13,
-        color: UpriseColors.darkGray,
-      ),
+      labelStyle: labelTextStyle,
       hintStyle: GoogleFonts.beVietnamPro(
         fontSize: 13,
         color: UpriseColors.mediumGray,
@@ -1403,35 +1421,37 @@ class _FilterDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE2E6EA)),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: value,
-          icon: const Icon(
-            Icons.keyboard_arrow_down_rounded,
-            size: 18,
-            color: Color(0xFF9AA5B4),
-          ),
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 13,
-            color: const Color(0xFF374151),
-          ),
-          items: items
-              .map(
-                (s) => DropdownMenuItem(
-                  value: s,
-                  child: Text(s, style: GoogleFonts.beVietnamPro(fontSize: 13)),
-                ),
-              )
-              .toList(),
-          onChanged: onChanged,
+    return AnchoredMenuTrigger<String>(
+      items: items,
+      labelOf: (s) => s,
+      selectedValue: value,
+      onSelected: (s) => onChanged(s),
+      trigger: Container(
+        height: 40,
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFE2E6EA)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              value,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                color: const Color(0xFF374151),
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 18,
+              color: Color(0xFF9AA5B4),
+            ),
+          ],
         ),
       ),
     );
@@ -2586,6 +2606,7 @@ class _AdviserFormState extends State<_AdviserForm> {
                     'Full Name',
                     hint: 'e.g., Dr. Juan dela Cruz',
                     icon: Icons.badge_outlined,
+                    required: widget.index == 0,
                   ),
                   style: GoogleFonts.beVietnamPro(fontSize: 13),
                   onChanged: (v) =>
@@ -2598,9 +2619,14 @@ class _AdviserFormState extends State<_AdviserForm> {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: DropdownButtonFormField<String>(
+                child: AnchoredDropdownField<String>(
                   value: adviserType,
-                  decoration: _DS.inputDecoration('Type'),
+                  decoration: _DS.inputDecoration(
+                    'Type',
+                    required: widget.index == 0,
+                  ),
+                  validator: (v) =>
+                      widget.index == 0 && v == null ? 'Required' : null,
                   style: GoogleFonts.beVietnamPro(
                     fontSize: 13,
                     color: const Color(0xFF1A202C),
@@ -2626,10 +2652,12 @@ class _AdviserFormState extends State<_AdviserForm> {
           Row(
             children: [
               Expanded(
-                child: DropdownButtonFormField<String>(
+                child: AnchoredDropdownField<String>(
                   value: selectedValue,
+                  validator: (v) =>
+                      widget.index == 0 && v == null ? 'Required' : null,
                   decoration: InputDecoration(
-                    labelText: 'Position',
+                    labelText: widget.index == 0 ? 'Position *' : 'Position',
                     hintText: 'Select position',
                     prefixIcon: Icon(
                       Icons.work_outline,
@@ -2724,6 +2752,7 @@ class _AdviserFormState extends State<_AdviserForm> {
                           'Email',
                           hint: 'e.g., jdelacruz@university.edu.ph',
                           icon: Icons.email_outlined,
+                          required: widget.index == 0,
                         ),
                         style: GoogleFonts.beVietnamPro(fontSize: 13),
                         keyboardType: TextInputType.emailAddress,
@@ -3048,6 +3077,7 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
             decoration: _DS.inputDecoration(
               'Organization Name',
               hint: 'e.g., Society of Web Innovators and Tech Specialists',
+              required: true,
             ),
             style: GoogleFonts.beVietnamPro(fontSize: 13),
             validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
@@ -3060,6 +3090,7 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
                   decoration: _DS.inputDecoration(
                     'Acronym / Short Name',
                     hint: 'e.g., SWITS',
+                    required: true,
                   ),
                   style: GoogleFonts.beVietnamPro(fontSize: 13),
                   validator: (v) =>
@@ -3068,9 +3099,13 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: DropdownButtonFormField<String>(
+                child: AnchoredDropdownField<String>(
                   value: _type,
-                  decoration: _DS.inputDecoration('Organization Type'),
+                  decoration: _DS.inputDecoration(
+                    'Organization Type',
+                    required: true,
+                  ),
+                  validator: (v) => v == null ? 'Required' : null,
                   style: GoogleFonts.beVietnamPro(
                     fontSize: 13,
                     color: const Color(0xFF1A202C),
@@ -3098,6 +3133,7 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
               'Organization Email',
               hint: 'e.g., swits@university.edu.ph',
               icon: Icons.email_outlined,
+              required: true,
             ),
             style: GoogleFonts.beVietnamPro(fontSize: 13),
             keyboardType: TextInputType.emailAddress,
@@ -3115,6 +3151,7 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
               'Organization Description',
               hint:
                   'Brief description of the organization\'s goals and activities...',
+              required: true,
             ),
             style: GoogleFonts.beVietnamPro(fontSize: 13),
             validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
@@ -3266,6 +3303,13 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
     }
   }
 
+  void _showFileError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: UpriseColors.error),
+    );
+  }
+
   Future<void> _pickImage() async {
     if (kIsWeb) {
       final result = await FilePicker.platform.pickFiles(
@@ -3277,6 +3321,11 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
         final file = result.files.single;
         final bytes = file.bytes;
         if (bytes != null) {
+          final error = FileValidation.validateImageBytes(bytes);
+          if (error != null) {
+            _showFileError(error);
+            return;
+          }
           setState(() {
             _logoXFile = XFile.fromData(bytes, name: file.name);
             _logoBytes = bytes;
@@ -3295,6 +3344,11 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
     );
     if (picked != null) {
       final bytes = await picked.readAsBytes();
+      final error = FileValidation.validateImageBytes(bytes);
+      if (error != null) {
+        _showFileError(error);
+        return;
+      }
       setState(() {
         _logoXFile = picked;
         _logoBytes = bytes;
@@ -3776,8 +3830,13 @@ class _EditOrganizationDialogState extends State<_EditOrganizationDialog> {
                       _fieldGroup([
                         TextFormField(
                           controller: _nameCtrl,
-                          decoration: _DS.inputDecoration('Organization Name'),
+                          decoration: _DS.inputDecoration(
+                            'Organization Name',
+                            required: true,
+                          ),
                           style: GoogleFonts.beVietnamPro(fontSize: 13),
+                          validator: (v) =>
+                              v == null || v.trim().isEmpty ? 'Required' : null,
                         ),
                         Row(
                           children: [
@@ -3786,17 +3845,24 @@ class _EditOrganizationDialogState extends State<_EditOrganizationDialog> {
                                 controller: _shortCtrl,
                                 decoration: _DS.inputDecoration(
                                   'Acronym / Short Name',
+                                  required: true,
                                 ),
                                 style: GoogleFonts.beVietnamPro(fontSize: 13),
+                                validator: (v) => v == null || v.trim().isEmpty
+                                    ? 'Required'
+                                    : null,
                               ),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: DropdownButtonFormField<String>(
+                              child: AnchoredDropdownField<String>(
                                 value: _type,
                                 decoration: _DS.inputDecoration(
                                   'Organization Type',
+                                  required: true,
                                 ),
+                                validator: (v) =>
+                                    v == null ? 'Required' : null,
                                 style: GoogleFonts.beVietnamPro(
                                   fontSize: 13,
                                   color: const Color(0xFF1A202C),
@@ -3829,15 +3895,31 @@ class _EditOrganizationDialogState extends State<_EditOrganizationDialog> {
                                 decoration: _DS.inputDecoration(
                                   'Organization Email',
                                   icon: Icons.email_outlined,
+                                  required: true,
                                 ),
                                 style: GoogleFonts.beVietnamPro(fontSize: 13),
+                                keyboardType: TextInputType.emailAddress,
+                                validator: (v) {
+                                  if (v == null || v.trim().isEmpty) {
+                                    return 'Required';
+                                  }
+                                  if (!v.contains('@') || !v.contains('.')) {
+                                    return 'Enter a valid email';
+                                  }
+                                  return null;
+                                },
                               ),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: DropdownButtonFormField<String>(
+                              child: AnchoredDropdownField<String>(
                                 value: _status,
-                                decoration: _DS.inputDecoration('Status'),
+                                decoration: _DS.inputDecoration(
+                                  'Status',
+                                  required: true,
+                                ),
+                                validator: (v) =>
+                                    v == null ? 'Required' : null,
                                 style: GoogleFonts.beVietnamPro(
                                   fontSize: 13,
                                   color: const Color(0xFF1A202C),
@@ -3860,8 +3942,13 @@ class _EditOrganizationDialogState extends State<_EditOrganizationDialog> {
                         TextFormField(
                           controller: _descCtrl,
                           maxLines: 3,
-                          decoration: _DS.inputDecoration('Description'),
+                          decoration: _DS.inputDecoration(
+                            'Description',
+                            required: true,
+                          ),
                           style: GoogleFonts.beVietnamPro(fontSize: 13),
+                          validator: (v) =>
+                              v == null || v.trim().isEmpty ? 'Required' : null,
                         ),
                       ]),
                       const SizedBox(height: 24),
@@ -3994,6 +4081,7 @@ class _EditOrganizationDialogState extends State<_EditOrganizationDialog> {
   }
 
   Future<void> _update() async {
+    if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
     try {
       final validAdvisers = _advisers

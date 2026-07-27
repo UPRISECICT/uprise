@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'package:image/image.dart' as img;
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -15,6 +16,18 @@ class AdminExportPdf {
     return _themeFuture ??= PdfGoogleFonts.notoSansRegular().then(
       (font) => pw.ThemeData.withFont(fontFallback: [font]),
     );
+  }
+
+  /// The first export in a session pays for a Google Fonts network fetch
+  /// plus decoding the 3 letterhead logos — call this (fire-and-forget) as
+  /// soon as an export-capable page loads so that cost is already paid by
+  /// the time the admin actually clicks Export, instead of the button
+  /// appearing to freeze.
+  static void warmUp() {
+    _loadTheme();
+    _loadImage('assets/images/bsu_logo.png');
+    _loadImage('assets/images/cict_logo.png');
+    _loadImage('assets/images/logo.png');
   }
 
   /// Letterhead: UPRISE + CICT + BSU logos above a brand accent rule and a
@@ -234,6 +247,7 @@ class AdminExportPdf {
     required Uint8List signatureBytes,
     required String signedByName,
     required DateTime signedAt,
+    String remark = '',
   }) async {
     // 110 DPI keeps the stamped copy legible while meaningfully cutting the
     // raster + re-encode work for multi-page documents (this whole pipeline
@@ -272,6 +286,7 @@ class AdminExportPdf {
                     signatureImage: signatureImage,
                     signedByName: signedByName,
                     signedAt: signedAt,
+                    remark: remark,
                   ),
                 ),
             ],
@@ -293,37 +308,68 @@ class AdminExportPdf {
     String role = 'Admin, Uprise',
     double width = 170,
     bool showTimestamp = true,
+    String remark = '',
   }) {
-    return pw.SizedBox(
-      width: width,
-      child: pw.Stack(
-        alignment: pw.Alignment.topCenter,
-        overflow: pw.Overflow.visible,
-        children: [
-          pw.Padding(
-            padding: const pw.EdgeInsets.only(top: 28),
-            child: pw.Column(children: [
-              pw.Container(height: 0.8, width: width - 10, color: PdfColors.grey500),
-              pw.SizedBox(height: 3),
-              pw.Text(signedByName,
-                  style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.grey900),
-                  textAlign: pw.TextAlign.center),
-              pw.Text(role, style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
-              if (showTimestamp) ...[
-                pw.SizedBox(height: 2),
-                pw.Text(
-                  'Digitally signed on ${DateFormat('MMM d, yyyy h:mm a').format(signedAt)}',
-                  style: pw.TextStyle(fontSize: 6.5, color: PdfColors.grey500, fontStyle: pw.FontStyle.italic),
-                ),
-              ],
-            ]),
+    return pw.Row(
+      mainAxisSize: pw.MainAxisSize.min,
+      crossAxisAlignment: pw.CrossAxisAlignment.end,
+      children: [
+        pw.SizedBox(
+          width: width,
+          child: pw.Stack(
+            alignment: pw.Alignment.topCenter,
+            overflow: pw.Overflow.visible,
+            children: [
+              pw.Padding(
+                padding: const pw.EdgeInsets.only(top: 28),
+                child: pw.Column(children: [
+                  pw.Container(height: 0.8, width: width - 10, color: PdfColors.grey500),
+                  pw.SizedBox(height: 3),
+                  pw.Text(signedByName,
+                      style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.grey900),
+                      textAlign: pw.TextAlign.center),
+                  pw.Text(role, style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+                  if (showTimestamp) ...[
+                    pw.SizedBox(height: 2),
+                    pw.Text(
+                      'Digitally signed on ${DateFormat('MMM d, yyyy h:mm a').format(signedAt)}',
+                      style: pw.TextStyle(fontSize: 6.5, color: PdfColors.grey500, fontStyle: pw.FontStyle.italic),
+                    ),
+                  ],
+                ]),
+              ),
+              pw.Positioned(
+                top: -8,
+                child: pw.SizedBox(height: 48, width: width - 20, child: pw.Image(signatureImage, fit: pw.BoxFit.contain)),
+              ),
+            ],
           ),
-          pw.Positioned(
-            top: -8,
-            child: pw.SizedBox(height: 48, width: width - 20, child: pw.Image(signatureImage, fit: pw.BoxFit.contain)),
+        ),
+        if (remark.trim().isNotEmpty) ...[
+          pw.SizedBox(width: 14),
+          pw.Container(
+            width: width * 0.85,
+            padding: const pw.EdgeInsets.all(8),
+            decoration: pw.BoxDecoration(
+              color: PdfColors.grey100,
+              borderRadius: pw.BorderRadius.circular(5),
+              border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
+            ),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              mainAxisSize: pw.MainAxisSize.min,
+              children: [
+                pw.Text('REMARK',
+                    style: pw.TextStyle(
+                        fontSize: 6.5, fontWeight: pw.FontWeight.bold, color: PdfColors.grey600, letterSpacing: 0.5)),
+                pw.SizedBox(height: 2),
+                pw.Text(remark.trim(),
+                    style: pw.TextStyle(fontSize: 8, color: PdfColors.grey900, fontStyle: pw.FontStyle.italic)),
+              ],
+            ),
           ),
         ],
-      ),
+      ],
     );
   }
 
@@ -351,6 +397,7 @@ class AdminExportPdf {
     required Uint8List signatureBytes,
     required String signedByName,
     required DateTime signedAt,
+    String remark = '',
   }) async {
     final pdf = pw.Document(theme: await _loadTheme());
     final bsuLogo = await _loadImage('assets/images/bsu_logo.png');
@@ -402,6 +449,7 @@ class AdminExportPdf {
                   role: 'Authorized Signatory',
                   width: 200,
                   showTimestamp: false,
+                  remark: remark,
                 ),
                 pw.Container(
                   padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -437,7 +485,27 @@ class AdminExportPdf {
   static Future<pw.MemoryImage?> _loadImageUncached(String path) async {
     try {
       final byteData = await rootBundle.load(path);
-      return pw.MemoryImage(byteData.buffer.asUint8List());
+      final rawBytes = byteData.buffer.asUint8List();
+
+      // These logos render at ~34-46pt tall in the letterhead, but the
+      // bundled PNGs are kept at full app-icon resolution (400-600KB each)
+      // for crisp display elsewhere in the app (sidebar, login page).
+      // Embedding all that unused resolution into every generated PDF was
+      // most of what made pdf.save() slow — downscale a copy just for PDF
+      // use instead of touching the shared asset.
+      final decoded = img.decodeImage(rawBytes);
+      if (decoded == null) return pw.MemoryImage(rawBytes);
+
+      const maxDimension = 300;
+      if (decoded.width <= maxDimension && decoded.height <= maxDimension) {
+        return pw.MemoryImage(rawBytes);
+      }
+      final resized = img.copyResize(
+        decoded,
+        width: decoded.width >= decoded.height ? maxDimension : null,
+        height: decoded.height > decoded.width ? maxDimension : null,
+      );
+      return pw.MemoryImage(Uint8List.fromList(img.encodePng(resized)));
     } catch (_) {
       return null;
     }

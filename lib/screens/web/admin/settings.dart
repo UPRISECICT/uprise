@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../theme/app_theme.dart';
+import '../../../utils/file_validation.dart';
 import 'admin_login.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -55,17 +56,33 @@ class _DS {
     String? hint,
     IconData? icon,
     bool enabled = true,
+    bool required = false,
   }) {
+    final labelTextStyle = GoogleFonts.beVietnamPro(
+      fontSize: 13,
+      color: const Color(0xFF64748B),
+    );
     return InputDecoration(
-      labelText: label,
+      label: required
+          ? Text.rich(
+              TextSpan(
+                text: label,
+                style: labelTextStyle,
+                children: [
+                  TextSpan(
+                    text: ' *',
+                    style: labelTextStyle.copyWith(color: UpriseColors.error),
+                  ),
+                ],
+              ),
+            )
+          : null,
+      labelText: required ? null : label,
       hintText: hint,
       prefixIcon: icon != null
           ? Icon(icon, size: 18, color: const Color(0xFF9AA5B4))
           : null,
-      labelStyle: GoogleFonts.beVietnamPro(
-        fontSize: 13,
-        color: const Color(0xFF64748B),
-      ),
+      labelStyle: labelTextStyle,
       hintStyle: GoogleFonts.beVietnamPro(
         fontSize: 13,
         color: const Color(0xFF9AA5B4),
@@ -255,6 +272,8 @@ class _AdminSettingsState extends State<AdminSettings>
   // Profile
   final _fullNameController = TextEditingController();
   final _emailController = TextEditingController();
+  final _profileFormKey = GlobalKey<FormState>();
+  final _passwordFormKey = GlobalKey<FormState>();
   bool _isLoading = false;
   User? _currentUser;
   String? _profileImageBase64;
@@ -374,9 +393,14 @@ class _AdminSettingsState extends State<AdminSettings>
       imageQuality: 50,
     );
     if (picked == null) return;
+    final bytes = await picked.readAsBytes();
+    final validationError = FileValidation.validateImageBytes(bytes);
+    if (validationError != null) {
+      _showSnack(validationError, success: false);
+      return;
+    }
     setState(() => _isLoading = true);
     try {
-      final bytes = await picked.readAsBytes();
       final base64String = base64Encode(bytes);
       await FirebaseFirestore.instance
           .collection('users')
@@ -397,10 +421,7 @@ class _AdminSettingsState extends State<AdminSettings>
   }
 
   Future<void> _updateProfile() async {
-    if (_fullNameController.text.trim().isEmpty) {
-      _showSnack('Name cannot be empty', success: false);
-      return;
-    }
+    if (!_profileFormKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
     try {
       // If email changed, attempt to update the auth user's email as well.
@@ -440,14 +461,7 @@ class _AdminSettingsState extends State<AdminSettings>
   }
 
   Future<void> _changePassword() async {
-    if (_newPasswordController.text != _confirmPasswordController.text) {
-      _showSnack('Passwords do not match', success: false);
-      return;
-    }
-    if (_newPasswordController.text.length < 6) {
-      _showSnack('Password must be at least 6 characters', success: false);
-      return;
-    }
+    if (!_passwordFormKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
     try {
       await _currentUser!.updatePassword(_newPasswordController.text);
@@ -680,7 +694,9 @@ class _AdminSettingsState extends State<AdminSettings>
                   border: Border.all(color: const Color(0xFFE8ECF0)),
                   boxShadow: _DS.cardShadow,
                 ),
-                child: Column(
+                child: Form(
+                  key: _profileFormKey,
+                  child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _sectionLabel(
@@ -694,7 +710,10 @@ class _AdminSettingsState extends State<AdminSettings>
                         'Full Name',
                         hint: 'e.g., Juan dela Cruz',
                         icon: Icons.person_outline_rounded,
+                        required: true,
                       ),
+                      validator: (v) =>
+                          v == null || v.trim().isEmpty ? 'Required' : null,
                       onChanged: (_) => setState(() {}),
                     ),
                     const SizedBox(height: 12),
@@ -704,7 +723,16 @@ class _AdminSettingsState extends State<AdminSettings>
                       decoration: _DS.inputDecoration(
                         'Email Address',
                         icon: Icons.email_outlined,
+                        required: true,
                       ),
+                      keyboardType: TextInputType.emailAddress,
+                      validator: (v) {
+                        if (v == null || v.trim().isEmpty) return 'Required';
+                        if (!v.contains('@') || !v.contains('.')) {
+                          return 'Enter a valid email';
+                        }
+                        return null;
+                      },
                       onChanged: (_) {},
                     ),
                     const SizedBox(height: 20),
@@ -738,6 +766,7 @@ class _AdminSettingsState extends State<AdminSettings>
                       ),
                     ),
                   ],
+                ),
                 ),
               ),
             ],
@@ -836,7 +865,9 @@ class _AdminSettingsState extends State<AdminSettings>
                   border: Border.all(color: const Color(0xFFE8ECF0)),
                   boxShadow: _DS.cardShadow,
                 ),
-                child: Column(
+                child: Form(
+                  key: _passwordFormKey,
+                  child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _sectionLabel(
@@ -880,6 +911,7 @@ class _AdminSettingsState extends State<AdminSettings>
                           .inputDecoration(
                             'New Password',
                             icon: Icons.lock_outline_rounded,
+                            required: true,
                           )
                           .copyWith(
                             suffixIcon: IconButton(
@@ -895,6 +927,13 @@ class _AdminSettingsState extends State<AdminSettings>
                               ),
                             ),
                           ),
+                      validator: (v) {
+                        if (v == null || v.isEmpty) return 'Required';
+                        if (v.length < 6) {
+                          return 'Must be at least 6 characters';
+                        }
+                        return null;
+                      },
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
@@ -905,6 +944,7 @@ class _AdminSettingsState extends State<AdminSettings>
                           .inputDecoration(
                             'Confirm New Password',
                             icon: Icons.lock_outline_rounded,
+                            required: true,
                           )
                           .copyWith(
                             suffixIcon: IconButton(
@@ -921,6 +961,13 @@ class _AdminSettingsState extends State<AdminSettings>
                               ),
                             ),
                           ),
+                      validator: (v) {
+                        if (v == null || v.isEmpty) return 'Required';
+                        if (v != _newPasswordController.text) {
+                          return 'Passwords do not match';
+                        }
+                        return null;
+                      },
                     ),
                     const SizedBox(height: 20),
                     ElevatedButton.icon(
@@ -953,6 +1000,7 @@ class _AdminSettingsState extends State<AdminSettings>
                       ),
                     ),
                   ],
+                ),
                 ),
               ),
               // Two-Factor Authentication removed per user request.
@@ -1735,6 +1783,18 @@ class _SignatoryFormDialogState extends State<_SignatoryFormDialog> {
     );
     if (picked == null) return;
     final bytes = await picked.readAsBytes();
+    final validationError = FileValidation.validateImageBytes(bytes);
+    if (validationError != null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(validationError),
+            backgroundColor: UpriseColors.error,
+          ),
+        );
+      }
+      return;
+    }
     setState(() => _signatureBase64 = base64Encode(bytes));
   }
 
@@ -1853,6 +1913,7 @@ class _SignatoryFormDialogState extends State<_SignatoryFormDialog> {
                   'Full Name',
                   hint: 'e.g., Dr. Maria Santos',
                   icon: Icons.person_outline_rounded,
+                  required: true,
                 ),
                 validator: (v) => v?.trim().isEmpty == true ? 'Required' : null,
               ),
@@ -1864,6 +1925,7 @@ class _SignatoryFormDialogState extends State<_SignatoryFormDialog> {
                   'Position / Title',
                   hint: 'e.g., College Dean',
                   icon: Icons.badge_outlined,
+                  required: true,
                 ),
                 validator: (v) => v?.trim().isEmpty == true ? 'Required' : null,
               ),

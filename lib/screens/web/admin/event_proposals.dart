@@ -13,7 +13,7 @@ import 'export_pdf.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../services/notification_service.dart';
 import '../../../theme/app_theme.dart';
-import 'package:intl/intl.dart';
+import '../../../widgets/anchored_dropdown.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper: get user full name from UID
@@ -91,16 +91,6 @@ Widget _buildImageWidget(
     height: height,
     errorBuilder: (_, __, ___) => const SizedBox.shrink(),
   );
-}
-
-bool shouldShowCertificateSignatoryIndicator({
-  required String status,
-  required bool issuesCertificate,
-  required bool signatoriesAvailable,
-}) {
-  return status.toLowerCase() == 'approved' &&
-      issuesCertificate &&
-      signatoriesAvailable;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -300,19 +290,6 @@ class _EventProposalsState extends State<EventProposals> {
     return null;
   }
 
-  Future<bool> _hasConfiguredSignatories() async {
-    try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('signatories')
-          .limit(1)
-          .get();
-      return snapshot.docs.isNotEmpty;
-    } catch (e) {
-      debugPrint('Error checking signatories availability: $e');
-      return false;
-    }
-  }
-
   // ── Build ─────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
@@ -503,7 +480,6 @@ class _EventProposalsState extends State<EventProposals> {
                     'Pending',
                     'Approved',
                     'Rejected',
-                    'For Review',
                     'Archived',
                   ],
                   hint: 'Status',
@@ -720,17 +696,7 @@ class _EventProposalsState extends State<EventProposals> {
       builder: (context, logoSnapshot) {
         final logoUrl = orgLogoUrl ?? (logoSnapshot.data ?? '');
 
-        return FutureBuilder<bool>(
-          future: _hasConfiguredSignatories(),
-          builder: (context, signatorySnapshot) {
-            final showSignatoryIndicator =
-                shouldShowCertificateSignatoryIndicator(
-                  status: status,
-                  issuesCertificate: data['issuesCertificate'] == true,
-                  signatoriesAvailable: signatorySnapshot.data ?? false,
-                );
-
-            return InkWell(
+        return InkWell(
               hoverColor: const Color(0xFFF8F9FB),
               onTap: () => _showProposalDetailDialog(docId, data),
               child: Container(
@@ -843,28 +809,6 @@ class _EventProposalsState extends State<EventProposals> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Flexible(child: _statusBadge(status)),
-                            if (showSignatoryIndicator) ...[
-                              const SizedBox(width: 4),
-                              Tooltip(
-                                message:
-                                    'Signatories are available for certificate issuance',
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                    vertical: 3,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFECFDF5),
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                  child: const Icon(
-                                    Icons.draw_outlined,
-                                    size: 12,
-                                    color: Color(0xFF059669),
-                                  ),
-                                ),
-                              ),
-                            ],
                             if (isPublished) ...[
                               const SizedBox(width: 1),
                               const Tooltip(
@@ -927,6 +871,17 @@ class _EventProposalsState extends State<EventProposals> {
                                 'archived',
                               ),
                             ),
+                          if (status == 'archived')
+                            _ActionIconButton(
+                              icon: Icons.restore_rounded,
+                              tooltip: 'Restore',
+                              color: const Color(0xFFFB923C),
+                              onTap: () => _confirmSetStatus(
+                                docId,
+                                data['title'] ?? 'this event',
+                                'pending',
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -934,8 +889,6 @@ class _EventProposalsState extends State<EventProposals> {
                 ),
               ),
             );
-          },
-        );
       },
     );
   }
@@ -1075,6 +1028,15 @@ class _EventProposalsState extends State<EventProposals> {
         body: 'Are you sure you want to archive "$title"?',
         btnLabel: 'Archive',
       ),
+      'pending': _ConfirmStyle(
+        icon: Icons.restore_rounded,
+        iconBg: const Color(0xFFFFFBEB),
+        iconColor: const Color(0xFFFB923C),
+        btnColor: const Color(0xFFFB923C),
+        heading: 'Restore Proposal',
+        body: 'Restore "$title" from the archive back to pending review?',
+        btnLabel: 'Restore',
+      ),
     };
     final s = styles[newStatus]!;
 
@@ -1150,9 +1112,6 @@ class _EventProposalsState extends State<EventProposals> {
                     onPressed: () async {
                       Navigator.pop(ctx);
                       await _setStatus(docId, title, newStatus);
-                      if (newStatus == 'approved') {
-                        _showWetSignSchedulingPopup(docId, title);
-                      }
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: s.btnColor,
@@ -1386,377 +1345,6 @@ class _EventProposalsState extends State<EventProposals> {
           SnackBar(
             content: Text('Error: $e'),
             backgroundColor: UpriseColors.error,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    }
-  }
-
-  void _showWetSignSchedulingPopup(String proposalId, String title) {
-    final _dateCtrl = TextEditingController();
-    final _startTimeCtrl = TextEditingController();
-    final _endTimeCtrl = TextEditingController();
-    final _locationCtrl = TextEditingController(text: "Dean's Office");
-    DateTime? selectedDate;
-    TimeOfDay? startTime;
-    TimeOfDay? endTime;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) {
-          return Dialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Container(
-              width: 500,
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 42,
-                        height: 42,
-                        decoration: BoxDecoration(
-                          color: UpriseColors.primaryDark.withAlpha(18),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(
-                          Icons.edit_calendar_rounded,
-                          color: UpriseColors.primaryDark,
-                          size: 20,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Text(
-                          'Schedule Wet Sign',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w700,
-                            color: UpriseColors.primaryDark,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    'Set your office availability for the organization to sign documents.',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 13,
-                      color: UpriseColors.greyText,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  TextFormField(
-                    controller: _dateCtrl,
-                    readOnly: true,
-                    decoration: InputDecoration(
-                      labelText: 'Select Date *',
-                      hintText: 'MM/DD/YYYY',
-                      prefixIcon: const Icon(
-                        Icons.calendar_today_outlined,
-                        size: 18,
-                        color: UpriseColors.primaryDark,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(
-                          color: UpriseColors.primaryDark.withAlpha(100),
-                          width: 1.2,
-                        ),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(
-                          color: UpriseColors.primaryDark,
-                          width: 1.5,
-                        ),
-                      ),
-                    ),
-                    onTap: () async {
-                      final picked = await showDatePicker(
-                        context: ctx,
-                        initialDate: DateTime.now(),
-                        firstDate: DateTime.now(),
-                        lastDate: DateTime.now().add(const Duration(days: 30)),
-                      );
-                      if (picked != null) {
-                        selectedDate = picked;
-                        _dateCtrl.text = DateFormat(
-                          'MM/dd/yyyy',
-                        ).format(picked);
-                        setDialogState(() {});
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 14),
-
-                  TextFormField(
-                    controller: _startTimeCtrl,
-                    readOnly: true,
-                    decoration: InputDecoration(
-                      labelText: 'Start Time *',
-                      hintText: '-- : --',
-                      prefixIcon: const Icon(
-                        Icons.access_time_rounded,
-                        size: 18,
-                        color: UpriseColors.primaryDark,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(
-                          color: UpriseColors.primaryDark.withAlpha(100),
-                          width: 1.2,
-                        ),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(
-                          color: UpriseColors.primaryDark,
-                          width: 1.5,
-                        ),
-                      ),
-                    ),
-                    onTap: () async {
-                      final picked = await showTimePicker(
-                        context: ctx,
-                        initialTime: TimeOfDay.now(),
-                      );
-                      if (picked != null) {
-                        startTime = picked;
-                        _startTimeCtrl.text = picked.format(ctx);
-                        setDialogState(() {});
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 14),
-
-                  TextFormField(
-                    controller: _endTimeCtrl,
-                    readOnly: true,
-                    decoration: InputDecoration(
-                      labelText: 'End Time *',
-                      hintText: '-- : --',
-                      prefixIcon: const Icon(
-                        Icons.access_time_rounded,
-                        size: 18,
-                        color: UpriseColors.primaryDark,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(
-                          color: UpriseColors.primaryDark.withAlpha(100),
-                          width: 1.2,
-                        ),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(
-                          color: UpriseColors.primaryDark,
-                          width: 1.5,
-                        ),
-                      ),
-                    ),
-                    onTap: () async {
-                      final picked = await showTimePicker(
-                        context: ctx,
-                        initialTime: startTime ?? TimeOfDay.now(),
-                      );
-                      if (picked != null) {
-                        endTime = picked;
-                        _endTimeCtrl.text = picked.format(ctx);
-                        setDialogState(() {});
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 14),
-
-                  TextFormField(
-                    controller: _locationCtrl,
-                    decoration: InputDecoration(
-                      labelText: 'Office Location *',
-                      hintText: 'e.g., Dean\'s Office Room 101',
-                      prefixIcon: const Icon(
-                        Icons.location_on_outlined,
-                        size: 18,
-                        color: UpriseColors.primaryDark,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(
-                          color: UpriseColors.primaryDark.withAlpha(100),
-                          width: 1.2,
-                        ),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(
-                          color: UpriseColors.primaryDark,
-                          width: 1.5,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      // No "Skip" here on purpose — scheduling the wet-sign
-                      // appointment is required before a proposal counts as
-                      // approved, it can't be bypassed.
-                      ElevatedButton(
-                        onPressed: () async {
-                          if (selectedDate == null ||
-                              startTime == null ||
-                              endTime == null) {
-                            ScaffoldMessenger.of(ctx).showSnackBar(
-                              SnackBar(
-                                content: const Text(
-                                  'Please fill all required fields',
-                                ),
-                                backgroundColor: UpriseColors.warning,
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                            );
-                            return;
-                          }
-
-                          final startDateTime = DateTime(
-                            selectedDate!.year,
-                            selectedDate!.month,
-                            selectedDate!.day,
-                            startTime!.hour,
-                            startTime!.minute,
-                          );
-                          final endDateTime = DateTime(
-                            selectedDate!.year,
-                            selectedDate!.month,
-                            selectedDate!.day,
-                            endTime!.hour,
-                            endTime!.minute,
-                          );
-
-                          await _saveWetSignSchedule(
-                            proposalId: proposalId,
-                            title: title,
-                            startDateTime: startDateTime,
-                            endDateTime: endDateTime,
-                            location: _locationCtrl.text.trim(),
-                          );
-
-                          Navigator.pop(ctx);
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: UpriseColors.primaryDark,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 11,
-                          ),
-                        ),
-                        child: Text(
-                          'Save Schedule',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Future<void> _saveWetSignSchedule({
-    required String proposalId,
-    required String title,
-    required DateTime startDateTime,
-    required DateTime endDateTime,
-    required String location,
-  }) async {
-    try {
-      final wetSignData = {
-        'startDateTime': Timestamp.fromDate(startDateTime),
-        'endDateTime': Timestamp.fromDate(endDateTime),
-        'location': location,
-        'status': 'scheduled',
-        'scheduledBy': FirebaseAuth.instance.currentUser?.uid ?? '',
-        'scheduledAt': FieldValue.serverTimestamp(),
-      };
-
-      await FirebaseFirestore.instance
-          .collection('event_proposals')
-          .doc(proposalId)
-          .update({
-            'status': 'approved',
-            'wetSignSchedule': wetSignData,
-            'reviewedAt': FieldValue.serverTimestamp(),
-            'reviewedBy': FirebaseAuth.instance.currentUser?.uid ?? '',
-          });
-
-      await activity_log.ActivityLogger.log(
-        action: 'schedule_wet_sign',
-        module: 'Event Management',
-        details: {
-          'proposalId': proposalId,
-          'title': title,
-          'startDateTime': startDateTime.toIso8601String(),
-          'location': location,
-        },
-      );
-
-      if (_isMounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Proposal approved and wet sign scheduled!'),
-            backgroundColor: Color(0xFF059669),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } catch (e) {
-      print('Error saving wet sign schedule: $e');
-      if (_isMounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '⚠️ Proposal approved but wet sign scheduling failed: $e',
-            ),
-            backgroundColor: Colors.orange,
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -2239,66 +1827,13 @@ class _EventProposalsState extends State<EventProposals> {
                             ),
                           ),
                           Expanded(
-                            child: FutureBuilder<bool>(
-                              future: _hasConfiguredSignatories(),
-                              builder: (context, signatorySnapshot) {
-                                final showSignatoryIndicator =
-                                    shouldShowCertificateSignatoryIndicator(
-                                      status: status,
-                                      issuesCertificate: issuesCertificate,
-                                      signatoriesAvailable:
-                                          signatorySnapshot.data ?? false,
-                                    );
-
-                                return Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    _detailItem(
-                                      'Issues Certificate',
-                                      issuesCertificate ? 'Yes' : 'No',
-                                      Icons.verified_outlined,
-                                      valueColor: issuesCertificate
-                                          ? const Color(0xFF059669)
-                                          : const Color(0xFF6B7280),
-                                    ),
-                                    if (showSignatoryIndicator) ...[
-                                      const SizedBox(height: 8),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: 6,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: UpriseColors.primaryDark
-                                              .withAlpha(18),
-                                          borderRadius: BorderRadius.circular(
-                                            _DS.radiusPill,
-                                          ),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            const Icon(
-                                              Icons.draw_outlined,
-                                              size: 13,
-                                              color: UpriseColors.primaryDark,
-                                            ),
-                                            const SizedBox(width: 6),
-                                            Text(
-                                              'Signatories ready',
-                                              style: GoogleFonts.beVietnamPro(
-                                                fontSize: 11.5,
-                                                fontWeight: FontWeight.w600,
-                                                color: UpriseColors.primaryDark,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                );
-                              },
+                            child: _detailItem(
+                              'Issues Certificate',
+                              issuesCertificate ? 'Yes' : 'No',
+                              Icons.verified_outlined,
+                              valueColor: issuesCertificate
+                                  ? const Color(0xFF059669)
+                                  : const Color(0xFF6B7280),
                             ),
                           ),
                         ],
@@ -2704,6 +2239,33 @@ class _EventProposalsState extends State<EventProposals> {
                             ),
                             style: OutlinedButton.styleFrom(
                               side: const BorderSide(color: Color(0xFFE2E6EA)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 18,
+                                vertical: 11,
+                              ),
+                            ),
+                          ),
+                        if (status == 'archived')
+                          OutlinedButton.icon(
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              _confirmSetStatus(
+                                docId,
+                                data['title'] ?? 'this event',
+                                'pending',
+                              );
+                            },
+                            icon: const Icon(Icons.restore_rounded, size: 15),
+                            label: Text(
+                              'Restore',
+                              style: GoogleFonts.beVietnamPro(fontSize: 13),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFFFB923C),
+                              side: const BorderSide(color: Color(0xFFFDE68A)),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
                               ),
@@ -3132,35 +2694,37 @@ class _FilterDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE2E6EA)),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: value,
-          icon: const Icon(
-            Icons.keyboard_arrow_down_rounded,
-            size: 18,
-            color: Color(0xFF9AA5B4),
-          ),
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 13,
-            color: const Color(0xFF374151),
-          ),
-          items: items
-              .map(
-                (s) => DropdownMenuItem(
-                  value: s,
-                  child: Text(s, style: GoogleFonts.beVietnamPro(fontSize: 13)),
-                ),
-              )
-              .toList(),
-          onChanged: onChanged,
+    return AnchoredMenuTrigger<String>(
+      items: items,
+      labelOf: (s) => s,
+      selectedValue: value,
+      onSelected: onChanged,
+      trigger: Container(
+        height: 40,
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFE2E6EA)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              value,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                color: const Color(0xFF374151),
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 18,
+              color: Color(0xFF9AA5B4),
+            ),
+          ],
         ),
       ),
     );

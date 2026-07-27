@@ -12,6 +12,7 @@ import 'export_util.dart';
 import 'export_pdf.dart';
 import '../../../theme/app_theme.dart';
 import '../../../services/activity_logger.dart' as activity_log;
+import '../../../widgets/anchored_dropdown.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens (mirrors student_accounts.dart / org_management.dart)
@@ -153,6 +154,11 @@ class _ExternalAccountState extends State<ExternalAccount> {
   int    _currentPage  = 1;
   static const int _pageSize = 10;
 
+  // Checked pending requests, keyed by doc id — approving is now a bulk
+  // action (checkbox per row + one Approve button) instead of a per-row
+  // instant-approve icon.
+  final Map<String, ExternalRequest> _selectedPending = {};
+
   // Created once, not constructed inline in build() — the table/stats
   // methods that use these are called on every rebuild (search, filter
   // changes, pagination), so building a fresh .snapshots() there each time
@@ -293,6 +299,31 @@ class _ExternalAccountState extends State<ExternalAccount> {
             _currentPage = 1;
           }),
         ),
+        SizedBox(
+          height: 40,
+          child: ElevatedButton.icon(
+            onPressed: _selectedPending.isEmpty ? null : _confirmBulkApprove,
+            icon: const Icon(Icons.check_circle_outline, size: 16),
+            label: Text(
+              _selectedPending.isEmpty
+                  ? 'Approve Selected'
+                  : 'Approve Selected (${_selectedPending.length})',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF059669),
+              foregroundColor: Colors.white,
+              disabledBackgroundColor: const Color(0xFFD1D5DB),
+              disabledForegroundColor: const Color(0xFF6B7280),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              elevation: 0,
+            ),
+          ),
+        ),
         _ExportButton(statusFilter: _statusFilter, searchTerm: _searchController.text.trim()),
       ],
     );
@@ -362,6 +393,13 @@ class _ExternalAccountState extends State<ExternalAccount> {
             ? <QueryDocumentSnapshot>[]
             : docs.sublist(start, end);
 
+        final pageReqs = pageDocs
+            .map((d) => ExternalRequest.fromFirestore(
+                d.id, d.data() as Map<String, dynamic>))
+            .toList();
+        final pendingOnPage =
+            pageReqs.where((r) => r.status == 'pending').toList();
+
         return Container(
           margin: const EdgeInsets.symmetric(horizontal: 28),
           decoration: BoxDecoration(
@@ -371,19 +409,16 @@ class _ExternalAccountState extends State<ExternalAccount> {
             boxShadow: _DS.cardShadow,
           ),
           child: Column(children: [
-            _buildTableHeader(),
+            _buildTableHeader(pendingOnPage),
             Expanded(
               child: docs.isEmpty
                   ? _buildEmptyState()
                   : ListView.builder(
-                      itemCount: pageDocs.length,
+                      itemCount: pageReqs.length,
                       itemBuilder: (_, i) {
-                        final data =
-                            pageDocs[i].data() as Map<String, dynamic>;
-                        final req = ExternalRequest.fromFirestore(
-                            pageDocs[i].id, data);
+                        final req = pageReqs[i];
                         return _buildRow(
-                            req: req, isLast: i == pageDocs.length - 1);
+                            req: req, isLast: i == pageReqs.length - 1);
                       },
                     ),
             ),
@@ -396,7 +431,12 @@ class _ExternalAccountState extends State<ExternalAccount> {
     return tableContent;
   }
 
-  Widget _buildTableHeader() {
+  Widget _buildTableHeader(List<ExternalRequest> pendingOnPage) {
+    final allSelected = pendingOnPage.isNotEmpty &&
+        pendingOnPage.every((r) => _selectedPending.containsKey(r.id));
+    final someSelected =
+        !allSelected && pendingOnPage.any((r) => _selectedPending.containsKey(r.id));
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
       decoration: const BoxDecoration(
@@ -406,6 +446,27 @@ class _ExternalAccountState extends State<ExternalAccount> {
         border: Border(bottom: BorderSide(color: Color(0xFFFB923C))),
       ),
       child: Row(children: [
+        SizedBox(
+          width: 32,
+          child: Checkbox(
+            value: allSelected ? true : (someSelected ? null : false),
+            tristate: true,
+            activeColor: const Color(0xFF059669),
+            onChanged: pendingOnPage.isEmpty
+                ? null
+                : (v) => setState(() {
+                    if (v == true) {
+                      for (final r in pendingOnPage) {
+                        _selectedPending[r.id] = r;
+                      }
+                    } else {
+                      for (final r in pendingOnPage) {
+                        _selectedPending.remove(r.id);
+                      }
+                    }
+                  }),
+          ),
+        ),
         Expanded(flex: 3, child: _headerCell('FULL NAME')),
         Expanded(flex: 3, child: _headerCell('EMAIL')),
         Expanded(flex: 2, child: _headerCell('UNIVERSITY / ORG')),
@@ -447,10 +508,11 @@ class _ExternalAccountState extends State<ExternalAccount> {
             ? req.userName[0].toUpperCase()
             : '?');
 
-    return InkWell(
-      hoverColor: const Color(0xFFF8F9FB),
-      onTap: () => _showDetails(req),
-      child: Container(
+    // Not wrapped in an InkWell-with-onTap anymore — that competed with the
+    // row's own Checkbox for taps (both are tap targets in the same hit-test
+    // region), which made the checkbox unreliable to click. "View Details"
+    // below is the one dedicated way to open the row now.
+    return Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         decoration: BoxDecoration(
           border: isLast
@@ -459,6 +521,22 @@ class _ExternalAccountState extends State<ExternalAccount> {
                   bottom: BorderSide(color: Color(0xFFF1F5F9))),
         ),
         child: Row(children: [
+          SizedBox(
+            width: 32,
+            child: Checkbox(
+              value: _selectedPending.containsKey(req.id),
+              activeColor: const Color(0xFF059669),
+              onChanged: req.status != 'pending'
+                  ? null
+                  : (v) => setState(() {
+                      if (v == true) {
+                        _selectedPending[req.id] = req;
+                      } else {
+                        _selectedPending.remove(req.id);
+                      }
+                    }),
+            ),
+          ),
           // Full name with avatar
           Expanded(
             flex: 3,
@@ -568,13 +646,6 @@ class _ExternalAccountState extends State<ExternalAccount> {
                 if (req.status == 'pending') ...[
                   const SizedBox(width: 4),
                   _ActionIconButton(
-                    icon: Icons.check_circle_outline,
-                    tooltip: 'Approve & Create Account',
-                    color: const Color(0xFF059669),
-                    onTap: () => _confirmApprove(req),
-                  ),
-                  const SizedBox(width: 4),
-                  _ActionIconButton(
                     icon: Icons.cancel_outlined,
                     tooltip: 'Reject',
                     color: const Color(0xFFDC2626),
@@ -601,7 +672,6 @@ class _ExternalAccountState extends State<ExternalAccount> {
             ),
           ),
         ]),
-      ),
     );
   }
 
@@ -1525,6 +1595,43 @@ class _ExternalAccountState extends State<ExternalAccount> {
     if (ok) await _setStatus(req.id, 'approved', userName: req.userName, email: req.email);
   }
 
+  Future<void> _confirmBulkApprove() async {
+    final selected = _selectedPending.values.toList();
+    if (selected.isEmpty) return;
+
+    final ok = await _confirmAction(
+      title: 'Approve ${selected.length} Request${selected.length == 1 ? '' : 's'}',
+      message:
+          'This creates a guest account and emails login credentials to each selected requester. Continue?',
+      confirmLabel: 'Approve All',
+      confirmColor: const Color(0xFF059669),
+    );
+    if (!ok) return;
+
+    var success = 0, failed = 0;
+    for (final req in selected) {
+      try {
+        await _setStatus(req.id, 'approved', userName: req.userName, email: req.email);
+        success++;
+      } catch (_) {
+        failed++;
+      }
+    }
+
+    setState(() => _selectedPending.clear());
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(failed == 0
+            ? '$success request${success == 1 ? '' : 's'} approved.'
+            : '$success approved, $failed failed.'),
+        backgroundColor: failed == 0 ? const Color(0xFF059669) : const Color(0xFFEA580C),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ));
+    }
+  }
+
   Future<void> _confirmReject(ExternalRequest req) async {
     final ok = await _confirmAction(
       title: 'Reject Request',
@@ -1684,30 +1791,37 @@ class _FilterDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE2E6EA)),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: value,
-          icon: const Icon(Icons.keyboard_arrow_down_rounded,
-              size: 18, color: Color(0xFF9AA5B4)),
-          style: GoogleFonts.beVietnamPro(
-              fontSize: 13, color: const Color(0xFF374151)),
-          items: items
-              .map((s) => DropdownMenuItem(
-                    value: s,
-                    child: Text(s,
-                        style: GoogleFonts.beVietnamPro(
-                            fontSize: 13)),
-                  ))
-              .toList(),
-          onChanged: onChanged,
+    return AnchoredMenuTrigger<String>(
+      items: items,
+      labelOf: (s) => s,
+      selectedValue: value,
+      onSelected: onChanged,
+      trigger: Container(
+        height: 40,
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFE2E6EA)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              value,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                color: const Color(0xFF374151),
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 18,
+              color: Color(0xFF9AA5B4),
+            ),
+          ],
         ),
       ),
     );

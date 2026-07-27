@@ -17,6 +17,8 @@ import '../../../services/activity_logger.dart' as activity_log;
 import '../../../services/firestore_collections.dart';
 import '../../../services/notification_service.dart';
 import '../../../utils/platform_file_utils.dart' as platform_file_utils;
+import '../../../utils/file_validation.dart';
+import '../../../widgets/anchored_dropdown.dart';
 
 // Strips a near-white background from an imported signature photo/scan so it
 // overlays cleanly on a document instead of showing as an opaque white box.
@@ -318,8 +320,6 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
             'Pending',
             'Approved',
             'Rejected',
-            'Needs Revision',
-            'Resubmitted',
             'Archived',
           ],
           hint: 'Status',
@@ -501,6 +501,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     required bool isLast,
   }) {
     final status = (data['status'] ?? 'pending').toString();
+    final isArchived = data['isArchived'] == true;
     final timestamp = data['timestamp'] as Timestamp?;
     final date = timestamp != null
         ? DateFormat('MMM dd, yyyy').format(timestamp.toDate())
@@ -727,18 +728,29 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                         ),
                       ],
 
-                      // Archive button - always visible for all statuses
+                      // Archive/Restore button - always visible for all statuses
                       const SizedBox(width: 6),
-                      _ActionIconButton(
-                        icon: Icons.archive_outlined,
-                        tooltip: 'Archive',
-                        color: const Color(0xFF6B7280),
-                        onTap: () => _archiveRequest(
-                          docId,
-                          data['orgName'] ?? 'Request',
-                          subject,
-                        ),
-                      ),
+                      isArchived
+                          ? _ActionIconButton(
+                              icon: Icons.restore_rounded,
+                              tooltip: 'Restore',
+                              color: AdminColors.success,
+                              onTap: () => _restoreRequest(
+                                docId,
+                                data['orgName'] ?? 'Request',
+                                subject,
+                              ),
+                            )
+                          : _ActionIconButton(
+                              icon: Icons.archive_outlined,
+                              tooltip: 'Archive',
+                              color: const Color(0xFF6B7280),
+                              onTap: () => _archiveRequest(
+                                docId,
+                                data['orgName'] ?? 'Request',
+                                subject,
+                              ),
+                            ),
                     ],
                   ),
                 ),
@@ -776,7 +788,17 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Please provide feedback/revision notes:'),
+            Text.rich(
+              TextSpan(
+                text: 'Please provide feedback/revision notes:',
+                children: [
+                  TextSpan(
+                    text: ' *',
+                    style: TextStyle(color: AdminColors.error),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 12),
             TextField(
               controller: commentController,
@@ -1050,6 +1072,67 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     }
   }
 
+  Future<void> _restoreRequest(
+    String docId,
+    String orgName,
+    String subject,
+  ) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Restore Request'),
+        content: Text(
+          'Restore request from "$orgName" about "$subject" out of the archive?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AdminColors.success,
+            ),
+            child: const Text('Restore'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      await FirestoreCollections.letterRequests.doc(docId).update({
+        'isArchived': false,
+        'archivedAt': FieldValue.delete(),
+      });
+      await activity_log.ActivityLogger.log(
+        action: 'restore_letter_request',
+        module: 'Letter Request',
+        severity: 'info',
+        details: {'docId': docId, 'orgName': orgName},
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Request restored successfully'),
+            backgroundColor: AdminColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: AdminColors.error,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _confirmRejectLetter(String docId, String orgName) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -1175,6 +1258,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     final signedByName = FirebaseAuth.instance.currentUser?.email ?? 'Admin';
 
     final savedSignatures = await _loadSavedSignatures();
+    final remarkCtrl = TextEditingController();
 
     Uint8List? signatureBytes;
     bool isProcessing = false;
@@ -1197,6 +1281,12 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
             if (res == null || res.files.isEmpty) return;
             final bytes = res.files.first.bytes;
             if (bytes == null) return;
+
+            final validationError = FileValidation.validateImageBytes(bytes);
+            if (validationError != null) {
+              setDialogState(() => error = validationError);
+              return;
+            }
 
             setDialogState(() {
               isProcessing = true;
@@ -1227,6 +1317,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
 
           Future<void> saveCurrentSignature() async {
             final nameCtrl = TextEditingController(text: signedByName);
+            final formKey = GlobalKey<FormState>();
             final label = await showDialog<String>(
               context: ctx,
               builder: (dCtx) => AlertDialog(
@@ -1237,11 +1328,16 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                   'Save Signature',
                   style: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w700),
                 ),
-                content: TextField(
-                  controller: nameCtrl,
-                  autofocus: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Label (e.g. your name)',
+                content: Form(
+                  key: formKey,
+                  child: TextFormField(
+                    controller: nameCtrl,
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Label (e.g. your name) *',
+                    ),
+                    validator: (v) =>
+                        v == null || v.trim().isEmpty ? 'Required' : null,
                   ),
                 ),
                 actions: [
@@ -1250,7 +1346,10 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                     child: const Text('Cancel'),
                   ),
                   ElevatedButton(
-                    onPressed: () => Navigator.pop(dCtx, nameCtrl.text.trim()),
+                    onPressed: () {
+                      if (!formKey.currentState!.validate()) return;
+                      Navigator.pop(dCtx, nameCtrl.text.trim());
+                    },
                     child: const Text('Save'),
                   ),
                 ],
@@ -1626,6 +1725,28 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                           ),
                         ),
                       ],
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: remarkCtrl,
+                        maxLines: 2,
+                        style: GoogleFonts.beVietnamPro(fontSize: 13),
+                        decoration: InputDecoration(
+                          labelText: 'Remark (optional)',
+                          hintText: 'e.g. Approved with noted conditions',
+                          labelStyle: GoogleFonts.beVietnamPro(fontSize: 12),
+                          hintStyle: GoogleFonts.beVietnamPro(
+                            fontSize: 12,
+                            color: const Color(0xFF9AA5B4),
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                        ),
+                      ),
                       const SizedBox(height: 8),
                       Row(
                         children: [
@@ -1637,7 +1758,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                           const SizedBox(width: 6),
                           Expanded(
                             child: Text(
-                              'Stamped directly onto the submitted PDF\'s last page.',
+                              'Stamped directly onto the submitted PDF\'s last page, next to the signature.',
                               style: GoogleFonts.beVietnamPro(
                                 fontSize: 11,
                                 color: const Color(0xFF9AA5B4),
@@ -1691,6 +1812,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                                         requestorName: requestorName,
                                         signedByName: signedByName,
                                         signatureBytes: signatureBytes!,
+                                        remark: remarkCtrl.text.trim(),
                                       );
 
                                       if (ctx.mounted) Navigator.pop(ctx);
@@ -1760,6 +1882,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     required String requestorName,
     required String signedByName,
     required Uint8List signatureBytes,
+    String remark = '',
   }) async {
     try {
       final signedAt = DateTime.now();
@@ -1782,6 +1905,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
           signatureBytes: signatureBytes,
           signedByName: signedByName,
           signedAt: signedAt,
+          remark: remark,
         );
       } else {
         pdfBytes = await AdminExportPdf.generateSignedLetterPdf(
@@ -1792,6 +1916,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
           signatureBytes: signatureBytes,
           signedByName: signedByName,
           signedAt: signedAt,
+          remark: remark,
         );
       }
 
@@ -1799,6 +1924,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
         'status': 'approved',
         'signedDocumentBase64': base64Encode(pdfBytes),
         'signedAt': Timestamp.fromDate(signedAt),
+        if (remark.isNotEmpty) 'signRemark': remark,
         'signedBy': signedByName,
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -2865,30 +2991,37 @@ class _FilterDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE2E6EA)),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: value,
-          icon: const Icon(
-            Icons.keyboard_arrow_down_rounded,
-            size: 18,
-            color: Color(0xFF9AA5B4),
-          ),
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 13,
-            color: const Color(0xFF374151),
-          ),
-          items: items
-              .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-              .toList(),
-          onChanged: onChanged,
+    return AnchoredMenuTrigger<String>(
+      items: items,
+      labelOf: (s) => s,
+      selectedValue: value,
+      onSelected: onChanged,
+      trigger: Container(
+        height: 40,
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFE2E6EA)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              value,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                color: const Color(0xFF374151),
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 18,
+              color: Color(0xFF9AA5B4),
+            ),
+          ],
         ),
       ),
     );

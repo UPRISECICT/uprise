@@ -11,6 +11,7 @@ import '../../../services/activity_logger.dart' as activity_log;
 import 'export_util.dart';
 import 'export_pdf.dart';
 import '../../../theme/app_theme.dart';
+import '../../../widgets/anchored_dropdown.dart';
 
 // Helper for image handling
 ImageProvider _imageProviderFromUrl(String url) {
@@ -113,17 +114,33 @@ class _DS {
     String label, {
     String? hint,
     IconData? icon,
+    bool required = false,
   }) {
+    final labelTextStyle = GoogleFonts.beVietnamPro(
+      fontSize: 13,
+      color: const Color(0xFF64748B),
+    );
     return InputDecoration(
-      labelText: label,
+      label: required
+          ? Text.rich(
+              TextSpan(
+                text: label,
+                style: labelTextStyle,
+                children: [
+                  TextSpan(
+                    text: ' *',
+                    style: labelTextStyle.copyWith(color: UpriseColors.error),
+                  ),
+                ],
+              ),
+            )
+          : null,
+      labelText: required ? null : label,
       hintText: hint,
       prefixIcon: icon != null
           ? Icon(icon, size: 18, color: const Color(0xFF9AA5B4))
           : null,
-      labelStyle: GoogleFonts.beVietnamPro(
-        fontSize: 13,
-        color: const Color(0xFF64748B),
-      ),
+      labelStyle: labelTextStyle,
       hintStyle: GoogleFonts.beVietnamPro(
         fontSize: 13,
         color: const Color(0xFF9AA5B4),
@@ -437,6 +454,16 @@ class _AdviserRolesState extends State<AdviserRoles> {
       ? _archivedAdvisersStream
       : _activeAdvisersStream;
 
+  // Export re-fetching the whole collection with a fresh `.get()` meant
+  // re-downloading every doc's embedded base64 officer photos over again —
+  // that's what made PDF/CSV export noticeably slower than other pages.
+  // The table's own live streams already hold this data locally, so cache
+  // the latest docs from each and have export read from here instead.
+  List<QueryDocumentSnapshot> _cachedActiveAdviserDocs = [];
+  List<QueryDocumentSnapshot> _cachedArchivedAdviserDocs = [];
+  late final StreamSubscription _activeAdvisersCacheSub;
+  late final StreamSubscription _archivedAdvisersCacheSub;
+
   List<OrgModel> _orgs = [];
   List<String> _adviserNames = [];
   bool _loadingMeta = true;
@@ -463,10 +490,20 @@ class _AdviserRolesState extends State<AdviserRoles> {
   @override
   void initState() {
     super.initState();
+    // Pre-warms the PDF font/logo fetch so it's already cached by the time
+    // the admin clicks Export — otherwise that cost is paid on click and
+    // the button appears to freeze.
+    AdminExportPdf.warmUp();
     _loadMeta();
     _setupMetaListener();
     _setupOfficersListener();
     _setupOrgsListener();
+    _activeAdvisersCacheSub = _activeAdvisersStream.listen(
+      (snap) => _cachedActiveAdviserDocs = snap.docs,
+    );
+    _archivedAdvisersCacheSub = _archivedAdvisersStream.listen(
+      (snap) => _cachedArchivedAdviserDocs = snap.docs,
+    );
   }
 
   @override
@@ -475,6 +512,8 @@ class _AdviserRolesState extends State<AdviserRoles> {
     _metaListener.cancel();
     _officersListener.cancel();
     _orgsListener.cancel();
+    _activeAdvisersCacheSub.cancel();
+    _archivedAdvisersCacheSub.cancel();
     super.dispose();
   }
 
@@ -2236,12 +2275,12 @@ class _AdviserRolesState extends State<AdviserRoles> {
                                 ),
                               )
                             else
-                              DropdownButtonFormField<OrgModel>(
-                                initialValue: selectedOrg,
-                                isExpanded: true,
+                              AnchoredDropdownField<OrgModel>(
+                                value: selectedOrg,
                                 decoration: _DS.inputDecoration(
                                   'Select Organization',
                                   icon: Icons.business_outlined,
+                                  required: true,
                                 ),
                                 style: GoogleFonts.beVietnamPro(
                                   fontSize: 13,
@@ -2318,6 +2357,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
                                 'Full Name',
                                 hint: 'e.g., Dr. Juan dela Cruz',
                                 icon: Icons.badge_outlined,
+                                required: true,
                               ),
                               style: GoogleFonts.beVietnamPro(fontSize: 13),
                               validator: (v) =>
@@ -2332,6 +2372,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
                                     decoration: _DS.inputDecoration(
                                       'Email',
                                       icon: Icons.email_outlined,
+                                      required: true,
                                     ),
                                     style: GoogleFonts.beVietnamPro(
                                       fontSize: 13,
@@ -2348,6 +2389,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
                                     decoration: _DS.inputDecoration(
                                       'Phone',
                                       icon: Icons.phone_outlined,
+                                      required: true,
                                     ),
                                     style: GoogleFonts.beVietnamPro(
                                       fontSize: 13,
@@ -2360,8 +2402,8 @@ class _AdviserRolesState extends State<AdviserRoles> {
                               ],
                             ),
                             const SizedBox(height: 10),
-                            DropdownButtonFormField<String>(
-                              initialValue:
+                            AnchoredDropdownField<String>(
+                              value:
                                   [
                                     'Dean',
                                     'Program Chair',
@@ -2371,7 +2413,10 @@ class _AdviserRolesState extends State<AdviserRoles> {
                                   ].contains(advRankCtrl.text)
                                   ? advRankCtrl.text
                                   : 'Faculty',
-                              decoration: _DS.inputDecoration('Position'),
+                              decoration: _DS.inputDecoration(
+                                'Position',
+                                required: true,
+                              ),
                               style: GoogleFonts.beVietnamPro(
                                 fontSize: 13,
                                 color: const Color(0xFF1A202C),
@@ -2744,13 +2789,20 @@ class _AdviserRolesState extends State<AdviserRoles> {
   }
 
   // ── Export ────────────────────────────────────────────────────────
+  // Reads from the cached docs the table's own live stream already holds
+  // (see _activeAdvisersCacheSub/_archivedAdvisersCacheSub) instead of
+  // firing a fresh `.get()` — each doc embeds up to 3 base64 officer photos,
+  // so re-querying the whole collection on every export was what made this
+  // noticeably slower than other pages' exports.
+  List<QueryDocumentSnapshot> get _docsForExport =>
+      _statusFilter == 'Archived'
+          ? _cachedArchivedAdviserDocs
+          : _cachedActiveAdviserDocs;
+
   Future<void> _exportCSV() async {
     try {
-      final snap = await FirebaseFirestore.instance
-          .collection('adviser_roles')
-          .where('archived', isEqualTo: _statusFilter == 'Archived')
-          .get();
-      if (snap.docs.isEmpty) {
+      final docs = _docsForExport;
+      if (docs.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -2769,8 +2821,15 @@ class _AdviserRolesState extends State<AdviserRoles> {
       buf.writeln(
         'Organization,Abbreviation,Tag,Adviser,Email,Phone,Rank,President,President Photo,Vice President,Vice President Photo,Secretary,Secretary Photo,Status',
       );
-      for (final doc in snap.docs) {
-        final d = doc.data();
+      String hasPhoto(dynamic v) =>
+          (v is String && v.isNotEmpty) ? 'Yes' : 'No';
+      // Spreadsheet apps auto-detect long digit strings as numbers and
+      // render them in scientific notation (9.12E+09) — wrapping in an
+      // ="..." formula forces Excel/Sheets to keep it as literal text.
+      String escPhone(String s) =>
+          s.isEmpty ? '""' : '"=""${s.replaceAll('"', '""')}"""';
+      for (final doc in docs) {
+        final d = doc.data() as Map<String, dynamic>;
         buf.writeln(
           [
             esc(d['orgName'] ?? ''),
@@ -2778,14 +2837,14 @@ class _AdviserRolesState extends State<AdviserRoles> {
             esc(d['orgTag'] ?? ''),
             esc(d['adviserName'] ?? ''),
             esc(d['adviserEmail'] ?? ''),
-            esc(d['adviserPhone'] ?? ''),
+            escPhone((d['adviserPhone'] ?? '').toString()),
             esc(d['adviserRank'] ?? ''),
             esc(d['president'] ?? ''),
-            esc(d['presidentPhotoUrl'] ?? ''),
+            esc(hasPhoto(d['presidentPhotoUrl'])),
             esc(d['vicePresident'] ?? ''),
-            esc(d['vicePresidentPhotoUrl'] ?? ''),
+            esc(hasPhoto(d['vicePresidentPhotoUrl'])),
             esc(d['secretary'] ?? ''),
-            esc(d['secretaryPhotoUrl'] ?? ''),
+            esc(hasPhoto(d['secretaryPhotoUrl'])),
             esc((d['archived'] ?? false) ? 'Archived' : 'Active'),
           ].join(','),
         );
@@ -2815,11 +2874,8 @@ class _AdviserRolesState extends State<AdviserRoles> {
 
   Future<void> _exportPDF() async {
     try {
-      final snap = await FirebaseFirestore.instance
-          .collection('adviser_roles')
-          .where('archived', isEqualTo: _statusFilter == 'Archived')
-          .get();
-      if (snap.docs.isEmpty) {
+      final docs = _docsForExport;
+      if (docs.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -2834,8 +2890,38 @@ class _AdviserRolesState extends State<AdviserRoles> {
         return;
       }
 
-      final rows = snap.docs.map((doc) {
-        final d = doc.data();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Row(
+              children: [
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                ),
+                SizedBox(width: 12),
+                Text('Generating PDF…'),
+              ],
+            ),
+            duration: const Duration(seconds: 6),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        );
+      }
+      // Lets the snackbar above actually paint before the synchronous
+      // PDF table build/encode work below blocks the UI thread — otherwise
+      // the export looks frozen with zero feedback until it's done.
+      await Future.delayed(Duration.zero);
+
+      final rows = docs.map((doc) {
+        final d = doc.data() as Map<String, dynamic>;
         return [
           d['orgName'] ?? '',
           d['orgAbbrev'] ?? '',
@@ -2874,6 +2960,9 @@ class _AdviserRolesState extends State<AdviserRoles> {
         'adviser_roles_$now.pdf',
         mimeType: 'application/pdf',
       );
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2904,31 +2993,37 @@ class _StatusDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE2E6EA)),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: value,
-          icon: const Icon(
-            Icons.keyboard_arrow_down_rounded,
-            size: 18,
-            color: Color(0xFF9AA5B4),
-          ),
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 13,
-            color: const Color(0xFF374151),
-          ),
-          items: const [
-            DropdownMenuItem(value: 'Active', child: Text('Active')),
-            DropdownMenuItem(value: 'Archived', child: Text('Archived')),
+    return AnchoredMenuTrigger<String>(
+      items: const ['Active', 'Archived'],
+      labelOf: (s) => s,
+      selectedValue: value,
+      onSelected: (s) => onChanged(s),
+      trigger: Container(
+        height: 40,
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFE2E6EA)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              value,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                color: const Color(0xFF374151),
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 18,
+              color: Color(0xFF9AA5B4),
+            ),
           ],
-          onChanged: onChanged,
         ),
       ),
     );
@@ -3094,28 +3189,38 @@ class _FilterDropdown<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE2E6EA)),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<T>(
-          value: value,
-          icon: const Icon(
-            Icons.keyboard_arrow_down_rounded,
-            size: 18,
-            color: Color(0xFF9AA5B4),
-          ),
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 13,
-            color: const Color(0xFF374151),
-          ),
-          items: items,
-          onChanged: onChanged,
+    return AnchoredMenuTrigger<T>(
+      items: items.map((i) => i.value as T).toList(),
+      itemBuilder: (item, selected) =>
+          items.firstWhere((i) => i.value == item).child,
+      selectedValue: value,
+      onSelected: (v) => onChanged(v),
+      trigger: Container(
+        height: 40,
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFE2E6EA)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DefaultTextStyle(
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                color: const Color(0xFF374151),
+              ),
+              child: items.firstWhere((i) => i.value == value).child,
+            ),
+            const SizedBox(width: 6),
+            const Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 18,
+              color: Color(0xFF9AA5B4),
+            ),
+          ],
         ),
       ),
     );

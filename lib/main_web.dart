@@ -291,24 +291,25 @@ class LandingPage extends StatelessWidget {
                   children: [
                     // ── Logo ────────────────────────────────────────
                     Container(
-                      width: 80,
-                      height: 80,
+                      width: 128,
+                      height: 128,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: const Color(0xFFFAF5EE),
                         border: Border.all(
-                            color: const Color(0xFFFDE68A), width: 2),
+                            color: const Color(0xFFFDE68A), width: 3),
                       ),
                       child: ClipOval(
                         child: Image.asset('assets/images/logo.png',
                             fit: BoxFit.contain,
+                            filterQuality: FilterQuality.high,
                             errorBuilder: (_, __, ___) => const Icon(
                                 Icons.school,
                                 color: Color(0xFFD97706),
-                                size: 40)),
+                                size: 64)),
                       ),
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 16),
                     // ── Title ───────────────────────────────────────
                     RichText(
                       text: TextSpan(children: [

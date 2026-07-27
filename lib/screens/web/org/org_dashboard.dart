@@ -274,21 +274,200 @@ class _Colon extends StatelessWidget {
 // Sidebar nav items
 // ─────────────────────────────────────────────────────────────────────────────
 const List<Map<String, dynamic>> _navItems = [
-  {'label': 'Dashboard', 'icon': Icons.dashboard_rounded},
-  {'label': 'Event Proposals', 'icon': Icons.description_rounded},
-  {'label': 'Events & Schedules', 'icon': Icons.calendar_month_rounded},
-  {'label': 'Attendance QR', 'icon': Icons.qr_code_scanner_rounded},
-  {'label': 'Certificates', 'icon': Icons.verified_rounded},
-  {'label': 'Event Analytics', 'icon': Icons.bar_chart_rounded},
-  {'label': 'Announcements', 'icon': Icons.campaign_rounded},
-  {'label': 'Broadcast', 'icon': Icons.wifi_tethering_rounded},
-  {'label': 'Org Profile', 'icon': Icons.people_rounded},
-  {'label': 'Letter Request', 'icon': Icons.mail_rounded},
-  {'label': 'Reports', 'icon': Icons.summarize_rounded},
-  {'label': 'Finance', 'icon': Icons.account_balance_wallet_rounded},
-  {'label': 'Merchandise', 'icon': Icons.shopping_bag_rounded},
-  {'label': 'Settings', 'icon': Icons.settings_rounded},
+  {'label': 'Dashboard', 'icon': Icons.dashboard_outlined},
+  {'label': 'Event Proposals', 'icon': Icons.description_outlined},
+  {'label': 'Events & Schedules', 'icon': Icons.calendar_month_outlined},
+  {'label': 'Mark Attendance', 'icon': Icons.qr_code_scanner_outlined},
+  {'label': 'Certificates', 'icon': Icons.verified_outlined},
+  {'label': 'Event Analytics', 'icon': Icons.bar_chart_outlined},
+  {'label': 'Announcements', 'icon': Icons.campaign_outlined},
+  {'label': 'Broadcast Code', 'icon': Icons.wifi_tethering_outlined},
+  {'label': 'Org Profile', 'icon': Icons.people_outline},
+  {'label': 'Letter Request', 'icon': Icons.mail_outline},
+  {'label': 'Compliance Reports', 'icon': Icons.summarize_outlined},
+  {'label': 'Finance', 'icon': Icons.account_balance_wallet_outlined},
+  {'label': 'Merchandise', 'icon': Icons.shopping_bag_outlined},
 ];
+
+// Sidebar groups: standalone items render directly, grouped items nest
+// under a collapsible parent (indices refer to _navItems / _screens).
+// Org Profile (8) is deliberately absent — it's user-scoped now, reached
+// only via the profile dropdown's "My Profile" entry.
+const List<int> _standaloneTop = [0];
+const List<int> _standaloneBottom = [6];
+const Map<String, Map<String, dynamic>> _navGroups = {
+  'events': {
+    'label': 'Events & Requests',
+    'icon': Icons.event_note_outlined,
+    'children': [1, 9, 2, 5, 10],
+  },
+  'attendance': {
+    'label': 'Attendance & Certificates',
+    'icon': Icons.fact_check_outlined,
+    'children': [3, 7, 4],
+  },
+  'finance': {
+    'label': 'Finance & Merch',
+    'icon': Icons.storefront_outlined,
+    'children': [11, 12],
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sidebar nav — isolated so expand/collapse of a submenu only rebuilds this
+// small widget, not the whole dashboard (which would otherwise re-trigger
+// every visited screen's build() — and any inline StreamBuilder in them —
+// making it look like the active page "refreshed").
+// ─────────────────────────────────────────────────────────────────────────────
+class _SidebarNav extends StatefulWidget {
+  final int selectedIndex;
+  final ValueChanged<int> onSelect;
+  const _SidebarNav({required this.selectedIndex, required this.onSelect});
+
+  @override
+  State<_SidebarNav> createState() => _SidebarNavState();
+}
+
+class _SidebarNavState extends State<_SidebarNav> {
+  // Accordion: at most one group open at a time.
+  String? _openGroup;
+
+  @override
+  void initState() {
+    super.initState();
+    _openGroup = _groupContaining(widget.selectedIndex);
+  }
+
+  @override
+  void didUpdateWidget(covariant _SidebarNav oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedIndex != widget.selectedIndex) {
+      final match = _groupContaining(widget.selectedIndex);
+      if (match != null) _openGroup = match;
+    }
+  }
+
+  String? _groupContaining(int index) {
+    for (final entry in _navGroups.entries) {
+      if ((entry.value['children'] as List<int>).contains(index)) return entry.key;
+    }
+    return null;
+  }
+
+  Widget _navTile(int index, {double indent = 14}) {
+    final item = _navItems[index];
+    final isSelected = widget.selectedIndex == index;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => widget.onSelect(index),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          margin: const EdgeInsets.symmetric(vertical: 2),
+          padding: EdgeInsets.symmetric(vertical: 10).copyWith(
+            left: indent,
+            right: 14,
+          ),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? OrgColors.accent.withAlpha(46)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            border: isSelected
+                ? Border.all(color: OrgColors.accent.withAlpha(130), width: 1)
+                : null,
+          ),
+          child: Row(
+            children: [
+              Icon(
+                item['icon'] as IconData,
+                color: isSelected ? OrgColors.accent : Colors.white.withAlpha(166),
+                size: 17,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  item['label'] as String,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.beVietnamPro(
+                    color: isSelected ? Colors.white : Colors.white.withAlpha(191),
+                    fontSize: 13,
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
+                  ),
+                ),
+              ),
+              if (isSelected)
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: const BoxDecoration(
+                    color: OrgColors.accent,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _groupHeaderTile(String groupKey, String label, IconData icon, bool expanded) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => setState(() => _openGroup = expanded ? null : groupKey),
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 2),
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+          child: Row(
+            children: [
+              Icon(icon, color: Colors.white.withAlpha(191), size: 17),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.beVietnamPro(
+                    color: Colors.white.withAlpha(179),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Icon(
+                expanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,
+                color: Colors.white.withAlpha(166),
+                size: 18,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      children: [
+        for (final i in _standaloneTop) _navTile(i),
+        for (final entry in _navGroups.entries) ...[
+          _groupHeaderTile(
+            entry.key,
+            entry.value['label'] as String,
+            entry.value['icon'] as IconData,
+            _openGroup == entry.key,
+          ),
+          if (_openGroup == entry.key)
+            for (final i in entry.value['children'] as List<int>) _navTile(i, indent: 30),
+        ],
+        for (final i in _standaloneBottom) _navTile(i),
+      ],
+    );
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // OrgDashboard shell
@@ -308,6 +487,7 @@ class _OrgDashboardState extends State<OrgDashboard> {
   // once on dashboard load instead of spreading that cost out over time.
   final Set<int> _visitedIndices = {0};
   final GlobalKey _bellKey = GlobalKey();
+  final GlobalKey _profileKey = GlobalKey();
   String _orgId = '';
   String _orgName = '';
   String _orgShortName = '';
@@ -770,6 +950,102 @@ class _OrgDashboardState extends State<OrgDashboard> {
     });
   }
 
+  void _showProfileMenu() {
+    final box = _profileKey.currentContext?.findRenderObject() as RenderBox?;
+    final screenSize = MediaQuery.of(context).size;
+    double top = 76;
+    double right = 28;
+    if (box != null) {
+      final topLeft = box.localToGlobal(Offset.zero);
+      final size = box.size;
+      top = topLeft.dy + size.height + 12;
+      right = (screenSize.width - (topLeft.dx + size.width) - 6).clamp(
+        8.0,
+        screenSize.width - 200,
+      );
+    }
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.transparent,
+      barrierLabel: 'Profile menu',
+      transitionDuration: const Duration(milliseconds: 150),
+      pageBuilder: (ctx, anim, secAnim) {
+        return Align(
+          alignment: Alignment.topRight,
+          child: Padding(
+            padding: EdgeInsets.only(top: top, right: right),
+            child: Material(
+              color: Colors.white,
+              elevation: 12,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: const BorderSide(color: OrgColors.border, width: 0.5),
+              ),
+              child: SizedBox(
+                width: 200,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(height: 6),
+                    _profileMenuItem(Icons.person_outline, 'My Profile', () {
+                      Navigator.of(ctx).pop();
+                      _selectTab(8);
+                    }),
+                    _profileMenuItem(Icons.settings_outlined, 'Settings', () {
+                      Navigator.of(ctx).pop();
+                      _selectTab(-1);
+                    }),
+                    const Divider(height: 1, color: OrgColors.border),
+                    const SizedBox(height: 4),
+                    _profileMenuItem(
+                      Icons.logout_rounded,
+                      'Sign Out',
+                      () {
+                        Navigator.of(ctx).pop();
+                        _confirmLogout();
+                      },
+                      color: OrgColors.error,
+                    ),
+                    const SizedBox(height: 6),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _profileMenuItem(
+    IconData icon,
+    String label,
+    VoidCallback onTap, {
+    Color? color,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            Icon(icon, size: 17, color: color ?? OrgColors.darkGray),
+            const SizedBox(width: 12),
+            Text(
+              label,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: color ?? OrgColors.charcoal,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _logout() async {
     try {
       await FirebaseAuth.instance.signOut();
@@ -893,7 +1169,7 @@ class _OrgDashboardState extends State<OrgDashboard> {
 
   String _getCurrentTitle() {
     if (_selectedIndex == -1) return 'Settings';
-    if (_selectedIndex < _navItems.length - 1) {
+    if (_selectedIndex >= 0 && _selectedIndex < _navItems.length) {
       return _navItems[_selectedIndex]['label'] as String;
     }
     return 'Dashboard';
@@ -1103,49 +1379,57 @@ class _OrgDashboardState extends State<OrgDashboard> {
             child: Row(
               children: [
                 Container(
-                  width: 44,
-                  height: 44,
+                  width: 68,
+                  height: 68,
                   decoration: BoxDecoration(
                     color: Colors.white.withAlpha(46),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                   clipBehavior: Clip.antiAlias,
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(14),
                     child: Image.asset(
                       'assets/images/logo.png',
                       fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
                       errorBuilder: (_, __, ___) => const Icon(
                         Icons.school_rounded,
                         color: Colors.white,
-                        size: 26,
+                        size: 40,
                       ),
                     ),
                   ),
                 ),
                 const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'UPRISE',
-                      style: GoogleFonts.beVietnamPro(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 2.5,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'UPRISE',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.beVietnamPro(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 2,
+                        ),
                       ),
-                    ),
-                    Text(
-                      'Organization Portal',
-                      style: GoogleFonts.beVietnamPro(
-                        color: Colors.white.withAlpha(166),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0.4,
+                      Text(
+                        'Organization Portal',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.beVietnamPro(
+                          color: Colors.white.withAlpha(166),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: 0.4,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -1173,111 +1457,9 @@ class _OrgDashboardState extends State<OrgDashboard> {
             ),
           ),
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              itemCount: _navItems.length,
-              itemBuilder: (context, index) {
-                final item = _navItems[index];
-                final isSettings = item['label'] == 'Settings';
-                final isSelected = isSettings
-                    ? _selectedIndex == -1
-                    : _selectedIndex == index;
-
-                return GestureDetector(
-                  onTap: () => _selectTab(isSettings ? -1 : index),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    margin: const EdgeInsets.symmetric(vertical: 2),
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 10,
-                      horizontal: 14,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? Colors.white.withAlpha(46)
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(10),
-                      border: isSelected
-                          ? Border.all(
-                              color: Colors.white.withAlpha(64),
-                              width: 1,
-                            )
-                          : null,
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          item['icon'] as IconData,
-                          color: isSelected
-                              ? Colors.white
-                              : Colors.white.withAlpha(166),
-                          size: 17,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            item['label'] as String,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.beVietnamPro(
-                              color: isSelected
-                                  ? Colors.white
-                                  : Colors.white.withAlpha(191),
-                              fontSize: 13,
-                              fontWeight: isSelected
-                                  ? FontWeight.w700
-                                  : FontWeight.w400,
-                            ),
-                          ),
-                        ),
-                        if (isSelected)
-                          Container(
-                            width: 6,
-                            height: 6,
-                            decoration: const BoxDecoration(
-                              color: OrgColors.accent,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          Divider(
-            color: Colors.white.withAlpha(38),
-            thickness: 1,
-            indent: 20,
-            endIndent: 20,
-          ),
-          GestureDetector(
-            onTap: _confirmLogout,
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-              decoration: BoxDecoration(
-                color: Colors.white.withAlpha(20),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.logout_rounded,
-                    color: Colors.white.withAlpha(191),
-                    size: 17,
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    'Sign Out',
-                    style: GoogleFonts.beVietnamPro(
-                      color: Colors.white.withAlpha(191),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
+            child: _SidebarNav(
+              selectedIndex: _selectedIndex,
+              onSelect: _selectTab,
             ),
           ),
           const SizedBox(height: 12),
@@ -1468,7 +1650,12 @@ class _OrgDashboardState extends State<OrgDashboard> {
             const SizedBox(width: 10),
           ],
           if (screenWidth >= 480)
-            Row(
+            MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+              key: _profileKey,
+              onTap: _showProfileMenu,
+              child: Row(
               children: [
                 Container(
                   width: 36,
@@ -1528,8 +1715,12 @@ class _OrgDashboardState extends State<OrgDashboard> {
                       ),
                     ],
                   ),
+                  const SizedBox(width: 4),
+                  Icon(Icons.keyboard_arrow_down, size: 18, color: OrgColors.textFaint),
                 ],
               ],
+              ),
+              ),
             )
           else
             Container(

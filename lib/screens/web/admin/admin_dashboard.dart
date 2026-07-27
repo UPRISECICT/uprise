@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -20,6 +20,8 @@ import '../../../services/activity_logger.dart' as activity_log;
 import '../../../services/notification_service.dart';
 import 'reports_management.dart';
 import 'settings.dart';
+import 'export_pdf.dart' show AdminExportPdf;
+import 'export_util.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens — mirrors student_accounts.dart exactly
@@ -66,10 +68,187 @@ const List<Map<String, dynamic>> _navItems = [
   {'label': 'College Event Calendar', 'icon': Icons.calendar_today_outlined},
   {'label': 'Letter Request', 'icon': Icons.mail_outline},
   {'label': 'External Account', 'icon': Icons.link_outlined},
-  {'label': 'Reports Management', 'icon': Icons.assessment_outlined},
+  {'label': 'Reports & Analytics', 'icon': Icons.assessment_outlined},
   {'label': 'Activity Logs', 'icon': Icons.history_outlined},
-  {'label': 'Settings', 'icon': Icons.settings_outlined},
 ];
+
+// Sidebar groups: standalone items render directly, grouped items nest
+// under a collapsible parent (indices refer to _navItems / _screens).
+const List<int> _standaloneTop = [0];
+const List<int> _standaloneBottom = [9];
+const Map<String, Map<String, dynamic>> _navGroups = {
+  'requests': {
+    'label': 'Requests',
+    'icon': Icons.assignment_outlined,
+    'children': [4, 6],
+  },
+  'org': {
+    'label': 'Org Management',
+    'icon': Icons.business_outlined,
+    'children': [1, 5, 3, 8],
+  },
+  'accounts': {
+    'label': 'Accounts Management',
+    'icon': Icons.manage_accounts_outlined,
+    'children': [2, 7],
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sidebar nav — isolated so expand/collapse of a submenu only rebuilds this
+// small widget, not the whole dashboard (which would otherwise re-trigger
+// every visited screen's build() — and any inline StreamBuilder in them —
+// making it look like the active page "refreshed").
+// ─────────────────────────────────────────────────────────────────────────────
+class _SidebarNav extends StatefulWidget {
+  final int selectedIndex;
+  final ValueChanged<int> onSelect;
+  const _SidebarNav({required this.selectedIndex, required this.onSelect});
+
+  @override
+  State<_SidebarNav> createState() => _SidebarNavState();
+}
+
+class _SidebarNavState extends State<_SidebarNav> {
+  // Accordion: at most one group open at a time.
+  String? _openGroup;
+
+  @override
+  void initState() {
+    super.initState();
+    _openGroup = _groupContaining(widget.selectedIndex);
+  }
+
+  @override
+  void didUpdateWidget(covariant _SidebarNav oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedIndex != widget.selectedIndex) {
+      final match = _groupContaining(widget.selectedIndex);
+      if (match != null) _openGroup = match;
+    }
+  }
+
+  String? _groupContaining(int index) {
+    for (final entry in _navGroups.entries) {
+      if ((entry.value['children'] as List<int>).contains(index)) return entry.key;
+    }
+    return null;
+  }
+
+  Widget _navTile(int index, {double indent = 14}) {
+    final item = _navItems[index];
+    final isSelected = widget.selectedIndex == index;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => widget.onSelect(index),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          margin: const EdgeInsets.symmetric(vertical: 2),
+          padding: EdgeInsets.symmetric(vertical: 10).copyWith(
+            left: indent,
+            right: 14,
+          ),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? UpriseColors.accent.withAlpha(46)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            border: isSelected
+                ? Border.all(color: UpriseColors.accent.withAlpha(130), width: 1)
+                : null,
+          ),
+          child: Row(
+            children: [
+              Icon(
+                item['icon'] as IconData,
+                color: isSelected ? UpriseColors.accent : Colors.white.withAlpha(166),
+                size: 17,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  item['label'] as String,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.beVietnamPro(
+                    color: isSelected ? Colors.white : Colors.white.withAlpha(191),
+                    fontSize: 13,
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
+                  ),
+                ),
+              ),
+              if (isSelected)
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: UpriseColors.accent,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _groupHeaderTile(String groupKey, String label, IconData icon, bool expanded) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => setState(() => _openGroup = expanded ? null : groupKey),
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 2),
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+          child: Row(
+            children: [
+              Icon(icon, color: Colors.white.withAlpha(191), size: 17),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.beVietnamPro(
+                    color: Colors.white.withAlpha(179),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Icon(
+                expanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,
+                color: Colors.white.withAlpha(166),
+                size: 18,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      children: [
+        for (final i in _standaloneTop) _navTile(i),
+        for (final entry in _navGroups.entries) ...[
+          _groupHeaderTile(
+            entry.key,
+            entry.value['label'] as String,
+            entry.value['icon'] as IconData,
+            _openGroup == entry.key,
+          ),
+          if (_openGroup == entry.key)
+            for (final i in entry.value['children'] as List<int>) _navTile(i, indent: 30),
+        ],
+        for (final i in _standaloneBottom) _navTile(i),
+      ],
+    );
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AdminDashboard shell
@@ -89,6 +268,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   final Set<int> _visitedIndices = {0};
   final AuthService _auth = AuthService();
   final GlobalKey _bellKey = GlobalKey();
+  final GlobalKey _profileKey = GlobalKey();
   int _unreadNotifications = 0;
   List<Map<String, dynamic>> _notifications = [];
   String _adminName = 'Admin User';
@@ -105,7 +285,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     _fetchUnreadNotifications();
     _updateDateTime();
     _screens = [
-      DashboardHome(onNavigateToCalendar: () => _selectTab(5)),
+      DashboardHome(onNavigateToTab: _selectTab),
       const OrganizationManagement(),
       const StudentAccounts(),
       const AdviserRoles(),
@@ -296,10 +476,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
   // offset + internal clamping) repositions itself differently depending
   // on how much room is left in the viewport, which is what made the
   // dropdown/"View All" land in inconsistent spots before.
-  ({double top, double right, double maxHeight}) _bellAnchor({
+  ({double top, double right, double maxHeight}) _bellAnchor(
+    GlobalKey anchorKey, {
     required double preferredHeight,
   }) {
-    final bellBox = _bellKey.currentContext?.findRenderObject() as RenderBox?;
+    final bellBox = anchorKey.currentContext?.findRenderObject() as RenderBox?;
     final screenSize = MediaQuery.of(context).size;
     double top = 76;
     double right = 28;
@@ -320,7 +501,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   void _showNotificationDropdown() {
-    final anchor = _bellAnchor(preferredHeight: 480);
+    final anchor = _bellAnchor(_bellKey, preferredHeight: 480);
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
@@ -364,7 +545,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   void _showAllNotificationsDialog() {
-    final anchor = _bellAnchor(preferredHeight: 600);
+    final anchor = _bellAnchor(_bellKey, preferredHeight: 600);
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
@@ -401,6 +582,90 @@ class _AdminDashboardState extends State<AdminDashboard> {
           ),
         );
       },
+    );
+  }
+
+  void _showProfileMenu() {
+    final anchor = _bellAnchor(_profileKey, preferredHeight: 210);
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.transparent,
+      barrierLabel: 'Profile menu',
+      transitionDuration: const Duration(milliseconds: 150),
+      pageBuilder: (ctx, anim, secAnim) {
+        return Align(
+          alignment: Alignment.topRight,
+          child: Padding(
+            padding: EdgeInsets.only(top: anchor.top, right: anchor.right),
+            child: Material(
+              color: Colors.white,
+              elevation: 12,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: const BorderSide(color: Color(0xFFE8ECF0), width: 0.5),
+              ),
+              child: SizedBox(
+                width: 200,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(height: 6),
+                    _profileMenuItem(Icons.person_outline, 'My Profile', () {
+                      Navigator.of(ctx).pop();
+                      _selectTab(-1);
+                    }),
+                    _profileMenuItem(Icons.settings_outlined, 'Settings', () {
+                      Navigator.of(ctx).pop();
+                      _selectTab(-1);
+                    }),
+                    const Divider(height: 1, color: Color(0xFFE8ECF0)),
+                    const SizedBox(height: 4),
+                    _profileMenuItem(
+                      Icons.logout_rounded,
+                      'Logout',
+                      () {
+                        Navigator.of(ctx).pop();
+                        _confirmLogout();
+                      },
+                      color: const Color(0xFFDC2626),
+                    ),
+                    const SizedBox(height: 6),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _profileMenuItem(
+    IconData icon,
+    String label,
+    VoidCallback onTap, {
+    Color? color,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            Icon(icon, size: 17, color: color ?? const Color(0xFF64748B)),
+            const SizedBox(width: 12),
+            Text(
+              label,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: color ?? UpriseColors.charcoal,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -534,7 +799,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
       'College Event Calendar',
       'Letter Request',
       'External Account',
-      'Reports Management',
+      'Reports & Analytics',
       'Activity Logs',
     ];
     return titles[_selectedIndex];
@@ -596,39 +861,46 @@ class _AdminDashboardState extends State<AdminDashboard> {
             child: Row(
               children: [
                 SizedBox(
-                  width: 44,
-                  height: 44,
+                  width: 68,
+                  height: 68,
                   child: Image.asset(
                     'assets/images/logo.png',
                     fit: BoxFit.contain,
                     filterQuality: FilterQuality.high,
                     errorBuilder: (_, __, ___) =>
-                        const Icon(Icons.school, color: Colors.white, size: 26),
+                        const Icon(Icons.school, color: Colors.white, size: 40),
                   ),
                 ),
                 const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'UPRISE',
-                      style: GoogleFonts.beVietnamPro(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 2.5,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'UPRISE',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.beVietnamPro(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 2,
+                        ),
                       ),
-                    ),
-                    Text(
-                      'Admin Panel',
-                      style: GoogleFonts.beVietnamPro(
-                        color: Colors.white.withAlpha(166),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0.4,
+                      Text(
+                        'Admin Panel',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.beVietnamPro(
+                          color: Colors.white.withAlpha(166),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: 0.4,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -661,115 +933,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
           // Nav items
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              itemCount: _navItems.length,
-              itemBuilder: (context, index) {
-                final item = _navItems[index];
-                final isSettings = item['label'] == 'Settings';
-                final isSelected = isSettings
-                    ? _selectedIndex == -1
-                    : _selectedIndex == index;
-
-                return GestureDetector(
-                  onTap: () => _selectTab(isSettings ? -1 : index),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    margin: const EdgeInsets.symmetric(vertical: 2),
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 10,
-                      horizontal: 14,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? Colors.white.withAlpha(46)
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(10),
-                      border: isSelected
-                          ? Border.all(
-                              color: Colors.white.withAlpha(64),
-                              width: 1,
-                            )
-                          : null,
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          item['icon'] as IconData,
-                          color: isSelected
-                              ? Colors.white
-                              : Colors.white.withAlpha(166),
-                          size: 17,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            item['label'] as String,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.beVietnamPro(
-                              color: isSelected
-                                  ? Colors.white
-                                  : Colors.white.withAlpha(191),
-                              fontSize: 13,
-                              fontWeight: isSelected
-                                  ? FontWeight.w700
-                                  : FontWeight.w400,
-                            ),
-                          ),
-                        ),
-                        if (isSelected)
-                          Container(
-                            width: 6,
-                            height: 6,
-                            decoration: BoxDecoration(
-                              color: UpriseColors.accent,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                );
-              },
+            child: _SidebarNav(
+              selectedIndex: _selectedIndex,
+              onSelect: _selectTab,
             ),
           ),
 
-          // Divider + logout
-          Divider(
-            color: Colors.white.withAlpha(38),
-            thickness: 1,
-            indent: 20,
-            endIndent: 20,
-          ),
-          GestureDetector(
-            onTap: _confirmLogout,
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-              decoration: BoxDecoration(
-                color: Colors.white.withAlpha(20),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.logout_rounded,
-                    color: Colors.white.withAlpha(191),
-                    size: 17,
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    'Logout',
-                    style: GoogleFonts.beVietnamPro(
-                      color: Colors.white.withAlpha(191),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
           const SizedBox(height: 12),
         ],
       ),
@@ -961,45 +1130,58 @@ class _AdminDashboardState extends State<AdminDashboard> {
           Container(width: 1, height: 28, color: const Color(0xFFE8ECF0)),
           const SizedBox(width: 10),
 
-          // Admin avatar
-          Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: UpriseColors.primaryDark.withAlpha(25),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: UpriseColors.primaryDark.withAlpha(50),
+          // Admin avatar (clickable — opens profile/settings/logout menu)
+          MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+            key: _profileKey,
+            onTap: _showProfileMenu,
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: UpriseColors.primaryDark.withAlpha(25),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: UpriseColors.primaryDark.withAlpha(50),
+                    ),
                   ),
+                  clipBehavior: Clip.antiAlias,
+                  child: _buildAdminAvatar(),
                 ),
-                clipBehavior: Clip.antiAlias,
-                child: _buildAdminAvatar(),
-              ),
-              const SizedBox(width: 10),
-              Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _adminName,
-                    style: GoogleFonts.beVietnamPro(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                      color: UpriseColors.charcoal,
+                const SizedBox(width: 10),
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _adminName,
+                      style: GoogleFonts.beVietnamPro(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        color: UpriseColors.charcoal,
+                      ),
                     ),
-                  ),
-                  Text(
-                    _adminRole,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 10,
-                      color: const Color(0xFF9AA5B4),
+                    Text(
+                      _adminRole,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 10,
+                        color: const Color(0xFF9AA5B4),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  Icons.keyboard_arrow_down,
+                  size: 18,
+                  color: const Color(0xFF9AA5B4),
+                ),
+              ],
+            ),
+            ),
           ),
         ],
       ),
@@ -1015,24 +1197,60 @@ class _AdminDashboardState extends State<AdminDashboard> {
 // Replace the entire DashboardHome class with this fixed version:
 
 class DashboardHome extends StatefulWidget {
-  final VoidCallback? onNavigateToCalendar;
-  const DashboardHome({super.key, this.onNavigateToCalendar});
+  // Lets a panel jump straight to another admin tab — e.g. "Open in Event
+  // Proposals" from the Pending Proposals table. Index values match
+  // _AdminDashboardState._screens (4 = Event Proposals, 8 = Reports Management).
+  final ValueChanged<int>? onNavigateToTab;
+  const DashboardHome({super.key, this.onNavigateToTab});
   @override
   State<DashboardHome> createState() => _DashboardHomeState();
 }
 
 class _DashboardHomeState extends State<DashboardHome> {
   int _selectedYear = DateTime.now().year;
+  final GlobalKey _yearDropdownKey = GlobalKey();
   String _selectedMonth = '';
   List<int> _chartData = List.filled(12, 0);
   bool _chartLoading = true;
 
+  // Which stat card is driving the panel below it — 0 Active Orgs,
+  // 1 Active Events, 2 Pending Proposals, 3 Overdue Reports, or null for
+  // no card selected (shows the combined Analytics overview). Tapping the
+  // already-selected card again clears it back to null.
+  int? _selectedCard;
+  // Cached once (not re-created per build) so switching cards back and
+  // forth doesn't re-fire this Firestore read every time — see the
+  // sidebar submenu fix earlier in this file for the same pattern.
+  late final Future<List<_OrgPerformance>> _performanceFuture =
+      _loadPerformanceSummary();
+  late final Future<_OverdueSummary> _overdueFuture = _loadOverdueReports();
+
   late final Stream<QuerySnapshot> _organizationsStream;
   late final Stream<QuerySnapshot> _eventsStream;
   late final Stream<QuerySnapshot> _proposalsStream;
-  late final Stream<QuerySnapshot> _reportsStream;
-  late final Stream<QuerySnapshot>
-  _allEventsStream; // For upcoming events - no date filter in query
+
+  // Dedicated streams for the Active Events / Pending Proposals table
+  // panels — deliberately NOT the same stream instance as the stat cards
+  // above. Firestore always sends the current snapshot immediately to a
+  // brand-new .snapshots() listener, but sharing one Stream object
+  // between two simultaneously-mounted StreamBuilders doesn't: whichever
+  // one attaches second only sees future changes, not the snapshot that
+  // already fired for the first — so it hangs on "loading" until the
+  // collection actually changes. Lazily created on first use so we're
+  // not running extra listeners before the card is ever opened.
+  Stream<QuerySnapshot>? _activeEventsTableStream;
+  Stream<QuerySnapshot> get _activeEventsTableStreamGetter =>
+      _activeEventsTableStream ??= FirebaseFirestore.instance
+          .collection('event_proposals')
+          .where('status', isEqualTo: 'approved')
+          .snapshots();
+
+  Stream<QuerySnapshot>? _pendingProposalsTableStream;
+  Stream<QuerySnapshot> get _pendingProposalsTableStreamGetter =>
+      _pendingProposalsTableStream ??= FirebaseFirestore.instance
+          .collection('event_proposals')
+          .where('status', isEqualTo: 'pending')
+          .snapshots();
 
   // Plain calendar years — no academic-year offset to keep in sync with.
   List<int> get _yearOptions {
@@ -1076,18 +1294,234 @@ class _DashboardHomeState extends State<DashboardHome> {
         .collection('event_proposals')
         .where('status', isEqualTo: 'pending')
         .snapshots();
-    _reportsStream = FirebaseFirestore.instance
-        .collection('reports')
-        .where('status', isEqualTo: 'overdue')
-        .snapshots();
-
-    // SIMPLE QUERY - no date filter to avoid index issues
-    _allEventsStream = FirebaseFirestore.instance
-        .collection('event_proposals')
-        .where('status', isEqualTo: 'approved')
-        .snapshots();
 
     _fetchChartData();
+  }
+
+  // Overdue reports are never actually stored with a `status: overdue`
+  // field — reports_management.dart computes "overdue" client-side, per
+  // (org, finished event, report type), by comparing now() against a
+  // deadline (event date + 7 days, or an admin override) and whether a
+  // submission exists in `reports` for that exact org+event+type. This
+  // mirrors that same logic so the count here matches what admins
+  // actually see in Reports Management, instead of always reading 0
+  // from a `status` value that's never written anywhere.
+  Future<_OverdueSummary> _loadOverdueReports() async {
+    try {
+      final now = DateTime.now();
+
+      final eventsSnap = await FirebaseFirestore.instance
+          .collection('events')
+          .where('status', isEqualTo: 'approved')
+          .get();
+      final eventsByOrg = <String, List<Map<String, dynamic>>>{};
+      for (final doc in eventsSnap.docs) {
+        final data = doc.data();
+        final orgId = data['orgId']?.toString();
+        final date = (data['date'] as Timestamp?)?.toDate();
+        if (orgId == null || orgId.isEmpty || date == null || !date.isBefore(now)) {
+          continue;
+        }
+        eventsByOrg
+            .putIfAbsent(orgId, () => [])
+            .add({
+              'eventId': doc.id,
+              'eventDate': date,
+              'eventTitle': data['title']?.toString() ?? 'Untitled Event',
+            });
+      }
+      if (eventsByOrg.isEmpty) {
+        return const _OverdueSummary(totalOverdue: 0, overdueByOrgName: {});
+      }
+
+      // These three don't depend on each other — fetch them concurrently
+      // instead of one-after-another so first load isn't the sum of all
+      // four round trips.
+      final results = await Future.wait([
+        FirebaseFirestore.instance.collection('report_deadline_overrides').get(),
+        FirebaseFirestore.instance.collection('reports').get(),
+        FirebaseFirestore.instance.collection('organizations').get(),
+      ]);
+      final overridesSnap = results[0];
+      final reportsSnap = results[1];
+      final orgsSnap = results[2];
+
+      final overrides = <String, DateTime>{};
+      for (final doc in overridesSnap.docs) {
+        final data = doc.data();
+        final type = data['type']?.toString();
+        final orgId = data['orgId']?.toString();
+        final eventId = data['eventId']?.toString();
+        final deadline = (data['deadline'] as Timestamp?)?.toDate();
+        if (type == null ||
+            orgId == null ||
+            eventId == null ||
+            eventId.isEmpty ||
+            deadline == null) {
+          continue;
+        }
+        overrides['${type}_${orgId}_$eventId'] = deadline;
+      }
+
+      // No `.where('type', ...)` here — we need both financial and
+      // accomplishment docs, and legacy docs may not have `scope` set at
+      // all (treated as event-scoped by default, same as reports_management.dart).
+      final submittedKeys = <String>{};
+      for (final doc in reportsSnap.docs) {
+        final data = doc.data();
+        final scope = (data['scope'] ?? 'event').toString();
+        if (scope != 'event') continue;
+        final type = data['type']?.toString();
+        final orgId = data['orgId']?.toString();
+        final eventId = data['eventId']?.toString();
+        final submittedAt = data['submittedAt'] as Timestamp?;
+        if (type == null ||
+            orgId == null ||
+            orgId.isEmpty ||
+            eventId == null ||
+            eventId.isEmpty ||
+            submittedAt == null) {
+          continue;
+        }
+        submittedKeys.add('${type}_${orgId}_$eventId');
+      }
+
+      final orgNames = {
+        for (final doc in orgsSnap.docs)
+          doc.id: (doc.data()['name'] as String?) ?? 'Organization',
+      };
+
+      var total = 0;
+      final byOrg = <String, int>{};
+      final items = <_OverdueItem>[];
+      for (final entry in eventsByOrg.entries) {
+        final orgId = entry.key;
+        final orgName = orgNames[orgId] ?? 'Organization';
+        for (final ev in entry.value) {
+          final eventId = ev['eventId'] as String;
+          final eventDate = ev['eventDate'] as DateTime;
+          final eventTitle = ev['eventTitle'] as String;
+          for (final type in const ['financial', 'accomplishment']) {
+            final key = '${type}_${orgId}_$eventId';
+            final deadline =
+                overrides[key] ?? eventDate.add(const Duration(days: 7));
+            final isSubmitted = submittedKeys.contains(key);
+            final isOverdue = !isSubmitted && now.isAfter(deadline);
+            if (isOverdue) {
+              total++;
+              byOrg[orgName] = (byOrg[orgName] ?? 0) + 1;
+              items.add(
+                _OverdueItem(
+                  orgId: orgId,
+                  orgName: orgName,
+                  eventTitle: eventTitle,
+                  type: type,
+                  deadline: deadline,
+                ),
+              );
+            }
+          }
+        }
+      }
+      items.sort((a, b) => b.daysOverdue.compareTo(a.daysOverdue));
+
+      return _OverdueSummary(
+        totalOverdue: total,
+        overdueByOrgName: byOrg,
+        items: items,
+      );
+    } catch (e) {
+      // ignore: avoid_print
+      print('[admin_dashboard] _loadOverdueReports error: $e');
+      return const _OverdueSummary(totalOverdue: 0, overdueByOrgName: {});
+    }
+  }
+
+  // Stock DropdownButton centers its menu on the selected item instead of
+  // simply dropping below the button, which looks chaotic on a scrolled
+  // page (it can land above, mid-screen, or off to the side). This anchors
+  // a small custom menu directly under the button instead, same technique
+  // as the profile/notification dropdowns.
+  void _showYearDropdown() {
+    final box = _yearDropdownKey.currentContext?.findRenderObject() as RenderBox?;
+    final screenSize = MediaQuery.of(context).size;
+    double top = 100;
+    double left = 100;
+    double width = 90;
+    if (box != null) {
+      final topLeft = box.localToGlobal(Offset.zero);
+      width = box.size.width;
+      top = topLeft.dy + box.size.height + 6;
+      left = topLeft.dx;
+    }
+    final maxHeight = (screenSize.height - top - 24).clamp(80.0, 220.0);
+
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.transparent,
+      barrierLabel: 'Select year',
+      transitionDuration: const Duration(milliseconds: 120),
+      pageBuilder: (ctx, anim, secAnim) {
+        return Stack(
+          children: [
+            Positioned(
+              top: top,
+              left: left,
+              width: width < 72 ? 72 : width,
+              child: Material(
+                color: Colors.white,
+                elevation: 10,
+                borderRadius: BorderRadius.circular(10),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: maxHeight),
+                  child: ListView(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    children: [
+                      for (final y in _yearOptions)
+                        InkWell(
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            if (y != _selectedYear) {
+                              setState(() {
+                                _selectedYear = y;
+                                _fetchChartData();
+                              });
+                            }
+                          },
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
+                            ),
+                            color: y == _selectedYear
+                                ? const Color(0xFFFDF2E9)
+                                : Colors.transparent,
+                            child: Text(
+                              '$y',
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 12,
+                                fontWeight: y == _selectedYear
+                                    ? FontWeight.w700
+                                    : FontWeight.w400,
+                                color: y == _selectedYear
+                                    ? UpriseColors.primaryDark
+                                    : const Color(0xFF374151),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _fetchChartData() {
@@ -1122,35 +1556,6 @@ class _DashboardHomeState extends State<DashboardHome> {
         });
   }
 
-  // Helper to filter upcoming events (filter in memory)
-  List<QueryDocumentSnapshot> _getUpcomingEvents(QuerySnapshot snap) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-
-    return snap.docs.where((doc) {
-      final data = doc.data() as Map<String, dynamic>;
-      final dateField = data['date'];
-      if (dateField == null) return false;
-
-      Timestamp ts;
-      if (dateField is Timestamp) {
-        ts = dateField;
-      } else {
-        return false;
-      }
-
-      final eventDate = ts.toDate();
-      final eventDay = DateTime(eventDate.year, eventDate.month, eventDate.day);
-
-      return eventDay.isAfter(today) || eventDay.isAtSameMomentAs(today);
-    }).toList()..sort((a, b) {
-      final dateA = (a.data() as Map)['date'] as Timestamp?;
-      final dateB = (b.data() as Map)['date'] as Timestamp?;
-      if (dateA == null || dateB == null) return 0;
-      return dateA.toDate().compareTo(dateB.toDate());
-    });
-  }
-
   // ── Build ─────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
@@ -1168,26 +1573,13 @@ class _DashboardHomeState extends State<DashboardHome> {
           if (isMobile) ...[
             _buildStatCards(isMobile, isTablet),
             const SizedBox(height: 20),
-            _buildChartCard(isMobile),
-            const SizedBox(height: 20),
-            _buildUpcomingEvents(),
-            const SizedBox(height: 20),
-            _buildRecentActivity(),
+            _buildDynamicPanel(isMobile),
             const SizedBox(height: 20),
             _buildTopOrgsCard(isMobile),
           ] else ...[
             _buildStatCards(isMobile, isTablet),
             const SizedBox(height: 20),
-            _buildChartCard(isMobile),
-            const SizedBox(height: 20),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: _buildUpcomingEvents()),
-                const SizedBox(width: 20),
-                Expanded(child: _buildRecentActivity()),
-              ],
-            ),
+            _buildDynamicPanel(isMobile),
           ],
         ],
       ),
@@ -1382,26 +1774,29 @@ class _DashboardHomeState extends State<DashboardHome> {
   Widget _buildStatCards(bool isMobile, bool isTablet) {
     final cardWidgets = [
       _buildStatCard(
+        0,
         'Active Orgs',
         _organizationsStream,
         UpriseColors.primaryDark,
         Icons.business_rounded,
       ),
       _buildStatCard(
+        1,
         'Active Events',
         _eventsStream,
         UpriseColors.success,
         Icons.event_rounded,
       ),
       _buildStatCard(
+        2,
         'Pending Proposals',
         _proposalsStream,
         UpriseColors.warning,
         Icons.pending_actions_rounded,
       ),
-      _buildStatCard(
+      _buildOverdueStatCard(
+        3,
         'Overdue Reports',
-        _reportsStream,
         UpriseColors.error,
         Icons.warning_amber_rounded,
       ),
@@ -1451,6 +1846,7 @@ class _DashboardHomeState extends State<DashboardHome> {
   }
 
   Widget _buildStatCard(
+    int cardIndex,
     String label,
     Stream<QuerySnapshot> stream,
     Color color,
@@ -1461,14 +1857,33 @@ class _DashboardHomeState extends State<DashboardHome> {
       builder: (ctx, snap) {
         final count = snap.hasData ? snap.data!.docs.length : 0;
         final loading = snap.connectionState == ConnectionState.waiting;
+        final isSelected = _selectedCard == cardIndex;
 
-        return Container(
+        return MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: () => setState(
+              () => _selectedCard = isSelected ? null : cardIndex,
+            ),
+            child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(_DS.radiusMd),
-            border: Border.all(color: const Color(0xFFE8ECF0)),
-            boxShadow: _DS.cardShadow,
+            border: Border.all(
+              color: isSelected ? color : const Color(0xFFE8ECF0),
+              width: isSelected ? 2 : 1,
+            ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: color.withAlpha(46),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : _DS.cardShadow,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1516,77 +1931,101 @@ class _DashboardHomeState extends State<DashboardHome> {
               ),
             ],
           ),
+            ),
+          ),
         );
       },
     );
   }
 
-  Widget _buildUpcomingEventsStatCard() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: _allEventsStream,
+  // Same card shell as _buildStatCard, but driven by the computed
+  // _overdueFuture instead of a simple Firestore count stream.
+  Widget _buildOverdueStatCard(
+    int cardIndex,
+    String label,
+    Color color,
+    IconData icon,
+  ) {
+    return FutureBuilder<_OverdueSummary>(
+      future: _overdueFuture,
       builder: (ctx, snap) {
-        final upcomingCount = snap.hasData
-            ? _getUpcomingEvents(snap.data!).length
-            : 0;
+        final count = snap.data?.totalOverdue ?? 0;
         final loading = snap.connectionState == ConnectionState.waiting;
+        final isSelected = _selectedCard == cardIndex;
 
-        return Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(_DS.radiusMd),
-            border: Border.all(color: const Color(0xFFE8ECF0)),
-            boxShadow: _DS.cardShadow,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        return MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: () => setState(
+              () => _selectedCard = isSelected ? null : cardIndex,
+            ),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(_DS.radiusMd),
+                border: Border.all(
+                  color: isSelected ? color : const Color(0xFFE8ECF0),
+                  width: isSelected ? 2 : 1,
+                ),
+                boxShadow: isSelected
+                    ? [
+                        BoxShadow(
+                          color: color.withAlpha(46),
+                          blurRadius: 16,
+                          offset: const Offset(0, 4),
+                        ),
+                      ]
+                    : _DS.cardShadow,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: UpriseColors.info.withAlpha(26),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(
-                      Icons.upcoming_rounded,
-                      color: UpriseColors.info,
-                      size: 20,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: color.withAlpha(26),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(icon, color: color, size: 20),
+                      ),
+                      if (loading)
+                        SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: color,
+                          ),
+                        )
+                      else
+                        Text(
+                          '$count',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFF1A202C),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    label,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11,
+                      color: const Color(0xFF64748B),
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                  if (loading)
-                    SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: UpriseColors.info,
-                      ),
-                    )
-                  else
-                    Text(
-                      '$upcomingCount',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w800,
-                        color: const Color(0xFF1A202C),
-                      ),
-                    ),
                 ],
               ),
-              const SizedBox(height: 12),
-              Text(
-                'Upcoming Events',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 11,
-                  color: const Color(0xFF64748B),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
+            ),
           ),
         );
       },
@@ -1870,40 +2309,37 @@ class _DashboardHomeState extends State<DashboardHome> {
                     ),
                   ),
                   const SizedBox(width: 16),
-                  Container(
-                    height: 36,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: const Color(0xFFE2E6EA)),
-                      borderRadius: BorderRadius.circular(8),
-                      color: const Color(0xFFF8F9FB),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<int>(
-                        value: _selectedYear,
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 12,
-                          color: const Color(0xFF374151),
+                  MouseRegion(
+                    key: _yearDropdownKey,
+                    cursor: SystemMouseCursors.click,
+                    child: GestureDetector(
+                      onTap: _showYearDropdown,
+                      child: Container(
+                        height: 36,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: const Color(0xFFE2E6EA)),
+                          borderRadius: BorderRadius.circular(8),
+                          color: const Color(0xFFF8F9FB),
                         ),
-                        icon: const Icon(
-                          Icons.keyboard_arrow_down_rounded,
-                          size: 16,
-                          color: Color(0xFF9AA5B4),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '$_selectedYear',
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 12,
+                                color: const Color(0xFF374151),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            const Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              size: 16,
+                              color: Color(0xFF9AA5B4),
+                            ),
+                          ],
                         ),
-                        items: _yearOptions
-                            .map(
-                              (y) =>
-                                  DropdownMenuItem(value: y, child: Text('$y')),
-                            )
-                            .toList(),
-                        onChanged: (v) {
-                          if (v != null && mounted) {
-                            setState(() {
-                              _selectedYear = v;
-                              _fetchChartData();
-                            });
-                          }
-                        },
                       ),
                     ),
                   ),
@@ -1931,24 +2367,971 @@ class _DashboardHomeState extends State<DashboardHome> {
     );
   }
 
+  // ── Shared: export + row-detail helpers for the table panels below ──
+  Widget _panelHeader({
+    required String title,
+    required String subtitle,
+    VoidCallback? onExport,
+    VoidCallback? onBack,
+    Widget? extraAction,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (onBack != null) ...[
+          MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              onTap: onBack,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.arrow_back_rounded,
+                    size: 14,
+                    color: Color(0xFF64748B),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Back to Overview',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: UpriseColors.accent,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 12,
+                      color: const Color(0xFF9AA5B4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (onExport != null || extraAction != null) ...[
+              const SizedBox(width: 12),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  if (extraAction != null) ...[
+                    extraAction,
+                    if (onExport != null) const SizedBox(width: 10),
+                  ],
+                  if (onExport != null)
+                    MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: OutlinedButton.icon(
+                        onPressed: onExport,
+                        icon: const Icon(
+                          Icons.file_download_outlined,
+                          size: 16,
+                        ),
+                        label: Text(
+                          'Export',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: UpriseColors.primaryDark,
+                          side: const BorderSide(color: Color(0xFFE2E6EA)),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+
+  // ── Shared custom table row/header — matches the row-list style used
+  // elsewhere in the app (student_accounts.dart etc.) instead of Flutter's
+  // stock DataTable, which looked out of place here.
+  Widget _customTableHeader(List<MapEntry<String, int>> columns) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+      child: Row(
+        children: [
+          for (final c in columns)
+            Expanded(
+              flex: c.value,
+              child: Text(
+                c.key,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF64748B),
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ),
+          const SizedBox(width: 32),
+        ],
+      ),
+    );
+  }
+
+  Widget _customTableRow({
+    required List<Widget> cells,
+    required List<int> flexes,
+    required VoidCallback onTap,
+    bool isLast = false,
+  }) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: InkWell(
+        hoverColor: const Color(0xFFF8F9FB),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 14),
+          decoration: BoxDecoration(
+            border: isLast
+                ? null
+                : const Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+          ),
+          child: Row(
+            children: [
+              for (var i = 0; i < cells.length; i++)
+                Expanded(flex: flexes[i], child: cells[i]),
+              const SizedBox(width: 8),
+              const Icon(
+                Icons.chevron_right_rounded,
+                size: 20,
+                color: Color(0xFFCBD5E1),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _cellText(String text, {bool bold = false, Color? color}) {
+    return Text(
+      text,
+      overflow: TextOverflow.ellipsis,
+      style: GoogleFonts.beVietnamPro(
+        fontSize: 13,
+        fontWeight: bold ? FontWeight.w600 : FontWeight.w400,
+        color: color ?? UpriseColors.charcoal,
+      ),
+    );
+  }
+
+  Widget _cellBadge(String text, Color color) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: color.withAlpha(24),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          text,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: color,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _exportTable({
+    required String title,
+    required List<String> headers,
+    required List<List<String>> rows,
+    required String fileNamePrefix,
+  }) async {
+    try {
+      final bytes = await AdminExportPdf.generateTablePdf(
+        title: title,
+        headers: headers,
+        rows: rows,
+      );
+      final fileName =
+          '${fileNamePrefix}_${DateFormat('yyyy-MM-dd').format(DateTime.now())}.pdf';
+      await AdminExportUtil.saveBytes(
+        bytes,
+        fileName,
+        mimeType: 'application/pdf',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Exported $fileName')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Export failed: $e'),
+            backgroundColor: UpriseColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  // Sends one reminder per organization (not one per overdue row) covering
+  // everything currently listed for that org, and points them at the
+  // Submission Tracker tab in Reports Management — the actual screen
+  // that tracks these obligations — rather than a vague "check your
+  // reports" message.
+  Future<void> _sendOverdueReminders(List<_OverdueItem> items) async {
+    final byOrg = <String, List<_OverdueItem>>{};
+    for (final item in items) {
+      byOrg.putIfAbsent(item.orgId, () => []).add(item);
+    }
+
+    var sent = 0;
+    var failed = 0;
+    for (final entry in byOrg.entries) {
+      final orgItems = entry.value;
+      final orgName = orgItems.first.orgName;
+      final count = orgItems.length;
+      try {
+        await NotificationService.sendToOrgMembers(
+          orgId: entry.key,
+          title: 'Overdue report reminder',
+          body:
+              'Your organization has $count report${count == 1 ? '' : 's'} '
+              'overdue in the Submission Tracker (Reports Management). '
+              'Please submit as soon as possible.',
+          type: 'deadline_reminder',
+        );
+        sent++;
+      } catch (e) {
+        failed++;
+        // ignore: avoid_print
+        print('[admin_dashboard] reminder failed for $orgName: $e');
+      }
+    }
+
+    await activity_log.ActivityLogger.log(
+      action:
+          'Sent overdue report reminders to $sent organization${sent == 1 ? '' : 's'}',
+      module: 'Reports',
+      severity: 'info',
+      details: {'orgCount': sent, 'reportCount': items.length},
+    );
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            failed == 0
+                ? 'Reminder sent to $sent organization${sent == 1 ? '' : 's'}.'
+                : 'Sent to $sent organization${sent == 1 ? '' : 's'}, $failed failed.',
+          ),
+          backgroundColor: failed == 0 ? UpriseColors.success : UpriseColors.error,
+        ),
+      );
+    }
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 110,
+            child: Text(
+              label,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF9AA5B4),
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                color: UpriseColors.charcoal,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Generic detail dialog: a title, a list of label/value rows, and an
+  // optional "jump to the real screen" button for actions this dashboard
+  // doesn't perform itself (approve/reject, send reminder, etc.).
+  void _showDetailDialog({
+    required String title,
+    required List<MapEntry<String, String>> fields,
+    String? actionLabel,
+    int? navigateToTabIndex,
+  }) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(_DS.radiusLg),
+        ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF1A202C),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                for (final f in fields) _detailRow(f.key, f.value),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (actionLabel != null && navigateToTabIndex != null)
+                      TextButton(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          widget.onNavigateToTab?.call(navigateToTabIndex);
+                        },
+                        child: Text(
+                          actionLabel,
+                          style: GoogleFonts.beVietnamPro(
+                            fontWeight: FontWeight.w600,
+                            color: UpriseColors.primaryDark,
+                          ),
+                        ),
+                      ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: UpriseColors.primaryDark,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(_DS.radiusSm),
+                        ),
+                      ),
+                      child: const Text(
+                        'Close',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _tableCard(Widget child) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(24),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(_DS.radiusLg),
+      border: Border.all(color: const Color(0xFFE8ECF0)),
+      boxShadow: _DS.cardShadow,
+    ),
+    child: child,
+  );
+
+  // ── Analytics overview — the default panel when no card is selected ──
+  Widget _buildAnalyticsOverview(bool isMobile) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [_buildChartCard(isMobile)],
+    );
+  }
+
+  Widget _buildDynamicPanel(bool isMobile) {
+    switch (_selectedCard) {
+      case 0:
+        return _buildActiveOrgsPanel();
+      case 1:
+        return _buildActiveEventsPanel();
+      case 2:
+        return _buildPendingProposalsPanel();
+      case 3:
+        return _buildOverdueReportsPanel();
+      default:
+        return _buildAnalyticsOverview(isMobile);
+    }
+  }
+
+  // ── "Active Orgs" card → full standings table ────────────────────
+  Widget _buildActiveOrgsPanel() {
+    return FutureBuilder<List<_OrgPerformance>>(
+      future: _performanceFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return _tableCard(const Center(child: CircularProgressIndicator()));
+        }
+        final items = [...(snapshot.data ?? [])]
+          ..sort((a, b) => b.proposals.compareTo(a.proposals));
+        if (items.isEmpty) {
+          return _tableCard(
+            _emptyPlaceholder(
+              Icons.dashboard_outlined,
+              'No organization data available',
+            ),
+          );
+        }
+
+        String money(double v) =>
+            NumberFormat.currency(symbol: '₱', decimalDigits: 0).format(v);
+
+        return _tableCard(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _panelHeader(
+                title: 'Organization Standings',
+                subtitle:
+                    'All active organizations ranked by proposal activity, ${items.length} total.',
+                onBack: () => setState(() => _selectedCard = null),
+                onExport: () => _exportTable(
+                  title: 'Organization Standings',
+                  headers: const [
+                    'Rank',
+                    'Organization',
+                    'Proposals',
+                    'Approved',
+                    'Pending',
+                    'Merch Orders',
+                    'Merch Revenue',
+                  ],
+                  rows: [
+                    for (var i = 0; i < items.length; i++)
+                      [
+                        '${i + 1}',
+                        items[i].orgName,
+                        '${items[i].proposals}',
+                        '${items[i].approvedEvents}',
+                        '${items[i].pendingProposals}',
+                        '${items[i].merchOrders}',
+                        money(items[i].merchRevenue),
+                      ],
+                  ],
+                  fileNamePrefix: 'org_standings',
+                ),
+              ),
+              const SizedBox(height: 12),
+              _customTableHeader(const [
+                MapEntry('#', 1),
+                MapEntry('Organization', 4),
+                MapEntry('Proposals', 2),
+                MapEntry('Approved', 2),
+                MapEntry('Pending', 2),
+                MapEntry('Merch Orders', 2),
+                MapEntry('Merch Revenue', 2),
+              ]),
+              for (var i = 0; i < items.length; i++)
+                _customTableRow(
+                  flexes: const [1, 4, 2, 2, 2, 2, 2],
+                  isLast: i == items.length - 1,
+                  onTap: () => _showDetailDialog(
+                    title: items[i].orgName,
+                    fields: [
+                      MapEntry('Rank', '#${i + 1}'),
+                      MapEntry('Proposals', '${items[i].proposals}'),
+                      MapEntry(
+                        'Approved Events',
+                        '${items[i].approvedEvents}',
+                      ),
+                      MapEntry(
+                        'Pending Proposals',
+                        '${items[i].pendingProposals}',
+                      ),
+                      MapEntry('Merch Orders', '${items[i].merchOrders}'),
+                      MapEntry(
+                        'Merch Revenue',
+                        money(items[i].merchRevenue),
+                      ),
+                    ],
+                  ),
+                  cells: [
+                    _cellText('${i + 1}', color: const Color(0xFF9AA5B4)),
+                    _cellText(items[i].orgName, bold: true),
+                    _cellText('${items[i].proposals}'),
+                    _cellText('${items[i].approvedEvents}'),
+                    _cellText('${items[i].pendingProposals}'),
+                    _cellText('${items[i].merchOrders}'),
+                    _cellText(money(items[i].merchRevenue)),
+                  ],
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ── "Active Events" card → approved-events table ─────────────────
+  Widget _buildActiveEventsPanel() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _activeEventsTableStreamGetter,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return _tableCard(const Center(child: CircularProgressIndicator()));
+        }
+        final docs = snapshot.data?.docs ?? [];
+        if (docs.isEmpty) {
+          return _tableCard(
+            _emptyPlaceholder(Icons.event_outlined, 'No active events'),
+          );
+        }
+
+        final rows = docs.map((doc) {
+          final d = doc.data() as Map<String, dynamic>;
+          return {
+            'title': (d['title'] as String?) ?? 'Untitled',
+            'orgName': (d['orgName'] as String?) ?? '—',
+            'category': (d['category'] as String?) ?? '—',
+            'location': (d['location'] as String?) ?? 'TBA',
+            'audience': (d['audience'] as String?) ?? '—',
+            'description':
+                (d['description'] as String?) ?? 'No description provided.',
+            'startTime': (d['startTime'] ?? d['time'] ?? '').toString(),
+            'endTime': (d['endTime'] ?? '').toString(),
+            'date': (d['date'] as Timestamp?)?.toDate(),
+          };
+        }).toList()..sort((a, b) {
+          final da = a['date'] as DateTime?;
+          final db = b['date'] as DateTime?;
+          if (da == null || db == null) return 0;
+          return da.compareTo(db);
+        });
+
+        String fmtDate(DateTime? d) =>
+            d != null ? DateFormat('MMM d, yyyy').format(d) : 'TBA';
+
+        return _tableCard(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _panelHeader(
+                title: 'Active Events',
+                subtitle: 'Approved events, ${rows.length} total.',
+                onBack: () => setState(() => _selectedCard = null),
+                onExport: () => _exportTable(
+                  title: 'Active Events',
+                  headers: const [
+                    'Title',
+                    'Organization',
+                    'Category',
+                    'Date',
+                    'Location',
+                  ],
+                  rows: [
+                    for (final r in rows)
+                      [
+                        r['title'] as String,
+                        r['orgName'] as String,
+                        r['category'] as String,
+                        fmtDate(r['date'] as DateTime?),
+                        r['location'] as String,
+                      ],
+                  ],
+                  fileNamePrefix: 'active_events',
+                ),
+              ),
+              const SizedBox(height: 12),
+              _customTableHeader(const [
+                MapEntry('Title', 3),
+                MapEntry('Organization', 3),
+                MapEntry('Category', 2),
+                MapEntry('Date', 2),
+                MapEntry('Location', 2),
+              ]),
+              for (var i = 0; i < rows.length; i++)
+                _customTableRow(
+                  flexes: const [3, 3, 2, 2, 2],
+                  isLast: i == rows.length - 1,
+                  onTap: () => _showDetailDialog(
+                    title: rows[i]['title'] as String,
+                    fields: [
+                      MapEntry('Organization', rows[i]['orgName'] as String),
+                      MapEntry('Category', rows[i]['category'] as String),
+                      MapEntry(
+                        'Date',
+                        rows[i]['date'] != null
+                            ? DateFormat(
+                                'MMMM d, yyyy',
+                              ).format(rows[i]['date'] as DateTime)
+                            : 'TBA',
+                      ),
+                      MapEntry(
+                        'Time',
+                        (rows[i]['endTime'] as String).isNotEmpty
+                            ? '${rows[i]['startTime']} – ${rows[i]['endTime']}'
+                            : '${rows[i]['startTime']}',
+                      ),
+                      MapEntry('Location', rows[i]['location'] as String),
+                      MapEntry('Audience', rows[i]['audience'] as String),
+                      MapEntry(
+                        'Description',
+                        rows[i]['description'] as String,
+                      ),
+                    ],
+                  ),
+                  cells: [
+                    _cellText(rows[i]['title'] as String, bold: true),
+                    _cellText(rows[i]['orgName'] as String),
+                    _cellBadge(
+                      rows[i]['category'] as String,
+                      UpriseColors.info,
+                    ),
+                    _cellText(fmtDate(rows[i]['date'] as DateTime?)),
+                    _cellText(rows[i]['location'] as String),
+                  ],
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ── "Pending Proposals" card → review-queue table ────────────────
+  Widget _buildPendingProposalsPanel() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _pendingProposalsTableStreamGetter,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return _tableCard(const Center(child: CircularProgressIndicator()));
+        }
+        final docs = snapshot.data?.docs ?? [];
+        if (docs.isEmpty) {
+          return _tableCard(
+            _emptyPlaceholder(
+              Icons.pending_actions_outlined,
+              'No pending proposals',
+            ),
+          );
+        }
+
+        final rows = docs.map((doc) {
+          final d = doc.data() as Map<String, dynamic>;
+          return {
+            'title': (d['title'] as String?) ?? 'Untitled',
+            'orgName': (d['orgName'] as String?) ?? '—',
+            'category': (d['category'] as String?) ?? '—',
+            'location': (d['location'] as String?) ?? 'TBA',
+            'description':
+                (d['description'] as String?) ?? 'No description provided.',
+            'submittedByEmail': (d['submittedByEmail'] as String?) ?? '—',
+            'eventDate': (d['date'] as Timestamp?)?.toDate(),
+            'createdAt': (d['createdAt'] as Timestamp?)?.toDate(),
+          };
+        }).toList()..sort((a, b) {
+          final ca = a['createdAt'] as DateTime?;
+          final cb = b['createdAt'] as DateTime?;
+          if (ca == null || cb == null) return 0;
+          return cb.compareTo(ca);
+        });
+
+        String fmtDate(DateTime? d) =>
+            d != null ? DateFormat('MMM d, yyyy').format(d) : '—';
+
+        return _tableCard(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _panelHeader(
+                title: 'Pending Proposals',
+                subtitle:
+                    'Awaiting your review, ${rows.length} total. Click a row to view details and open it for approval.',
+                onBack: () => setState(() => _selectedCard = null),
+                onExport: () => _exportTable(
+                  title: 'Pending Proposals',
+                  headers: const [
+                    'Title',
+                    'Organization',
+                    'Event Date',
+                    'Submitted',
+                  ],
+                  rows: [
+                    for (final r in rows)
+                      [
+                        r['title'] as String,
+                        r['orgName'] as String,
+                        fmtDate(r['eventDate'] as DateTime?),
+                        fmtDate(r['createdAt'] as DateTime?),
+                      ],
+                  ],
+                  fileNamePrefix: 'pending_proposals',
+                ),
+              ),
+              const SizedBox(height: 12),
+              _customTableHeader(const [
+                MapEntry('Title', 3),
+                MapEntry('Organization', 3),
+                MapEntry('Event Date', 2),
+                MapEntry('Submitted', 2),
+              ]),
+              for (var i = 0; i < rows.length; i++)
+                _customTableRow(
+                  flexes: const [3, 3, 2, 2],
+                  isLast: i == rows.length - 1,
+                  onTap: () => _showDetailDialog(
+                    title: rows[i]['title'] as String,
+                    fields: [
+                      MapEntry('Organization', rows[i]['orgName'] as String),
+                      MapEntry('Category', rows[i]['category'] as String),
+                      MapEntry(
+                        'Event Date',
+                        rows[i]['eventDate'] != null
+                            ? DateFormat(
+                                'MMMM d, yyyy',
+                              ).format(rows[i]['eventDate'] as DateTime)
+                            : 'TBA',
+                      ),
+                      MapEntry('Location', rows[i]['location'] as String),
+                      MapEntry(
+                        'Submitted By',
+                        rows[i]['submittedByEmail'] as String,
+                      ),
+                      MapEntry(
+                        'Submitted On',
+                        fmtDate(rows[i]['createdAt'] as DateTime?),
+                      ),
+                      MapEntry(
+                        'Description',
+                        rows[i]['description'] as String,
+                      ),
+                    ],
+                    actionLabel: 'Open in Event Proposals →',
+                    navigateToTabIndex: 4,
+                  ),
+                  cells: [
+                    _cellText(rows[i]['title'] as String, bold: true),
+                    _cellText(rows[i]['orgName'] as String),
+                    _cellText(fmtDate(rows[i]['eventDate'] as DateTime?)),
+                    _cellText(fmtDate(rows[i]['createdAt'] as DateTime?)),
+                  ],
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ── "Overdue Reports" card → per-obligation table ────────────────
+  Widget _buildOverdueReportsPanel() {
+    return FutureBuilder<_OverdueSummary>(
+      future: _overdueFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return _tableCard(const Center(child: CircularProgressIndicator()));
+        }
+        final items = snapshot.data?.items ?? [];
+        if (items.isEmpty) {
+          return _tableCard(
+            _emptyPlaceholder(
+              Icons.task_alt_outlined,
+              'No overdue reports — every org is caught up',
+            ),
+          );
+        }
+
+        String typeLabel(String t) => t == 'financial'
+            ? 'Financial'
+            : 'Accomplishment';
+
+        return _tableCard(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _panelHeader(
+                title: 'Overdue Reports',
+                subtitle:
+                    'Financial & accomplishment reports past their deadline, ${items.length} total. Click a row to open it for follow-up.',
+                onBack: () => setState(() => _selectedCard = null),
+                extraAction: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _sendOverdueReminders(items),
+                    icon: const Icon(
+                      Icons.notifications_active_outlined,
+                      size: 16,
+                    ),
+                    label: Text(
+                      'Send Reminder to All',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: UpriseColors.error,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ),
+                onExport: () => _exportTable(
+                  title: 'Overdue Reports',
+                  headers: const [
+                    'Organization',
+                    'Event',
+                    'Type',
+                    'Deadline',
+                    'Days Overdue',
+                  ],
+                  rows: [
+                    for (final it in items)
+                      [
+                        it.orgName,
+                        it.eventTitle,
+                        typeLabel(it.type),
+                        DateFormat('MMM d, yyyy').format(it.deadline),
+                        '${it.daysOverdue}',
+                      ],
+                  ],
+                  fileNamePrefix: 'overdue_reports',
+                ),
+              ),
+              const SizedBox(height: 12),
+              _customTableHeader(const [
+                MapEntry('Organization', 3),
+                MapEntry('Event', 3),
+                MapEntry('Type', 2),
+                MapEntry('Deadline', 2),
+                MapEntry('Days Overdue', 2),
+              ]),
+              for (var i = 0; i < items.length; i++)
+                _customTableRow(
+                  flexes: const [3, 3, 2, 2, 2],
+                  isLast: i == items.length - 1,
+                  onTap: () => _showDetailDialog(
+                    title: items[i].eventTitle,
+                    fields: [
+                      MapEntry('Organization', items[i].orgName),
+                      MapEntry('Report Type', typeLabel(items[i].type)),
+                      MapEntry(
+                        'Deadline',
+                        DateFormat('MMMM d, yyyy').format(items[i].deadline),
+                      ),
+                      MapEntry(
+                        'Days Overdue',
+                        '${items[i].daysOverdue} day${items[i].daysOverdue == 1 ? '' : 's'}',
+                      ),
+                    ],
+                    actionLabel: 'Open in Reports Management →',
+                    navigateToTabIndex: 8,
+                  ),
+                  cells: [
+                    _cellText(items[i].orgName, bold: true),
+                    _cellText(items[i].eventTitle),
+                    _cellBadge(
+                      typeLabel(items[i].type),
+                      items[i].type == 'financial'
+                          ? UpriseColors.info
+                          : UpriseColors.warning,
+                    ),
+                    _cellText(
+                      DateFormat('MMM d, yyyy').format(items[i].deadline),
+                    ),
+                    _cellText(
+                      '${items[i].daysOverdue}d',
+                      color: UpriseColors.error,
+                      bold: true,
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Future<List<_OrgPerformance>> _loadPerformanceSummary() async {
     try {
-      final proposalsSnap = await FirebaseFirestore.instance
-          .collection('event_proposals')
-          .get();
-      final ordersSnap = await FirebaseFirestore.instance
-          .collection('orders')
-          .get();
-
-      // Debug: print counts
-      // ignore: avoid_print
-      print(
-        '[admin_dashboard] proposals: ${proposalsSnap.docs.length}, orders: ${ordersSnap.docs.length}',
-      );
+      final snaps = await Future.wait([
+        FirebaseFirestore.instance.collection('event_proposals').get(),
+        FirebaseFirestore.instance.collection('orders').get(),
+        FirebaseFirestore.instance
+            .collection('organizations')
+            .where('status', isEqualTo: 'active')
+            .get(),
+      ]);
+      final proposalsSnap = snaps[0];
+      final ordersSnap = snaps[1];
+      final activeOrgsSnap = snaps[2];
 
       final proposalStats = <String, Map<String, dynamic>>{};
       final orderStats = <String, Map<String, dynamic>>{};
-      final orgIds = <String>{};
+      // Seed with every active org first so orgs with zero proposals/orders
+      // still show up — otherwise this list falls out of sync with the
+      // "Active Orgs" stat card, which counts straight from `organizations`.
+      final orgIds = <String>{for (final doc in activeOrgsSnap.docs) doc.id};
+      final orgNameMap = <String, String>{
+        for (final doc in activeOrgsSnap.docs)
+          doc.id: (doc.data()['name'] as String?) ?? 'Organization',
+      };
 
       for (final doc in proposalsSnap.docs) {
         final data = doc.data();
@@ -1958,14 +3341,22 @@ class _DashboardHomeState extends State<DashboardHome> {
         final orgName = (data['orgName'] as String?)?.trim() ?? '';
         final stat = proposalStats.putIfAbsent(
           orgId,
-          () => {'orgName': orgName, 'proposalCount': 0, 'approvedCount': 0},
+          () => {
+            'orgName': orgName,
+            'proposalCount': 0,
+            'approvedCount': 0,
+            'pendingCount': 0,
+          },
         );
         if (orgName.isNotEmpty) {
           stat['orgName'] = orgName;
         }
         stat['proposalCount'] = (stat['proposalCount'] as int) + 1;
-        if ((data['status'] as String?)?.toLowerCase() == 'approved') {
+        final status = (data['status'] as String?)?.toLowerCase();
+        if (status == 'approved') {
           stat['approvedCount'] = (stat['approvedCount'] as int) + 1;
+        } else if (status == 'pending') {
+          stat['pendingCount'] = (stat['pendingCount'] as int) + 1;
         }
       }
 
@@ -1987,9 +3378,11 @@ class _DashboardHomeState extends State<DashboardHome> {
 
       final missingOrgIds = orgIds.where((id) {
         final stat = proposalStats[id];
-        return stat == null || (stat['orgName'] as String).isEmpty;
+        final hasName =
+            (stat?['orgName'] as String?)?.isNotEmpty == true ||
+            orgNameMap.containsKey(id);
+        return !hasName;
       }).toList();
-      final orgNameMap = <String, String>{};
 
       for (var i = 0; i < missingOrgIds.length; i += 10) {
         final batch = missingOrgIds.skip(i).take(10).toList();
@@ -2004,12 +3397,6 @@ class _DashboardHomeState extends State<DashboardHome> {
         }
       }
 
-      // Debug: sample orgs
-      // ignore: avoid_print
-      print(
-        '[admin_dashboard] orgIds found: ${orgIds.length}, sample: ${orgIds.take(5).toList()}',
-      );
-
       return orgIds.map((orgId) {
         final proposalStat = proposalStats[orgId];
         final orderStat = orderStats[orgId];
@@ -2022,6 +3409,7 @@ class _DashboardHomeState extends State<DashboardHome> {
           orgName: orgName,
           proposals: proposalStat?['proposalCount'] as int? ?? 0,
           approvedEvents: proposalStat?['approvedCount'] as int? ?? 0,
+          pendingProposals: proposalStat?['pendingCount'] as int? ?? 0,
           merchOrders: orderStat?['orderCount'] as int? ?? 0,
           merchRevenue: orderStat?['revenue'] as double? ?? 0.0,
         );
@@ -2033,472 +3421,6 @@ class _DashboardHomeState extends State<DashboardHome> {
       print(s);
       return <_OrgPerformance>[];
     }
-  }
-
-  Widget _buildPerformanceSummary() {
-    return FutureBuilder<List<_OrgPerformance>>(
-      future: _loadPerformanceSummary(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(_DS.radiusLg),
-              border: Border.all(color: const Color(0xFFE8ECF0)),
-              boxShadow: _DS.cardShadow,
-            ),
-            child: const Center(child: CircularProgressIndicator()),
-          );
-        }
-
-        if (snapshot.hasError) {
-          return Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(_DS.radiusLg),
-              border: Border.all(color: const Color(0xFFE8ECF0)),
-              boxShadow: _DS.cardShadow,
-            ),
-            child: _emptyPlaceholder(
-              Icons.error_outline_rounded,
-              'Unable to load performance summary',
-            ),
-          );
-        }
-
-        final items = snapshot.data ?? [];
-        if (items.isEmpty) {
-          return Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(_DS.radiusLg),
-              border: Border.all(color: const Color(0xFFE8ECF0)),
-              boxShadow: _DS.cardShadow,
-            ),
-            child: _emptyPlaceholder(
-              Icons.dashboard_outlined,
-              'No performance data available',
-            ),
-          );
-        }
-
-        final topProposals = [...items]
-          ..sort((a, b) => b.proposals.compareTo(a.proposals));
-        final topApproved = [...items]
-          ..sort((a, b) => b.approvedEvents.compareTo(a.approvedEvents));
-        final topMerch = [...items]
-          ..sort((a, b) => b.merchOrders.compareTo(a.merchOrders));
-
-        return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(_DS.radiusLg),
-            border: Border.all(color: const Color(0xFFE8ECF0)),
-            boxShadow: _DS.cardShadow,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Top Performing Organizations',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: UpriseColors.accent,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'A quick glance at top orgs by proposals, approved events, and merchandise orders.',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 12,
-                  color: const Color(0xFF9AA5B4),
-                ),
-              ),
-              const SizedBox(height: 18),
-              LayoutBuilder(
-                builder: (ctx, constraints) {
-                  final w = constraints.maxWidth;
-                  if (w >= 1000) {
-                    final cardWidth = math.min(340.0, (w - 32) / 3);
-                    return Center(
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SizedBox(
-                            width: cardWidth,
-                            child: _buildPerformanceMetricCard(
-                              title: 'Most Proposals',
-                              orgName: topProposals.first.orgName,
-                              metric: '${topProposals.first.proposals}',
-                              subtitle: 'Total event proposals',
-                              color: UpriseColors.primaryDark,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          SizedBox(
-                            width: cardWidth,
-                            child: _buildPerformanceMetricCard(
-                              title: 'Most Approved Events',
-                              orgName: topApproved.first.orgName,
-                              metric: '${topApproved.first.approvedEvents}',
-                              subtitle: 'Approved event proposals',
-                              color: UpriseColors.success,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          SizedBox(
-                            width: cardWidth,
-                            child: _buildPerformanceMetricCard(
-                              title: 'Best Merchandise Orders',
-                              orgName: topMerch.first.orgName,
-                              metric: '${topMerch.first.merchOrders}',
-                              subtitle:
-                                  '${NumberFormat.currency(symbol: '₱', decimalDigits: 0).format(topMerch.first.merchRevenue)} revenue',
-                              color: UpriseColors.info,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-
-                  if (w >= 700) {
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: _buildPerformanceMetricCard(
-                            title: 'Most Proposals',
-                            orgName: topProposals.first.orgName,
-                            metric: '${topProposals.first.proposals}',
-                            subtitle: 'Total event proposals',
-                            color: UpriseColors.primaryDark,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _buildPerformanceMetricCard(
-                            title: 'Most Approved Events',
-                            orgName: topApproved.first.orgName,
-                            metric: '${topApproved.first.approvedEvents}',
-                            subtitle: 'Approved event proposals',
-                            color: UpriseColors.success,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _buildPerformanceMetricCard(
-                            title: 'Best Merchandise Orders',
-                            orgName: topMerch.first.orgName,
-                            metric: '${topMerch.first.merchOrders}',
-                            subtitle:
-                                '${NumberFormat.currency(symbol: '₱', decimalDigits: 0).format(topMerch.first.merchRevenue)} revenue',
-                            color: UpriseColors.info,
-                          ),
-                        ),
-                      ],
-                    );
-                  }
-
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _buildPerformanceMetricCard(
-                        title: 'Most Proposals',
-                        orgName: topProposals.first.orgName,
-                        metric: '${topProposals.first.proposals}',
-                        subtitle: 'Total event proposals',
-                        color: UpriseColors.primaryDark,
-                      ),
-                      const SizedBox(height: 12),
-                      _buildPerformanceMetricCard(
-                        title: 'Most Approved Events',
-                        orgName: topApproved.first.orgName,
-                        metric: '${topApproved.first.approvedEvents}',
-                        subtitle: 'Approved event proposals',
-                        color: UpriseColors.success,
-                      ),
-                      const SizedBox(height: 12),
-                      _buildPerformanceMetricCard(
-                        title: 'Best Merchandise Orders',
-                        orgName: topMerch.first.orgName,
-                        metric: '${topMerch.first.merchOrders}',
-                        subtitle:
-                            '${NumberFormat.currency(symbol: '₱', decimalDigits: 0).format(topMerch.first.merchRevenue)} revenue',
-                        color: UpriseColors.info,
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildPerformanceMetricCard({
-    required String title,
-    required String orgName,
-    required String metric,
-    required String subtitle,
-    required Color color,
-    double? width,
-  }) {
-    return SizedBox(
-      width: width,
-      child: Container(
-        constraints: const BoxConstraints(minHeight: 176),
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(_DS.radiusMd),
-          border: Border.all(color: const Color(0xFFE8ECF0)),
-          boxShadow: _DS.cardShadow,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: color.withAlpha(26),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(
-                    Icons.star_border_rounded,
-                    color: color,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF1A202C),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              orgName,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: UpriseColors.charcoal,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              metric,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                color: UpriseColors.charcoal,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 12,
-                color: const Color(0xFF64748B),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ── Upcoming events list (filters in memory) ──────────────────────
-  Widget _buildUpcomingEvents() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(_DS.radiusMd),
-        border: Border.all(color: const Color(0xFFE8ECF0)),
-        boxShadow: _DS.cardShadow,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: StreamBuilder<QuerySnapshot>(
-          stream: _allEventsStream,
-          builder: (ctx, snap) {
-            final upcomingEvents = snap.hasData
-                ? _getUpcomingEvents(snap.data!)
-                : <QueryDocumentSnapshot>[];
-            final displayEvents = upcomingEvents.take(4).toList();
-            final showViewAll = upcomingEvents.length >= 4;
-
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Upcoming CICT Events',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: UpriseColors.accent,
-                      ),
-                    ),
-                    if (showViewAll)
-                      MouseRegion(
-                        cursor: SystemMouseCursors.click,
-                        child: GestureDetector(
-                          onTap: widget.onNavigateToCalendar,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 5,
-                            ),
-                            decoration: BoxDecoration(
-                              color: UpriseColors.primaryDark.withAlpha(20),
-                              borderRadius: BorderRadius.circular(
-                                _DS.radiusPill,
-                              ),
-                            ),
-                            child: Text(
-                              'View All',
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: UpriseColors.primaryDark,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                if (snap.connectionState == ConnectionState.waiting)
-                  const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: CircularProgressIndicator(),
-                    ),
-                  )
-                else if (snap.hasError)
-                  _emptyPlaceholder(
-                    Icons.error_outline_rounded,
-                    'Error loading events',
-                  )
-                else if (displayEvents.isEmpty)
-                  _emptyPlaceholder(
-                    Icons.calendar_today_outlined,
-                    'No upcoming events',
-                  )
-                else
-                  Column(
-                    children: displayEvents.map((doc) {
-                      final d = doc.data() as Map<String, dynamic>;
-                      final eventDate = d['date'] is Timestamp
-                          ? (d['date'] as Timestamp).toDate()
-                          : DateTime.now();
-                      return _EventRow(
-                        date: eventDate.toIso8601String(),
-                        title: d['title'] ?? 'Untitled',
-                        location: d['location'] ?? 'TBA',
-                        time: d['time'] ?? 'TBA',
-                      );
-                    }).toList(),
-                  ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildRecentActivity() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(_DS.radiusMd),
-        border: Border.all(color: const Color(0xFFE8ECF0)),
-        boxShadow: _DS.cardShadow,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Recent Activity',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: UpriseColors.accent,
-              ),
-            ),
-            const SizedBox(height: 16),
-            StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('activity_logs')
-                  .orderBy('timestamp', descending: true)
-                  .limit(6)
-                  .snapshots(),
-              builder: (ctx, snap) {
-                if (snap.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: CircularProgressIndicator(),
-                    ),
-                  );
-                }
-                if (snap.hasError) {
-                  return _emptyPlaceholder(
-                    Icons.error_outline_rounded,
-                    'Error loading activity',
-                  );
-                }
-                if (!snap.hasData || snap.data!.docs.isEmpty) {
-                  return _emptyPlaceholder(
-                    Icons.history_rounded,
-                    'No recent activity',
-                  );
-                }
-                return Column(
-                  children: snap.data!.docs.map((doc) {
-                    final d = doc.data() as Map<String, dynamic>;
-                    return _ActivityRow(
-                      title: d['action'] ?? 'Activity',
-                      module: d['module'] ?? '',
-                      timestamp: d['timestamp'] as Timestamp?,
-                    );
-                  }).toList(),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   Widget _emptyPlaceholder(IconData icon, String message) {
@@ -2547,6 +3469,7 @@ class _OrgPerformance {
   final String orgName;
   final int proposals;
   final int approvedEvents;
+  final int pendingProposals;
   final int merchOrders;
   final double merchRevenue;
 
@@ -2555,9 +3478,37 @@ class _OrgPerformance {
     required this.orgName,
     required this.proposals,
     required this.approvedEvents,
+    required this.pendingProposals,
     required this.merchOrders,
     required this.merchRevenue,
   });
+}
+
+class _OverdueSummary {
+  final int totalOverdue;
+  final Map<String, int> overdueByOrgName;
+  final List<_OverdueItem> items;
+  const _OverdueSummary({
+    required this.totalOverdue,
+    required this.overdueByOrgName,
+    this.items = const [],
+  });
+}
+
+class _OverdueItem {
+  final String orgId;
+  final String orgName;
+  final String eventTitle;
+  final String type; // 'financial' | 'accomplishment'
+  final DateTime deadline;
+  const _OverdueItem({
+    required this.orgId,
+    required this.orgName,
+    required this.eventTitle,
+    required this.type,
+    required this.deadline,
+  });
+  int get daysOverdue => DateTime.now().difference(deadline).inDays;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3047,229 +3998,3 @@ class _ActivityBarChart extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Event row — matches StudentAccounts card style
-// ─────────────────────────────────────────────────────────────────────────────
-class _EventRow extends StatelessWidget {
-  final String? date, title, location, time;
-  const _EventRow({this.date, this.title, this.location, this.time});
-
-  ({String month, String day}) _parsedDate() {
-    if (date == null) return (month: 'TBD', day: '--');
-    try {
-      final dt = DateTime.parse(date!);
-      const m = [
-        'JAN',
-        'FEB',
-        'MAR',
-        'APR',
-        'MAY',
-        'JUN',
-        'JUL',
-        'AUG',
-        'SEP',
-        'OCT',
-        'NOV',
-        'DEC',
-      ];
-      return (month: m[dt.month - 1], day: '${dt.day}');
-    } catch (_) {
-      return (month: 'TBD', day: '--');
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final d = _parsedDate();
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            width: 48,
-            height: 52,
-            decoration: BoxDecoration(
-              color: UpriseColors.primaryDark.withAlpha(20),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  d.month,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w700,
-                    color: UpriseColors.primaryDark,
-                  ),
-                ),
-                Text(
-                  d.day,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: UpriseColors.primaryDark,
-                    height: 1.1,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title ?? 'Untitled',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF1A202C),
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 3),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.location_on_outlined,
-                      size: 11,
-                      color: Color(0xFF9AA5B4),
-                    ),
-                    const SizedBox(width: 3),
-                    Flexible(
-                      child: Text(
-                        location ?? 'TBA',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 11,
-                          color: const Color(0xFF9AA5B4),
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    const Icon(
-                      Icons.access_time_rounded,
-                      size: 11,
-                      color: Color(0xFF9AA5B4),
-                    ),
-                    const SizedBox(width: 3),
-                    Text(
-                      time ?? 'TBA',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 11,
-                        color: const Color(0xFF9AA5B4),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Activity row — matches StudentAccounts style
-// ─────────────────────────────────────────────────────────────────────────────
-class _ActivityRow extends StatelessWidget {
-  final String title, module;
-  final Timestamp? timestamp;
-  const _ActivityRow({
-    required this.title,
-    required this.module,
-    this.timestamp,
-  });
-
-  String _timeAgo() {
-    if (timestamp == null) return 'Just now';
-    final diff = DateTime.now().difference(timestamp!.toDate());
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    if (diff.inDays < 7) return '${diff.inDays}d ago';
-    return '${(diff.inDays / 7).floor()}w ago';
-  }
-
-  Color _dotColor() {
-    final l = title.toLowerCase();
-    if (l.contains('proposal') || l.contains('pending'))
-      return UpriseColors.warning;
-    if (l.contains('verified') || l.contains('created'))
-      return UpriseColors.success;
-    if (l.contains('deleted') || l.contains('error')) return UpriseColors.error;
-    return UpriseColors.primaryDark;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                color: _dotColor(),
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: const Color(0xFF1A202C),
-                  ),
-                ),
-                if (module.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 7,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      module,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 10,
-                        color: const Color(0xFF64748B),
-                      ),
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 3),
-                Text(
-                  _timeAgo(),
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 10,
-                    color: const Color(0xFF9AA5B4),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}

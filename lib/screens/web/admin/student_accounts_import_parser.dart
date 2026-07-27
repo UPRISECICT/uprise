@@ -32,63 +32,79 @@ class StudentImportParser {
   }
 
   static Map<String, String> _parseRecord(
-    List<String> row, {
-    List<String>? headers,
-  }) {
-    final fallback = <String, String>{
-      'studentId': row.isNotEmpty ? row[0] : '',
-      'fullName': row.length > 1 ? row[1] : '',
-      'course': row.length > 2 ? row[2] : '',
-      'schoolYear': row.length > 3 ? row[3] : '',
-      'section': row.length > 4 ? row[4] : '',
-      'email': row.length > 5 ? row[5] : '',
-      'yearLevel': row.length > 3 ? row[3] : '',
-    };
-
-    if (headers == null) {
-      return fallback;
-    }
-
-    final normalizedHeaders = headers
-        .map((header) => normalizeHeader(header))
-        .toList(growable: false);
-
-    final indexByHeader = <String, int>{};
-    for (var i = 0; i < normalizedHeaders.length; i++) {
-      if (normalizedHeaders[i].isEmpty) continue;
-      indexByHeader.putIfAbsent(normalizedHeaders[i], () => i);
-    }
-
-    String getValue(String key) {
-      final index = indexByHeader[key];
-      if (index == null || index >= row.length) return '';
-      return row[index];
-    }
-
-    final studentId = getValue('student id');
-    final fullName = getValue('full name');
-    final course = getValue('course');
-    // college/program/semester removed from import format
-    final schoolYear = getValue('school year') != ''
-        ? getValue('school year')
-        : (getValue('year level') != ''
-              ? getValue('year level')
-              : getValue('year'));
-    final semester = '';
-    final section = getValue('section');
-    final email = getValue('email');
-
+  List<String> row, {
+  List<String>? headers,
+}) {
+  // If the row is empty, return empty record
+  if (row.isEmpty || row.every((cell) => cell.trim().isEmpty)) {
     return {
-      'studentId': studentId,
-      'fullName': fullName,
-      'course': course,
-      'schoolYear': schoolYear,
-      'semester': semester,
-      'section': section,
-      'email': email,
-      'yearLevel': schoolYear,
+      'studentId': '',
+      'fullName': '',
+      'course': '',
+      'schoolYear': '',
+      'section': '',
+      'email': '',
+      'yearLevel': '',
     };
   }
+
+  // Pad the row if it's shorter than expected
+  final paddedRow = List<String>.from(row);
+  while (paddedRow.length < 6) {
+    paddedRow.add('');
+  }
+
+  final fallback = <String, String>{
+    'studentId': paddedRow[0],
+    'fullName': paddedRow[1],
+    'course': paddedRow[2],
+    'schoolYear': paddedRow[3],
+    'section': paddedRow[4],
+    'email': paddedRow[5],
+    'yearLevel': paddedRow[3],
+  };
+
+  if (headers == null) {
+    return fallback;
+  }
+
+  final normalizedHeaders = headers
+      .map((header) => normalizeHeader(header))
+      .toList(growable: false);
+
+  final indexByHeader = <String, int>{};
+  for (var i = 0; i < normalizedHeaders.length; i++) {
+    if (normalizedHeaders[i].isEmpty) continue;
+    indexByHeader.putIfAbsent(normalizedHeaders[i], () => i);
+  }
+
+  String getValue(String key) {
+    final index = indexByHeader[key];
+    if (index == null || index >= paddedRow.length) return '';
+    return paddedRow[index];
+  }
+
+  final studentId = getValue('student id');
+  final fullName = getValue('full name');
+  final course = getValue('course');
+  final schoolYear = getValue('school year') != ''
+      ? getValue('school year')
+      : (getValue('year level') != ''
+          ? getValue('year level')
+          : getValue('year'));
+  final section = getValue('section');
+  final email = getValue('email');
+
+  return {
+    'studentId': studentId,
+    'fullName': fullName,
+    'course': course,
+    'schoolYear': schoolYear,
+    'section': section,
+    'email': email,
+    'yearLevel': schoolYear,
+  };
+}
 
   static String normalizeHeader(String header) {
     final normalized = header

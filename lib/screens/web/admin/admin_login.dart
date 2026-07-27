@@ -9,15 +9,6 @@ import '../../../main_web.dart';
 import '../../auth/change_password_screen.dart';
 import 'admin_dashboard.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// LAYOUT B — Photo hero version.
-// Uses assets/images/bg_pattern.png (campus building) as a full-bleed backdrop
-// with a rust/navy overlay, branding sitting directly on the photo, and the
-// sign-in form as a clean floating card. Same class name as the other file —
-// only keep ONE of the two AdminLogin files in your project at a time
-// (rename this class, e.g. AdminLoginPhoto, if you want to keep both to compare).
-// ─────────────────────────────────────────────────────────────────────────────
-
 class AdminLogin extends StatefulWidget {
   const AdminLogin({super.key});
   @override

@@ -329,13 +329,14 @@ class _SidebarNav extends StatefulWidget {
 }
 
 class _SidebarNavState extends State<_SidebarNav> {
-  // Accordion: at most one group open at a time.
-  String? _openGroup;
+  // Now using a Set to allow multiple groups to be open at once
+  final Set<String> _openGroups = {};
 
   @override
   void initState() {
     super.initState();
-    _openGroup = _groupContaining(widget.selectedIndex);
+    final initialGroup = _groupContaining(widget.selectedIndex);
+    if (initialGroup != null) _openGroups.add(initialGroup);
   }
 
   @override
@@ -343,7 +344,7 @@ class _SidebarNavState extends State<_SidebarNav> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.selectedIndex != widget.selectedIndex) {
       final match = _groupContaining(widget.selectedIndex);
-      if (match != null) _openGroup = match;
+      if (match != null) _openGroups.add(match);
     }
   }
 
@@ -416,7 +417,14 @@ class _SidebarNavState extends State<_SidebarNav> {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: () => setState(() => _openGroup = expanded ? null : groupKey),
+        onTap: () => setState(() {
+          // Toggle: if expanded, remove it; if not expanded, add it
+          if (expanded) {
+            _openGroups.remove(groupKey);
+          } else {
+            _openGroups.add(groupKey);
+          }
+        }),
         child: Container(
           margin: const EdgeInsets.symmetric(vertical: 2),
           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
@@ -458,9 +466,9 @@ class _SidebarNavState extends State<_SidebarNav> {
             entry.key,
             entry.value['label'] as String,
             entry.value['icon'] as IconData,
-            _openGroup == entry.key,
+            _openGroups.contains(entry.key),
           ),
-          if (_openGroup == entry.key)
+          if (_openGroups.contains(entry.key))
             for (final i in entry.value['children'] as List<int>) _navTile(i, indent: 30),
         ],
         for (final i in _standaloneBottom) _navTile(i),

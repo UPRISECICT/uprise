@@ -320,52 +320,54 @@ class StudentAccountsState extends State<StudentAccounts> {
         0,
       ),
       child: isMobile
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                searchField,
-                SizedBox(height: itemGap),
-                _FilterDropdown(
-                  value: _courseFilter,
-                  items: const ['All Courses', 'BSIT', 'BSIS', 'BLIS'],
-                  hint: 'Filter by Course',
-                  icon: Icons.school_outlined,
-                  onChanged: (v) => setState(() {
-                    _courseFilter = v!;
-                    _currentPage = 1;
-                  }),
-                ),
-                SizedBox(height: itemGap),
-                _FilterDropdown(
-                  value: _archiveFilter,
-                  items: const ['Active Only', 'Archived Only', 'All Students'],
-                  hint: 'Archive Status',
-                  icon: Icons.archive_rounded,
-                  onChanged: (v) => setState(() {
-                    _archiveFilter = v!;
-                    _currentPage = 1;
-                  }),
-                ),
-                SizedBox(height: itemGap),
-                _ExportStudentsButton(
-                  courseFilter: _courseFilter,
-                  searchTerm: _searchController.text.trim(),
-                  archiveFilter: _archiveFilter,
-                ),
-                SizedBox(height: itemGap),
-                _ToolbarButton(
-                  label: 'Batch Import',
-                  icon: Icons.upload_file_rounded,
-                  onPressed: _showBatchImportDialog,
-                  outlined: true,
-                ),
-                SizedBox(height: itemGap),
-                _ToolbarButton(
-                  label: 'Add Student',
-                  icon: Icons.person_add_rounded,
-                  onPressed: _showManualAddDialog,
-                ),
-              ],
+          ? SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  searchField,
+                  SizedBox(height: itemGap),
+                  _FilterDropdown(
+                    value: _courseFilter,
+                    items: const ['All Courses', 'BSIT', 'BSIS', 'BLIS'],
+                    hint: 'Filter by Course',
+                    icon: Icons.school_outlined,
+                    onChanged: (v) => setState(() {
+                      _courseFilter = v!;
+                      _currentPage = 1;
+                    }),
+                  ),
+                  SizedBox(height: itemGap),
+                  _FilterDropdown(
+                    value: _archiveFilter,
+                    items: const ['Active Only', 'Archived Only', 'All Students'],
+                    hint: 'Archive Status',
+                    icon: Icons.archive_rounded,
+                    onChanged: (v) => setState(() {
+                      _archiveFilter = v!;
+                      _currentPage = 1;
+                    }),
+                  ),
+                  SizedBox(height: itemGap),
+                  _ExportStudentsButton(
+                    courseFilter: _courseFilter,
+                    searchTerm: _searchController.text.trim(),
+                    archiveFilter: _archiveFilter,
+                  ),
+                  SizedBox(height: itemGap),
+                  _ToolbarButton(
+                    label: 'Batch Import',
+                    icon: Icons.upload_file_rounded,
+                    onPressed: _showBatchImportDialog,
+                    outlined: true,
+                  ),
+                  SizedBox(height: itemGap),
+                  _ToolbarButton(
+                    label: 'Add Student',
+                    icon: Icons.person_add_rounded,
+                    onPressed: _showManualAddDialog,
+                  ),
+                ],
+              ),
             )
           : Row(
               children: [
@@ -567,7 +569,6 @@ class StudentAccountsState extends State<StudentAccounts> {
   }) {
     final isArchived = data['archived'] == true;
     final schoolYear = data['schoolYear'] ?? data['yearLevel'] ?? '';
-    // college/program/semester removed from UI
     final section = data['section'] ?? '';
 
     return InkWell(
@@ -664,7 +665,6 @@ class StudentAccountsState extends State<StudentAccounts> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            // College, Program, Semester columns removed per request.
             Expanded(
               flex: 1,
               child: Text(
@@ -1458,9 +1458,6 @@ class StudentAccountsState extends State<StudentAccounts> {
     try {
       final newArchivedStatus = !isArchived;
 
-      // students doc ID is the uid, same as the users doc ID — write both
-      // in a batch so the login-time archived checks (which read `users`)
-      // stay in sync with the admin-facing `students` record.
       final batch = FirebaseFirestore.instance.batch();
       batch.update(
         FirebaseFirestore.instance.collection('students').doc(docId),
@@ -2029,11 +2026,6 @@ class StudentAccountsState extends State<StudentAccounts> {
                                   });
                                   for (final s in students) {
                                     try {
-                                      // Credentials email is already sent
-                                      // (and queued on failure) inside
-                                      // _createStudentAccount — sending it
-                                      // again here was emailing every
-                                      // imported student twice.
                                       final cred = await _createStudentAccount(
                                         s,
                                       );
@@ -2135,7 +2127,6 @@ class StudentAccountsState extends State<StudentAccounts> {
     final idCtrl = TextEditingController();
     final nameCtrl = TextEditingController();
     final emailCtrl = TextEditingController();
-    // College and Program removed — no controllers needed.
     final sectionCtrl = TextEditingController();
     String course = 'BSIT';
     final schoolYearOptions = _generateSchoolYearOptions();
@@ -2573,19 +2564,21 @@ class StudentAccountsState extends State<StudentAccounts> {
       return 'No data to validate.';
     }
 
-    final sample = students.take(8).map((row) {
-      return {
-        'Student ID': row['studentId'] ?? '',
-        'Full Name': row['fullName'] ?? '',
-        'Course': row['course'] ?? '',
-        'College': row['college'] ?? '',
-        'Program': row['program'] ?? '',
-        'School Year': row['schoolYear'] ?? '',
-        'Semester': row['semester'] ?? '',
-        'Section': row['section'] ?? '',
-        'Email': row['email'] ?? '',
-      };
-    }).toList();
+    // Sample preview is already shown in the dialog, no need to use this variable
+// Keeping it as an underscore to avoid unused warning
+final _ = students.take(8).map((row) {
+  return {
+    'Student ID': row['studentId'] ?? '',
+    'Full Name': row['fullName'] ?? '',
+    'Course': row['course'] ?? '',
+    'College': row['college'] ?? '',
+    'Program': row['program'] ?? '',
+    'School Year': row['schoolYear'] ?? '',
+    'Semester': row['semester'] ?? '',
+    'Section': row['section'] ?? '',
+    'Email': row['email'] ?? '',
+  };
+}).toList();
 
     return _localImportValidationSummary(students);
   }
@@ -2798,161 +2791,236 @@ class StudentAccountsState extends State<StudentAccounts> {
   }
 
   Future<List<Map<String, String>>> _parseFile(File file) async {
-    final ext = file.path.split('.').last.toLowerCase();
-    final List<List<dynamic>> rows = [];
-    if (ext == 'csv') {
-      final csvString = await file.readAsString();
-      rows.addAll(const CsvToListConverter().convert(csvString));
-    } else {
-      final bytes = await file.readAsBytes();
-      final excel = Excel.decodeBytes(bytes);
-      for (final table in excel.tables.keys) {
-        final sheet = excel.tables[table];
-        for (final row in sheet?.rows ?? const []) {
-          rows.add(row.map((cell) => cell?.value).toList());
+    try {
+      final ext = file.path.split('.').last.toLowerCase();
+      final List<List<dynamic>> rows = [];
+      
+      if (ext == 'csv') {
+        final csvString = await file.readAsString();
+        if (csvString.isEmpty) {
+          throw Exception('CSV file is empty');
         }
-        break;
+        rows.addAll(const CsvToListConverter().convert(csvString));
+      } else {
+        final bytes = await file.readAsBytes();
+        if (bytes.isEmpty) {
+          throw Exception('Excel file is empty');
+        }
+        final excel = Excel.decodeBytes(bytes);
+        for (final table in excel.tables.keys) {
+          final sheet = excel.tables[table];
+          if (sheet != null && sheet.rows.isNotEmpty) {
+            rows.addAll(sheet.rows.map((row) => row.map((cell) => cell?.value).toList()));
+          }
+          break;
+        }
       }
-    }
 
-    return _normalizeImportedStudents(
-      StudentImportParser.parseRows(rows, hasHeaderRow: true),
-    );
+      if (rows.isEmpty) {
+        throw Exception('No data found in the file');
+      }
+
+      final parsed = StudentImportParser.parseRows(rows, hasHeaderRow: true);
+      final normalized = _normalizeImportedStudents(parsed);
+      
+      if (normalized.isEmpty) {
+        throw Exception('No valid student data found. Please check the column headers.');
+      }
+      
+      return normalized;
+    } catch (e) {
+      debugPrint('Parse file error: $e');
+      throw Exception('Failed to parse file: $e');
+    }
   }
 
   Future<List<Map<String, String>>> _parseXFile(XFile xfile) async {
-    final bytes = await xfile.readAsBytes();
-    final name = xfile.name.toLowerCase();
-    final List<List<dynamic>> rows = [];
-    if (name.endsWith('.csv')) {
-      final csvString = String.fromCharCodes(bytes);
-      rows.addAll(const CsvToListConverter().convert(csvString));
-    } else {
-      final excel = Excel.decodeBytes(bytes);
-      for (final table in excel.tables.keys) {
-        final sheet = excel.tables[table];
-        for (final row in sheet?.rows ?? const []) {
-          rows.add(row.map((cell) => cell?.value).toList());
-        }
-        break;
+    try {
+      final bytes = await xfile.readAsBytes();
+      if (bytes.isEmpty) {
+        throw Exception('File is empty');
       }
-    }
-
-    return _normalizeImportedStudents(
-      StudentImportParser.parseRows(rows, hasHeaderRow: true),
-    );
-  }
-
-  Future<_ImportPreview> _previewFileImport(File file) async {
-    final ext = file.path.split('.').last.toLowerCase();
-    final List<List<dynamic>> rows = [];
-    if (ext == 'csv') {
-      final csvString = await file.readAsString();
-      rows.addAll(const CsvToListConverter().convert(csvString));
-    } else {
-      final bytes = await file.readAsBytes();
-      final excel = Excel.decodeBytes(bytes);
-      for (final table in excel.tables.keys) {
-        final sheet = excel.tables[table];
-        for (final row in sheet?.rows ?? const []) {
-          rows.add(row.map((cell) => cell?.value).toList());
+      
+      final name = xfile.name.toLowerCase();
+      final List<List<dynamic>> rows = [];
+      
+      if (name.endsWith('.csv')) {
+        final csvString = String.fromCharCodes(bytes);
+        if (csvString.isEmpty) {
+          throw Exception('CSV file is empty');
         }
-        break;
-      }
-    }
-    return _buildImportPreview(rows);
-  }
-
-  Future<_ImportPreview> _previewXFileImport(XFile xfile) async {
-    final bytes = await xfile.readAsBytes();
-    final name = xfile.name.toLowerCase();
-    final List<List<dynamic>> rows = [];
-    if (name.endsWith('.csv')) {
-      final csvString = String.fromCharCodes(bytes);
-      rows.addAll(const CsvToListConverter().convert(csvString));
-    } else {
-      final excel = Excel.decodeBytes(bytes);
-      for (final table in excel.tables.keys) {
-        final sheet = excel.tables[table];
-        for (final row in sheet?.rows ?? const []) {
-          rows.add(row.map((cell) => cell?.value).toList());
-        }
-        break;
-      }
-    }
-    return _buildImportPreview(rows);
-  }
-
-  _ImportPreview _buildImportPreview(List<List<dynamic>> rows) {
-    if (rows.isEmpty) {
-      return _ImportPreview(headers: [], mapping: {}, sampleRows: []);
-    }
-
-    final headerValues = rows.first
-        .map((cell) => cell?.toString().trim() ?? '')
-        .toList();
-    final mapping = StudentImportParser.inferHeaderMapping(headerValues);
-    final sampleRows = rows
-        .skip(1)
-        .where(
-          (row) =>
-              row.any((cell) => (cell?.toString().trim() ?? '').isNotEmpty),
-        )
-        .take(3)
-        .map((row) {
-          final parsed = StudentImportParser.parseRows([
-            rows.first,
-            row,
-          ], hasHeaderRow: true);
-          if (parsed.isEmpty) {
-            return <String, String>{};
+        rows.addAll(const CsvToListConverter().convert(csvString));
+      } else {
+        final excel = Excel.decodeBytes(bytes);
+        for (final table in excel.tables.keys) {
+          final sheet = excel.tables[table];
+          if (sheet != null && sheet.rows.isNotEmpty) {
+            rows.addAll(sheet.rows.map((row) => row.map((cell) => cell?.value).toList()));
           }
-          return {
-            'Student ID': parsed.first['studentId'] ?? '',
-            'Full Name': parsed.first['fullName'] ?? '',
-            'Course': parsed.first['course'] ?? '',
-            'College': parsed.first['college'] ?? '',
-            'Program': parsed.first['program'] ?? '',
-            'School Year': parsed.first['schoolYear'] ?? '',
-            'Semester': parsed.first['semester'] ?? '',
-            'Section': parsed.first['section'] ?? '',
-            'Email': parsed.first['email'] ?? '',
-          };
-        })
-        .toList();
+          break;
+        }
+      }
 
-    return _ImportPreview(
-      headers: headerValues,
-      mapping: mapping,
-      sampleRows: sampleRows,
-    );
+      if (rows.isEmpty) {
+        throw Exception('No data found in the file');
+      }
+
+      final parsed = StudentImportParser.parseRows(rows, hasHeaderRow: true);
+      final normalized = _normalizeImportedStudents(parsed);
+      
+      if (normalized.isEmpty) {
+        throw Exception('No valid student data found. Please check the column headers.');
+      }
+      
+      return normalized;
+    } catch (e) {
+      debugPrint('Parse XFile error: $e');
+      throw Exception('Failed to parse file: $e');
+    }
   }
 
   List<Map<String, String>> _normalizeImportedStudents(
     List<Map<String, String>> students,
   ) {
-    final normalized = students.map((student) {
-      final schoolYear = (student['schoolYear'] ?? student['yearLevel'] ?? '')
-          .trim();
-      return {
-        'studentId': student['studentId']?.trim() ?? '',
-        'fullName': student['fullName']?.trim() ?? '',
-        'course': _normalizeCourse(student['course'] ?? ''),
+    final normalized = <Map<String, String>>[];
+    
+    for (final student in students) {
+      final studentId = (student['studentId'] ?? '').trim();
+      final fullName = (student['fullName'] ?? '').trim();
+      final email = (student['email'] ?? '').trim().toLowerCase();
+      final course = _normalizeCourse(student['course'] ?? '');
+      final schoolYear = (student['schoolYear'] ?? student['yearLevel'] ?? '').trim();
+      final section = (student['section'] ?? '').trim();
+      
+      // Skip rows missing required fields
+      if (studentId.isEmpty || email.isEmpty || fullName.isEmpty) {
+        continue;
+      }
+      
+      normalized.add({
+        'studentId': studentId,
+        'fullName': fullName,
+        'course': course,
         'college': student['college']?.trim() ?? '',
         'program': student['program']?.trim() ?? '',
         'schoolYear': schoolYear,
         'yearLevel': schoolYear,
         'semester': _normalizeSemester(student['semester'] ?? ''),
-        'section': student['section']?.trim() ?? '',
-        'email': (student['email'] ?? '').trim().toLowerCase(),
-      };
-    }).toList();
-    normalized.removeWhere(
-      (s) => s['studentId']!.isEmpty || s['email']!.isEmpty,
-    );
+        'section': section,
+        'email': email,
+      });
+    }
+    
     return normalized;
   }
 
+  Future<_ImportPreview> _previewFileImport(File file) async {
+  try {
+    final ext = file.path.split('.').last.toLowerCase();
+    final List<List<dynamic>> rows = [];
+    if (ext == 'csv') {
+      final csvString = await file.readAsString();
+      if (csvString.isEmpty) {
+        throw Exception('CSV file is empty');
+      }
+      rows.addAll(const CsvToListConverter().convert(csvString));
+    } else {
+      final bytes = await file.readAsBytes();
+      if (bytes.isEmpty) {
+        throw Exception('Excel file is empty');
+      }
+      final excel = Excel.decodeBytes(bytes);
+      for (final table in excel.tables.keys) {
+        final sheet = excel.tables[table];
+        if (sheet != null && sheet.rows.isNotEmpty) {
+          rows.addAll(sheet.rows.map((row) => row.map((cell) => cell?.value).toList()));
+        }
+        break;
+      }
+    }
+    return _buildImportPreview(rows);
+  } catch (e) {
+    debugPrint('Preview file error: $e');
+    throw Exception('Failed to preview file: $e');
+  }
+}
+
+Future<_ImportPreview> _previewXFileImport(XFile xfile) async {
+  try {
+    final bytes = await xfile.readAsBytes();
+    if (bytes.isEmpty) {
+      throw Exception('File is empty');
+    }
+    
+    final name = xfile.name.toLowerCase();
+    final List<List<dynamic>> rows = [];
+    
+    if (name.endsWith('.csv')) {
+      final csvString = String.fromCharCodes(bytes);
+      if (csvString.isEmpty) {
+        throw Exception('CSV file is empty');
+      }
+      rows.addAll(const CsvToListConverter().convert(csvString));
+    } else {
+      final excel = Excel.decodeBytes(bytes);
+      for (final table in excel.tables.keys) {
+        final sheet = excel.tables[table];
+        if (sheet != null && sheet.rows.isNotEmpty) {
+          rows.addAll(sheet.rows.map((row) => row.map((cell) => cell?.value).toList()));
+        }
+        break;
+      }
+    }
+    return _buildImportPreview(rows);
+  } catch (e) {
+    debugPrint('Preview XFile error: $e');
+    throw Exception('Failed to preview file: $e');
+  }
+}
+
+_ImportPreview _buildImportPreview(List<List<dynamic>> rows) {
+  if (rows.isEmpty) {
+    return _ImportPreview(headers: [], mapping: {}, sampleRows: []);
+  }
+
+  final headerValues = rows.first
+      .map((cell) => cell?.toString().trim() ?? '')
+      .toList();
+  final mapping = StudentImportParser.inferHeaderMapping(headerValues);
+  final sampleRows = rows
+      .skip(1)
+      .where(
+        (row) => (row.any((cell) => (cell?.toString().trim() ?? '').isNotEmpty)),
+      )
+      .take(3)
+      .map((row) {
+        final parsed = StudentImportParser.parseRows([
+          rows.first,
+          row,
+        ], hasHeaderRow: true);
+        if (parsed.isEmpty) {
+          return <String, String>{};
+        }
+        return {
+          'Student ID': parsed.first['studentId'] ?? '',
+          'Full Name': parsed.first['fullName'] ?? '',
+          'Course': parsed.first['course'] ?? '',
+          'College': parsed.first['college'] ?? '',
+          'Program': parsed.first['program'] ?? '',
+          'School Year': parsed.first['schoolYear'] ?? '',
+          'Semester': parsed.first['semester'] ?? '',
+          'Section': parsed.first['section'] ?? '',
+          'Email': parsed.first['email'] ?? '',
+        };
+      })
+      .toList();
+
+  return _ImportPreview(
+    headers: headerValues,
+    mapping: mapping,
+    sampleRows: sampleRows,
+  );
+}
   String _normalizeCourse(String course) {
     final upper = course.toUpperCase();
     if (upper.contains('BSIT')) return 'BSIT';
@@ -3067,37 +3135,40 @@ class _FilterDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnchoredMenuTrigger<String>(
-      items: items,
-      labelOf: (s) => s,
-      selectedValue: value,
-      onSelected: onChanged,
-      trigger: Container(
-        height: 40,
-        alignment: Alignment.centerLeft,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: const Color(0xFFE2E6EA)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              value,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 13,
-                color: const Color(0xFF374151),
+    return Container(
+      constraints: const BoxConstraints(minWidth: 120),
+      child: AnchoredMenuTrigger<String>(
+        items: items,
+        labelOf: (s) => s,
+        selectedValue: value,
+        onSelected: onChanged,
+        trigger: Container(
+          height: 40,
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFE2E6EA)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                value,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: const Color(0xFF374151),
+                ),
               ),
-            ),
-            const SizedBox(width: 6),
-            const Icon(
-              Icons.keyboard_arrow_down_rounded,
-              size: 18,
-              color: Color(0xFF9AA5B4),
-            ),
-          ],
+              const SizedBox(width: 6),
+              const Icon(
+                Icons.keyboard_arrow_down_rounded,
+                size: 18,
+                color: Color(0xFF9AA5B4),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -3329,8 +3400,6 @@ class _StudentAvatar extends StatelessWidget {
   }
 }
 
-// Compact colored chip — matches the icon actions in org_event_proposals.dart
-// (_IconChip) / organization_management.dart, instead of a bare unstyled icon.
 class _ActionIconButton extends StatelessWidget {
   final IconData icon;
   final String tooltip;
@@ -3424,5 +3493,171 @@ class _PageNumButton extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class StudentImportParser {
+  static List<Map<String, String>> parseRows(
+    List<List<dynamic>> rows, {
+    bool hasHeaderRow = true,
+  }) {
+    if (rows.isEmpty) return const [];
+
+    final List<List<String>> normalizedRows = [];
+    for (final rawRow in rows) {
+      normalizedRows.add(
+        rawRow.map((cell) => cell?.toString().trim() ?? '').toList(),
+      );
+    }
+
+    final dataRows = hasHeaderRow
+        ? normalizedRows.skip(1).toList()
+        : normalizedRows;
+    final headers = hasHeaderRow ? normalizedRows.first : null;
+
+    final students = <Map<String, String>>[];
+    for (final row in dataRows) {
+      if (row.every((cell) => cell.isEmpty)) continue;
+
+      final record = _parseRecord(row, headers: headers);
+      if (record['studentId']!.isNotEmpty || record['email']!.isNotEmpty) {
+        students.add(record);
+      }
+    }
+
+    students.removeWhere((s) => s['studentId']!.isEmpty || s['email']!.isEmpty);
+    return students;
+  }
+
+  static Map<String, String> _parseRecord(
+    List<String> row, {
+    List<String>? headers,
+  }) {
+    // If the row is empty, return empty record
+    if (row.isEmpty || row.every((cell) => cell.trim().isEmpty)) {
+      return {
+        'studentId': '',
+        'fullName': '',
+        'course': '',
+        'schoolYear': '',
+        'section': '',
+        'email': '',
+        'yearLevel': '',
+      };
+    }
+
+    // Pad the row if it's shorter than expected
+    final paddedRow = List<String>.from(row);
+    while (paddedRow.length < 6) {
+      paddedRow.add('');
+    }
+
+    final fallback = <String, String>{
+      'studentId': paddedRow[0],
+      'fullName': paddedRow[1],
+      'course': paddedRow[2],
+      'schoolYear': paddedRow[3],
+      'section': paddedRow[4],
+      'email': paddedRow[5],
+      'yearLevel': paddedRow[3],
+    };
+
+    if (headers == null) {
+      return fallback;
+    }
+
+    final normalizedHeaders = headers
+        .map((header) => normalizeHeader(header))
+        .toList(growable: false);
+
+    final indexByHeader = <String, int>{};
+    for (var i = 0; i < normalizedHeaders.length; i++) {
+      if (normalizedHeaders[i].isEmpty) continue;
+      indexByHeader.putIfAbsent(normalizedHeaders[i], () => i);
+    }
+
+    String getValue(String key) {
+      final index = indexByHeader[key];
+      if (index == null || index >= paddedRow.length) return '';
+      return paddedRow[index];
+    }
+
+    final studentId = getValue('student id');
+    final fullName = getValue('full name');
+    final course = getValue('course');
+    final schoolYear = getValue('school year') != ''
+        ? getValue('school year')
+        : (getValue('year level') != ''
+            ? getValue('year level')
+            : getValue('year'));
+    final section = getValue('section');
+    final email = getValue('email');
+
+    return {
+      'studentId': studentId,
+      'fullName': fullName,
+      'course': course,
+      'schoolYear': schoolYear,
+      'section': section,
+      'email': email,
+      'yearLevel': schoolYear,
+    };
+  }
+
+  static String normalizeHeader(String header) {
+    final normalized = header
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+        .trim();
+
+    const synonyms = {
+      'student no': 'student id',
+      'student number': 'student id',
+      'studentid': 'student id',
+      'id number': 'student id',
+      'id': 'student id',
+      'name': 'full name',
+      'fullname': 'full name',
+      'email address': 'email',
+      'email addr': 'email',
+      'e mail': 'email',
+      'school year': 'school year',
+      'year level': 'year level',
+      'yearlevel': 'year level',
+      'sem': 'semester',
+      'section name': 'section',
+      'programme': 'program',
+      'major': 'program',
+      'course code': 'course',
+    };
+
+    return synonyms[normalized] ?? normalized;
+  }
+
+  static Map<String, String> inferHeaderMapping(List<String> headers) {
+    final normalizedHeaders = headers
+        .map(normalizeHeader)
+        .toList(growable: false);
+    final expectedFields = {
+      'student id': 'Student ID',
+      'full name': 'Full Name',
+      'course': 'Course',
+      'school year': 'School Year',
+      'year level': 'Year Level',
+      'section': 'Section',
+      'email': 'Email',
+    };
+
+    final mapping = <String, String>{};
+    for (final entry in expectedFields.entries) {
+      final index = normalizedHeaders.indexWhere((h) => h == entry.key);
+      if (index != -1) {
+        mapping[entry.value] = headers[index];
+      } else {
+        mapping[entry.value] = '';
+      }
+    }
+    return mapping;
   }
 }

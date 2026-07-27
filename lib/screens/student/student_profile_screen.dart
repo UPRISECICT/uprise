@@ -78,16 +78,20 @@ class ProfileModel extends ChangeNotifier {
   String lastName = '';
 
   String get fullName {
-    final parts = [firstName, middleName, lastName]
-        .where((p) => p.trim().isNotEmpty);
+    final parts = [
+      firstName,
+      middleName,
+      lastName,
+    ].where((p) => p.trim().isNotEmpty);
     return parts.join(' ');
   }
 
   String get fullNameLastFirst {
     if (lastName.trim().isEmpty) return fullName;
-    final first = [firstName, middleName]
-        .where((p) => p.trim().isNotEmpty)
-        .join(' ');
+    final first = [
+      firstName,
+      middleName,
+    ].where((p) => p.trim().isNotEmpty).join(' ');
     return first.isEmpty ? lastName : '$lastName, $first';
   }
 
@@ -138,7 +142,8 @@ class ProfileModel extends ChangeNotifier {
               .doc(orgId)
               .get();
           if (orgSnap.exists) {
-            orgName = orgSnap.data()?['orgName'] ?? orgSnap.data()?['name'] ?? '';
+            orgName =
+                orgSnap.data()?['orgName'] ?? orgSnap.data()?['name'] ?? '';
           }
         }
       }
@@ -199,7 +204,7 @@ class ProfileModel extends ChangeNotifier {
       }
     }
 
-    // 🔥 NEW: Update all registrations with the new name
+    // 🔥 Update all registrations with the new name (automatic sync)
     await updateAllRegistrationsWithName();
 
     notifyListeners();
@@ -210,7 +215,9 @@ class ProfileModel extends ChangeNotifier {
 
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      final docRef = FirebaseFirestore.instance.collection('students').doc(user.uid);
+      final docRef = FirebaseFirestore.instance
+          .collection('students')
+          .doc(user.uid);
       if ((await docRef.get()).exists) {
         await docRef.set({'photoUrl': url}, SetOptions(merge: true));
       }
@@ -219,13 +226,13 @@ class ProfileModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  // 🔥 NEW METHOD: Update all registrations with the current name
+  // Update all registrations for the current user (called automatically on profile save)
   Future<void> updateAllRegistrationsWithName() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
     try {
-      // Get all registrations for this user
+      // Only update THIS user's registrations (not all students)
       final registrationsSnapshot = await FirebaseFirestore.instance
           .collection('registrations')
           .where('userId', isEqualTo: user.uid)
@@ -233,84 +240,37 @@ class ProfileModel extends ChangeNotifier {
 
       if (registrationsSnapshot.docs.isEmpty) return;
 
-      // Update each registration with the new name
       final batch = FirebaseFirestore.instance.batch();
       for (var doc in registrationsSnapshot.docs) {
         batch.update(doc.reference, {
           'studentName': fullName,
           'firstName': firstName,
           'lastName': lastName,
-          'fullName': fullName, // Also update fullName if it exists
+          'fullName': fullName,
           'studentId': studentId,
         });
       }
 
       await batch.commit();
-      print('✅ Updated ${registrationsSnapshot.docs.length} registrations with new name: $fullName');
+      print(
+        '✅ Updated ${registrationsSnapshot.docs.length} registrations with new name: $fullName',
+      );
     } catch (e) {
       print('❌ Error updating registrations: $e');
-      // Don't throw - we don't want to break the profile update
     }
   }
 
-  // 🔥 NEW METHOD: Manually fix all registrations (for one-time fix)
-  Future<void> fixAllRegistrationsManually() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    try {
-      // Get ALL registrations (not just this user's)
-      final allRegistrations = await FirebaseFirestore.instance
-          .collection('registrations')
-          .get();
-
-      int updatedCount = 0;
-      final batch = FirebaseFirestore.instance.batch();
-
-      for (var doc in allRegistrations.docs) {
-        final data = doc.data();
-        final userId = data['userId'];
-
-        // Get the student's latest info
-        if (userId != null && userId.isNotEmpty) {
-          final studentDoc = await FirebaseFirestore.instance
-              .collection('students')
-              .doc(userId)
-              .get();
-
-          if (studentDoc.exists) {
-            final studentData = studentDoc.data()!;
-            final fullName = '${studentData['firstName'] ?? ''} ${studentData['lastName'] ?? ''}'.trim();
-
-            if (fullName.isNotEmpty) {
-              batch.update(doc.reference, {
-                'studentName': fullName,
-                'firstName': studentData['firstName'] ?? '',
-                'lastName': studentData['lastName'] ?? '',
-                'fullName': fullName,
-                'studentId': studentData['studentId'] ?? '',
-              });
-              updatedCount++;
-            }
-          }
-        }
-      }
-
-      if (updatedCount > 0) {
-        await batch.commit();
-        print('✅ Fixed $updatedCount registrations');
-      }
-    } catch (e) {
-      print('❌ Error fixing registrations: $e');
-    }
-  }
+  // ⚠️ ADMIN ONLY – do not expose to students. Moved out of student-facing code.
+  // Future<void> fixAllRegistrationsManually() { ... }  // Removed – dangerous bulk update
 }
 
 // ─────────────────────────────────────────────────────────────
 // Pick & upload photo helper
 // ─────────────────────────────────────────────────────────────
 Future<void> _pickAndUploadPhoto(
-    BuildContext context, ProfileModel profile) async {
+  BuildContext context,
+  ProfileModel profile,
+) async {
   XFile? picked;
   try {
     final picker = ImagePicker();
@@ -321,9 +281,9 @@ Future<void> _pickAndUploadPhoto(
     );
   } catch (e) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not open gallery: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not open gallery: $e')));
     }
     return;
   }
@@ -360,9 +320,9 @@ Future<void> _pickAndUploadPhoto(
   } catch (e) {
     if (context.mounted) {
       Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to update photo: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to update photo: $e')));
     }
   }
 }
@@ -502,19 +462,27 @@ class _QuickActionCard extends StatelessWidget {
                       ),
                       child: Icon(icon, color: color, size: 22),
                     ),
-                    Icon(Icons.arrow_forward_ios_rounded,
-                        size: 12, color: Colors.grey[300]),
+                    Icon(
+                      Icons.arrow_forward_ios_rounded,
+                      size: 12,
+                      color: Colors.grey[300],
+                    ),
                   ],
                 ),
                 const SizedBox(height: 14),
-                Text(title,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                        color: Colors.black87)),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: Colors.black87,
+                  ),
+                ),
                 const SizedBox(height: 2),
-                Text(subtitle,
-                    style: TextStyle(fontSize: 11.5, color: Colors.grey[500])),
+                Text(
+                  subtitle,
+                  style: TextStyle(fontSize: 11.5, color: Colors.grey[500]),
+                ),
               ],
             ),
           ),
@@ -538,13 +506,19 @@ class StudentProfileScreen extends StatefulWidget {
 class _StudentProfileScreenState extends State<StudentProfileScreen> {
   final ProfileModel _profile = ProfileModel();
 
-  Future<List<QueryDocumentSnapshot>> _fetchEventsByIds(List<String> eventIds) async {
+  Future<List<QueryDocumentSnapshot>> _fetchEventsByIds(
+    List<String> eventIds,
+  ) async {
     if (eventIds.isEmpty) return [];
 
     final chunks = <List<String>>[];
     for (var i = 0; i < eventIds.length; i += 10) {
-      chunks.add(eventIds.sublist(
-          i, i + 10 > eventIds.length ? eventIds.length : i + 10));
+      chunks.add(
+        eventIds.sublist(
+          i,
+          i + 10 > eventIds.length ? eventIds.length : i + 10,
+        ),
+      );
     }
 
     final results = <QueryDocumentSnapshot>[];
@@ -569,16 +543,16 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
             backgroundColor: Colors.white,
             elevation: 0,
             centerTitle: true,
-            // Invisible spacer the same width as the settings icon button
-            // on the right, so `centerTitle` truly centers "Profile"
-            // instead of drifting toward the side with no actions.
             leadingWidth: 48,
             leading: const SizedBox.shrink(),
-            title: const Text('Profile',
-                style: TextStyle(
-                    color: Colors.black87,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 18)),
+            title: const Text(
+              'Profile',
+              style: TextStyle(
+                color: Colors.black87,
+                fontWeight: FontWeight.w700,
+                fontSize: 18,
+              ),
+            ),
             bottom: PreferredSize(
               preferredSize: const Size.fromHeight(1),
               child: Container(height: 1, color: Colors.grey.shade100),
@@ -589,7 +563,8 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                 onPressed: () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                      builder: (_) => SettingsScreen(profile: _profile)),
+                    builder: (_) => SettingsScreen(profile: _profile),
+                  ),
                 ),
               ),
             ],
@@ -643,12 +618,16 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                                   ? _ProfileImage(
                                       photoUrl: _profile.photoUrl,
                                       errorBuilder: (_, __, ___) => const Icon(
-                                          Icons.person,
-                                          size: 50,
-                                          color: kOrange),
+                                        Icons.person,
+                                        size: 50,
+                                        color: kOrange,
+                                      ),
                                     )
-                                  : const Icon(Icons.person,
-                                      size: 50, color: kOrange),
+                                  : const Icon(
+                                      Icons.person,
+                                      size: 50,
+                                      color: kOrange,
+                                    ),
                             ),
                           ),
                           Positioned(
@@ -665,22 +644,28 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                                   shape: BoxShape.circle,
                                   border: Border.all(color: kOrange, width: 2),
                                 ),
-                                child: const Icon(Icons.edit,
-                                    color: kOrange, size: 14),
+                                child: const Icon(
+                                  Icons.edit,
+                                  color: kOrange,
+                                  size: 14,
+                                ),
                               ),
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 14),
-                      Text(_profile.fullName.isNotEmpty
-                              ? _profile.fullName
-                              : 'Student Name',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white)),
+                      Text(
+                        _profile.fullName.isNotEmpty
+                            ? _profile.fullName
+                            : 'Student Name',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
                       const SizedBox(height: 8),
                       Wrap(
                         alignment: WrapAlignment.center,
@@ -688,15 +673,17 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                         runSpacing: 6,
                         children: [
                           _HeaderChip(
-                              icon: Icons.badge_outlined,
-                              text: _profile.studentId.isNotEmpty
-                                  ? _profile.studentId
-                                  : 'No student ID'),
+                            icon: Icons.badge_outlined,
+                            text: _profile.studentId.isNotEmpty
+                                ? _profile.studentId
+                                : 'No student ID',
+                          ),
                           _HeaderChip(
-                              icon: Icons.mail_outline,
-                              text: _profile.email.isNotEmpty
-                                  ? _profile.email
-                                  : 'No email'),
+                            icon: Icons.mail_outline,
+                            text: _profile.email.isNotEmpty
+                                ? _profile.email
+                                : 'No email',
+                          ),
                         ],
                       ),
                     ],
@@ -735,8 +722,9 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
-                              builder: (_) =>
-                                  PersonalIdentityScreen(profile: _profile)),
+                            builder: (_) =>
+                                PersonalIdentityScreen(profile: _profile),
+                          ),
                         ),
                       ),
                     ],
@@ -772,8 +760,11 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                             color: Colors.white.withOpacity(0.25),
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.groups,
-                              color: Colors.white, size: 22),
+                          child: const Icon(
+                            Icons.groups,
+                            color: Colors.white,
+                            size: 22,
+                          ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -818,11 +809,14 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('Your details',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 14,
-                                  color: Colors.black87)),
+                          const Text(
+                            'Your details',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                              color: Colors.black87,
+                            ),
+                          ),
                           GestureDetector(
                             onTap: () => Navigator.push(
                               context,
@@ -837,24 +831,29 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                                 color: kOrange.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(8),
                               ),
-                              child: const Icon(Icons.edit_outlined,
-                                  size: 16, color: kOrange),
+                              child: const Icon(
+                                Icons.edit_outlined,
+                                size: 16,
+                                color: kOrange,
+                              ),
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 16),
                       _ContactRow(
-                          icon: Icons.phone_android_outlined,
-                          label: 'MOBILE',
-                          value: _profile.mobile),
+                        icon: Icons.phone_android_outlined,
+                        label: 'MOBILE',
+                        value: _profile.mobile,
+                      ),
                       const SizedBox(height: 8),
                       Divider(height: 1, color: Colors.grey.shade100),
                       const SizedBox(height: 14),
                       _ContactRow(
-                          icon: Icons.location_on_outlined,
-                          label: 'CAMPUS ADDRESS',
-                          value: _profile.address),
+                        icon: Icons.location_on_outlined,
+                        label: 'CAMPUS ADDRESS',
+                        value: _profile.address,
+                      ),
                     ],
                   ),
                 ),
@@ -871,26 +870,33 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('Recent registrations',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 14,
-                                  color: Colors.black87)),
+                          const Text(
+                            'Recent registrations',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                              color: Colors.black87,
+                            ),
+                          ),
                           GestureDetector(
                             onTap: () {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
                                   builder: (_) => const StudentEventsScreen(
-                                      initialTabIndex: 1),
+                                    initialTabIndex: 1,
+                                  ),
                                 ),
                               );
                             },
-                            child: const Text('See All',
-                                style: TextStyle(
-                                    color: kOrange,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600)),
+                            child: const Text(
+                              'See All',
+                              style: TextStyle(
+                                color: kOrange,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -898,9 +904,10 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                       StreamBuilder<QuerySnapshot>(
                         stream: FirebaseFirestore.instance
                             .collection('registrations')
-                            .where('userId',
-                                isEqualTo:
-                                    FirebaseAuth.instance.currentUser?.uid)
+                            .where(
+                              'userId',
+                              isEqualTo: FirebaseAuth.instance.currentUser?.uid,
+                            )
                             .snapshots(),
                         builder: (context, regSnapshot) {
                           if (regSnapshot.connectionState ==
@@ -908,7 +915,9 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                             return const Center(
                               child: Padding(
                                 padding: EdgeInsets.all(16),
-                                child: CircularProgressIndicator(color: kOrange),
+                                child: CircularProgressIndicator(
+                                  color: kOrange,
+                                ),
                               ),
                             );
                           }
@@ -936,7 +945,8 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                                   child: Padding(
                                     padding: EdgeInsets.all(16),
                                     child: CircularProgressIndicator(
-                                        color: kOrange),
+                                      color: kOrange,
+                                    ),
                                   ),
                                 );
                               }
@@ -950,20 +960,27 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                               final displayEvents = events.take(3).toList();
 
                               return Column(
-                                children: displayEvents.asMap().entries.map((entry) {
+                                children: displayEvents.asMap().entries.map((
+                                  entry,
+                                ) {
                                   final index = entry.key;
                                   final doc = entry.value;
                                   final eventData =
                                       doc.data() as Map<String, dynamic>;
 
-                                  final eventDate = eventData['date'] is Timestamp
-                                      ? (eventData['date'] as Timestamp).toDate()
+                                  final eventDate =
+                                      eventData['date'] is Timestamp
+                                      ? (eventData['date'] as Timestamp)
+                                            .toDate()
                                       : DateTime.tryParse(
-                                          eventData['date']?.toString() ?? '');
-                                  final isUpcoming = eventDate != null &&
+                                          eventData['date']?.toString() ?? '',
+                                        );
+                                  final isUpcoming =
+                                      eventDate != null &&
                                       eventDate.isAfter(DateTime.now());
-                                  final badgeText =
-                                      isUpcoming ? 'UPCOMING' : 'PAST';
+                                  final badgeText = isUpcoming
+                                      ? 'UPCOMING'
+                                      : 'PAST';
                                   final badgeColor = isUpcoming
                                       ? const Color(0xFF2196F3)
                                       : Colors.grey;
@@ -986,18 +1003,19 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                                   return Column(
                                     children: [
                                       _EventCard(
-                                        title: eventData['title'] ??
+                                        title:
+                                            eventData['title'] ??
                                             'Untitled Event',
                                         subtitle: displayDate,
                                         badge: badgeText,
                                         badgeColor: badgeColor,
-                                        imageUrl:
-                                            eventData['bannerUrl'] ?? '',
+                                        imageUrl: eventData['bannerUrl'] ?? '',
                                       ),
                                       if (index < displayEvents.length - 1)
                                         Divider(
-                                            height: 1,
-                                            color: Colors.grey.shade100),
+                                          height: 1,
+                                          color: Colors.grey.shade100,
+                                        ),
                                     ],
                                   );
                                 }).toList(),
@@ -1009,74 +1027,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                     ],
                   ),
                 ),
-
-                // ── Log Out Button ──
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 22, 16, 0),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () async {
-                        final confirm = await showDialog<bool>(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            title: const Text('Log Out'),
-                            content: const Text(
-                              'Are you sure you want to log out?',
-                              style: TextStyle(fontSize: 14),
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context, false),
-                                child: Text('Cancel',
-                                    style: TextStyle(color: Colors.grey[600])),
-                              ),
-                              TextButton(
-                                onPressed: () => Navigator.pop(context, true),
-                                style: TextButton.styleFrom(
-                                    foregroundColor: Colors.red),
-                                child: const Text('Log Out'),
-                              ),
-                            ],
-                          ),
-                        );
-
-                        if (confirm != true) return;
-
-                        await FirebaseAuth.instance.signOut();
-                        if (context.mounted) {
-                          Navigator.of(context).pushAndRemoveUntil(
-                            MaterialPageRoute(
-                                builder: (_) => const StudentLogin()),
-                            (route) => false,
-                          );
-                        }
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: Colors.red,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          side: const BorderSide(color: Color(0xFFFFD3D3)),
-                        ),
-                      ),
-                      icon: const Icon(Icons.logout, color: Colors.red, size: 20),
-                      label: const Text(
-                        'Log Out',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.red,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+                // ❌ Removed the Log Out button from here (duplicate).
               ],
             ),
           ),
@@ -1138,11 +1089,14 @@ class PersonalIdentityScreen extends StatelessWidget {
               icon: const Icon(Icons.arrow_back, color: Colors.black),
               onPressed: () => Navigator.pop(context),
             ),
-            title: const Text('Personal Identity',
-                style: TextStyle(
-                    color: Colors.black,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 18)),
+            title: const Text(
+              'Personal Identity',
+              style: TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.w600,
+                fontSize: 18,
+              ),
+            ),
           ),
           body: SingleChildScrollView(
             padding: const EdgeInsets.all(20),
@@ -1165,12 +1119,17 @@ class PersonalIdentityScreen extends StatelessWidget {
                       backgroundColor: kOrange,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
-                    label: const Text('Download ID',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w600, fontSize: 16)),
+                    label: const Text(
+                      'Download ID',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -1227,8 +1186,9 @@ class _IdDownloadPreviewSheetState extends State<_IdDownloadPreviewSheet> {
         key.currentContext?.findRenderObject() as RenderRepaintBoundary?;
     if (boundary == null) return null;
     final ui.Image image = await boundary.toImage(pixelRatio: 3.0);
-    final ByteData? byteData =
-        await image.toByteData(format: ui.ImageByteFormat.png);
+    final ByteData? byteData = await image.toByteData(
+      format: ui.ImageByteFormat.png,
+    );
     if (byteData == null) return null;
     return byteData.buffer.asUint8List();
   }
@@ -1266,9 +1226,7 @@ class _IdDownloadPreviewSheetState extends State<_IdDownloadPreviewSheet> {
                 ),
               ),
               pw.SizedBox(height: 8),
-              pw.Expanded(
-                child: pw.Image(frontImage, fit: pw.BoxFit.contain),
-              ),
+              pw.Expanded(child: pw.Image(frontImage, fit: pw.BoxFit.contain)),
               pw.SizedBox(height: 20),
               pw.Text(
                 'BACK',
@@ -1280,9 +1238,7 @@ class _IdDownloadPreviewSheetState extends State<_IdDownloadPreviewSheet> {
                 ),
               ),
               pw.SizedBox(height: 8),
-              pw.Expanded(
-                child: pw.Image(backImage, fit: pw.BoxFit.contain),
-              ),
+              pw.Expanded(child: pw.Image(backImage, fit: pw.BoxFit.contain)),
             ],
           ),
         ),
@@ -1303,9 +1259,9 @@ class _IdDownloadPreviewSheetState extends State<_IdDownloadPreviewSheet> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isGenerating = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to generate ID PDF: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to generate ID PDF: $e')));
     }
   }
 
@@ -1326,8 +1282,9 @@ class _IdDownloadPreviewSheetState extends State<_IdDownloadPreviewSheet> {
               height: 4,
               margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(
-                  color: Colors.grey[400],
-                  borderRadius: BorderRadius.circular(2)),
+                color: Colors.grey[400],
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
             _IdCardLabel(text: 'FRONT'),
             const SizedBox(height: 8),
@@ -1352,7 +1309,8 @@ class _IdDownloadPreviewSheetState extends State<_IdDownloadPreviewSheet> {
                   foregroundColor: Colors.white,
                   disabledBackgroundColor: kOrange.withOpacity(0.6),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
                 child: _isGenerating
@@ -1364,9 +1322,13 @@ class _IdDownloadPreviewSheetState extends State<_IdDownloadPreviewSheet> {
                           color: Colors.white,
                         ),
                       )
-                    : const Text('Download',
+                    : const Text(
+                        'Download',
                         style: TextStyle(
-                            fontWeight: FontWeight.w600, fontSize: 16)),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 16,
+                        ),
+                      ),
               ),
             ),
           ],
@@ -1430,9 +1392,10 @@ class _IdCard1 extends StatelessWidget {
         border: Border.all(color: const Color(0xFFEAEAEA), width: 1),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 18,
-              offset: const Offset(0, 6))
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
         ],
       ),
       clipBehavior: Clip.antiAlias,
@@ -1455,21 +1418,27 @@ class _IdCard1 extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Text('BULACAN STATE UNIVERSITY',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              color: Colors.black87,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 11,
-                              letterSpacing: 0.5)),
+                      Text(
+                        'BULACAN STATE UNIVERSITY',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.black87,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 11,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
                       SizedBox(height: 2),
-                      Text('OFFICIAL STUDENT IDENTIFICATION',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              color: Colors.grey,
-                              fontWeight: FontWeight.w500,
-                              fontSize: 8,
-                              letterSpacing: 0.8)),
+                      Text(
+                        'OFFICIAL STUDENT IDENTIFICATION',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.grey,
+                          fontWeight: FontWeight.w500,
+                          fontSize: 8,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1515,18 +1484,20 @@ class _IdCard1 extends StatelessWidget {
                         children: [
                           Expanded(
                             child: _IdFieldWidget(
-                                label: 'LAST NAME',
-                                value: profile.lastName.isNotEmpty
-                                    ? profile.lastName.toUpperCase()
-                                    : '—'),
+                              label: 'LAST NAME',
+                              value: profile.lastName.isNotEmpty
+                                  ? profile.lastName.toUpperCase()
+                                  : '—',
+                            ),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
                             child: _IdFieldWidget(
-                                label: 'STUDENT NO.',
-                                value: profile.studentId.isNotEmpty
-                                    ? profile.studentId
-                                    : '—'),
+                              label: 'STUDENT NO.',
+                              value: profile.studentId.isNotEmpty
+                                  ? profile.studentId
+                                  : '—',
+                            ),
                           ),
                         ],
                       ),
@@ -1538,18 +1509,20 @@ class _IdCard1 extends StatelessWidget {
                         children: [
                           Expanded(
                             child: _IdFieldWidget(
-                                label: 'FIRST NAME',
-                                value: profile.firstName.isNotEmpty
-                                    ? profile.firstName.toUpperCase()
-                                    : '—'),
+                              label: 'FIRST NAME',
+                              value: profile.firstName.isNotEmpty
+                                  ? profile.firstName.toUpperCase()
+                                  : '—',
+                            ),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
                             child: _IdFieldWidget(
-                                label: 'PROGRAM',
-                                value: profile.course.isNotEmpty
-                                    ? profile.course.toUpperCase()
-                                    : '—'),
+                              label: 'PROGRAM',
+                              value: profile.course.isNotEmpty
+                                  ? profile.course.toUpperCase()
+                                  : '—',
+                            ),
                           ),
                         ],
                       ),
@@ -1561,18 +1534,20 @@ class _IdCard1 extends StatelessWidget {
                         children: [
                           Expanded(
                             child: _IdFieldWidget(
-                                label: 'MIDDLE NAME',
-                                value: profile.middleName.isNotEmpty
-                                    ? profile.middleName.toUpperCase()
-                                    : '—'),
+                              label: 'MIDDLE NAME',
+                              value: profile.middleName.isNotEmpty
+                                  ? profile.middleName.toUpperCase()
+                                  : '—',
+                            ),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
                             child: _IdFieldWidget(
-                                label: 'MAJOR',
-                                value: profile.major.isNotEmpty
-                                    ? profile.major.toUpperCase()
-                                    : '—'),
+                              label: 'MAJOR',
+                              value: profile.major.isNotEmpty
+                                  ? profile.major.toUpperCase()
+                                  : '—',
+                            ),
                           ),
                         ],
                       ),
@@ -1603,9 +1578,10 @@ class _IdCard2 extends StatelessWidget {
         border: Border.all(color: const Color(0xFFEAEAEA), width: 1),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 18,
-              offset: const Offset(0, 6))
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
         ],
       ),
       clipBehavior: Clip.antiAlias,
@@ -1616,12 +1592,15 @@ class _IdCard2 extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text('ACADEMIC INFORMATION',
-                  style: TextStyle(
-                      color: Colors.grey[500],
-                      fontWeight: FontWeight.w700,
-                      fontSize: 10,
-                      letterSpacing: 1.2)),
+              child: Text(
+                'ACADEMIC INFORMATION',
+                style: TextStyle(
+                  color: Colors.grey[500],
+                  fontWeight: FontWeight.w700,
+                  fontSize: 10,
+                  letterSpacing: 1.2,
+                ),
+              ),
             ),
           ),
 
@@ -1635,18 +1614,20 @@ class _IdCard2 extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _IdFieldWidget(
-                          label: 'YEAR LEVEL',
-                          value: profile.yearLevel.isNotEmpty
-                              ? profile.yearLevel.toUpperCase()
-                              : '—'),
+                        label: 'YEAR LEVEL',
+                        value: profile.yearLevel.isNotEmpty
+                            ? profile.yearLevel.toUpperCase()
+                            : '—',
+                      ),
                       const SizedBox(height: 14),
                       Divider(height: 1, color: Colors.grey.shade100),
                       const SizedBox(height: 14),
                       _IdFieldWidget(
-                          label: 'COLLEGE / DEPARTMENT',
-                          value: profile.department.isNotEmpty
-                              ? profile.department.toUpperCase()
-                              : '—'),
+                        label: 'COLLEGE / DEPARTMENT',
+                        value: profile.department.isNotEmpty
+                            ? profile.department.toUpperCase()
+                            : '—',
+                      ),
                     ],
                   ),
                 ),
@@ -1684,17 +1665,21 @@ class _IdCard2 extends StatelessWidget {
                 Expanded(
                   child: Row(
                     children: [
-                      Icon(Icons.verified_outlined,
-                          size: 13, color: Colors.grey[400]),
+                      Icon(
+                        Icons.verified_outlined,
+                        size: 13,
+                        color: Colors.grey[400],
+                      ),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
                           'VALID FOR A.Y. ${_currentAcademicYear()} · NON-TRANSFERABLE',
                           style: TextStyle(
-                              fontSize: 9,
-                              letterSpacing: 0.3,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.grey[400]),
+                            fontSize: 9,
+                            letterSpacing: 0.3,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey[400],
+                          ),
                         ),
                       ),
                     ],
@@ -1716,9 +1701,10 @@ class _IdCard2 extends StatelessWidget {
                   height: 32,
                   fit: BoxFit.contain,
                   errorBuilder: (_, __, ___) => Icon(
-                      Icons.local_fire_department,
-                      size: 18,
-                      color: Colors.grey[400]),
+                    Icons.local_fire_department,
+                    size: 18,
+                    color: Colors.grey[400],
+                  ),
                 ),
               ],
             ),
@@ -1780,11 +1766,14 @@ class _EditField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label,
-            style: const TextStyle(
-                fontSize: 13,
-                color: Colors.black87,
-                fontWeight: FontWeight.w500)),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 13,
+            color: Colors.black87,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
         const SizedBox(height: 6),
         TextFormField(
           controller: controller,
@@ -1792,25 +1781,29 @@ class _EditField extends StatelessWidget {
           keyboardType: keyboardType,
           obscureText: isPassword && !showPassword,
           style: TextStyle(
-              fontSize: 14,
-              color: readOnly ? Colors.grey : Colors.black87),
+            fontSize: 14,
+            color: readOnly ? Colors.grey : Colors.black87,
+          ),
           decoration: InputDecoration(
             prefixIcon: Icon(icon, size: 18, color: Colors.grey),
             suffixIcon: isPassword
                 ? IconButton(
                     icon: Icon(
-                        showPassword
-                            ? Icons.visibility_off_outlined
-                            : Icons.visibility_outlined,
-                        size: 18,
-                        color: Colors.grey),
+                      showPassword
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                      size: 18,
+                      color: Colors.grey,
+                    ),
                     onPressed: onTogglePassword,
                   )
                 : null,
             filled: true,
             fillColor: readOnly ? const Color(0xFFF8F8F8) : Colors.white,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 14,
+            ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
               borderSide: BorderSide(color: Colors.grey.shade200),
@@ -1850,11 +1843,14 @@ class _MajorDropdownField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label,
-            style: const TextStyle(
-                fontSize: 13,
-                color: Colors.black87,
-                fontWeight: FontWeight.w500)),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 13,
+            color: Colors.black87,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
         const SizedBox(height: 6),
         DropdownButtonFormField<String>(
           value: value,
@@ -1863,12 +1859,13 @@ class _MajorDropdownField extends StatelessWidget {
           decoration: InputDecoration(
             prefixIcon: Icon(icon, size: 18, color: Colors.grey),
             hintText: 'Select major',
-            hintStyle:
-                TextStyle(fontSize: 14, color: Colors.grey.shade400),
+            hintStyle: TextStyle(fontSize: 14, color: Colors.grey.shade400),
             filled: true,
             fillColor: Colors.white,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 14,
+            ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
               borderSide: BorderSide(color: Colors.grey.shade200),
@@ -1883,10 +1880,12 @@ class _MajorDropdownField extends StatelessWidget {
             ),
           ),
           items: options
-              .map((option) => DropdownMenuItem<String>(
-                    value: option,
-                    child: Text(option),
-                  ))
+              .map(
+                (option) => DropdownMenuItem<String>(
+                  value: option,
+                  child: Text(option),
+                ),
+              )
               .toList(),
           onChanged: onChanged,
         ),
@@ -1905,19 +1904,25 @@ class _IdFieldWidget extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label,
-            style: TextStyle(
-                fontSize: 9,
-                color: Colors.grey[400],
-                letterSpacing: 0.6,
-                fontWeight: FontWeight.w600)),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 9,
+            color: Colors.grey[400],
+            letterSpacing: 0.6,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         const SizedBox(height: 3),
-        Text(value,
-            style: const TextStyle(
-                fontSize: 13.5,
-                fontWeight: FontWeight.w700,
-                color: Colors.black87,
-                height: 1.2)),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 13.5,
+            fontWeight: FontWeight.w700,
+            color: Colors.black87,
+            height: 1.2,
+          ),
+        ),
       ],
     );
   }
@@ -1927,8 +1932,11 @@ class _ContactRow extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
-  const _ContactRow(
-      {required this.icon, required this.label, required this.value});
+  const _ContactRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1941,18 +1949,24 @@ class _ContactRow extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label,
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey[500],
-                      letterSpacing: 0.5,
-                      fontWeight: FontWeight.w600)),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.grey[500],
+                  letterSpacing: 0.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               const SizedBox(height: 3),
-              Text(value.isNotEmpty ? value : '—',
-                  style: const TextStyle(
-                      fontSize: 14,
-                      color: Colors.black87,
-                      fontWeight: FontWeight.w500)),
+              Text(
+                value.isNotEmpty ? value : '—',
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: Colors.black87,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ],
           ),
         ),
@@ -1979,8 +1993,7 @@ class _EventCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      contentPadding:
-          const EdgeInsets.symmetric(vertical: 8, horizontal: 0),
+      contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 0),
       leading: ClipRRect(
         borderRadius: BorderRadius.circular(10),
         child: Image.network(
@@ -1999,27 +2012,36 @@ class _EventCard extends StatelessWidget {
           ),
         ),
       ),
-      title: Text(title,
-          style: const TextStyle(
-              fontWeight: FontWeight.w700, fontSize: 14, color: Colors.black87)),
+      title: Text(
+        title,
+        style: const TextStyle(
+          fontWeight: FontWeight.w700,
+          fontSize: 14,
+          color: Colors.black87,
+        ),
+      ),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(subtitle,
-              style: const TextStyle(fontSize: 12, color: Colors.grey)),
+          Text(
+            subtitle,
+            style: const TextStyle(fontSize: 12, color: Colors.grey),
+          ),
           const SizedBox(height: 4),
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
               color: badgeColor.withOpacity(0.15),
               borderRadius: BorderRadius.circular(4),
             ),
-            child: Text(badge,
-                style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: badgeColor)),
+            child: Text(
+              badge,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: badgeColor,
+              ),
+            ),
           ),
         ],
       ),
@@ -2041,11 +2063,7 @@ class EditProfileScreen extends StatefulWidget {
 }
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
-  static const List<String> kMajorOptions = [
-    'WMAD',
-    'DBA',
-    'Infrastructure',
-  ];
+  static const List<String> kMajorOptions = ['WMAD', 'DBA', 'Infrastructure'];
 
   late final TextEditingController _firstNameCtrl;
   late final TextEditingController _middleNameCtrl;
@@ -2109,11 +2127,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       );
 
       // The update() method now automatically updates all registrations
-
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not save profile: $e'), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text('Could not save profile: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
@@ -2121,8 +2141,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      final displayName =
-          [newFirst, newMiddle, newLast].where((p) => p.isNotEmpty).join(' ');
+      final displayName = [
+        newFirst,
+        newMiddle,
+        newLast,
+      ].where((p) => p.isNotEmpty).join(' ');
       await user.updateDisplayName(displayName);
     }
     if (!mounted) return;
@@ -2130,7 +2153,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     // Show success message with info about registrations update
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Profile updated successfully! All registrations have been updated.'),
+        content: Text(
+          'Profile updated successfully! All registrations have been updated.',
+        ),
         backgroundColor: kOrange,
         duration: Duration(seconds: 3),
       ),
@@ -2151,11 +2176,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           icon: const Icon(Icons.arrow_back, color: Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Profile',
-            style: TextStyle(
-                color: Colors.black,
-                fontWeight: FontWeight.w600,
-                fontSize: 18)),
+        title: const Text(
+          'Profile',
+          style: TextStyle(
+            color: Colors.black,
+            fontWeight: FontWeight.w600,
+            fontSize: 18,
+          ),
+        ),
       ),
       body: SingleChildScrollView(
         child: Column(
@@ -2165,7 +2193,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               builder: (_, __) => Container(
                 color: Colors.white,
                 padding: const EdgeInsets.symmetric(
-                    vertical: 20, horizontal: 16),
+                  vertical: 20,
+                  horizontal: 16,
+                ),
                 child: Column(
                   children: [
                     Stack(
@@ -2176,51 +2206,66 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             color: const Color(0xFFF5C8A0),
-                            border:
-                                Border.all(color: Colors.white, width: 3),
+                            border: Border.all(color: Colors.white, width: 3),
                           ),
                           child: ClipOval(
                             child: widget.profile.photoUrl.isNotEmpty
                                 ? _ProfileImage(
                                     photoUrl: widget.profile.photoUrl,
-                                    errorBuilder: (_, __, ___) =>
-                                        const Icon(Icons.person,
-                                            size: 40, color: Colors.white),
+                                    errorBuilder: (_, __, ___) => const Icon(
+                                      Icons.person,
+                                      size: 40,
+                                      color: Colors.white,
+                                    ),
                                   )
-                                : const Icon(Icons.person,
-                                    size: 40, color: Colors.white),
+                                : const Icon(
+                                    Icons.person,
+                                    size: 40,
+                                    color: Colors.white,
+                                  ),
                           ),
                         ),
                         Positioned(
                           bottom: 0,
                           right: 0,
                           child: GestureDetector(
-                            onTap: () => _pickAndUploadPhoto(
-                                context, widget.profile),
+                            onTap: () =>
+                                _pickAndUploadPhoto(context, widget.profile),
                             child: Container(
                               width: 24,
                               height: 24,
                               decoration: const BoxDecoration(
-                                  color: kOrange, shape: BoxShape.circle),
-                              child: const Icon(Icons.edit,
-                                  color: Colors.white, size: 13),
+                                color: kOrange,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.edit,
+                                color: Colors.white,
+                                size: 13,
+                              ),
                             ),
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 10),
-                    Text(widget.profile.fullName,
-                        style: const TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold)),
+                    Text(
+                      widget.profile.fullName,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     const SizedBox(height: 2),
-                    Text(widget.profile.studentId,
-                        style: const TextStyle(
-                            fontSize: 12, color: Colors.grey)),
+                    Text(
+                      widget.profile.studentId,
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
                     const SizedBox(height: 2),
-                    Text(widget.profile.email,
-                        style:
-                            const TextStyle(fontSize: 12, color: kOrange)),
+                    Text(
+                      widget.profile.email,
+                      style: const TextStyle(fontSize: 12, color: kOrange),
+                    ),
                   ],
                 ),
               ),
@@ -2234,9 +2279,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Personal Information',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 15)),
+                  const Text(
+                    'Personal Information',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  ),
                   const SizedBox(height: 16),
                   _EditField(
                     label: 'First Name',
@@ -2259,7 +2305,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   _EditField(
                     label: 'Student ID',
                     controller: TextEditingController(
-                        text: widget.profile.studentId),
+                      text: widget.profile.studentId,
+                    ),
                     icon: Icons.badge_outlined,
                     readOnly: true,
                   ),
@@ -2282,9 +2329,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('ID Information',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 15)),
+                  const Text(
+                    'ID Information',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  ),
                   const SizedBox(height: 16),
                   _EditField(
                     label: 'Course / Program',
@@ -2325,9 +2373,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Contact Information',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 15)),
+                  const Text(
+                    'Contact Information',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  ),
                   const SizedBox(height: 16),
                   _EditField(
                     label: 'Mobile Number',
@@ -2357,12 +2406,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     backgroundColor: kOrange,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
-                  child: const Text('Update Profile',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w600, fontSize: 16)),
+                  child: const Text(
+                    'Update Profile',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                  ),
                 ),
               ),
             ),
@@ -2375,183 +2426,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Settings Screen
+// Settings Screen — cleaned up
 // ─────────────────────────────────────────────────────────────
 class SettingsScreen extends StatefulWidget {
   final ProfileModel profile;
 
-  const SettingsScreen({
-    super.key,
-    required this.profile,
-  });
+  const SettingsScreen({super.key, required this.profile});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final _currentPwCtrl = TextEditingController();
-  final _newPwCtrl = TextEditingController();
-  final _confirmPwCtrl = TextEditingController();
-
-  bool _showCurrentPw = false;
-  bool _showNewPw = false;
-  bool _showConfirmPw = false;
-  bool _isLoading = false;
-  String _appVersion = '...';
-  bool _isFixingRegistrations = false;
-
-  @override
-  void initState() {
-    super.initState();
-    getAppVersionLabel().then((v) {
-      if (mounted) setState(() => _appVersion = v);
-    });
-  }
-
-  @override
-  void dispose() {
-    _currentPwCtrl.dispose();
-    _newPwCtrl.dispose();
-    _confirmPwCtrl.dispose();
-    super.dispose();
-  }
-
-  // 🔥 NEW: Manual fix for all registrations
-  Future<void> _fixAllRegistrations() async {
-    setState(() => _isFixingRegistrations = true);
-
-    try {
-      await widget.profile.fixAllRegistrationsManually();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ All registrations fixed successfully!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Error fixing registrations: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isFixingRegistrations = false);
-    }
-  }
-
-  Future<void> _changePassword() async {
-    final current = _currentPwCtrl.text.trim();
-    final newPw = _newPwCtrl.text.trim();
-    final confirm = _confirmPwCtrl.text.trim();
-
-    if (current.isEmpty || newPw.isEmpty || confirm.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please fill in all password fields'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    if (newPw.length < 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('New password must be at least 6 characters'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    if (newPw != confirm) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('New passwords do not match'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    setState(() => _isLoading = true);
-
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null || user.email == null) {
-        throw Exception('User not logged in');
-      }
-
-      final credential = EmailAuthProvider.credential(
-        email: user.email!,
-        password: current,
-      );
-      await user.reauthenticateWithCredential(credential);
-
-      await user.updatePassword(newPw);
-
-      await FirebaseFirestore.instance
-          .collection('students')
-          .doc(user.uid)
-          .set({'tempPassword': null}, SetOptions(merge: true));
-
-      _currentPwCtrl.clear();
-      _newPwCtrl.clear();
-      _confirmPwCtrl.clear();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Password updated successfully!'),
-            backgroundColor: kOrange,
-          ),
-        );
-      }
-    } on FirebaseAuthException catch (e) {
-      String message;
-      switch (e.code) {
-        case 'wrong-password':
-        case 'invalid-credential':
-          message = 'Current password is incorrect. Please try again.';
-          break;
-        case 'requires-recent-login':
-          message = 'Session expired. Please log out, log back in, then try again.';
-          break;
-        case 'weak-password':
-          message = 'New password is too weak. Use at least 6 characters.';
-          break;
-        case 'user-disabled':
-          message = 'This account has been disabled.';
-          break;
-        case 'too-many-requests':
-          message = 'Too many failed attempts. Please wait a moment and try again.';
-          break;
-        default:
-          message = 'Failed to update password. (${e.code})';
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message), backgroundColor: Colors.red),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
   Widget _buildSectionHeader(String title) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -2610,65 +2496,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           subtitle,
           style: TextStyle(fontSize: 12, color: Colors.grey[500]),
         ),
-        trailing: trailing ??
+        trailing:
+            trailing ??
             const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
         onTap: onTap,
       ),
-    );
-  }
-
-  Widget _buildPasswordField({
-    required String label,
-    required TextEditingController controller,
-    required bool showPassword,
-    required VoidCallback onToggle,
-    String? hintText,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: Colors.black87,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.grey.shade200),
-          ),
-          child: TextFormField(
-            controller: controller,
-            obscureText: !showPassword,
-            style: const TextStyle(fontSize: 14),
-            decoration: InputDecoration(
-              hintText: hintText ?? 'Enter password',
-              hintStyle: TextStyle(color: Colors.grey[400], fontSize: 13),
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 14,
-              ),
-              suffixIcon: IconButton(
-                icon: Icon(
-                  showPassword
-                      ? Icons.visibility_off_outlined
-                      : Icons.visibility_outlined,
-                  size: 20,
-                  color: Colors.grey[400],
-                ),
-                onPressed: onToggle,
-                padding: const EdgeInsets.all(8),
-              ),
-            ),
-          ),
-        ),
-      ],
     );
   }
 
@@ -2853,141 +2685,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     );
                   },
                 ),
-                const SizedBox(height: 8),
-
-                // 🔥 NEW: Fix Registrations Button
-                _buildSettingsTile(
-                  icon: Icons.sync,
-                  title: 'Fix Registrations',
-                  subtitle: 'Update all registrations with your current name',
-                  onTap: _fixAllRegistrations,
-                  iconColor: Colors.purple,
-                  trailing: _isFixingRegistrations
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
-                ),
-                const SizedBox(height: 8),
-
-                // ── Change Password Card ──
-                Container(
-                  margin: const EdgeInsets.all(16),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.grey.withOpacity(0.04),
-                        blurRadius: 4,
-                        offset: const Offset(0, 1),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: kOrange.withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(
-                              Icons.lock_outline,
-                              color: kOrange,
-                              size: 18,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          const Text(
-                            'Change Password',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.black87,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      _buildPasswordField(
-                        label: 'Current Password',
-                        controller: _currentPwCtrl,
-                        showPassword: _showCurrentPw,
-                        onToggle: () =>
-                            setState(() => _showCurrentPw = !_showCurrentPw),
-                        hintText: 'Enter current password',
-                      ),
-                      const SizedBox(height: 12),
-                      _buildPasswordField(
-                        label: 'New Password',
-                        controller: _newPwCtrl,
-                        showPassword: _showNewPw,
-                        onToggle: () =>
-                            setState(() => _showNewPw = !_showNewPw),
-                        hintText: 'Enter new password (min 6 chars)',
-                      ),
-                      const SizedBox(height: 12),
-                      _buildPasswordField(
-                        label: 'Confirm New Password',
-                        controller: _confirmPwCtrl,
-                        showPassword: _showConfirmPw,
-                        onToggle: () =>
-                            setState(() => _showConfirmPw = !_showConfirmPw),
-                        hintText: 'Confirm your new password',
-                      ),
-                      const SizedBox(height: 16),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: _isLoading ? null : _changePassword,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: kOrange,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            disabledBackgroundColor: kOrange.withOpacity(0.5),
-                          ),
-                          child: _isLoading
-                              ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2.4,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Text(
-                                  'Update Password',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 15,
-                                  ),
-                                ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // ── Preferences ──
-                _buildSectionHeader('PREFERENCES'),
-                _buildSettingsTile(
-                  icon: Icons.notifications_outlined,
-                  title: 'Notifications',
-                  subtitle: 'Manage your notification preferences',
-                  onTap: () => openNotificationSettings(context),
-                ),
-                const SizedBox(height: 8),
+                // ❌ Removed "Fix Registrations" tile – admin only.
+                // ❌ Removed "Change Password" inline form – moved to PrivacySecurityScreen.
+                // ❌ Removed "Notifications" tile – placeholder, not implemented.
 
                 // ── Support ──
                 _buildSectionHeader('SUPPORT'),
@@ -2995,8 +2695,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   icon: Icons.help_outline,
                   title: 'Help & Support',
                   subtitle: 'Get assistance and FAQs',
-                  onTap: () => launchSupportEmail(context,
-                      subject: 'UPRISE Support Request'),
+                  onTap: () => launchSupportEmail(
+                    context,
+                    subject: 'UPRISE Support Request',
+                  ),
                 ),
                 const SizedBox(height: 8),
 
@@ -3013,28 +2715,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _buildSettingsTile(
                   icon: Icons.info_outline,
                   title: 'About',
-                  subtitle: 'BulSU CICT event management system',
-                  onTap: () {},
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: kOrange.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      _appVersion,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: kOrange,
-                      ),
-                    ),
-                  ),
+                  subtitle: 'App info & privacy policy',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const AboutScreen()),
+                    );
+                  },
                 ),
                 const SizedBox(height: 8),
 
-                // ── Logout ──
+                // ── Logout (only here now) ──
                 Container(
                   margin: const EdgeInsets.symmetric(horizontal: 16),
                   width: double.infinity,
@@ -3054,14 +2745,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.pop(context, false),
-                              child: Text('Cancel',
-                                  style:
-                                      TextStyle(color: Colors.grey[600])),
+                              child: Text(
+                                'Cancel',
+                                style: TextStyle(color: Colors.grey[600]),
+                              ),
                             ),
                             TextButton(
                               onPressed: () => Navigator.pop(context, true),
                               style: TextButton.styleFrom(
-                                  foregroundColor: Colors.red),
+                                foregroundColor: Colors.red,
+                              ),
                               child: const Text('Logout'),
                             ),
                           ],
@@ -3074,7 +2767,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       if (context.mounted) {
                         Navigator.of(context).pushAndRemoveUntil(
                           MaterialPageRoute(
-                              builder: (_) => const StudentLogin()),
+                            builder: (_) => const StudentLogin(),
+                          ),
                           (route) => false,
                         );
                       }
@@ -3085,13 +2779,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       elevation: 2,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                     icon: const Icon(Icons.logout, size: 20),
                     label: const Text(
                       'Log Out',
                       style: TextStyle(
-                          fontWeight: FontWeight.w600, fontSize: 15),
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                      ),
                     ),
                   ),
                 ),

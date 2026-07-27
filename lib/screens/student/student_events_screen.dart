@@ -121,7 +121,7 @@ class _StudentEventsScreenState extends State<StudentEventsScreen>
           dividerColor: Colors.transparent,
           tabs: const [
             Tab(text: 'Calendar'),
-            Tab(text: 'Upcoming'),
+            Tab(text: 'Events'),
             Tab(text: 'Registered'),
             Tab(text: 'Evaluations'),
           ],
@@ -351,6 +351,123 @@ class _UpcomingTabState extends State<UpcomingTab>
 
   bool _compactView = false;
 
+  // ── Status filter (Upcoming / Ongoing / Past) ──
+  _RegStatus _selectedFilter = _RegStatus.upcoming;
+
+  DateTime? _combineDateAndTime(DateTime date, String? timeStr) {
+    if (timeStr == null || timeStr.trim().isEmpty) return null;
+    final cleaned = timeStr.trim().toUpperCase();
+    final match =
+        RegExp(r'^(\d{1,2}):(\d{2})\s*(AM|PM)?$').firstMatch(cleaned);
+    if (match == null) return null;
+    int hour = int.parse(match.group(1)!);
+    final minute = int.parse(match.group(2)!);
+    final meridiem = match.group(3);
+    if (meridiem == 'PM' && hour != 12) hour += 12;
+    if (meridiem == 'AM' && hour == 12) hour = 0;
+    return DateTime(date.year, date.month, date.day, hour, minute);
+  }
+
+  _RegStatus _statusFor(EventModel event) {
+    final now = DateTime.now();
+    final dynamic raw = event;
+    String? startTimeStr;
+    String? endTimeStr;
+    try {
+      startTimeStr = raw.startTime as String?;
+    } catch (_) {}
+    try {
+      endTimeStr = raw.endTime as String?;
+    } catch (_) {}
+
+    final start = _combineDateAndTime(event.date, startTimeStr) ?? event.date;
+    final end = _combineDateAndTime(event.date, endTimeStr) ??
+        DateTime(event.date.year, event.date.month, event.date.day, 23, 59);
+
+    if (now.isBefore(start)) return _RegStatus.upcoming;
+    if (now.isAfter(end)) return _RegStatus.completed;
+    return _RegStatus.ongoing;
+  }
+
+  String get _filterLabel {
+    switch (_selectedFilter) {
+      case _RegStatus.upcoming:
+        return 'Upcoming';
+      case _RegStatus.ongoing:
+        return 'Ongoing';
+      case _RegStatus.completed:
+        return 'Past';
+    }
+  }
+
+  String get _emptyStateMessage {
+    switch (_selectedFilter) {
+      case _RegStatus.upcoming:
+        return 'No upcoming events';
+      case _RegStatus.ongoing:
+        return 'No ongoing events';
+      case _RegStatus.completed:
+        return 'No past events';
+    }
+  }
+
+  IconData get _emptyStateIcon {
+    switch (_selectedFilter) {
+      case _RegStatus.upcoming:
+        return Icons.event_available;
+      case _RegStatus.ongoing:
+        return Icons.event_repeat;
+      case _RegStatus.completed:
+        return Icons.event_busy;
+    }
+  }
+
+  Widget _buildFilterDropdown() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<_RegStatus>(
+          value: _selectedFilter,
+          isDense: true,
+          icon: const Icon(
+            Icons.keyboard_arrow_down_rounded,
+            size: 18,
+            color: AppColors.primaryDark,
+          ),
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
+          ),
+          items: const [
+            DropdownMenuItem(
+              value: _RegStatus.upcoming,
+              child: Text('Upcoming'),
+            ),
+            DropdownMenuItem(
+              value: _RegStatus.ongoing,
+              child: Text('Ongoing'),
+            ),
+            DropdownMenuItem(
+              value: _RegStatus.completed,
+              child: Text('Past'),
+            ),
+          ],
+          onChanged: (value) {
+            if (value != null) {
+              setState(() => _selectedFilter = value);
+            }
+          },
+        ),
+      ),
+    );
+  }
+
   void _openDetail(EventModel event) {
     Navigator.push(
       context,
@@ -385,28 +502,17 @@ class _UpcomingTabState extends State<UpcomingTab>
               );
             }
 
-            final allEvents = snap.data!.docs
-                .map((d) => EventModel.fromFirestore(d))
-                .where((e) => !e.isPast)
+            final allApprovedEvents =
+                snap.data!.docs.map((d) => EventModel.fromFirestore(d)).toList();
+
+            final allEvents = allApprovedEvents
+                .where((e) => _statusFor(e) == _selectedFilter)
                 .toList();
 
-            if (allEvents.isEmpty) {
-              return const Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.event_available, size: 64, color: Colors.grey),
-                    SizedBox(height: 12),
-                    Text(
-                      'No upcoming events',
-                      style: TextStyle(
-                          fontSize: 15,
-                          color: Colors.grey,
-                          fontWeight: FontWeight.w500),
-                    ),
-                  ],
-                ),
-              );
+            // Past events read best most-recent-first; upcoming/ongoing stay
+            // in ascending date order (already sorted by the Firestore query).
+            if (_selectedFilter == _RegStatus.completed) {
+              allEvents.sort((a, b) => b.date.compareTo(a.date));
             }
 
             return Column(
@@ -416,14 +522,16 @@ class _UpcomingTabState extends State<UpcomingTab>
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Row(
                     children: [
-                      const Text(
-                        'Upcoming Events',
-                        style: TextStyle(
+                      Text(
+                        '$_filterLabel Events',
+                        style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
                             color: Colors.black87),
                       ),
                       const Spacer(),
+                      _buildFilterDropdown(),
+                      const SizedBox(width: 8),
                       IconButton(
                         icon: Icon(
                           _compactView
@@ -442,9 +550,27 @@ class _UpcomingTabState extends State<UpcomingTab>
                   ),
                 ),
                 Expanded(
-                  child: _compactView
-                      ? _buildCompactGrid(allEvents, regIds)
-                      : _buildDetailedList(allEvents, regIds),
+                  child: allEvents.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(_emptyStateIcon,
+                                  size: 64, color: Colors.grey),
+                              const SizedBox(height: 12),
+                              Text(
+                                _emptyStateMessage,
+                                style: const TextStyle(
+                                    fontSize: 15,
+                                    color: Colors.grey,
+                                    fontWeight: FontWeight.w500),
+                              ),
+                            ],
+                          ),
+                        )
+                      : (_compactView
+                          ? _buildCompactGrid(allEvents, regIds)
+                          : _buildDetailedList(allEvents, regIds)),
                 ),
               ],
             );
@@ -922,6 +1048,7 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
                   selectedForegroundColor: Colors.white,
                   foregroundColor: Colors.grey.shade600,
                   backgroundColor: Colors.grey.shade100,
+                  side: BorderSide.none,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -2266,7 +2393,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       if (mounted) {
         setState(() => _checkingFeedback = false);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Could not load feedback status: $e'),
+          content: Text('Could not load  k status: $e'),
           backgroundColor: Colors.orange,
           duration: const Duration(seconds: 4),
         ));

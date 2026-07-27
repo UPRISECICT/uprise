@@ -1,6 +1,7 @@
 // lib/screens/student/student_login.dart
 //
 // STUDENT LOGIN — Gray Card Background
+// Auto-triggers "Forgot Password" flow after 3 consecutive failed attempts.
 //
 
 import 'package:flutter/material.dart';
@@ -28,6 +29,10 @@ class _StudentLoginState extends State<StudentLogin> {
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _rememberMe = false;
+
+  // ── Failed attempt tracking ──
+  int _failedAttempts = 0;
+  static const int _maxFailedAttempts = 3;
 
   final AuthService _auth = AuthService();
 
@@ -58,6 +63,9 @@ class _StudentLoginState extends State<StudentLogin> {
       final user = await _auth.loginWithEmail(email, password);
 
       if (user != null) {
+        // ✅ Successful login — reset the failed-attempt counter
+        _failedAttempts = 0;
+
         final role = await _auth.getUserRole(user.uid);
         await activity_log.ActivityLogger.log(
           action: 'Student login',
@@ -70,7 +78,7 @@ class _StudentLoginState extends State<StudentLogin> {
       if (!mounted) return;
 
       if (user == null) {
-        _showError('Invalid email or password');
+        _handleFailedAttempt(email, 'Invalid email or password');
       } else {
         final mustChange = await _auth.needsPasswordChange(user.uid);
 
@@ -115,13 +123,34 @@ class _StudentLoginState extends State<StudentLogin> {
         severity: 'warning',
         details: {'email': email, 'reason': e.code},
       );
-      _showError(message);
+      _handleFailedAttempt(email, message);
     } catch (_) {
-      if (mounted) _showError('An error occurred. Please try again.');
+      if (mounted) {
+        _handleFailedAttempt(email, 'An error occurred. Please try again.');
+      }
     }
 
     if (!mounted) return;
     setState(() => _isLoading = false);
+  }
+
+  // ── Handles a failed attempt: counts it, and after 3 auto-opens reset ──
+  void _handleFailedAttempt(String email, String errorMessage) {
+    _failedAttempts++;
+
+    if (_failedAttempts >= _maxFailedAttempts) {
+      _failedAttempts = 0; // reset so it doesn't keep firing every time
+      _showError('Too many failed attempts. Let\'s reset your password.');
+      // Small delay so the SnackBar is visible before the dialog pops up
+      Future.delayed(const Duration(milliseconds: 400), () {
+        if (mounted) _openForgotPasswordDialog(prefillEmail: email);
+      });
+    } else {
+      final remaining = _maxFailedAttempts - _failedAttempts;
+      _showError(
+        '$errorMessage ($remaining attempt${remaining == 1 ? '' : 's'} left)',
+      );
+    }
   }
 
   void _openGuestGateway() {
@@ -142,6 +171,198 @@ class _StudentLoginState extends State<StudentLogin> {
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
+    );
+  }
+
+  void _showSuccess(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: GoogleFonts.beVietnamPro(fontSize: 13)),
+        backgroundColor: Colors.green.shade700,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  // ── Forgot Password ──────────────────────────────────────────
+  void _openForgotPasswordDialog({String? prefillEmail}) {
+    final resetEmailCtrl = TextEditingController(
+      text: prefillEmail ?? _emailCtrl.text.trim(),
+    );
+    bool isSending = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            Future<void> handleSendResetEmail() async {
+              final email = resetEmailCtrl.text.trim();
+
+              if (email.isEmpty) {
+                _showError('Please enter your email address');
+                return;
+              }
+              if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
+                _showError('Please enter a valid email address');
+                return;
+              }
+
+              setDialogState(() => isSending = true);
+
+              try {
+                await FirebaseAuth.instance.sendPasswordResetEmail(
+                  email: email,
+                );
+
+                await activity_log.ActivityLogger.log(
+                  action: 'Password reset requested',
+                  module: 'Authentication',
+                  severity: 'security',
+                  details: {'email': email},
+                );
+
+                if (dialogContext.mounted) {
+                  Navigator.of(dialogContext).pop();
+                }
+                _showSuccess('Password reset link sent to $email');
+              } on FirebaseAuthException catch (e) {
+                String message = 'Could not send reset email. Please try again.';
+                switch (e.code) {
+                  case 'user-not-found':
+                    message = 'No account found with this email';
+                    break;
+                  case 'invalid-email':
+                    message = 'Please enter a valid email address';
+                    break;
+                  case 'too-many-requests':
+                    message = 'Too many attempts. Please wait and try again.';
+                    break;
+                }
+                setDialogState(() => isSending = false);
+                _showError(message);
+              } catch (_) {
+                setDialogState(() => isSending = false);
+                _showError('An error occurred. Please try again.');
+              }
+            }
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: Text(
+                'Reset Password',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primaryDark,
+                ),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Enter your email address and we\'ll send you a link to reset your password.',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 13,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: resetEmailCtrl,
+                    keyboardType: TextInputType.emailAddress,
+                    autofocus: true,
+                    enabled: !isSending,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 15,
+                      color: Colors.black87,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'student@outlook.com',
+                      hintStyle: GoogleFonts.beVietnamPro(
+                        fontSize: 14,
+                        color: Colors.grey.shade400,
+                      ),
+                      prefixIcon: Icon(
+                        Icons.email_outlined,
+                        color: Colors.grey.shade500,
+                        size: 20,
+                      ),
+                      filled: true,
+                      fillColor: Colors.grey.shade50,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.shade300),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.shade300),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: AppColors.primaryDark,
+                          width: 2,
+                        ),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 14,
+                      ),
+                    ),
+                    onSubmitted: (_) => handleSendResetEmail(),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSending
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(),
+                  child: Text(
+                    'Cancel',
+                    style: GoogleFonts.beVietnamPro(
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: isSending ? null : handleSendResetEmail,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryDark,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  child: isSending
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2.2,
+                          ),
+                        )
+                      : Text(
+                          'Send Link',
+                          style: GoogleFonts.beVietnamPro(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -417,9 +638,7 @@ class _StudentLoginState extends State<StudentLogin> {
                               ],
                             ),
                             TextButton(
-                              onPressed: () {
-                                // Forgot password functionality
-                              },
+                              onPressed: _openForgotPasswordDialog,
                               style: TextButton.styleFrom(
                                 padding: EdgeInsets.zero,
                                 minimumSize: const Size(0, 0),

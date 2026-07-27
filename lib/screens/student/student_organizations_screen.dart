@@ -38,6 +38,9 @@ class _StudentOrganizationsScreenState extends State<StudentOrganizationsScreen>
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
 
+  // ── View format toggle (grid / list), same idea as the Events tab ──
+  bool _gridView = true;
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -153,7 +156,7 @@ class _StudentOrganizationsScreenState extends State<StudentOrganizationsScreen>
           ),
         ),
 
-        // ── Organizations Grid ──
+        // ── Organizations Grid / List ──
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
@@ -237,31 +240,45 @@ class _StudentOrganizationsScreenState extends State<StudentOrganizationsScreen>
                 );
               }
 
-              return GridView.builder(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  childAspectRatio: 0.85,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                ),
-                itemCount: docs.length,
-                itemBuilder: (context, index) {
-                  final doc = docs[index];
-                  final org = doc.data() as Map<String, dynamic>;
-                  final name = org['name'] ?? 'Organization';
-                  final description = org['description'] ?? '';
-                  final logoUrl = org['logoUrl'] as String?;
-                  final category = org['category'] ?? '';
-
-                  return _OrganizationCard(
-                    id: doc.id,
-                    name: name,
-                    description: description,
-                    logoUrl: logoUrl,
-                    category: category,
-                  );
-                },
+              return Column(
+                children: [
+                  // ── Count + view-format toggle (grid / list) ──
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                    child: Row(
+                      children: [
+                        Text(
+                          '${docs.length} organization${docs.length == 1 ? '' : 's'}',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: _UiTokens.mutedText,
+                          ),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          icon: Icon(
+                            _gridView
+                                ? Icons.view_list_rounded
+                                : Icons.grid_view_rounded,
+                            color: AppColors.primaryDark,
+                          ),
+                          tooltip: _gridView
+                              ? 'Switch to list view'
+                              : 'Switch to grid view',
+                          onPressed: () {
+                            setState(() => _gridView = !_gridView);
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: _gridView
+                        ? _buildGrid(docs)
+                        : _buildList(docs),
+                  ),
+                ],
               );
             },
           ),
@@ -269,10 +286,65 @@ class _StudentOrganizationsScreenState extends State<StudentOrganizationsScreen>
       ],
     );
   }
+
+  Widget _buildGrid(List<QueryDocumentSnapshot> docs) {
+    return GridView.builder(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        childAspectRatio: 0.85,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+      ),
+      itemCount: docs.length,
+      itemBuilder: (context, index) {
+        final doc = docs[index];
+        final org = doc.data() as Map<String, dynamic>;
+        final name = org['name'] ?? 'Organization';
+        final description = org['description'] ?? '';
+        final logoUrl = org['logoUrl'] as String?;
+        final category = org['category'] ?? '';
+
+        return _OrganizationCard(
+          id: doc.id,
+          name: name,
+          description: description,
+          logoUrl: logoUrl,
+          category: category,
+        );
+      },
+    );
+  }
+
+  Widget _buildList(List<QueryDocumentSnapshot> docs) {
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      itemCount: docs.length,
+      itemBuilder: (context, index) {
+        final doc = docs[index];
+        final org = doc.data() as Map<String, dynamic>;
+        final name = org['name'] ?? 'Organization';
+        final description = org['description'] ?? '';
+        final logoUrl = org['logoUrl'] as String?;
+        final category = org['category'] ?? '';
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _OrganizationListCard(
+            id: doc.id,
+            name: name,
+            description: description,
+            logoUrl: logoUrl,
+            category: category,
+          ),
+        );
+      },
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────
-//  ORGANIZATION CARD
+//  ORGANIZATION CARD (grid layout)
 // ─────────────────────────────────────────────────────────────
 class _OrganizationCard extends StatelessWidget {
   final String id;
@@ -423,6 +495,178 @@ class _OrganizationCard extends StatelessWidget {
             fontWeight: FontWeight.w700,
             color: AppColors.primaryDark.withOpacity(0.35),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  ORGANIZATION LIST CARD (list layout)
+// ─────────────────────────────────────────────────────────────
+class _OrganizationListCard extends StatelessWidget {
+  final String id;
+  final String name;
+  final String description;
+  final String? logoUrl;
+  final String category;
+
+  const _OrganizationListCard({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.logoUrl,
+    required this.category,
+  });
+
+  ImageProvider? _buildLogoImage() {
+    if (logoUrl == null || logoUrl!.isEmpty) return null;
+
+    if (logoUrl!.startsWith('data:')) {
+      try {
+        final base64Str = logoUrl!.split(',').last;
+        return MemoryImage(base64Decode(base64Str));
+      } catch (_) {
+        return null;
+      }
+    }
+
+    return NetworkImage(logoUrl!);
+  }
+
+  Widget _buildAvatarPlaceholder() {
+    return Container(
+      height: 64,
+      width: 64,
+      color: AppColors.primaryDark.withOpacity(0.06),
+      child: Center(
+        child: Text(
+          name.isNotEmpty ? name[0].toUpperCase() : '?',
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            color: AppColors.primaryDark.withOpacity(0.35),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final logoImage = _buildLogoImage();
+
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => StudentOrganizationsDetailsScreen(orgId: id),
+          ),
+        );
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: _UiTokens.cardBorder,
+            width: 1,
+          ),
+          boxShadow: _UiTokens.subtleShadow,
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Logo / Avatar ──
+            ClipRRect(
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(14),
+                bottomLeft: Radius.circular(14),
+              ),
+              child: SizedBox(
+                height: 96,
+                width: 64,
+                child: logoImage != null
+                    ? Image(
+                        image: logoImage,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => _buildAvatarPlaceholder(),
+                      )
+                    : _buildAvatarPlaceholder(),
+              ),
+            ),
+
+            // ── Content ──
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: _UiTokens.headingText,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      description,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: _UiTokens.mutedText,
+                        height: 1.35,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (category.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 9,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryDark.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: AppColors.primaryDark.withOpacity(0.16),
+                            width: 1,
+                          ),
+                        ),
+                        child: Text(
+                          category,
+                          style: const TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.2,
+                            color: AppColors.primaryDark,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+
+            // ── Chevron ──
+            const Padding(
+              padding: EdgeInsets.only(right: 12, top: 38),
+              child: Icon(
+                Icons.chevron_right_rounded,
+                color: _UiTokens.mutedText,
+                size: 20,
+              ),
+            ),
+          ],
         ),
       ),
     );

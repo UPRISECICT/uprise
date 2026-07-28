@@ -298,18 +298,21 @@ Widget _statusBadge(String status) {
   };
   final s = styles[status.toLowerCase()] ?? styles['archived']!;
   return Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
     decoration: BoxDecoration(
       color: s.bg,
       borderRadius: BorderRadius.circular(_DS.radiusPill),
     ),
     child: Text(
       s.label,
+      maxLines: 1,
+      softWrap: false,
+      overflow: TextOverflow.ellipsis,
       style: GoogleFonts.beVietnamPro(
-        fontSize: 10,
+        fontSize: 9,
         fontWeight: FontWeight.w700,
         color: s.fg,
-        letterSpacing: 0.8,
+        letterSpacing: 0.6,
       ),
     ),
   );
@@ -334,20 +337,21 @@ Widget _typeBadge(String type) {
     );
   }
   return Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
     decoration: BoxDecoration(
       color: UpriseColors.primaryDark.withAlpha(18),
       borderRadius: BorderRadius.circular(6),
     ),
     child: Text(
       type,
-      style: GoogleFonts.beVietnamPro(
-        fontSize: 11,
-        fontWeight: FontWeight.w700,
-        color: UpriseColors.primaryDark,
-        letterSpacing: 0.2,
-      ),
+      maxLines: 1,
+      softWrap: false,
       overflow: TextOverflow.ellipsis,
+      style: GoogleFonts.beVietnamPro(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        color: UpriseColors.primaryDark,
+      ),
     ),
   );
 }
@@ -456,24 +460,40 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
             value: '$total',
             icon: Icons.business_center_rounded,
             color: UpriseColors.primaryDark,
+            onTap: () => setState(() {
+              _statusFilter = 'All';
+              _currentPage = 1;
+            }),
           ),
           _StatCard(
             label: 'Active',
             value: '$active',
             icon: Icons.check_circle_rounded,
             color: const Color(0xFF059669),
+            onTap: () => setState(() {
+              _statusFilter = 'Active';
+              _currentPage = 1;
+            }),
           ),
           _StatCard(
             label: 'Suspended',
             value: '$suspended',
             icon: Icons.pause_circle_rounded,
             color: const Color(0xFFFB923C),
+            onTap: () => setState(() {
+              _statusFilter = 'Suspended';
+              _currentPage = 1;
+            }),
           ),
           _StatCard(
             label: 'Archived',
             value: '$archived',
             icon: Icons.archive_rounded,
             color: const Color(0xFF6B7280),
+            onTap: () => setState(() {
+              _statusFilter = 'Archived';
+              _currentPage = 1;
+            }),
           ),
         ];
 
@@ -884,147 +904,142 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
               ? null
               : const Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
         ),
-        child: SizedBox(
-          height: 64,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            mainAxisAlignment: MainAxisAlignment.start,
-            children: [
-              Expanded(
-                flex: 3,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Row(
-                    children: [
-                      _OrgAvatar(logoUrl: org.logoUrl, name: org.name),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: [
+            Expanded(
+              flex: 3,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Row(
+                  children: [
+                    _OrgAvatar(logoUrl: org.logoUrl, name: org.name),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            org.name,
+                            style: GoogleFonts.beVietnamPro(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                              color: const Color(0xFF1A202C),
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (org.shortName.isNotEmpty)
                             Text(
-                              org.name,
+                              org.shortName,
                               style: GoogleFonts.beVietnamPro(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 13,
-                                color: const Color(0xFF1A202C),
+                                fontSize: 11,
+                                color: UpriseColors.darkGray,
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
-                            if (org.shortName.isNotEmpty)
-                              Text(
-                                org.shortName,
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 11,
-                                  color: UpriseColors.darkGray,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                          ],
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
-              Expanded(
-                flex: 2,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
+            ),
+            Expanded(
+              flex: 2,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      adviserSummary,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: const Color(0xFF374151),
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (adviserEmailSummary.isNotEmpty)
                       Text(
-                        adviserSummary,
+                        adviserEmailSummary,
                         style: GoogleFonts.beVietnamPro(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: const Color(0xFF374151),
+                          fontSize: 11,
+                          color: UpriseColors.darkGray,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
-                      if (adviserEmailSummary.isNotEmpty)
-                        Text(
-                          adviserEmailSummary,
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 11,
-                            color: UpriseColors.darkGray,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                    ],
+                  ],
+                ),
+              ),
+            ),
+            Expanded(
+              flex: 2,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: _typeBadge(org.type),
+              ),
+            ),
+            Expanded(
+              flex: 1,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: _statusBadge(org.status),
+              ),
+            ),
+            Expanded(
+              flex: 1,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  org.createdAt != null ? _formatDate(org.createdAt!) : '—',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 12,
+                    color: UpriseColors.darkGray,
                   ),
                 ),
               ),
-              Expanded(
-                flex: 2,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: _typeBadge(org.type),
-                ),
-              ),
-              Expanded(
-                flex: 1,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: _statusBadge(org.status),
-                ),
-              ),
-              Expanded(
-                flex: 1,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    org.createdAt != null ? _formatDate(org.createdAt!) : '—',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 12,
-                      color: UpriseColors.darkGray,
+            ),
+            Expanded(
+              flex: 2,
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _ActionIconButton(
+                      icon: Icons.visibility_outlined,
+                      tooltip: 'View Details',
+                      onTap: () => _showViewOrganizationDialog(org),
+                      color: const Color(0xFF3B82F6),
                     ),
-                  ),
+                    const SizedBox(width: 6),
+                    _ActionIconButton(
+                      icon: Icons.edit_outlined,
+                      tooltip: 'Edit',
+                      onTap: () => _showEditOrganizationDialog(org),
+                      color: UpriseColors.primaryDark,
+                    ),
+                    const SizedBox(width: 6),
+                    _ActionIconButton(
+                      icon: org.status == 'archived'
+                          ? Icons.restore_rounded
+                          : Icons.archive_outlined,
+                      tooltip: org.status == 'archived' ? 'Restore' : 'Archive',
+                      onTap: () => _toggleArchiveOrganization(org),
+                      color: org.status == 'archived'
+                          ? const Color(0xFF059669)
+                          : const Color(0xFF6B7280),
+                    ),
+                  ],
                 ),
               ),
-              Expanded(
-                flex: 2,
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _ActionIconButton(
-                        icon: Icons.visibility_outlined,
-                        tooltip: 'View Details',
-                        onTap: () => _showViewOrganizationDialog(org),
-                        color: const Color(0xFF3B82F6),
-                      ),
-                      const SizedBox(width: 6),
-                      _ActionIconButton(
-                        icon: Icons.edit_rounded,
-                        tooltip: 'Edit',
-                        onTap: () => _showEditOrganizationDialog(org),
-                        color: UpriseColors.primaryDark,
-                      ),
-                      const SizedBox(width: 6),
-                      _ActionIconButton(
-                        icon: org.status == 'archived'
-                            ? Icons.restore_rounded
-                            : Icons.archive_rounded,
-                        tooltip: org.status == 'archived'
-                            ? 'Restore'
-                            : 'Archive',
-                        onTap: () => _toggleArchiveOrganization(org),
-                        color: org.status == 'archived'
-                            ? const Color(0xFF059669)
-                            : const Color(0xFF6B7280),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -1140,14 +1155,14 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
                 Row(
                   children: [
                     _ActionIconButton(
-                      icon: Icons.open_in_new_rounded,
+                      icon: Icons.visibility_outlined,
                       tooltip: 'View Details',
                       onTap: () => _showViewOrganizationDialog(org),
                       color: const Color(0xFF3B82F6),
                     ),
                     const SizedBox(width: 6),
                     _ActionIconButton(
-                      icon: Icons.edit_rounded,
+                      icon: Icons.edit_outlined,
                       tooltip: 'Edit',
                       onTap: () => _showEditOrganizationDialog(org),
                       color: UpriseColors.primaryDark,
@@ -1156,7 +1171,7 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
                     _ActionIconButton(
                       icon: org.status == 'archived'
                           ? Icons.restore_rounded
-                          : Icons.archive_rounded,
+                          : Icons.archive_outlined,
                       tooltip: org.status == 'archived' ? 'Restore' : 'Archive',
                       onTap: () => _toggleArchiveOrganization(org),
                       color: org.status == 'archived'
@@ -1342,64 +1357,72 @@ class _StatCard extends StatelessWidget {
   final String label, value;
   final IconData icon;
   final Color color;
+  final VoidCallback? onTap;
+
   const _StatCard({
     required this.label,
     required this.value,
     required this.icon,
     required this.color,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFE8ECF0)),
-          boxShadow: _DS.cardShadow,
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.10),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: color, size: 22),
+    final card = Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE8ECF0)),
+        boxShadow: _DS.cardShadow,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(12),
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11,
-                      color: const Color(0xFF64748B),
-                      fontWeight: FontWeight.w500,
-                    ),
+            child: Icon(icon, color: color, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 11,
+                    color: const Color(0xFF64748B),
+                    fontWeight: FontWeight.w500,
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    value,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF1A202C),
-                    ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF1A202C),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
+    final wrapped = onTap == null
+        ? card
+        : MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(onTap: onTap, child: card),
+          );
+    return Expanded(child: wrapped);
   }
 }
 
@@ -1661,6 +1684,9 @@ class _PrimaryButton extends StatelessWidget {
           backgroundColor: UpriseColors.primaryDark,
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 0),
+          minimumSize: Size.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          visualDensity: VisualDensity.compact,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
           ),
@@ -1842,23 +1868,26 @@ class _PageNumButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 2),
-        width: 28,
-        height: 28,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: isActive ? UpriseColors.primaryDark : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(
-          '$page',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 12,
-            fontWeight: isActive ? FontWeight.w700 : FontWeight.normal,
-            color: isActive ? Colors.white : const Color(0xFF374151),
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: isActive ? UpriseColors.primaryDark : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            '$page',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 12,
+              fontWeight: isActive ? FontWeight.w700 : FontWeight.normal,
+              color: isActive ? Colors.white : const Color(0xFF374151),
+            ),
           ),
         ),
       ),
@@ -2312,7 +2341,7 @@ class _ViewOrganizationDialog extends StatelessWidget {
                   const SizedBox(width: 10),
                   ElevatedButton.icon(
                     onPressed: onEdit,
-                    icon: const Icon(Icons.edit_rounded, size: 16),
+                    icon: const Icon(Icons.edit_outlined, size: 16),
                     label: Text(
                       'Edit',
                       style: GoogleFonts.beVietnamPro(
@@ -2542,6 +2571,21 @@ class _AdviserFormState extends State<_AdviserForm> {
     super.dispose();
   }
 
+  // Previously this field had no validator at all — any string, including
+  // letters or an empty value for the required primary adviser, saved
+  // straight to Firestore. Accepts digits, spaces, +, -, and parentheses,
+  // with a minimum of 7 digits so a real phone number gets through but
+  // "abcdefg" or "12" doesn't.
+  String? _validateAdviserPhone(String? v, {required bool required}) {
+    final value = (v ?? '').trim();
+    if (value.isEmpty) return required ? 'Required' : null;
+    final digitCount = value.replaceAll(RegExp(r'[^0-9]'), '').length;
+    if (!RegExp(r'^[0-9+\-\s()]+$').hasMatch(value) || digitCount < 7) {
+      return 'Enter a valid phone number';
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final validPositions = [
@@ -2551,13 +2595,14 @@ class _AdviserFormState extends State<_AdviserForm> {
       'Coordinator',
       'Faculty',
     ];
-    final bool isValidTitle =
-        widget.adviser.title.isNotEmpty &&
-        validPositions.contains(widget.adviser.title);
-    final String? selectedValue = isValidTitle ? widget.adviser.title : null;
-    final String adviserType = widget.adviser.type.isNotEmpty
-        ? widget.adviser.type
-        : 'faculty';
+    // Only warn when the title is a real, non-empty value that no longer
+    // matches the known positions (e.g. old data saved before a position
+    // was removed from the list) — a brand-new, untouched adviser has an
+    // empty title, which isn't "invalid", just not chosen yet.
+    final bool isKnownPosition = validPositions.contains(widget.adviser.title);
+    final bool isStaleInvalid =
+        widget.adviser.title.isNotEmpty && !isKnownPosition;
+    final String? selectedValue = isKnownPosition ? widget.adviser.title : null;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -2597,56 +2642,21 @@ class _AdviserFormState extends State<_AdviserForm> {
             ],
           ),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: TextFormField(
-                  controller: _nameCtrl,
-                  decoration: _DS.inputDecoration(
-                    'Full Name',
-                    hint: 'e.g., Dr. Juan dela Cruz',
-                    icon: Icons.badge_outlined,
-                    required: widget.index == 0,
-                  ),
-                  style: GoogleFonts.beVietnamPro(fontSize: 13),
-                  onChanged: (v) =>
-                      widget.onChanged(widget.adviser.copyWith(name: v)),
-                  validator: (v) =>
-                      widget.index == 0 && (v == null || v.trim().isEmpty)
-                      ? 'Required'
-                      : null,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: AnchoredDropdownField<String>(
-                  value: adviserType,
-                  decoration: _DS.inputDecoration(
-                    'Type',
-                    required: widget.index == 0,
-                  ),
-                  validator: (v) =>
-                      widget.index == 0 && v == null ? 'Required' : null,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    color: const Color(0xFF1A202C),
-                  ),
-                  items: const [
-                    DropdownMenuItem(
-                      value: 'faculty',
-                      child: Text('Faculty Adviser'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'student',
-                      child: Text('Student Adviser'),
-                    ),
-                  ],
-                  onChanged: (newValue) => widget.onChanged(
-                    widget.adviser.copyWith(type: newValue ?? 'faculty'),
-                  ),
-                ),
-              ),
-            ],
+          TextFormField(
+            controller: _nameCtrl,
+            decoration: _DS.inputDecoration(
+              'Full Name',
+              hint: 'e.g., Dr. Juan dela Cruz',
+              icon: Icons.badge_outlined,
+              required: widget.index == 0,
+            ),
+            style: GoogleFonts.beVietnamPro(fontSize: 13),
+            onChanged: (v) =>
+                widget.onChanged(widget.adviser.copyWith(name: v)),
+            validator: (v) =>
+                widget.index == 0 && (v == null || v.trim().isEmpty)
+                ? 'Required'
+                : null,
           ),
           const SizedBox(height: 10),
           Row(
@@ -2708,17 +2718,17 @@ class _AdviserFormState extends State<_AdviserForm> {
                     DropdownMenuItem<String>(
                       value: null,
                       child: Text(
-                        isValidTitle
-                            ? 'Select position'
-                            : '⚠️ Invalid position, select a new one',
+                        isStaleInvalid
+                            ? '⚠️ Invalid position, select a new one'
+                            : 'Select position',
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 13,
-                          color: isValidTitle
-                              ? UpriseColors.darkGray
-                              : UpriseColors.error,
-                          fontStyle: isValidTitle
-                              ? FontStyle.normal
-                              : FontStyle.italic,
+                          color: isStaleInvalid
+                              ? UpriseColors.error
+                              : UpriseColors.darkGray,
+                          fontStyle: isStaleInvalid
+                              ? FontStyle.italic
+                              : FontStyle.normal,
                         ),
                       ),
                     ),
@@ -2785,6 +2795,10 @@ class _AdviserFormState extends State<_AdviserForm> {
                         keyboardType: TextInputType.phone,
                         onChanged: (v) =>
                             widget.onChanged(widget.adviser.copyWith(phone: v)),
+                        validator: (v) => _validateAdviserPhone(
+                          v,
+                          required: widget.index == 0,
+                        ),
                       ),
                     ),
                   ],
@@ -2828,6 +2842,8 @@ class _AdviserFormState extends State<_AdviserForm> {
                     keyboardType: TextInputType.phone,
                     onChanged: (v) =>
                         widget.onChanged(widget.adviser.copyWith(phone: v)),
+                    validator: (v) =>
+                        _validateAdviserPhone(v, required: widget.index == 0),
                   ),
                 ],
               );
@@ -2892,7 +2908,7 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
               Icons.add_business_rounded,
             ),
             _buildStepIndicator(),
-            Expanded(
+            Flexible(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(28),
                 child: Form(
@@ -2912,7 +2928,14 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
       decoration: BoxDecoration(
-        color: UpriseColors.primaryDark,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            UpriseColors.primaryDark,
+            UpriseColors.primaryDark.withAlpha(225),
+          ],
+        ),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
       ),
       child: Row(
@@ -3032,39 +3055,56 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
       children: [
         _sectionLabel('Organization Logo', icon: Icons.image_rounded),
         Center(
-          child: GestureDetector(
-            onTap: _pickImage,
-            child: Container(
-              width: 110,
-              height: 110,
-              decoration: BoxDecoration(
-                color: const Color(0xFFF1F5F9),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFE2E6EA), width: 1.5),
-              ),
-              child: _logoBytes != null
-                  ? ClipRRect(
-                      borderRadius: BorderRadius.circular(15),
-                      child: Image.memory(_logoBytes!, fit: BoxFit.cover),
-                    )
-                  : Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.add_photo_alternate_rounded,
-                          size: 32,
-                          color: UpriseColors.darkGray,
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Upload Logo',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 11,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              onTap: _pickImage,
+              child: Container(
+                width: 110,
+                height: 110,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xFFE2E6EA),
+                    width: 1.5,
+                  ),
+                ),
+                child: _logoBytes != null
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(15),
+                        child: Image.memory(_logoBytes!, fit: BoxFit.cover),
+                      )
+                    : Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.add_photo_alternate_rounded,
+                            size: 32,
                             color: UpriseColors.darkGray,
                           ),
-                        ),
-                      ],
-                    ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Upload Logo',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 11,
+                              color: UpriseColors.darkGray,
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Center(
+          child: Text(
+            'Supported: PNG, JPEG, GIF, WEBP · Max size: '
+            '${(FileValidation.defaultMaxImageBytes / (1024 * 1024)).toStringAsFixed(0)}MB',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 11,
+              color: const Color(0xFF9AA5B4),
             ),
           ),
         ),
@@ -3168,7 +3208,7 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
         _sectionLabel('Advisers', icon: Icons.people_rounded),
         const SizedBox(height: 8),
         Text(
-          'You may add up to 3 advisers, including student advisers.',
+          'You may add up to 3 faculty advisers for this organization.',
           style: GoogleFonts.beVietnamPro(
             fontSize: 12,
             color: UpriseColors.darkGray,
@@ -3223,7 +3263,7 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(18)),
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisAlignment: MainAxisAlignment.end,
         children: [
           if (_step > 0)
             OutlinedButton.icon(
@@ -3231,7 +3271,10 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
               icon: const Icon(Icons.arrow_back_rounded, size: 15),
               label: Text(
                 'Back',
-                style: GoogleFonts.beVietnamPro(fontSize: 13),
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: const Color(0xFF374151),
+                ),
               ),
               style: OutlinedButton.styleFrom(
                 side: const BorderSide(color: Color(0xFFE2E6EA)),
@@ -3245,16 +3288,27 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
               ),
             )
           else
-            TextButton(
+            OutlinedButton(
               onPressed: () => Navigator.pop(context),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Color(0xFFE2E6EA)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 11,
+                ),
+              ),
               child: Text(
                 'Cancel',
                 style: GoogleFonts.beVietnamPro(
                   fontSize: 13,
-                  color: UpriseColors.darkGray,
+                  color: const Color(0xFF374151),
                 ),
               ),
             ),
+          const SizedBox(width: 12),
           ElevatedButton.icon(
             onPressed: _isLoading ? null : _onNextOrCreate,
             icon: _isLoading
@@ -3761,7 +3815,14 @@ class _EditOrganizationDialogState extends State<_EditOrganizationDialog> {
             Container(
               padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
               decoration: BoxDecoration(
-                color: UpriseColors.primaryDark,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    UpriseColors.primaryDark,
+                    UpriseColors.primaryDark.withAlpha(225),
+                  ],
+                ),
                 borderRadius: const BorderRadius.vertical(
                   top: Radius.circular(18),
                 ),
@@ -3776,7 +3837,7 @@ class _EditOrganizationDialogState extends State<_EditOrganizationDialog> {
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Icon(
-                      Icons.edit_rounded,
+                      Icons.edit_outlined,
                       color: Colors.white,
                       size: 18,
                     ),
@@ -3815,7 +3876,7 @@ class _EditOrganizationDialogState extends State<_EditOrganizationDialog> {
                 ],
               ),
             ),
-            Expanded(
+            Flexible(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(28),
                 child: Form(
@@ -3861,8 +3922,7 @@ class _EditOrganizationDialogState extends State<_EditOrganizationDialog> {
                                   'Organization Type',
                                   required: true,
                                 ),
-                                validator: (v) =>
-                                    v == null ? 'Required' : null,
+                                validator: (v) => v == null ? 'Required' : null,
                                 style: GoogleFonts.beVietnamPro(
                                   fontSize: 13,
                                   color: const Color(0xFF1A202C),
@@ -3918,8 +3978,7 @@ class _EditOrganizationDialogState extends State<_EditOrganizationDialog> {
                                   'Status',
                                   required: true,
                                 ),
-                                validator: (v) =>
-                                    v == null ? 'Required' : null,
+                                validator: (v) => v == null ? 'Required' : null,
                                 style: GoogleFonts.beVietnamPro(
                                   fontSize: 13,
                                   color: const Color(0xFF1A202C),
@@ -3956,7 +4015,7 @@ class _EditOrganizationDialogState extends State<_EditOrganizationDialog> {
                       _sectionLabel('Advisers', icon: Icons.people_rounded),
                       const SizedBox(height: 8),
                       Text(
-                        'You may add up to 3 advisers, including student advisers.',
+                        'You may add up to 3 faculty advisers for this organization.',
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 12,
                           color: UpriseColors.darkGray,

@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -20,6 +20,7 @@ import '../../../services/activity_logger.dart' as activity_log;
 import '../../../services/notification_service.dart';
 import 'reports_management.dart';
 import 'settings.dart';
+import 'admin_profile.dart';
 import 'export_pdf.dart' show AdminExportPdf;
 import 'export_util.dart';
 
@@ -131,7 +132,8 @@ class _SidebarNavState extends State<_SidebarNav> {
 
   String? _groupContaining(int index) {
     for (final entry in _navGroups.entries) {
-      if ((entry.value['children'] as List<int>).contains(index)) return entry.key;
+      if ((entry.value['children'] as List<int>).contains(index))
+        return entry.key;
     }
     return null;
   }
@@ -146,24 +148,28 @@ class _SidebarNavState extends State<_SidebarNav> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           margin: const EdgeInsets.symmetric(vertical: 2),
-          padding: EdgeInsets.symmetric(vertical: 10).copyWith(
-            left: indent,
-            right: 14,
-          ),
+          padding: EdgeInsets.symmetric(
+            vertical: 10,
+          ).copyWith(left: indent, right: 14),
           decoration: BoxDecoration(
             color: isSelected
                 ? UpriseColors.accent.withAlpha(46)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
             border: isSelected
-                ? Border.all(color: UpriseColors.accent.withAlpha(130), width: 1)
+                ? Border.all(
+                    color: UpriseColors.accent.withAlpha(130),
+                    width: 1,
+                  )
                 : null,
           ),
           child: Row(
             children: [
               Icon(
                 item['icon'] as IconData,
-                color: isSelected ? UpriseColors.accent : Colors.white.withAlpha(166),
+                color: isSelected
+                    ? UpriseColors.accent
+                    : Colors.white.withAlpha(166),
                 size: 17,
               ),
               const SizedBox(width: 12),
@@ -172,7 +178,9 @@ class _SidebarNavState extends State<_SidebarNav> {
                   item['label'] as String,
                   overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.beVietnamPro(
-                    color: isSelected ? Colors.white : Colors.white.withAlpha(191),
+                    color: isSelected
+                        ? Colors.white
+                        : Colors.white.withAlpha(191),
                     fontSize: 13,
                     fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
                   ),
@@ -194,7 +202,12 @@ class _SidebarNavState extends State<_SidebarNav> {
     );
   }
 
-  Widget _groupHeaderTile(String groupKey, String label, IconData icon, bool expanded) {
+  Widget _groupHeaderTile(
+    String groupKey,
+    String label,
+    IconData icon,
+    bool expanded,
+  ) {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
@@ -225,7 +238,9 @@ class _SidebarNavState extends State<_SidebarNav> {
                 ),
               ),
               Icon(
-                expanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,
+                expanded
+                    ? Icons.keyboard_arrow_down
+                    : Icons.keyboard_arrow_right,
                 color: Colors.white.withAlpha(166),
                 size: 18,
               ),
@@ -250,7 +265,8 @@ class _SidebarNavState extends State<_SidebarNav> {
             _openGroups.contains(entry.key), // ✅ FIXED: use contains, not ==
           ),
           if (_openGroups.contains(entry.key)) // ✅ FIXED: use contains
-            for (final i in entry.value['children'] as List<int>) _navTile(i, indent: 30),
+            for (final i in entry.value['children'] as List<int>)
+              _navTile(i, indent: 30),
         ],
         for (final i in _standaloneBottom) _navTile(i),
       ],
@@ -303,7 +319,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
       const ExternalAccount(),
       const ReportsManagement(),
       const ActivityLogs(),
-      AdminSettings(onProfileUpdated: _fetchAdminData), // index 10 — settings
+      const AdminSettings(), // index 10 — settings
+      AdminProfile(onProfileUpdated: _fetchAdminData), // index 11 — my profile
     ];
   }
 
@@ -471,11 +488,21 @@ class _AdminDashboardState extends State<AdminDashboard> {
     if (index != null) _selectTab(index);
   }
 
+  // -1 is the "Settings" sentinel (maps to _screens[10]) and -2 is the
+  // "My Profile" sentinel (maps to _screens[11]) — neither has a slot in
+  // _navItems/the sidebar, since both are reached from the top-right
+  // profile menu instead.
   void _selectTab(int index) {
     setState(() {
       _selectedIndex = index;
-      _visitedIndices.add(index == -1 ? 10 : index);
+      _visitedIndices.add(_screenIndexFor(index));
     });
+  }
+
+  int _screenIndexFor(int selectedIndex) {
+    if (selectedIndex == -1) return 10;
+    if (selectedIndex == -2) return 11;
+    return selectedIndex;
   }
 
   // Reads the bell's real on-screen position (via _bellKey) so any overlay
@@ -621,7 +648,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     const SizedBox(height: 6),
                     _profileMenuItem(Icons.person_outline, 'My Profile', () {
                       Navigator.of(ctx).pop();
-                      _selectTab(-1);
+                      _selectTab(-2);
                     }),
                     _profileMenuItem(Icons.settings_outlined, 'Settings', () {
                       Navigator.of(ctx).pop();
@@ -629,15 +656,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     }),
                     const Divider(height: 1, color: Color(0xFFE8ECF0)),
                     const SizedBox(height: 4),
-                    _profileMenuItem(
-                      Icons.logout_rounded,
-                      'Logout',
-                      () {
-                        Navigator.of(ctx).pop();
-                        _confirmLogout();
-                      },
-                      color: const Color(0xFFDC2626),
-                    ),
+                    _profileMenuItem(Icons.logout_rounded, 'Logout', () {
+                      Navigator.of(ctx).pop();
+                      _confirmLogout();
+                    }, color: const Color(0xFFDC2626)),
                     const SizedBox(height: 6),
                   ],
                 ),
@@ -798,6 +820,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   String _getCurrentTitle() {
     if (_selectedIndex == -1) return 'Settings';
+    if (_selectedIndex == -2) return 'My Profile';
     const titles = [
       'Dashboard',
       'Organization Management',
@@ -830,7 +853,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   // scratch on every tab switch — that re-fetch was the
                   // cause of the lag on every click.
                   child: IndexedStack(
-                    index: _selectedIndex == -1 ? 10 : _selectedIndex,
+                    index: _screenIndexFor(_selectedIndex),
                     children: List.generate(
                       _screens.length,
                       (i) => _visitedIndices.contains(i)
@@ -1142,53 +1165,53 @@ class _AdminDashboardState extends State<AdminDashboard> {
           MouseRegion(
             cursor: SystemMouseCursors.click,
             child: GestureDetector(
-            key: _profileKey,
-            onTap: _showProfileMenu,
-            child: Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: UpriseColors.primaryDark.withAlpha(25),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: UpriseColors.primaryDark.withAlpha(50),
+              key: _profileKey,
+              onTap: _showProfileMenu,
+              child: Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: UpriseColors.primaryDark.withAlpha(25),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: UpriseColors.primaryDark.withAlpha(50),
+                      ),
                     ),
+                    clipBehavior: Clip.antiAlias,
+                    child: _buildAdminAvatar(),
                   ),
-                  clipBehavior: Clip.antiAlias,
-                  child: _buildAdminAvatar(),
-                ),
-                const SizedBox(width: 10),
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _adminName,
-                      style: GoogleFonts.beVietnamPro(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                        color: UpriseColors.charcoal,
+                  const SizedBox(width: 10),
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _adminName,
+                        style: GoogleFonts.beVietnamPro(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                          color: UpriseColors.charcoal,
+                        ),
                       ),
-                    ),
-                    Text(
-                      _adminRole,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 10,
-                        color: const Color(0xFF9AA5B4),
+                      Text(
+                        _adminRole,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 10,
+                          color: const Color(0xFF9AA5B4),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(width: 4),
-                Icon(
-                  Icons.keyboard_arrow_down,
-                  size: 18,
-                  color: const Color(0xFF9AA5B4),
-                ),
-              ],
-            ),
+                    ],
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    Icons.keyboard_arrow_down,
+                    size: 18,
+                    color: const Color(0xFF9AA5B4),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -1327,16 +1350,17 @@ class _DashboardHomeState extends State<DashboardHome> {
         final data = doc.data();
         final orgId = data['orgId']?.toString();
         final date = (data['date'] as Timestamp?)?.toDate();
-        if (orgId == null || orgId.isEmpty || date == null || !date.isBefore(now)) {
+        if (orgId == null ||
+            orgId.isEmpty ||
+            date == null ||
+            !date.isBefore(now)) {
           continue;
         }
-        eventsByOrg
-            .putIfAbsent(orgId, () => [])
-            .add({
-              'eventId': doc.id,
-              'eventDate': date,
-              'eventTitle': data['title']?.toString() ?? 'Untitled Event',
-            });
+        eventsByOrg.putIfAbsent(orgId, () => []).add({
+          'eventId': doc.id,
+          'eventDate': date,
+          'eventTitle': data['title']?.toString() ?? 'Untitled Event',
+        });
       }
       if (eventsByOrg.isEmpty) {
         return const _OverdueSummary(totalOverdue: 0, overdueByOrgName: {});
@@ -1346,7 +1370,9 @@ class _DashboardHomeState extends State<DashboardHome> {
       // instead of one-after-another so first load isn't the sum of all
       // four round trips.
       final results = await Future.wait([
-        FirebaseFirestore.instance.collection('report_deadline_overrides').get(),
+        FirebaseFirestore.instance
+            .collection('report_deadline_overrides')
+            .get(),
         FirebaseFirestore.instance.collection('reports').get(),
         FirebaseFirestore.instance.collection('organizations').get(),
       ]);
@@ -1451,7 +1477,8 @@ class _DashboardHomeState extends State<DashboardHome> {
   // a small custom menu directly under the button instead, same technique
   // as the profile/notification dropdowns.
   void _showYearDropdown() {
-    final box = _yearDropdownKey.currentContext?.findRenderObject() as RenderBox?;
+    final box =
+        _yearDropdownKey.currentContext?.findRenderObject() as RenderBox?;
     final screenSize = MediaQuery.of(context).size;
     double top = 100;
     double left = 100;
@@ -1870,75 +1897,74 @@ class _DashboardHomeState extends State<DashboardHome> {
         return MouseRegion(
           cursor: SystemMouseCursors.click,
           child: GestureDetector(
-            onTap: () => setState(
-              () => _selectedCard = isSelected ? null : cardIndex,
-            ),
+            onTap: () =>
+                setState(() => _selectedCard = isSelected ? null : cardIndex),
             child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(_DS.radiusMd),
-            border: Border.all(
-              color: isSelected ? color : const Color(0xFFE8ECF0),
-              width: isSelected ? 2 : 1,
-            ),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: color.withAlpha(46),
-                      blurRadius: 16,
-                      offset: const Offset(0, 4),
-                    ),
-                  ]
-                : _DS.cardShadow,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              duration: const Duration(milliseconds: 150),
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(_DS.radiusMd),
+                border: Border.all(
+                  color: isSelected ? color : const Color(0xFFE8ECF0),
+                  width: isSelected ? 2 : 1,
+                ),
+                boxShadow: isSelected
+                    ? [
+                        BoxShadow(
+                          color: color.withAlpha(46),
+                          blurRadius: 16,
+                          offset: const Offset(0, 4),
+                        ),
+                      ]
+                    : _DS.cardShadow,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: color.withAlpha(26),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(icon, color: color, size: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: color.withAlpha(26),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(icon, color: color, size: 20),
+                      ),
+                      if (loading)
+                        SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: color,
+                          ),
+                        )
+                      else
+                        Text(
+                          '$count',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFF1A202C),
+                          ),
+                        ),
+                    ],
                   ),
-                  if (loading)
-                    SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: color,
-                      ),
-                    )
-                  else
-                    Text(
-                      '$count',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w800,
-                        color: const Color(0xFF1A202C),
-                      ),
+                  const SizedBox(height: 12),
+                  Text(
+                    label,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11,
+                      color: const Color(0xFF64748B),
+                      fontWeight: FontWeight.w600,
                     ),
+                  ),
                 ],
               ),
-              const SizedBox(height: 12),
-              Text(
-                label,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 11,
-                  color: const Color(0xFF64748B),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
             ),
           ),
         );
@@ -1964,9 +1990,8 @@ class _DashboardHomeState extends State<DashboardHome> {
         return MouseRegion(
           cursor: SystemMouseCursors.click,
           child: GestureDetector(
-            onTap: () => setState(
-              () => _selectedCard = isSelected ? null : cardIndex,
-            ),
+            onTap: () =>
+                setState(() => _selectedCard = isSelected ? null : cardIndex),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 150),
               padding: const EdgeInsets.all(18),
@@ -2492,9 +2517,17 @@ class _DashboardHomeState extends State<DashboardHome> {
   // ── Shared custom table row/header — matches the row-list style used
   // elsewhere in the app (student_accounts.dart etc.) instead of Flutter's
   // stock DataTable, which looked out of place here.
+  // Matches the header-strip convention used by every other admin page's
+  // table (event_proposals.dart etc.): amber-tinted background, brand-orange
+  // bottom border, 20/13 padding — instead of the plain unstyled text row
+  // this used to be.
   Widget _customTableHeader(List<MapEntry<String, int>> columns) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+      decoration: const BoxDecoration(
+        color: Color(0xFFFFF7ED),
+        border: Border(bottom: BorderSide(color: Color(0xFFFB923C))),
+      ),
       child: Row(
         children: [
           for (final c in columns)
@@ -2506,7 +2539,7 @@ class _DashboardHomeState extends State<DashboardHome> {
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   color: const Color(0xFF64748B),
-                  letterSpacing: 0.3,
+                  letterSpacing: 0.7,
                 ),
               ),
             ),
@@ -2528,7 +2561,7 @@ class _DashboardHomeState extends State<DashboardHome> {
         hoverColor: const Color(0xFFF8F9FB),
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           decoration: BoxDecoration(
             border: isLast
                 ? null
@@ -2605,9 +2638,9 @@ class _DashboardHomeState extends State<DashboardHome> {
         mimeType: 'application/pdf',
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Exported $fileName')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Exported $fileName')));
       }
     } catch (e) {
       if (mounted) {
@@ -2672,7 +2705,9 @@ class _DashboardHomeState extends State<DashboardHome> {
                 ? 'Reminder sent to $sent organization${sent == 1 ? '' : 's'}.'
                 : 'Sent to $sent organization${sent == 1 ? '' : 's'}, $failed failed.',
           ),
-          backgroundColor: failed == 0 ? UpriseColors.success : UpriseColors.error,
+          backgroundColor: failed == 0
+              ? UpriseColors.success
+              : UpriseColors.error,
         ),
       );
     }
@@ -2785,7 +2820,9 @@ class _DashboardHomeState extends State<DashboardHome> {
     );
   }
 
-  Widget _tableCard(Widget child) => Container(
+  // Loading/empty placeholder variant — just a centered message, no
+  // header strip needed.
+  Widget _tableCardSimple(Widget child) => Container(
     width: double.infinity,
     padding: const EdgeInsets.all(24),
     decoration: BoxDecoration(
@@ -2796,6 +2833,33 @@ class _DashboardHomeState extends State<DashboardHome> {
     ),
     child: child,
   );
+
+  // `header` (title/subtitle/export) keeps its own padding; `table` (the
+  // colored header strip + rows) spans edge-to-edge and relies on this
+  // Container's clipBehavior to pick up the same rounded corners — matching
+  // the header-strip + bordered-card convention used by every other admin
+  // page's table instead of a single uniformly-padded block.
+  Widget _tableCard({required Widget header, required Widget table}) =>
+      Container(
+        width: double.infinity,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(_DS.radiusLg),
+          border: Border.all(color: const Color(0xFFE8ECF0)),
+          boxShadow: _DS.cardShadow,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+              child: header,
+            ),
+            table,
+          ],
+        ),
+      );
 
   // ── Analytics overview — the default panel when no card is selected ──
   Widget _buildAnalyticsOverview(bool isMobile) {
@@ -2826,12 +2890,14 @@ class _DashboardHomeState extends State<DashboardHome> {
       future: _performanceFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return _tableCard(const Center(child: CircularProgressIndicator()));
+          return _tableCardSimple(
+            const Center(child: CircularProgressIndicator()),
+          );
         }
         final items = [...(snapshot.data ?? [])]
           ..sort((a, b) => b.proposals.compareTo(a.proposals));
         if (items.isEmpty) {
-          return _tableCard(
+          return _tableCardSimple(
             _emptyPlaceholder(
               Icons.dashboard_outlined,
               'No organization data available',
@@ -2843,41 +2909,39 @@ class _DashboardHomeState extends State<DashboardHome> {
             NumberFormat.currency(symbol: '₱', decimalDigits: 0).format(v);
 
         return _tableCard(
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          header: _panelHeader(
+            title: 'Organization Standings',
+            subtitle:
+                'All active organizations ranked by proposal activity, ${items.length} total.',
+            onBack: () => setState(() => _selectedCard = null),
+            onExport: () => _exportTable(
+              title: 'Organization Standings',
+              headers: const [
+                'Rank',
+                'Organization',
+                'Proposals',
+                'Approved',
+                'Pending',
+                'Merch Orders',
+                'Merch Revenue',
+              ],
+              rows: [
+                for (var i = 0; i < items.length; i++)
+                  [
+                    '${i + 1}',
+                    items[i].orgName,
+                    '${items[i].proposals}',
+                    '${items[i].approvedEvents}',
+                    '${items[i].pendingProposals}',
+                    '${items[i].merchOrders}',
+                    money(items[i].merchRevenue),
+                  ],
+              ],
+              fileNamePrefix: 'org_standings',
+            ),
+          ),
+          table: Column(
             children: [
-              _panelHeader(
-                title: 'Organization Standings',
-                subtitle:
-                    'All active organizations ranked by proposal activity, ${items.length} total.',
-                onBack: () => setState(() => _selectedCard = null),
-                onExport: () => _exportTable(
-                  title: 'Organization Standings',
-                  headers: const [
-                    'Rank',
-                    'Organization',
-                    'Proposals',
-                    'Approved',
-                    'Pending',
-                    'Merch Orders',
-                    'Merch Revenue',
-                  ],
-                  rows: [
-                    for (var i = 0; i < items.length; i++)
-                      [
-                        '${i + 1}',
-                        items[i].orgName,
-                        '${items[i].proposals}',
-                        '${items[i].approvedEvents}',
-                        '${items[i].pendingProposals}',
-                        '${items[i].merchOrders}',
-                        money(items[i].merchRevenue),
-                      ],
-                  ],
-                  fileNamePrefix: 'org_standings',
-                ),
-              ),
-              const SizedBox(height: 12),
               _customTableHeader(const [
                 MapEntry('#', 1),
                 MapEntry('Organization', 4),
@@ -2896,19 +2960,13 @@ class _DashboardHomeState extends State<DashboardHome> {
                     fields: [
                       MapEntry('Rank', '#${i + 1}'),
                       MapEntry('Proposals', '${items[i].proposals}'),
-                      MapEntry(
-                        'Approved Events',
-                        '${items[i].approvedEvents}',
-                      ),
+                      MapEntry('Approved Events', '${items[i].approvedEvents}'),
                       MapEntry(
                         'Pending Proposals',
                         '${items[i].pendingProposals}',
                       ),
                       MapEntry('Merch Orders', '${items[i].merchOrders}'),
-                      MapEntry(
-                        'Merch Revenue',
-                        money(items[i].merchRevenue),
-                      ),
+                      MapEntry('Merch Revenue', money(items[i].merchRevenue)),
                     ],
                   ),
                   cells: [
@@ -2934,70 +2992,71 @@ class _DashboardHomeState extends State<DashboardHome> {
       stream: _activeEventsTableStreamGetter,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return _tableCard(const Center(child: CircularProgressIndicator()));
+          return _tableCardSimple(
+            const Center(child: CircularProgressIndicator()),
+          );
         }
         final docs = snapshot.data?.docs ?? [];
         if (docs.isEmpty) {
-          return _tableCard(
+          return _tableCardSimple(
             _emptyPlaceholder(Icons.event_outlined, 'No active events'),
           );
         }
 
-        final rows = docs.map((doc) {
-          final d = doc.data() as Map<String, dynamic>;
-          return {
-            'title': (d['title'] as String?) ?? 'Untitled',
-            'orgName': (d['orgName'] as String?) ?? '—',
-            'category': (d['category'] as String?) ?? '—',
-            'location': (d['location'] as String?) ?? 'TBA',
-            'audience': (d['audience'] as String?) ?? '—',
-            'description':
-                (d['description'] as String?) ?? 'No description provided.',
-            'startTime': (d['startTime'] ?? d['time'] ?? '').toString(),
-            'endTime': (d['endTime'] ?? '').toString(),
-            'date': (d['date'] as Timestamp?)?.toDate(),
-          };
-        }).toList()..sort((a, b) {
-          final da = a['date'] as DateTime?;
-          final db = b['date'] as DateTime?;
-          if (da == null || db == null) return 0;
-          return da.compareTo(db);
-        });
+        final rows =
+            docs.map((doc) {
+              final d = doc.data() as Map<String, dynamic>;
+              return {
+                'title': (d['title'] as String?) ?? 'Untitled',
+                'orgName': (d['orgName'] as String?) ?? '—',
+                'category': (d['category'] as String?) ?? '—',
+                'location': (d['location'] as String?) ?? 'TBA',
+                'audience': (d['audience'] as String?) ?? '—',
+                'description':
+                    (d['description'] as String?) ?? 'No description provided.',
+                'startTime': (d['startTime'] ?? d['time'] ?? '').toString(),
+                'endTime': (d['endTime'] ?? '').toString(),
+                'date': (d['date'] as Timestamp?)?.toDate(),
+              };
+            }).toList()..sort((a, b) {
+              final da = a['date'] as DateTime?;
+              final db = b['date'] as DateTime?;
+              if (da == null || db == null) return 0;
+              return da.compareTo(db);
+            });
 
         String fmtDate(DateTime? d) =>
             d != null ? DateFormat('MMM d, yyyy').format(d) : 'TBA';
 
         return _tableCard(
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          header: _panelHeader(
+            title: 'Active Events',
+            subtitle: 'Approved events, ${rows.length} total.',
+            onBack: () => setState(() => _selectedCard = null),
+            onExport: () => _exportTable(
+              title: 'Active Events',
+              headers: const [
+                'Title',
+                'Organization',
+                'Category',
+                'Date',
+                'Location',
+              ],
+              rows: [
+                for (final r in rows)
+                  [
+                    r['title'] as String,
+                    r['orgName'] as String,
+                    r['category'] as String,
+                    fmtDate(r['date'] as DateTime?),
+                    r['location'] as String,
+                  ],
+              ],
+              fileNamePrefix: 'active_events',
+            ),
+          ),
+          table: Column(
             children: [
-              _panelHeader(
-                title: 'Active Events',
-                subtitle: 'Approved events, ${rows.length} total.',
-                onBack: () => setState(() => _selectedCard = null),
-                onExport: () => _exportTable(
-                  title: 'Active Events',
-                  headers: const [
-                    'Title',
-                    'Organization',
-                    'Category',
-                    'Date',
-                    'Location',
-                  ],
-                  rows: [
-                    for (final r in rows)
-                      [
-                        r['title'] as String,
-                        r['orgName'] as String,
-                        r['category'] as String,
-                        fmtDate(r['date'] as DateTime?),
-                        r['location'] as String,
-                      ],
-                  ],
-                  fileNamePrefix: 'active_events',
-                ),
-              ),
-              const SizedBox(height: 12),
               _customTableHeader(const [
                 MapEntry('Title', 3),
                 MapEntry('Organization', 3),
@@ -3030,10 +3089,7 @@ class _DashboardHomeState extends State<DashboardHome> {
                       ),
                       MapEntry('Location', rows[i]['location'] as String),
                       MapEntry('Audience', rows[i]['audience'] as String),
-                      MapEntry(
-                        'Description',
-                        rows[i]['description'] as String,
-                      ),
+                      MapEntry('Description', rows[i]['description'] as String),
                     ],
                   ),
                   cells: [
@@ -3060,11 +3116,13 @@ class _DashboardHomeState extends State<DashboardHome> {
       stream: _pendingProposalsTableStreamGetter,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return _tableCard(const Center(child: CircularProgressIndicator()));
+          return _tableCardSimple(
+            const Center(child: CircularProgressIndicator()),
+          );
         }
         final docs = snapshot.data?.docs ?? [];
         if (docs.isEmpty) {
-          return _tableCard(
+          return _tableCardSimple(
             _emptyPlaceholder(
               Icons.pending_actions_outlined,
               'No pending proposals',
@@ -3072,59 +3130,58 @@ class _DashboardHomeState extends State<DashboardHome> {
           );
         }
 
-        final rows = docs.map((doc) {
-          final d = doc.data() as Map<String, dynamic>;
-          return {
-            'title': (d['title'] as String?) ?? 'Untitled',
-            'orgName': (d['orgName'] as String?) ?? '—',
-            'category': (d['category'] as String?) ?? '—',
-            'location': (d['location'] as String?) ?? 'TBA',
-            'description':
-                (d['description'] as String?) ?? 'No description provided.',
-            'submittedByEmail': (d['submittedByEmail'] as String?) ?? '—',
-            'eventDate': (d['date'] as Timestamp?)?.toDate(),
-            'createdAt': (d['createdAt'] as Timestamp?)?.toDate(),
-          };
-        }).toList()..sort((a, b) {
-          final ca = a['createdAt'] as DateTime?;
-          final cb = b['createdAt'] as DateTime?;
-          if (ca == null || cb == null) return 0;
-          return cb.compareTo(ca);
-        });
+        final rows =
+            docs.map((doc) {
+              final d = doc.data() as Map<String, dynamic>;
+              return {
+                'title': (d['title'] as String?) ?? 'Untitled',
+                'orgName': (d['orgName'] as String?) ?? '—',
+                'category': (d['category'] as String?) ?? '—',
+                'location': (d['location'] as String?) ?? 'TBA',
+                'description':
+                    (d['description'] as String?) ?? 'No description provided.',
+                'submittedByEmail': (d['submittedByEmail'] as String?) ?? '—',
+                'eventDate': (d['date'] as Timestamp?)?.toDate(),
+                'createdAt': (d['createdAt'] as Timestamp?)?.toDate(),
+              };
+            }).toList()..sort((a, b) {
+              final ca = a['createdAt'] as DateTime?;
+              final cb = b['createdAt'] as DateTime?;
+              if (ca == null || cb == null) return 0;
+              return cb.compareTo(ca);
+            });
 
         String fmtDate(DateTime? d) =>
             d != null ? DateFormat('MMM d, yyyy').format(d) : '—';
 
         return _tableCard(
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          header: _panelHeader(
+            title: 'Pending Proposals',
+            subtitle:
+                'Awaiting your review, ${rows.length} total. Click a row to view details and open it for approval.',
+            onBack: () => setState(() => _selectedCard = null),
+            onExport: () => _exportTable(
+              title: 'Pending Proposals',
+              headers: const [
+                'Title',
+                'Organization',
+                'Event Date',
+                'Submitted',
+              ],
+              rows: [
+                for (final r in rows)
+                  [
+                    r['title'] as String,
+                    r['orgName'] as String,
+                    fmtDate(r['eventDate'] as DateTime?),
+                    fmtDate(r['createdAt'] as DateTime?),
+                  ],
+              ],
+              fileNamePrefix: 'pending_proposals',
+            ),
+          ),
+          table: Column(
             children: [
-              _panelHeader(
-                title: 'Pending Proposals',
-                subtitle:
-                    'Awaiting your review, ${rows.length} total. Click a row to view details and open it for approval.',
-                onBack: () => setState(() => _selectedCard = null),
-                onExport: () => _exportTable(
-                  title: 'Pending Proposals',
-                  headers: const [
-                    'Title',
-                    'Organization',
-                    'Event Date',
-                    'Submitted',
-                  ],
-                  rows: [
-                    for (final r in rows)
-                      [
-                        r['title'] as String,
-                        r['orgName'] as String,
-                        fmtDate(r['eventDate'] as DateTime?),
-                        fmtDate(r['createdAt'] as DateTime?),
-                      ],
-                  ],
-                  fileNamePrefix: 'pending_proposals',
-                ),
-              ),
-              const SizedBox(height: 12),
               _customTableHeader(const [
                 MapEntry('Title', 3),
                 MapEntry('Organization', 3),
@@ -3157,10 +3214,7 @@ class _DashboardHomeState extends State<DashboardHome> {
                         'Submitted On',
                         fmtDate(rows[i]['createdAt'] as DateTime?),
                       ),
-                      MapEntry(
-                        'Description',
-                        rows[i]['description'] as String,
-                      ),
+                      MapEntry('Description', rows[i]['description'] as String),
                     ],
                     actionLabel: 'Open in Event Proposals →',
                     navigateToTabIndex: 4,
@@ -3185,11 +3239,13 @@ class _DashboardHomeState extends State<DashboardHome> {
       future: _overdueFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return _tableCard(const Center(child: CircularProgressIndicator()));
+          return _tableCardSimple(
+            const Center(child: CircularProgressIndicator()),
+          );
         }
         final items = snapshot.data?.items ?? [];
         if (items.isEmpty) {
-          return _tableCard(
+          return _tableCardSimple(
             _emptyPlaceholder(
               Icons.task_alt_outlined,
               'No overdue reports — every org is caught up',
@@ -3197,71 +3253,65 @@ class _DashboardHomeState extends State<DashboardHome> {
           );
         }
 
-        String typeLabel(String t) => t == 'financial'
-            ? 'Financial'
-            : 'Accomplishment';
+        String typeLabel(String t) =>
+            t == 'financial' ? 'Financial' : 'Accomplishment';
 
         return _tableCard(
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _panelHeader(
-                title: 'Overdue Reports',
-                subtitle:
-                    'Financial & accomplishment reports past their deadline, ${items.length} total. Click a row to open it for follow-up.',
-                onBack: () => setState(() => _selectedCard = null),
-                extraAction: MouseRegion(
-                  cursor: SystemMouseCursors.click,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _sendOverdueReminders(items),
-                    icon: const Icon(
-                      Icons.notifications_active_outlined,
-                      size: 16,
-                    ),
-                    label: Text(
-                      'Send Reminder to All',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: UpriseColors.error,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 10,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
+          header: _panelHeader(
+            title: 'Overdue Reports',
+            subtitle:
+                'Financial & accomplishment reports past their deadline, ${items.length} total. Click a row to open it for follow-up.',
+            onBack: () => setState(() => _selectedCard = null),
+            extraAction: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: ElevatedButton.icon(
+                onPressed: () => _sendOverdueReminders(items),
+                icon: const Icon(Icons.notifications_active_outlined, size: 16),
+                label: Text(
+                  'Send Reminder to All',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                onExport: () => _exportTable(
-                  title: 'Overdue Reports',
-                  headers: const [
-                    'Organization',
-                    'Event',
-                    'Type',
-                    'Deadline',
-                    'Days Overdue',
-                  ],
-                  rows: [
-                    for (final it in items)
-                      [
-                        it.orgName,
-                        it.eventTitle,
-                        typeLabel(it.type),
-                        DateFormat('MMM d, yyyy').format(it.deadline),
-                        '${it.daysOverdue}',
-                      ],
-                  ],
-                  fileNamePrefix: 'overdue_reports',
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: UpriseColors.error,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                 ),
               ),
-              const SizedBox(height: 12),
+            ),
+            onExport: () => _exportTable(
+              title: 'Overdue Reports',
+              headers: const [
+                'Organization',
+                'Event',
+                'Type',
+                'Deadline',
+                'Days Overdue',
+              ],
+              rows: [
+                for (final it in items)
+                  [
+                    it.orgName,
+                    it.eventTitle,
+                    typeLabel(it.type),
+                    DateFormat('MMM d, yyyy').format(it.deadline),
+                    '${it.daysOverdue}',
+                  ],
+              ],
+              fileNamePrefix: 'overdue_reports',
+            ),
+          ),
+          table: Column(
+            children: [
               _customTableHeader(const [
                 MapEntry('Organization', 3),
                 MapEntry('Event', 3),
@@ -4005,4 +4055,3 @@ class _ActivityBarChart extends StatelessWidget {
     );
   }
 }
-

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'anchored_dropdown.dart';
 
 class AdminExportButton extends StatefulWidget {
   // Accepts either a sync `void Function(String)` or an
@@ -39,55 +40,60 @@ class _AdminExportButtonState extends State<AdminExportButton> {
     }
   }
 
+  static const _items = ['csv', 'pdf'];
+
   @override
   Widget build(BuildContext context) {
     final enabled = widget.enabled && !_busy;
     final iconColor = enabled ? const Color(0xFF374151) : const Color(0xFF9AA5B4);
     final textColor = enabled ? const Color(0xFF374151) : const Color(0xFF9AA5B4);
-    return Container(
+
+    final trigger = Container(
       height: 40,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: const Color(0xFFE2E6EA)),
       ),
-      child: PopupMenuButton<String>(
-        enabled: enabled,
-        onSelected: _handleSelected,
-        itemBuilder: (_) => [
-          _item('csv', Icons.table_chart_rounded, 'Export as CSV'),
-          _item('pdf', Icons.picture_as_pdf_rounded, 'Export as PDF'),
-        ],
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          child: Row(children: [
-            _busy
-                ? SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: iconColor),
-                  )
-                : Icon(Icons.download_rounded, size: 16, color: iconColor),
-            const SizedBox(width: 6),
-            Text(_busy ? 'Exporting…' : widget.label,
-                style: GoogleFonts.beVietnamPro(
-                    fontSize: 13, fontWeight: FontWeight.w500, color: textColor)),
-            const SizedBox(width: 4),
-            Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: iconColor),
-          ]),
-        ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          _busy
+              ? SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: iconColor),
+                )
+              : Icon(Icons.download_rounded, size: 16, color: iconColor),
+          const SizedBox(width: 6),
+          Text(_busy ? 'Exporting…' : widget.label,
+              style: GoogleFonts.beVietnamPro(
+                  fontSize: 13, fontWeight: FontWeight.w500, color: textColor)),
+          const SizedBox(width: 4),
+          Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: iconColor),
+        ]),
       ),
     );
-  }
 
-  PopupMenuItem<String> _item(String value, IconData icon, String label) {
-    return PopupMenuItem(
-      value: value,
-      child: Row(children: [
-        Icon(icon, size: 16, color: const Color(0xFF64748B)),
+    if (!enabled) return trigger;
+
+    return AnchoredMenuTrigger<String>(
+      trigger: trigger,
+      items: _items,
+      menuWidth: 190,
+      itemBuilder: (value, selected) => Row(children: [
+        Icon(
+          value == 'csv' ? Icons.table_chart_rounded : Icons.picture_as_pdf_rounded,
+          size: 16,
+          color: const Color(0xFF64748B),
+        ),
         const SizedBox(width: 10),
-        Text(label, style: GoogleFonts.beVietnamPro(fontSize: 13)),
+        Text(
+          value == 'csv' ? 'Export as CSV' : 'Export as PDF',
+          style: GoogleFonts.beVietnamPro(fontSize: 13),
+        ),
       ]),
+      onSelected: _handleSelected,
     );
   }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 /// Flutter's stock DropdownButton/DropdownButtonFormField centers its menu
 /// on the selected item instead of simply dropping below the field, which
@@ -98,6 +99,13 @@ class _AnchoredDropdownTriggerState<T>
         _fieldKey.currentContext?.findRenderObject() as RenderBox?;
     final width = renderBox?.size.width ?? 200.0;
     final height = renderBox?.size.height ?? 48.0;
+    // If opening left-aligned (the normal case) would push the menu past
+    // the right edge of the screen, anchor its right edge to the trigger's
+    // right edge instead so it opens leftward and stays on-screen.
+    final triggerGlobalX = renderBox?.localToGlobal(Offset.zero).dx ?? 0.0;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final openLeftward = triggerGlobalX + width > screenWidth;
+    final anchor = openLeftward ? Alignment.topRight : Alignment.topLeft;
 
     final overlay = Overlay.of(context);
     _entry = OverlayEntry(
@@ -112,9 +120,11 @@ class _AnchoredDropdownTriggerState<T>
           CompositedTransformFollower(
             link: _link,
             showWhenUnlinked: false,
+            targetAnchor: anchor,
+            followerAnchor: anchor,
             offset: Offset(0, height + 4),
             child: Align(
-              alignment: Alignment.topLeft,
+              alignment: anchor,
               child: Material(
                 elevation: 8,
                 borderRadius: BorderRadius.circular(10),
@@ -145,7 +155,7 @@ class _AnchoredDropdownTriggerState<T>
                               ? const Color(0xFFFDF2E9)
                               : Colors.transparent,
                           child: DefaultTextStyle.merge(
-                            style: TextStyle(
+                            style: GoogleFonts.beVietnamPro(
                               fontWeight: selected
                                   ? FontWeight.w700
                                   : FontWeight.w400,
@@ -195,7 +205,10 @@ class _AnchoredDropdownTriggerState<T>
               : DefaultTextStyle(
                   style:
                       widget.style ??
-                      const TextStyle(fontSize: 14, color: Colors.black87),
+                      GoogleFonts.beVietnamPro(
+                        fontSize: 14,
+                        color: Colors.black87,
+                      ),
                   child: displayChild,
                 ),
         ),
@@ -262,16 +275,23 @@ class _AnchoredMenuTriggerState<T> extends State<AnchoredMenuTrigger<T>> {
     if (widget.labelOf == null) return 200.0;
     double maxTextWidth = 0;
     for (final item in widget.items) {
+      // Must match the actual rendered style below (GoogleFonts.beVietnamPro)
+      // — measuring with a plain system-font TextStyle under-measures since
+      // Be Vietnam Pro's bold glyphs render wider, which was truncating
+      // labels like "Approved" with an ellipsis despite room looking fine.
       final tp = TextPainter(
         text: TextSpan(
           text: widget.labelOf!(item),
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+          ),
         ),
         textDirection: TextDirection.ltr,
       )..layout();
       if (tp.width > maxTextWidth) maxTextWidth = tp.width;
     }
-    return (maxTextWidth + 32).clamp(90.0, 260.0);
+    return (maxTextWidth + 36).clamp(90.0, 260.0);
   }
 
   void _toggle() {
@@ -285,6 +305,13 @@ class _AnchoredMenuTriggerState<T> extends State<AnchoredMenuTrigger<T>> {
     final measured = _measuredMenuWidth();
     final width = measured > triggerWidth ? measured : triggerWidth;
     final height = renderBox?.size.height ?? 36.0;
+    // If opening left-aligned (the normal case) would push the menu past
+    // the right edge of the screen, anchor its right edge to the trigger's
+    // right edge instead so it opens leftward and stays on-screen.
+    final triggerGlobalX = renderBox?.localToGlobal(Offset.zero).dx ?? 0.0;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final openLeftward = triggerGlobalX + width > screenWidth;
+    final anchor = openLeftward ? Alignment.topRight : Alignment.topLeft;
 
     final overlay = Overlay.of(context);
     _entry = OverlayEntry(
@@ -299,9 +326,11 @@ class _AnchoredMenuTriggerState<T> extends State<AnchoredMenuTrigger<T>> {
           CompositedTransformFollower(
             link: _link,
             showWhenUnlinked: false,
+            targetAnchor: anchor,
+            followerAnchor: anchor,
             offset: Offset(0, height + 4),
             child: Align(
-              alignment: Alignment.topLeft,
+              alignment: anchor,
               child: Material(
                 elevation: 8,
                 borderRadius: BorderRadius.circular(10),
@@ -338,7 +367,7 @@ class _AnchoredMenuTriggerState<T> extends State<AnchoredMenuTrigger<T>> {
                             maxLines: 1,
                             softWrap: false,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
+                            style: GoogleFonts.beVietnamPro(
                               fontSize: 13,
                               fontWeight: selected
                                   ? FontWeight.w700

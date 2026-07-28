@@ -40,6 +40,13 @@ class MyApp extends StatelessWidget {
             primaryColor: const Color(0xFFB45309),
             fontFamily: 'BeVietnamPro',
             useMaterial3: true,
+            // Material 3's default ThemeData() has no colorScheme set here,
+            // so it silently falls back to its own baseline purple seed —
+            // that's what made every plain CircularProgressIndicator() in
+            // the app render violet instead of the brand color.
+            progressIndicatorTheme: const ProgressIndicatorThemeData(
+              color: Color(0xFFB45309),
+            ),
           ),
           home: CertificateVerifyScreen(verificationCode: verifyCode),
         );
@@ -53,6 +60,12 @@ class MyApp extends StatelessWidget {
         primaryColor: const Color(0xFFD97706),
         fontFamily: 'BeVietnamPro',
         useMaterial3: true,
+        // Same fix as above — without an explicit colorScheme, Material 3
+        // defaults every unstyled loading spinner to its own purple, not
+        // this app's brand color.
+        progressIndicatorTheme: const ProgressIndicatorThemeData(
+          color: Color(0xFFD97706),
+        ),
       ),
       home: const AuthGate(),
     );

@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -258,8 +258,7 @@ class SignatoryEntry {
 // Main Widget
 // ─────────────────────────────────────────────────────────────────────────────
 class AdminSettings extends StatefulWidget {
-  final VoidCallback? onProfileUpdated;
-  const AdminSettings({super.key, this.onProfileUpdated});
+  const AdminSettings({super.key});
 
   @override
   _AdminSettingsState createState() => _AdminSettingsState();
@@ -269,14 +268,9 @@ class _AdminSettingsState extends State<AdminSettings>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
-  // Profile
-  final _fullNameController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _profileFormKey = GlobalKey<FormState>();
   final _passwordFormKey = GlobalKey<FormState>();
   bool _isLoading = false;
   User? _currentUser;
-  String? _profileImageBase64;
 
   // Password
   final _newPasswordController = TextEditingController();
@@ -287,10 +281,8 @@ class _AdminSettingsState extends State<AdminSettings>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _currentUser = FirebaseAuth.instance.currentUser;
-    _loadUserData();
-    _loadProfileImage();
   }
 
   Future<List<Map<String, dynamic>>> _fetchUserAuditLogs(String email) async {
@@ -347,117 +339,9 @@ class _AdminSettingsState extends State<AdminSettings>
   @override
   void dispose() {
     _tabController.dispose();
-    _fullNameController.dispose();
-    _emailController.dispose();
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadUserData() async {
-    if (_currentUser != null) {
-      _fullNameController.text = _currentUser!.displayName ?? '';
-      _emailController.text = _currentUser!.email ?? '';
-    }
-    final doc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(_currentUser?.uid)
-        .get();
-    if (doc.exists) {
-      final data = doc.data();
-      if (data != null) {
-        _fullNameController.text = data['fullName'] ?? _fullNameController.text;
-        _emailController.text = data['email'] ?? _emailController.text;
-      }
-    }
-    setState(() {});
-  }
-
-  Future<void> _loadProfileImage() async {
-    final doc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(_currentUser?.uid)
-        .get();
-    if (doc.exists) {
-      final data = doc.data();
-      if (data != null && data['photoBase64'] != null) {
-        setState(() => _profileImageBase64 = data['photoBase64']);
-      }
-    }
-  }
-
-  Future<void> _pickAndUploadImage() async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 50,
-    );
-    if (picked == null) return;
-    final bytes = await picked.readAsBytes();
-    final validationError = FileValidation.validateImageBytes(bytes);
-    if (validationError != null) {
-      _showSnack(validationError, success: false);
-      return;
-    }
-    setState(() => _isLoading = true);
-    try {
-      final base64String = base64Encode(bytes);
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(_currentUser!.uid)
-          .set({'photoBase64': base64String}, SetOptions(merge: true));
-      setState(() => _profileImageBase64 = base64String);
-      await ActivityLogger.log(
-        action: 'Updated profile picture',
-        module: 'Admin Settings',
-      );
-      widget.onProfileUpdated?.call();
-      _showSnack('Profile picture updated', success: true);
-    } catch (e) {
-      _showSnack('Error saving picture: $e', success: false);
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _updateProfile() async {
-    if (!_profileFormKey.currentState!.validate()) return;
-    setState(() => _isLoading = true);
-    try {
-      // If email changed, attempt to update the auth user's email as well.
-      final newEmail = _emailController.text.trim();
-      if (newEmail.isNotEmpty && newEmail != (_currentUser?.email ?? '')) {
-        try {
-          await _currentUser!.updateEmail(newEmail);
-        } on FirebaseAuthException catch (e) {
-          if (e.code == 'requires-recent-login') {
-            _showSnack('Please re-login to change your email', success: false);
-            setState(() => _isLoading = false);
-            return;
-          }
-          rethrow;
-        }
-      }
-      await _currentUser!.updateDisplayName(_fullNameController.text.trim());
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(_currentUser!.uid)
-          .set({
-            'fullName': _fullNameController.text.trim(),
-            'email': _emailController.text.trim(),
-            'updatedAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
-      await ActivityLogger.log(
-        action: 'Updated profile name to ${_fullNameController.text.trim()}',
-        module: 'Admin Settings',
-      );
-      widget.onProfileUpdated?.call();
-      _showSnack('Profile updated successfully', success: true);
-    } catch (e) {
-      _showSnack('Error: $e', success: false);
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
   }
 
   Future<void> _changePassword() async {
@@ -502,7 +386,6 @@ class _AdminSettingsState extends State<AdminSettings>
             child: TabBarView(
               controller: _tabController,
               children: [
-                _buildProfileTab(),
                 _buildSecurityTab(),
                 _buildAuditLogsTab(),
                 const _SignatoriesTab(),
@@ -524,7 +407,6 @@ class _AdminSettingsState extends State<AdminSettings>
         controller: _tabController,
         isScrollable: false,
         tabs: const [
-          Tab(text: 'Profile'),
           Tab(text: 'Security'),
           Tab(text: 'Audit Logs'),
           Tab(text: 'Signatories'),
@@ -541,236 +423,6 @@ class _AdminSettingsState extends State<AdminSettings>
         unselectedLabelStyle: GoogleFonts.beVietnamPro(
           fontSize: 13,
           fontWeight: FontWeight.w500,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProfileTab() {
-    ImageProvider? imageProvider;
-    if (_profileImageBase64 != null && _profileImageBase64!.isNotEmpty) {
-      imageProvider = MemoryImage(base64Decode(_profileImageBase64!));
-    }
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(28),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 680),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(28),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(_DS.radiusLg),
-                  border: Border.all(color: const Color(0xFFE8ECF0)),
-                  boxShadow: _DS.cardShadow,
-                ),
-                child: Column(
-                  children: [
-                    Stack(
-                      children: [
-                        Container(
-                          width: 96,
-                          height: 96,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: UpriseColors.primaryDark.withOpacity(0.15),
-                              width: 3,
-                            ),
-                            boxShadow: _DS.cardShadow,
-                          ),
-                          child: ClipOval(
-                            child: imageProvider != null
-                                ? Image(image: imageProvider, fit: BoxFit.cover)
-                                : Container(
-                                    color: UpriseColors.primaryDark.withOpacity(
-                                      0.08,
-                                    ),
-                                    child: Icon(
-                                      Icons.person_rounded,
-                                      size: 48,
-                                      color: UpriseColors.primaryDark
-                                          .withOpacity(0.4),
-                                    ),
-                                  ),
-                          ),
-                        ),
-                        Positioned(
-                          bottom: 0,
-                          right: 0,
-                          child: GestureDetector(
-                            onTap: _isLoading ? null : _pickAndUploadImage,
-                            child: Container(
-                              width: 30,
-                              height: 30,
-                              decoration: BoxDecoration(
-                                color: UpriseColors.primaryDark,
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: Colors.white,
-                                  width: 2,
-                                ),
-                              ),
-                              child: _isLoading
-                                  ? const Padding(
-                                      padding: EdgeInsets.all(6),
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : const Icon(
-                                      Icons.camera_alt_rounded,
-                                      size: 14,
-                                      color: Colors.white,
-                                    ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    Text(
-                      _fullNameController.text.isNotEmpty
-                          ? _fullNameController.text
-                          : 'Admin User',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF1A202C),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _emailController.text,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        color: const Color(0xFF64748B),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: UpriseColors.primaryDark.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(_DS.radiusPill),
-                      ),
-                      child: Text(
-                        'System Administrator',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: UpriseColors.primaryDark,
-                          letterSpacing: 0.4,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Tap the camera icon to change your photo',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 11,
-                        color: const Color(0xFF9AA5B4),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(_DS.radiusLg),
-                  border: Border.all(color: const Color(0xFFE8ECF0)),
-                  boxShadow: _DS.cardShadow,
-                ),
-                child: Form(
-                  key: _profileFormKey,
-                  child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _sectionLabel(
-                      'Personal Information',
-                      icon: Icons.badge_outlined,
-                    ),
-                    TextFormField(
-                      controller: _fullNameController,
-                      style: GoogleFonts.beVietnamPro(fontSize: 13),
-                      decoration: _DS.inputDecoration(
-                        'Full Name',
-                        hint: 'e.g., Juan dela Cruz',
-                        icon: Icons.person_outline_rounded,
-                        required: true,
-                      ),
-                      validator: (v) =>
-                          v == null || v.trim().isEmpty ? 'Required' : null,
-                      onChanged: (_) => setState(() {}),
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _emailController,
-                      style: GoogleFonts.beVietnamPro(fontSize: 13),
-                      decoration: _DS.inputDecoration(
-                        'Email Address',
-                        icon: Icons.email_outlined,
-                        required: true,
-                      ),
-                      keyboardType: TextInputType.emailAddress,
-                      validator: (v) {
-                        if (v == null || v.trim().isEmpty) return 'Required';
-                        if (!v.contains('@') || !v.contains('.')) {
-                          return 'Enter a valid email';
-                        }
-                        return null;
-                      },
-                      onChanged: (_) {},
-                    ),
-                    const SizedBox(height: 20),
-                    ElevatedButton.icon(
-                      onPressed: _isLoading ? null : _updateProfile,
-                      icon: _isLoading
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.save_rounded, size: 16),
-                      label: Text(
-                        'Save Changes',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: UpriseColors.primaryDark,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        minimumSize: const Size(double.infinity, 44),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(_DS.radiusSm),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );
@@ -868,139 +520,139 @@ class _AdminSettingsState extends State<AdminSettings>
                 child: Form(
                   key: _passwordFormKey,
                   child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _sectionLabel(
-                      'Change Password',
-                      icon: Icons.lock_outline_rounded,
-                    ),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF0F6FF),
-                        borderRadius: BorderRadius.circular(_DS.radiusSm),
-                        border: Border.all(color: const Color(0xFFBFD7FF)),
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _sectionLabel(
+                        'Change Password',
+                        icon: Icons.lock_outline_rounded,
                       ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.info_outline_rounded,
-                            size: 15,
-                            color: Color(0xFF2563EB),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Regularly updating your password keeps your account secure.',
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 12,
-                                color: const Color(0xFF1D4ED8),
-                                height: 1.4,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _newPasswordController,
-                      obscureText: !_showNewPassword,
-                      style: GoogleFonts.beVietnamPro(fontSize: 13),
-                      decoration: _DS
-                          .inputDecoration(
-                            'New Password',
-                            icon: Icons.lock_outline_rounded,
-                            required: true,
-                          )
-                          .copyWith(
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                _showNewPassword
-                                    ? Icons.visibility_off_outlined
-                                    : Icons.visibility_outlined,
-                                size: 18,
-                                color: const Color(0xFF9AA5B4),
-                              ),
-                              onPressed: () => setState(
-                                () => _showNewPassword = !_showNewPassword,
-                              ),
-                            ),
-                          ),
-                      validator: (v) {
-                        if (v == null || v.isEmpty) return 'Required';
-                        if (v.length < 6) {
-                          return 'Must be at least 6 characters';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _confirmPasswordController,
-                      obscureText: !_showConfirmPassword,
-                      style: GoogleFonts.beVietnamPro(fontSize: 13),
-                      decoration: _DS
-                          .inputDecoration(
-                            'Confirm New Password',
-                            icon: Icons.lock_outline_rounded,
-                            required: true,
-                          )
-                          .copyWith(
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                _showConfirmPassword
-                                    ? Icons.visibility_off_outlined
-                                    : Icons.visibility_outlined,
-                                size: 18,
-                                color: const Color(0xFF9AA5B4),
-                              ),
-                              onPressed: () => setState(
-                                () => _showConfirmPassword =
-                                    !_showConfirmPassword,
-                              ),
-                            ),
-                          ),
-                      validator: (v) {
-                        if (v == null || v.isEmpty) return 'Required';
-                        if (v != _newPasswordController.text) {
-                          return 'Passwords do not match';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 20),
-                    ElevatedButton.icon(
-                      onPressed: _isLoading ? null : _changePassword,
-                      icon: _isLoading
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.update_rounded, size: 16),
-                      label: Text(
-                        'Update Password',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: UpriseColors.primaryDark,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        minimumSize: const Size(double.infinity, 44),
-                        shape: RoundedRectangleBorder(
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF0F6FF),
                           borderRadius: BorderRadius.circular(_DS.radiusSm),
+                          border: Border.all(color: const Color(0xFFBFD7FF)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.info_outline_rounded,
+                              size: 15,
+                              color: Color(0xFF2563EB),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Regularly updating your password keeps your account secure.',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 12,
+                                  color: const Color(0xFF1D4ED8),
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                  ],
-                ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _newPasswordController,
+                        obscureText: !_showNewPassword,
+                        style: GoogleFonts.beVietnamPro(fontSize: 13),
+                        decoration: _DS
+                            .inputDecoration(
+                              'New Password',
+                              icon: Icons.lock_outline_rounded,
+                              required: true,
+                            )
+                            .copyWith(
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _showNewPassword
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  size: 18,
+                                  color: const Color(0xFF9AA5B4),
+                                ),
+                                onPressed: () => setState(
+                                  () => _showNewPassword = !_showNewPassword,
+                                ),
+                              ),
+                            ),
+                        validator: (v) {
+                          if (v == null || v.isEmpty) return 'Required';
+                          if (v.length < 6) {
+                            return 'Must be at least 6 characters';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _confirmPasswordController,
+                        obscureText: !_showConfirmPassword,
+                        style: GoogleFonts.beVietnamPro(fontSize: 13),
+                        decoration: _DS
+                            .inputDecoration(
+                              'Confirm New Password',
+                              icon: Icons.lock_outline_rounded,
+                              required: true,
+                            )
+                            .copyWith(
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _showConfirmPassword
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  size: 18,
+                                  color: const Color(0xFF9AA5B4),
+                                ),
+                                onPressed: () => setState(
+                                  () => _showConfirmPassword =
+                                      !_showConfirmPassword,
+                                ),
+                              ),
+                            ),
+                        validator: (v) {
+                          if (v == null || v.isEmpty) return 'Required';
+                          if (v != _newPasswordController.text) {
+                            return 'Passwords do not match';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 20),
+                      ElevatedButton.icon(
+                        onPressed: _isLoading ? null : _changePassword,
+                        icon: _isLoading
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.update_rounded, size: 16),
+                        label: Text(
+                          'Update Password',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: UpriseColors.primaryDark,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          minimumSize: const Size(double.infinity, 44),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(_DS.radiusSm),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               // Two-Factor Authentication removed per user request.
@@ -1847,142 +1499,218 @@ class _SignatoryFormDialogState extends State<_SignatoryFormDialog> {
     final isEdit = widget.existing != null;
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      child: Container(
-        width: 460,
-        padding: const EdgeInsets.all(24),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 460,
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
         child: Form(
           key: _formKey,
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                isEdit ? 'Edit Signatory' : 'Add Signatory',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF1A202C),
+              // ─── HEADER ──────────────────────────────────────────
+              Container(
+                padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      UpriseColors.primaryDark,
+                      UpriseColors.primaryDark.withAlpha(225),
+                    ],
+                  ),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(18),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.draw_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Text(
+                        isEdit ? 'Edit Signatory' : 'Add Signatory',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                      onPressed: _isSaving
+                          ? null
+                          : () => Navigator.pop(context),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 18),
-              Center(
-                child: GestureDetector(
-                  onTap: _pickSignature,
-                  child: Container(
-                    width: 140,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF8F9FB),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFFE2E6EA)),
-                    ),
-                    child: _signatureBase64 != null
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(9),
-                            child: Image.memory(
-                              base64Decode(_signatureBase64!),
-                              fit: BoxFit.contain,
-                            ),
-                          )
-                        : Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.upload_rounded,
-                                size: 20,
-                                color: const Color(0xFF9AA5B4),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Upload signature',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 11,
-                                  color: const Color(0xFF9AA5B4),
+
+              // ─── BODY ────────────────────────────────────────────
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Center(
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            onTap: _pickSignature,
+                            child: Container(
+                              width: 140,
+                              height: 80,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF8F9FB),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: const Color(0xFFE2E6EA),
                                 ),
                               ),
-                            ],
-                          ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              TextFormField(
-                controller: _nameCtrl,
-                style: GoogleFonts.beVietnamPro(fontSize: 13),
-                decoration: _DS.inputDecoration(
-                  'Full Name',
-                  hint: 'e.g., Dr. Maria Santos',
-                  icon: Icons.person_outline_rounded,
-                  required: true,
-                ),
-                validator: (v) => v?.trim().isEmpty == true ? 'Required' : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _titleCtrl,
-                style: GoogleFonts.beVietnamPro(fontSize: 13),
-                decoration: _DS.inputDecoration(
-                  'Position / Title',
-                  hint: 'e.g., College Dean',
-                  icon: Icons.badge_outlined,
-                  required: true,
-                ),
-                validator: (v) => v?.trim().isEmpty == true ? 'Required' : null,
-              ),
-              const SizedBox(height: 22),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  OutlinedButton(
-                    onPressed: _isSaving ? null : () => Navigator.pop(context),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFFE2E6EA)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
-                    child: Text(
-                      'Cancel',
-                      style: GoogleFonts.beVietnamPro(fontSize: 13),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  ElevatedButton(
-                    onPressed: _isSaving ? null : _save,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: UpriseColors.primaryDark,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
-                    child: _isSaving
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : Text(
-                            'Save',
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
+                              child: _signatureBase64 != null
+                                  ? ClipRRect(
+                                      borderRadius: BorderRadius.circular(9),
+                                      child: Image.memory(
+                                        base64Decode(_signatureBase64!),
+                                        fit: BoxFit.contain,
+                                      ),
+                                    )
+                                  : Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.upload_rounded,
+                                          size: 20,
+                                          color: const Color(0xFF9AA5B4),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'Upload signature',
+                                          style: GoogleFonts.beVietnamPro(
+                                            fontSize: 11,
+                                            color: const Color(0xFF9AA5B4),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                             ),
                           ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      TextFormField(
+                        controller: _nameCtrl,
+                        style: GoogleFonts.beVietnamPro(fontSize: 13),
+                        decoration: _DS.inputDecoration(
+                          'Full Name',
+                          hint: 'e.g., Dr. Maria Santos',
+                          icon: Icons.person_outline_rounded,
+                          required: true,
+                        ),
+                        validator: (v) =>
+                            v?.trim().isEmpty == true ? 'Required' : null,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _titleCtrl,
+                        style: GoogleFonts.beVietnamPro(fontSize: 13),
+                        decoration: _DS.inputDecoration(
+                          'Position / Title',
+                          hint: 'e.g., College Dean',
+                          icon: Icons.badge_outlined,
+                          required: true,
+                        ),
+                        validator: (v) =>
+                            v?.trim().isEmpty == true ? 'Required' : null,
+                      ),
+                    ],
                   ),
-                ],
+                ),
+              ),
+
+              // ─── FOOTER ──────────────────────────────────────────
+              Container(
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+                decoration: const BoxDecoration(
+                  border: Border(top: BorderSide(color: Color(0xFFEDF0F3))),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    OutlinedButton(
+                      onPressed: _isSaving
+                          ? null
+                          : () => Navigator.pop(context),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Color(0xFFE2E6EA)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 18,
+                          vertical: 11,
+                        ),
+                      ),
+                      child: Text(
+                        'Cancel',
+                        style: GoogleFonts.beVietnamPro(fontSize: 13),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    ElevatedButton(
+                      onPressed: _isSaving ? null : _save,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: UpriseColors.primaryDark,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 18,
+                          vertical: 11,
+                        ),
+                      ),
+                      child: _isSaving
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : Text(
+                              'Save',
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

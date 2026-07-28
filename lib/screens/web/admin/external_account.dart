@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -13,14 +13,15 @@ import 'export_pdf.dart';
 import '../../../theme/app_theme.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../widgets/anchored_dropdown.dart';
+import '../../../widgets/app_toast.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens (mirrors student_accounts.dart / org_management.dart)
 // ─────────────────────────────────────────────────────────────────────────────
 class _DS {
-  static const double radiusSm   = 8;
-  static const double radiusMd   = 12;
-  static const double radiusLg   = 16;
+  static const double radiusSm = 8;
+  static const double radiusMd = 12;
+  static const double radiusLg = 16;
   static const double radiusPill = 100;
 
   static final cardShadow = [
@@ -38,45 +39,50 @@ class _DS {
 Widget _sectionLabel(String text, {IconData? icon}) {
   return Padding(
     padding: const EdgeInsets.only(bottom: 12),
-    child: Row(children: [
-      if (icon != null) ...[
-        Icon(icon, size: 16, color: UpriseColors.primaryDark),
-        const SizedBox(width: 8),
-      ],
-      Text(
-        text,
-        style: GoogleFonts.beVietnamPro(
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-          color: UpriseColors.primaryDark,
-          letterSpacing: 0.3,
+    child: Row(
+      children: [
+        if (icon != null) ...[
+          Icon(icon, size: 16, color: UpriseColors.primaryDark),
+          const SizedBox(width: 8),
+        ],
+        Text(
+          text,
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: UpriseColors.primaryDark,
+            letterSpacing: 0.3,
+          ),
         ),
-      ),
-      const SizedBox(width: 12),
-      Expanded(child: Divider(color: const Color(0xFFE2E6EA), thickness: 1)),
-    ]),
+        const SizedBox(width: 12),
+        Expanded(child: Divider(color: const Color(0xFFE2E6EA), thickness: 1)),
+      ],
+    ),
   );
 }
 
 Widget _statusBadge(String status) {
   const styles = {
     'approved': (Color(0xFFECFDF5), Color(0xFF059669), 'APPROVED'),
-    'pending':  (Color(0xFFFFFBEB), Color(0xFFFB923C), 'PENDING'),
+    'pending': (Color(0xFFFFFBEB), Color(0xFFFB923C), 'PENDING'),
     'rejected': (Color(0xFFFEF2F2), Color(0xFFDC2626), 'REJECTED'),
   };
-  final s     = styles[status.toLowerCase()];
-  final bg    = s?.$1 ?? const Color(0xFFF3F4F6);
-  final fg    = s?.$2 ?? const Color(0xFF6B7280);
+  final s = styles[status.toLowerCase()];
+  final bg = s?.$1 ?? const Color(0xFFF3F4F6);
+  final fg = s?.$2 ?? const Color(0xFF6B7280);
   final label = s?.$3 ?? status.toUpperCase();
 
   return Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
     decoration: BoxDecoration(
       color: bg,
       borderRadius: BorderRadius.circular(_DS.radiusPill),
     ),
     child: Text(
       label,
+      maxLines: 1,
+      softWrap: false,
+      overflow: TextOverflow.ellipsis,
       style: GoogleFonts.beVietnamPro(
         fontSize: 9,
         fontWeight: FontWeight.w700,
@@ -91,18 +97,18 @@ Widget _statusBadge(String status) {
 // Data model
 // ─────────────────────────────────────────────────────────────────────────────
 class ExternalRequest {
-  final String   id;
-  final String   userId;
-  final String   userName;
-  final String   email;
-  final String   university;
-  final String   status;
+  final String id;
+  final String userId;
+  final String userName;
+  final String email;
+  final String university;
+  final String status;
   final DateTime requestDate;
-  final String   purpose;
-  final String?  tempPassword;
-  final String?  uid;
-  final bool     accountCreated;
-  final bool     isArchived;
+  final String purpose;
+  final String? tempPassword;
+  final String? uid;
+  final bool accountCreated;
+  final bool isArchived;
 
   const ExternalRequest({
     required this.id,
@@ -119,21 +125,20 @@ class ExternalRequest {
     this.isArchived = false,
   });
 
-  factory ExternalRequest.fromFirestore(
-      String id, Map<String, dynamic> d) {
+  factory ExternalRequest.fromFirestore(String id, Map<String, dynamic> d) {
     return ExternalRequest(
-      id:             id,
-      userId:         d['userId']      ?? '',
-      userName:       d['userName']    ?? '',
-      email:          d['email']       ?? '',
-      university:     d['university']  ?? '',
-      status:         d['status']      ?? 'pending',
-      requestDate:    (d['requestDate'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      purpose:        d['purpose']     ?? '',
-      tempPassword:   d['tempPassword'] as String?,
-      uid:            d['uid'] as String?,
+      id: id,
+      userId: d['userId'] ?? '',
+      userName: d['userName'] ?? '',
+      email: d['email'] ?? '',
+      university: d['university'] ?? '',
+      status: d['status'] ?? 'pending',
+      requestDate: (d['requestDate'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      purpose: d['purpose'] ?? '',
+      tempPassword: d['tempPassword'] as String?,
+      uid: d['uid'] as String?,
       accountCreated: d['accountCreated'] == true,
-      isArchived:     d['isArchived'] == true,
+      isArchived: d['isArchived'] == true,
     );
   }
 }
@@ -151,7 +156,7 @@ class ExternalAccount extends StatefulWidget {
 class _ExternalAccountState extends State<ExternalAccount> {
   final TextEditingController _searchController = TextEditingController();
   String _statusFilter = 'All';
-  int    _currentPage  = 1;
+  int _currentPage = 1;
   static const int _pageSize = 10;
 
   // Checked pending requests, keyed by doc id — approving is now a bulk
@@ -163,8 +168,9 @@ class _ExternalAccountState extends State<ExternalAccount> {
   // methods that use these are called on every rebuild (search, filter
   // changes, pagination), so building a fresh .snapshots() there each time
   // was re-subscribing to Firestore from scratch on every keystroke.
-  late final Stream<QuerySnapshot> _requestsStream =
-      FirebaseFirestore.instance.collection('external_requests').snapshots();
+  late final Stream<QuerySnapshot> _requestsStream = FirebaseFirestore.instance
+      .collection('external_requests')
+      .snapshots();
   late final Stream<QuerySnapshot> _requestsOrderedStream = FirebaseFirestore
       .instance
       .collection('external_requests')
@@ -209,7 +215,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
           for (final doc in snapshot.data!.docs) {
             total++;
             final s = (doc.data() as Map)['status'] ?? 'pending';
-            if (s == 'pending')  pending++;
+            if (s == 'pending') pending++;
             if (s == 'approved') approved++;
             if (s == 'rejected') rejected++;
           }
@@ -219,26 +225,42 @@ class _ExternalAccountState extends State<ExternalAccount> {
           _StatCard(
             label: 'Total Requests',
             value: '$total',
-            icon:  Icons.people_rounded,
+            icon: Icons.people_rounded,
             color: UpriseColors.primaryDark,
+            onTap: () => setState(() {
+              _statusFilter = 'All';
+              _currentPage = 1;
+            }),
           ),
           _StatCard(
             label: 'Approved',
             value: '$approved',
-            icon:  Icons.check_circle_rounded,
+            icon: Icons.check_circle_rounded,
             color: const Color(0xFF059669),
+            onTap: () => setState(() {
+              _statusFilter = 'Approved';
+              _currentPage = 1;
+            }),
           ),
           _StatCard(
             label: 'Pending',
             value: '$pending',
-            icon:  Icons.pending_rounded,
+            icon: Icons.pending_rounded,
             color: const Color(0xFFFB923C),
+            onTap: () => setState(() {
+              _statusFilter = 'Pending';
+              _currentPage = 1;
+            }),
           ),
           _StatCard(
             label: 'Rejected',
             value: '$rejected',
-            icon:  Icons.cancel_rounded,
+            icon: Icons.cancel_rounded,
             color: const Color(0xFFDC2626),
+            onTap: () => setState(() {
+              _statusFilter = 'Rejected';
+              _currentPage = 1;
+            }),
           ),
         ];
 
@@ -254,12 +276,14 @@ class _ExternalAccountState extends State<ExternalAccount> {
                     ],
                   ],
                 )
-              : Row(children: [
-                  for (var card in cards) ...[
-                    Expanded(child: card),
-                    const SizedBox(width: 14),
+              : Row(
+                  children: [
+                    for (var card in cards) ...[
+                      Expanded(child: card),
+                      const SizedBox(width: 14),
+                    ],
                   ],
-                ]),
+                ),
         );
       },
     );
@@ -274,14 +298,33 @@ class _ExternalAccountState extends State<ExternalAccount> {
         style: GoogleFonts.beVietnamPro(fontSize: 13),
         decoration: InputDecoration(
           hintText: 'Search by name, email, or university…',
-          hintStyle: GoogleFonts.beVietnamPro(fontSize: 13, color: const Color(0xFF9AA5B4)),
-          prefixIcon: const Icon(Icons.search_rounded, size: 18, color: Color(0xFF9AA5B4)),
+          hintStyle: GoogleFonts.beVietnamPro(
+            fontSize: 13,
+            color: const Color(0xFF9AA5B4),
+          ),
+          prefixIcon: const Icon(
+            Icons.search_rounded,
+            size: 18,
+            color: Color(0xFF9AA5B4),
+          ),
           filled: true,
           fillColor: Colors.white,
-          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E6EA))),
-          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E6EA))),
-          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: UpriseColors.primaryDark, width: 1.5)),
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: 0,
+            horizontal: 16,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: UpriseColors.primaryDark, width: 1.5),
+          ),
         ),
         onChanged: (_) => setState(() => _currentPage = 1),
       ),
@@ -319,12 +362,17 @@ class _ExternalAccountState extends State<ExternalAccount> {
               disabledBackgroundColor: const Color(0xFFD1D5DB),
               disabledForegroundColor: const Color(0xFF6B7280),
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
               elevation: 0,
             ),
           ),
         ),
-        _ExportButton(statusFilter: _statusFilter, searchTerm: _searchController.text.trim()),
+        _ExportButton(
+          statusFilter: _statusFilter,
+          searchTerm: _searchController.text.trim(),
+        ),
       ],
     );
 
@@ -363,42 +411,58 @@ class _ExternalAccountState extends State<ExternalAccount> {
         if (_searchTerm.isNotEmpty) {
           docs = docs.where((d) {
             final data = d.data() as Map;
-            return (data['userName'] ?? '').toString().toLowerCase().contains(_searchTerm) ||
-                (data['email'] ?? '').toString().toLowerCase().contains(_searchTerm) ||
-                (data['university'] ?? '').toString().toLowerCase().contains(_searchTerm);
+            return (data['userName'] ?? '').toString().toLowerCase().contains(
+                  _searchTerm,
+                ) ||
+                (data['email'] ?? '').toString().toLowerCase().contains(
+                  _searchTerm,
+                ) ||
+                (data['university'] ?? '').toString().toLowerCase().contains(
+                  _searchTerm,
+                );
           }).toList();
         }
 
         if (_statusFilter == 'Archived') {
-          docs = docs.where((d) => (d.data() as Map)['isArchived'] == true).toList();
+          docs = docs
+              .where((d) => (d.data() as Map)['isArchived'] == true)
+              .toList();
         } else {
           // Archived requests are hidden from every other view, same as
           // letter_request.dart, so they don't clutter the active queue.
-          docs = docs.where((d) => (d.data() as Map)['isArchived'] != true).toList();
+          docs = docs
+              .where((d) => (d.data() as Map)['isArchived'] != true)
+              .toList();
           if (_statusFilter != 'All') {
             docs = docs
-                .where((d) =>
-                    (d.data() as Map)['status'] ==
-                    _statusFilter.toLowerCase())
+                .where(
+                  (d) =>
+                      (d.data() as Map)['status'] ==
+                      _statusFilter.toLowerCase(),
+                )
                 .toList();
           }
         }
 
-        final totalPages =
-            docs.isEmpty ? 1 : (docs.length / _pageSize).ceil();
+        final totalPages = docs.isEmpty ? 1 : (docs.length / _pageSize).ceil();
         final safePage = _currentPage.clamp(1, totalPages);
-        final start    = (safePage - 1) * _pageSize;
-        final end      = (start + _pageSize).clamp(0, docs.length);
+        final start = (safePage - 1) * _pageSize;
+        final end = (start + _pageSize).clamp(0, docs.length);
         final pageDocs = docs.isEmpty
             ? <QueryDocumentSnapshot>[]
             : docs.sublist(start, end);
 
         final pageReqs = pageDocs
-            .map((d) => ExternalRequest.fromFirestore(
-                d.id, d.data() as Map<String, dynamic>))
+            .map(
+              (d) => ExternalRequest.fromFirestore(
+                d.id,
+                d.data() as Map<String, dynamic>,
+              ),
+            )
             .toList();
-        final pendingOnPage =
-            pageReqs.where((r) => r.status == 'pending').toList();
+        final pendingOnPage = pageReqs
+            .where((r) => r.status == 'pending')
+            .toList();
 
         return Container(
           margin: const EdgeInsets.symmetric(horizontal: 28),
@@ -408,22 +472,26 @@ class _ExternalAccountState extends State<ExternalAccount> {
             border: Border.all(color: const Color(0xFFE8ECF0)),
             boxShadow: _DS.cardShadow,
           ),
-          child: Column(children: [
-            _buildTableHeader(pendingOnPage),
-            Expanded(
-              child: docs.isEmpty
-                  ? _buildEmptyState()
-                  : ListView.builder(
-                      itemCount: pageReqs.length,
-                      itemBuilder: (_, i) {
-                        final req = pageReqs[i];
-                        return _buildRow(
-                            req: req, isLast: i == pageReqs.length - 1);
-                      },
-                    ),
-            ),
-            _buildFooter(docs.length, totalPages, start, end),
-          ]),
+          child: Column(
+            children: [
+              _buildTableHeader(pendingOnPage),
+              Expanded(
+                child: docs.isEmpty
+                    ? _buildEmptyState()
+                    : ListView.builder(
+                        itemCount: pageReqs.length,
+                        itemBuilder: (_, i) {
+                          final req = pageReqs[i];
+                          return _buildRow(
+                            req: req,
+                            isLast: i == pageReqs.length - 1,
+                          );
+                        },
+                      ),
+              ),
+              _buildFooter(docs.length, totalPages, start, end),
+            ],
+          ),
         );
       },
     );
@@ -432,147 +500,149 @@ class _ExternalAccountState extends State<ExternalAccount> {
   }
 
   Widget _buildTableHeader(List<ExternalRequest> pendingOnPage) {
-    final allSelected = pendingOnPage.isNotEmpty &&
+    final allSelected =
+        pendingOnPage.isNotEmpty &&
         pendingOnPage.every((r) => _selectedPending.containsKey(r.id));
     final someSelected =
-        !allSelected && pendingOnPage.any((r) => _selectedPending.containsKey(r.id));
+        !allSelected &&
+        pendingOnPage.any((r) => _selectedPending.containsKey(r.id));
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
       decoration: const BoxDecoration(
         color: Color(0xFFFFF7ED),
-        borderRadius:
-            BorderRadius.vertical(top: Radius.circular(14)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
         border: Border(bottom: BorderSide(color: Color(0xFFFB923C))),
       ),
-      child: Row(children: [
-        SizedBox(
-          width: 32,
-          child: Checkbox(
-            value: allSelected ? true : (someSelected ? null : false),
-            tristate: true,
-            activeColor: const Color(0xFF059669),
-            onChanged: pendingOnPage.isEmpty
+      child: Row(
+        children: [
+          SizedBox(
+            width: 32,
+            child: pendingOnPage.isEmpty
                 ? null
-                : (v) => setState(() {
-                    if (v == true) {
-                      for (final r in pendingOnPage) {
-                        _selectedPending[r.id] = r;
+                : Checkbox(
+                    value: allSelected ? true : (someSelected ? null : false),
+                    tristate: true,
+                    activeColor: const Color(0xFF059669),
+                    onChanged: (v) => setState(() {
+                      if (v == true) {
+                        for (final r in pendingOnPage) {
+                          _selectedPending[r.id] = r;
+                        }
+                      } else {
+                        for (final r in pendingOnPage) {
+                          _selectedPending.remove(r.id);
+                        }
                       }
-                    } else {
-                      for (final r in pendingOnPage) {
-                        _selectedPending.remove(r.id);
-                      }
-                    }
-                  }),
+                    }),
+                  ),
           ),
-        ),
-        Expanded(flex: 3, child: _headerCell('FULL NAME')),
-        Expanded(flex: 3, child: _headerCell('EMAIL')),
-        Expanded(flex: 2, child: _headerCell('UNIVERSITY / ORG')),
-        Expanded(flex: 2, child: _headerCell('REQUEST DATE')),
-        Expanded(
-          flex: 1,
-          child: Align(
+          Expanded(flex: 3, child: _headerCell('FULL NAME')),
+          Expanded(flex: 3, child: _headerCell('EMAIL')),
+          Expanded(flex: 2, child: _headerCell('UNIVERSITY / ORG')),
+          Expanded(flex: 2, child: _headerCell('REQUEST DATE')),
+          Expanded(
+            flex: 1,
+            child: Align(
               alignment: Alignment.centerRight,
-              child: _headerCell('STATUS')),
-        ),
-        Expanded(
-          flex: 3,
-          child: Align(
+              child: _headerCell('STATUS'),
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Align(
               alignment: Alignment.centerRight,
-              child: _headerCell('ACTIONS')),
-        ),
-      ]),
+              child: _headerCell('ACTIONS'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _headerCell(String text) => Text(
-        text,
-        style: GoogleFonts.beVietnamPro(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: const Color(0xFF64748B),
-          letterSpacing: 0.7,
-        ),
-      );
+    text,
+    style: GoogleFonts.beVietnamPro(
+      fontSize: 11,
+      fontWeight: FontWeight.w700,
+      color: const Color(0xFF64748B),
+      letterSpacing: 0.7,
+    ),
+  );
 
-  Widget _buildRow(
-      {required ExternalRequest req, required bool isLast}) {
-    final formattedDate =
-        DateFormat('MMM dd, yyyy').format(req.requestDate);
-    final parts    = req.userName.trim().split(' ');
+  Widget _buildRow({required ExternalRequest req, required bool isLast}) {
+    final formattedDate = DateFormat('MMM dd, yyyy').format(req.requestDate);
+    final parts = req.userName.trim().split(' ');
     final initials = parts.length >= 2
         ? '${parts[0][0]}${parts[1][0]}'.toUpperCase()
-        : (req.userName.isNotEmpty
-            ? req.userName[0].toUpperCase()
-            : '?');
+        : (req.userName.isNotEmpty ? req.userName[0].toUpperCase() : '?');
 
     // Not wrapped in an InkWell-with-onTap anymore — that competed with the
     // row's own Checkbox for taps (both are tap targets in the same hit-test
     // region), which made the checkbox unreliable to click. "View Details"
     // below is the one dedicated way to open the row now.
     return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        decoration: BoxDecoration(
-          border: isLast
-              ? null
-              : const Border(
-                  bottom: BorderSide(color: Color(0xFFF1F5F9))),
-        ),
-        child: Row(children: [
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      decoration: BoxDecoration(
+        border: isLast
+            ? null
+            : const Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+      ),
+      child: Row(
+        children: [
           SizedBox(
             width: 32,
-            child: Checkbox(
-              value: _selectedPending.containsKey(req.id),
-              activeColor: const Color(0xFF059669),
-              onChanged: req.status != 'pending'
-                  ? null
-                  : (v) => setState(() {
+            child: req.status != 'pending'
+                ? null
+                : Checkbox(
+                    value: _selectedPending.containsKey(req.id),
+                    activeColor: const Color(0xFF059669),
+                    onChanged: (v) => setState(() {
                       if (v == true) {
                         _selectedPending[req.id] = req;
                       } else {
                         _selectedPending.remove(req.id);
                       }
                     }),
-            ),
+                  ),
           ),
           // Full name with avatar
           Expanded(
             flex: 3,
-            child: Row(children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color:
-                      UpriseColors.primaryDark.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Center(
-                  child: Text(
-                    initials,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: UpriseColors.primaryDark,
+            child: Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: UpriseColors.primaryDark.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Center(
+                    child: Text(
+                      initials,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: UpriseColors.primaryDark,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  req.userName.isNotEmpty ? req.userName : '—',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF1A202C),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    req.userName.isNotEmpty ? req.userName : '—',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF1A202C),
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-            ]),
+              ],
+            ),
           ),
           // Email
           Expanded(
@@ -580,7 +650,9 @@ class _ExternalAccountState extends State<ExternalAccount> {
             child: Text(
               req.email.isNotEmpty ? req.email : '—',
               style: GoogleFonts.beVietnamPro(
-                  fontSize: 12, color: const Color(0xFF374151)),
+                fontSize: 12,
+                color: const Color(0xFF374151),
+              ),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -592,14 +664,17 @@ class _ExternalAccountState extends State<ExternalAccount> {
                     alignment: Alignment.centerLeft,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 3),
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
                       decoration: BoxDecoration(
-                        color: UpriseColors.primaryDark
-                            .withOpacity(0.07),
+                        color: UpriseColors.primaryDark.withOpacity(0.07),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
                         req.university,
+                        maxLines: 1,
+                        softWrap: false,
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
@@ -609,10 +684,13 @@ class _ExternalAccountState extends State<ExternalAccount> {
                       ),
                     ),
                   )
-                : Text('—',
+                : Text(
+                    '—',
                     style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        color: const Color(0xFF9AA5B4))),
+                      fontSize: 13,
+                      color: const Color(0xFF9AA5B4),
+                    ),
+                  ),
           ),
           // Date
           Expanded(
@@ -620,7 +698,9 @@ class _ExternalAccountState extends State<ExternalAccount> {
             child: Text(
               formattedDate,
               style: GoogleFonts.beVietnamPro(
-                  fontSize: 12, color: const Color(0xFF64748B)),
+                fontSize: 12,
+                color: const Color(0xFF64748B),
+              ),
             ),
           ),
           // Status
@@ -663,15 +743,22 @@ class _ExternalAccountState extends State<ExternalAccount> {
                 ],
                 const SizedBox(width: 4),
                 _ActionIconButton(
-                  icon: req.isArchived ? Icons.restore_rounded : Icons.archive_outlined,
+                  icon: req.isArchived
+                      ? Icons.restore_rounded
+                      : Icons.archive_outlined,
                   tooltip: req.isArchived ? 'Restore' : 'Archive',
-                  color: req.isArchived ? const Color(0xFF059669) : const Color(0xFF6B7280),
-                  onTap: () => req.isArchived ? _confirmRestore(req) : _confirmArchive(req),
+                  color: req.isArchived
+                      ? const Color(0xFF059669)
+                      : const Color(0xFF6B7280),
+                  onTap: () => req.isArchived
+                      ? _confirmRestore(req)
+                      : _confirmArchive(req),
                 ),
               ],
             ),
           ),
-        ]),
+        ],
+      ),
     );
   }
 
@@ -687,47 +774,49 @@ class _ExternalAccountState extends State<ExternalAccount> {
               color: const Color(0xFFF1F5F9),
               borderRadius: BorderRadius.circular(20),
             ),
-            child: const Icon(Icons.person_off_rounded,
-                size: 40, color: Color(0xFF9AA5B4)),
+            child: const Icon(
+              Icons.person_off_rounded,
+              size: 40,
+              color: Color(0xFF9AA5B4),
+            ),
           ),
           const SizedBox(height: 16),
-          Text('No external requests found',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: const Color(0xFF374151),
-              )),
+          Text(
+            'No external requests found',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF374151),
+            ),
+          ),
           const SizedBox(height: 6),
-          Text('Try adjusting your filters.',
-              style: GoogleFonts.beVietnamPro(
-                  fontSize: 13, color: const Color(0xFF64748B))),
+          Text(
+            'Try adjusting your filters.',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 13,
+              color: const Color(0xFF64748B),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildFooter(
-      int total, int totalPages, int start, int end) {
+  Widget _buildFooter(int total, int totalPages, int start, int end) {
     const int maxVisible = 5;
-    int firstPage =
-        (_currentPage - maxVisible ~/ 2).clamp(1, totalPages);
-    int lastPage =
-        (firstPage + maxVisible - 1).clamp(1, totalPages);
+    int firstPage = (_currentPage - maxVisible ~/ 2).clamp(1, totalPages);
+    int lastPage = (firstPage + maxVisible - 1).clamp(1, totalPages);
     if (lastPage - firstPage + 1 < maxVisible && firstPage > 1) {
       firstPage = (lastPage - maxVisible + 1).clamp(1, totalPages);
     }
-    final pages =
-        List.generate(lastPage - firstPage + 1, (i) => firstPage + i);
+    final pages = List.generate(lastPage - firstPage + 1, (i) => firstPage + i);
 
     return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       decoration: const BoxDecoration(
-        border:
-            Border(top: BorderSide(color: Color(0xFFE8ECF0))),
+        border: Border(top: BorderSide(color: Color(0xFFE8ECF0))),
         color: Color(0xFFF8F9FB),
-        borderRadius:
-            BorderRadius.vertical(bottom: Radius.circular(14)),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(14)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -735,42 +824,50 @@ class _ExternalAccountState extends State<ExternalAccount> {
           Text(
             'Showing ${total == 0 ? 0 : start + 1}–$end of $total requests',
             style: GoogleFonts.beVietnamPro(
-                fontSize: 12, color: const Color(0xFF64748B)),
-          ),
-          Row(children: [
-            _PageButton(
-              icon: Icons.chevron_left_rounded,
-              enabled: _currentPage > 1,
-              onTap: () => setState(() => _currentPage--),
+              fontSize: 12,
+              color: const Color(0xFF64748B),
             ),
-            const SizedBox(width: 4),
-            ...pages.map((p) => _PageNumButton(
+          ),
+          Row(
+            children: [
+              _PageButton(
+                icon: Icons.chevron_left_rounded,
+                enabled: _currentPage > 1,
+                onTap: () => setState(() => _currentPage--),
+              ),
+              const SizedBox(width: 4),
+              ...pages.map(
+                (p) => _PageNumButton(
                   page: p,
                   isActive: p == _currentPage,
                   onTap: () => setState(() => _currentPage = p),
-                )),
-            if (lastPage < totalPages) ...[
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Text('…',
-                    style: GoogleFonts.beVietnamPro(
-                        color: const Color(0xFF64748B),
-                        fontSize: 12)),
+                ),
               ),
-              _PageNumButton(
-                page: totalPages,
-                isActive: _currentPage == totalPages,
-                onTap: () =>
-                    setState(() => _currentPage = totalPages),
+              if (lastPage < totalPages) ...[
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Text(
+                    '…',
+                    style: GoogleFonts.beVietnamPro(
+                      color: const Color(0xFF64748B),
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                _PageNumButton(
+                  page: totalPages,
+                  isActive: _currentPage == totalPages,
+                  onTap: () => setState(() => _currentPage = totalPages),
+                ),
+              ],
+              const SizedBox(width: 4),
+              _PageButton(
+                icon: Icons.chevron_right_rounded,
+                enabled: _currentPage < totalPages,
+                onTap: () => setState(() => _currentPage++),
               ),
             ],
-            const SizedBox(width: 4),
-            _PageButton(
-              icon: Icons.chevron_right_rounded,
-              enabled: _currentPage < totalPages,
-              onTap: () => setState(() => _currentPage++),
-            ),
-          ]),
+          ),
         ],
       ),
     );
@@ -803,16 +900,13 @@ class _ExternalAccountState extends State<ExternalAccount> {
     );
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-            'Request ${newStatus[0].toUpperCase()}${newStatus.substring(1)}'),
-        backgroundColor: newStatus == 'approved'
-            ? const Color(0xFF059669)
-            : const Color(0xFFDC2626),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8)),
-      ));
+      final message =
+          'Request ${newStatus[0].toUpperCase()}${newStatus.substring(1)}';
+      if (newStatus == 'approved') {
+        AppToast.success(context, message);
+      } else {
+        AppToast.error(context, message);
+      }
     }
   }
 
@@ -837,23 +931,18 @@ class _ExternalAccountState extends State<ExternalAccount> {
         .doc(docId)
         .get();
     final data = snap.data() ?? {};
-    final resolvedEmail = (email.isNotEmpty
-            ? email
-            : (data['email'] as String? ?? ''))
-        .trim()
-        .toLowerCase();
+    final resolvedEmail =
+        (email.isNotEmpty ? email : (data['email'] as String? ?? ''))
+            .trim()
+            .toLowerCase();
     final university = (data['university'] as String?) ?? '';
 
     if (resolvedEmail.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Text(
-              'Cannot approve: this request has no email address.'),
-          backgroundColor: const Color(0xFFDC2626),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8)),
-        ));
+        AppToast.error(
+          context,
+          'Cannot approve: this request has no email address.',
+        );
       }
       return;
     }
@@ -865,13 +954,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
           .doc(docId)
           .update({'status': 'approved'});
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Text('Request approved.'),
-          backgroundColor: const Color(0xFF059669),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8)),
-        ));
+        AppToast.success(context, 'Request approved.');
       }
       return;
     }
@@ -893,7 +976,9 @@ class _ExternalAccountState extends State<ExternalAccount> {
     UserCredential cred;
     try {
       cred = await secondaryAuth.createUserWithEmailAndPassword(
-          email: resolvedEmail, password: password);
+        email: resolvedEmail,
+        password: password,
+      );
     } catch (e) {
       await secondaryAuth.signOut();
       String msg = 'Account creation failed: $e';
@@ -901,13 +986,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
         msg = 'Email already registered: $resolvedEmail';
       }
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(msg),
-          backgroundColor: const Color(0xFFDC2626),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8)),
-        ));
+        AppToast.error(context, msg);
       }
       return;
     }
@@ -921,73 +1000,74 @@ class _ExternalAccountState extends State<ExternalAccount> {
     batch.update(
       FirebaseFirestore.instance.collection('external_requests').doc(docId),
       {
-        'status'             : 'approved',
-        'uid'                : uid,
-        'tempPassword'       : password,
-        'mustChangePassword' : true,
-        'accountCreated'     : true,
-        'approvedAt'         : FieldValue.serverTimestamp(),
+        'status': 'approved',
+        'uid': uid,
+        'tempPassword': password,
+        'mustChangePassword': true,
+        'accountCreated': true,
+        'approvedAt': FieldValue.serverTimestamp(),
       },
     );
 
     // Mirror into a `guests` collection for easy lookups elsewhere
-    batch.set(
-      FirebaseFirestore.instance.collection('guests').doc(uid),
-      {
-        'requestId'          : docId,
-        'fullName'           : userName,
-        'university'         : university,
-        'email'              : resolvedEmail,
-        'tempPassword'       : password,
-        'mustChangePassword' : true,
-        'archived'           : false,
-        'createdAt'          : FieldValue.serverTimestamp(),
-        'uid'                : uid,
-      },
-    );
+    batch.set(FirebaseFirestore.instance.collection('guests').doc(uid), {
+      'requestId': docId,
+      'fullName': userName,
+      'university': university,
+      'email': resolvedEmail,
+      'tempPassword': password,
+      'mustChangePassword': true,
+      'archived': false,
+      'createdAt': FieldValue.serverTimestamp(),
+      'uid': uid,
+    });
 
     // `users` doc so auth_service.needsPasswordChange() can read the flag
-    batch.set(
-      FirebaseFirestore.instance.collection('users').doc(uid),
-      {
-        'uid'                : uid,
-        'email'              : resolvedEmail,
-        'fullName'           : userName,
-        'role'               : 'guest',
-        'mustChangePassword' : true,
-        'createdAt'          : FieldValue.serverTimestamp(),
-      },
-    );
+    batch.set(FirebaseFirestore.instance.collection('users').doc(uid), {
+      'uid': uid,
+      'email': resolvedEmail,
+      'fullName': userName,
+      'role': 'guest',
+      'mustChangePassword': true,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
 
     await batch.commit();
     await secondaryAuth.signOut();
 
     // Send credentials (falls back to a queued email doc on failure)
     final sent = await _sendGuestCredentialsEmail(
-        resolvedEmail, userName, password, university);
+      resolvedEmail,
+      userName,
+      password,
+      university,
+    );
     if (!sent) {
-      await _queueGuestCredentialEmail(resolvedEmail, userName, password, university);
+      await _queueGuestCredentialEmail(
+        resolvedEmail,
+        userName,
+        password,
+        university,
+      );
     }
 
     await activity_log.ActivityLogger.log(
-      action: 'APPROVED external request for $userName ($resolvedEmail) — guest account created',
+      action:
+          'APPROVED external request for $userName ($resolvedEmail) — guest account created',
       module: 'External Account',
       severity: 'info',
       details: {'requestId': docId, 'uid': uid},
     );
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(sent
-            ? 'Approved. Credentials sent to $resolvedEmail.'
-            : 'Approved. Credentials queued — sending failed for $resolvedEmail.'),
-        backgroundColor: sent
-            ? const Color(0xFF059669)
-            : const Color(0xFFEA580C),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8)),
-      ));
+      if (sent) {
+        AppToast.success(context, 'Approved. Credentials sent to $resolvedEmail.');
+      } else {
+        AppToast.warning(
+          context,
+          'Approved. Credentials queued — sending failed for $resolvedEmail.',
+        );
+      }
     }
   }
 
@@ -1006,7 +1086,11 @@ class _ExternalAccountState extends State<ExternalAccount> {
   static const String _guestCredentialsTemplateId = 'template_kqryg75';
 
   Future<bool> _sendGuestCredentialsEmail(
-      String email, String fullName, String password, [String university = '']) async {
+    String email,
+    String fullName,
+    String password, [
+    String university = '',
+  ]) async {
     const int maxAttempts = 3;
     for (int attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
@@ -1017,41 +1101,52 @@ class _ExternalAccountState extends State<ExternalAccount> {
             'origin': 'http://localhost',
           },
           body: jsonEncode({
-            'service_id'  : _guestEmailServiceId,
-            'template_id' : _guestCredentialsTemplateId,
-            'user_id'     : _guestEmailUserId,
+            'service_id': _guestEmailServiceId,
+            'template_id': _guestCredentialsTemplateId,
+            'user_id': _guestEmailUserId,
             'template_params': {
-              'to_email'   : email,
-              'guest_name' : fullName,
-              'university' : university,
-              'password'   : password,
+              'to_email': email,
+              'guest_name': fullName,
+              'university': university,
+              'password': password,
             },
           }),
         );
         if (response.statusCode == 200) {
-          debugPrint('✅ Guest credentials email sent to $email (attempt $attempt)');
+          debugPrint(
+            '✅ Guest credentials email sent to $email (attempt $attempt)',
+          );
           return true;
         }
-        debugPrint('❌ EmailJS ${response.statusCode}: ${response.body} (attempt $attempt)');
+        debugPrint(
+          '❌ EmailJS ${response.statusCode}: ${response.body} (attempt $attempt)',
+        );
       } catch (e) {
-        debugPrint('❌ Failed to send guest credentials to $email (attempt $attempt): $e');
+        debugPrint(
+          '❌ Failed to send guest credentials to $email (attempt $attempt): $e',
+        );
       }
-      if (attempt < maxAttempts) await Future.delayed(Duration(seconds: attempt));
+      if (attempt < maxAttempts)
+        await Future.delayed(Duration(seconds: attempt));
     }
     return false;
   }
 
   Future<void> _queueGuestCredentialEmail(
-      String email, String fullName, String password, [String university = '']) async {
+    String email,
+    String fullName,
+    String password, [
+    String university = '',
+  ]) async {
     try {
       await FirebaseFirestore.instance.collection('email_queue').add({
-        'to_email'   : email,
-        'guest_name' : fullName,
-        'university' : university,
-        'password'   : password,
-        'type'       : 'guest_credentials',
-        'attempts'   : 0,
-        'createdAt'  : FieldValue.serverTimestamp(),
+        'to_email': email,
+        'guest_name': fullName,
+        'university': university,
+        'password': password,
+        'type': 'guest_credentials',
+        'attempts': 0,
+        'createdAt': FieldValue.serverTimestamp(),
       });
       debugPrint('Queued guest credential email for $email');
     } catch (e) {
@@ -1084,38 +1179,53 @@ class _ExternalAccountState extends State<ExternalAccount> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFF7ED),
-                    borderRadius: BorderRadius.circular(10),
+              Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF7ED),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      Icons.email_outlined,
+                      color: UpriseColors.primaryDark,
+                      size: 20,
+                    ),
                   ),
-                  child: const Icon(Icons.email_outlined,
-                      color: Color(0xFFEA580C), size: 20),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text('Resend Credentials',
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Resend Credentials',
                       style: GoogleFonts.beVietnamPro(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFF1A202C))),
-                ),
-                IconButton(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF1A202C),
+                      ),
+                    ),
+                  ),
+                  IconButton(
                     icon: const Icon(Icons.close_rounded, size: 18),
-                    onPressed: () => Navigator.pop(ctx, false)),
-              ]),
+                    onPressed: () => Navigator.pop(ctx, false),
+                  ),
+                ],
+              ),
               const SizedBox(height: 16),
-              Text('Send login credentials to:',
-                  style: GoogleFonts.beVietnamPro(
-                      fontSize: 13, color: const Color(0xFF64748B))),
+              Text(
+                'Send login credentials to:',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: const Color(0xFF64748B),
+                ),
+              ),
               const SizedBox(height: 8),
               Container(
                 width: double.infinity,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF8F9FB),
                   borderRadius: BorderRadius.circular(10),
@@ -1124,14 +1234,21 @@ class _ExternalAccountState extends State<ExternalAccount> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(req.email,
-                        style: GoogleFonts.beVietnamPro(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: const Color(0xFF1A202C))),
-                    Text('Guest: ${req.userName}',
-                        style: GoogleFonts.beVietnamPro(
-                            fontSize: 12, color: const Color(0xFF64748B))),
+                    Text(
+                      req.email,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF1A202C),
+                      ),
+                    ),
+                    Text(
+                      'Guest: ${req.userName}',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12,
+                        color: const Color(0xFF64748B),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1143,29 +1260,41 @@ class _ExternalAccountState extends State<ExternalAccount> {
                     onPressed: () => Navigator.pop(ctx, false),
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: Color(0xFFE2E6EA)),
-                      shape:
-                          RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 10),
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
                     ),
-                    child:
-                        Text('Cancel', style: GoogleFonts.beVietnamPro(fontSize: 13)),
+                    child: Text(
+                      'Cancel',
+                      style: GoogleFonts.beVietnamPro(fontSize: 13),
+                    ),
                   ),
                   const SizedBox(width: 10),
                   ElevatedButton.icon(
                     onPressed: () => Navigator.pop(ctx, true),
                     icon: const Icon(Icons.send_rounded, size: 15),
-                    label: Text('Send',
-                        style: GoogleFonts.beVietnamPro(
-                            fontSize: 13, fontWeight: FontWeight.w600)),
+                    label: Text(
+                      'Send',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFEA580C),
+                      backgroundColor: UpriseColors.primaryDark,
                       foregroundColor: Colors.white,
                       elevation: 0,
-                      shape:
-                          RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 10),
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
                     ),
                   ),
                 ],
@@ -1178,10 +1307,18 @@ class _ExternalAccountState extends State<ExternalAccount> {
 
     if (confirmed == true) {
       final sent = await _sendGuestCredentialsEmail(
-          req.email, req.userName, req.tempPassword!, req.university);
+        req.email,
+        req.userName,
+        req.tempPassword!,
+        req.university,
+      );
       if (!sent) {
         await _queueGuestCredentialEmail(
-            req.email, req.userName, req.tempPassword!, req.university);
+          req.email,
+          req.userName,
+          req.tempPassword!,
+          req.university,
+        );
       }
       await activity_log.ActivityLogger.log(
         action: 'Resent credentials for guest: ${req.userName} (${req.email})',
@@ -1189,15 +1326,14 @@ class _ExternalAccountState extends State<ExternalAccount> {
         severity: 'info',
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(sent
-              ? 'Credentials resent to ${req.email}.'
-              : 'Credentials queued but sending failed for ${req.email}.'),
-          backgroundColor:
-              sent ? const Color(0xFF059669) : const Color(0xFFEA580C),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ));
+        if (sent) {
+          AppToast.success(context, 'Credentials resent to ${req.email}.');
+        } else {
+          AppToast.warning(
+            context,
+            'Credentials queued but sending failed for ${req.email}.',
+          );
+        }
       }
     }
   }
@@ -1208,8 +1344,10 @@ class _ExternalAccountState extends State<ExternalAccount> {
       barrierColor: Colors.black54,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Send Password Reset Link',
-            style: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w700)),
+        title: Text(
+          'Send Password Reset Link',
+          style: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w700),
+        ),
         content: Text(
           'No temporary password is on file for ${req.userName}, so we can\'t '
           'resend the original credentials. Send a Firebase password-reset '
@@ -1219,17 +1357,26 @@ class _ExternalAccountState extends State<ExternalAccount> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel',
-                style: GoogleFonts.beVietnamPro(color: const Color(0xFF94A3B8))),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.beVietnamPro(color: const Color(0xFF94A3B8)),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFEA580C),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-            child: Text('Send Link',
-                style: GoogleFonts.beVietnamPro(
-                    color: Colors.white, fontWeight: FontWeight.w700)),
+              backgroundColor: UpriseColors.primaryDark,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: Text(
+              'Send Link',
+              style: GoogleFonts.beVietnamPro(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
         ],
       ),
@@ -1239,27 +1386,18 @@ class _ExternalAccountState extends State<ExternalAccount> {
     try {
       await FirebaseAuth.instance.sendPasswordResetEmail(email: req.email);
       await activity_log.ActivityLogger.log(
-        action: 'Sent password reset link to guest: ${req.userName} (${req.email})',
+        action:
+            'Sent password reset link to guest: ${req.userName} (${req.email})',
         module: 'External Account',
         severity: 'info',
         details: {'requestId': req.id},
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Password reset link sent to ${req.email}.'),
-          backgroundColor: const Color(0xFF059669),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ));
+        AppToast.success(context, 'Password reset link sent to ${req.email}.');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Failed to send reset link: $e'),
-          backgroundColor: const Color(0xFFDC2626),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ));
+        AppToast.error(context, 'Failed to send reset link: $e');
       }
     }
   }
@@ -1271,11 +1409,12 @@ class _ExternalAccountState extends State<ExternalAccount> {
       context: context,
       barrierColor: Colors.black54,
       builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         child: Container(
           width: 500,
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.85,
+          ),
           decoration: const BoxDecoration(
             color: Color(0xFFFFFAF5),
             borderRadius: BorderRadius.all(Radius.circular(18)),
@@ -1285,227 +1424,237 @@ class _ExternalAccountState extends State<ExternalAccount> {
             children: [
               // Header
               Container(
-                padding:
-                    const EdgeInsets.fromLTRB(24, 20, 20, 20),
+                padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [UpriseColors.primaryDark, UpriseColors.primaryDark.withAlpha(225)],
+                    colors: [
+                      UpriseColors.primaryDark,
+                      UpriseColors.primaryDark.withAlpha(225),
+                    ],
                   ),
                   borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(18)),
+                    top: Radius.circular(18),
+                  ),
                 ),
-                child: Row(children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.white.withAlpha(70)),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.white.withAlpha(70)),
+                      ),
+                      child: const Icon(
+                        Icons.person_rounded,
+                        color: Colors.white,
+                        size: 18,
+                      ),
                     ),
-                    child: const Icon(Icons.person_rounded,
-                        color: Colors.white, size: 18),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          req.userName.isNotEmpty
-                              ? req.userName
-                              : 'External Request',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            req.userName.isNotEmpty
+                                ? req.userName
+                                : 'External Request',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
                           ),
-                        ),
-                        Text(
-                          req.email,
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 12,
-                            color:
-                                Colors.white.withOpacity(0.65),
+                          Text(
+                            req.email,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 12,
+                              color: Colors.white.withOpacity(0.65),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded,
-                        color: Colors.white, size: 20),
-                    onPressed: () => Navigator.pop(ctx),
-                  ),
-                ]),
+                    IconButton(
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
               ),
               // Body
               Flexible(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(24),
                   child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    // Status + date strip
-                    Row(children: [
-                      _statusBadge(req.status),
-                      const SizedBox(width: 12),
-                      Icon(Icons.calendar_today_outlined,
-                          size: 13,
-                          color: UpriseColors.primaryDark.withAlpha(150)),
-                      const SizedBox(width: 4),
-                      Text(
-                        DateFormat('MMM dd, yyyy – hh:mm a')
-                            .format(req.requestDate),
-                        style: GoogleFonts.beVietnamPro(
-                            fontSize: 12,
-                            color: const Color(0xFF64748B)),
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Status + date strip
+                      Row(
+                        children: [
+                          _statusBadge(req.status),
+                          const SizedBox(width: 12),
+                          Icon(
+                            Icons.calendar_today_outlined,
+                            size: 13,
+                            color: UpriseColors.primaryDark.withAlpha(150),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            DateFormat(
+                              'MMM dd, yyyy – hh:mm a',
+                            ).format(req.requestDate),
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 12,
+                              color: const Color(0xFF64748B),
+                            ),
+                          ),
+                        ],
                       ),
-                    ]),
-                    const SizedBox(height: 20),
-                    _sectionLabel('Account Information',
-                        icon: Icons.info_outline_rounded),
-                    _infoGrid([
-                      ('Full Name',
-                          req.userName.isNotEmpty
-                              ? req.userName
-                              : '—'),
-                      ('Email',
-                          req.email.isNotEmpty
-                              ? req.email
-                              : '—'),
-                      ('University / Organization',
-                          req.university.isNotEmpty
-                              ? req.university
-                              : '—'),
-                      ('User ID',
-                          req.userId.isNotEmpty
-                              ? req.userId
-                              : '—'),
-                      ('Account Status',
+                      const SizedBox(height: 20),
+                      _sectionLabel(
+                        'Account Information',
+                        icon: Icons.info_outline_rounded,
+                      ),
+                      _infoGrid([
+                        (
+                          'Full Name',
+                          req.userName.isNotEmpty ? req.userName : '—',
+                        ),
+                        ('Email', req.email.isNotEmpty ? req.email : '—'),
+                        (
+                          'University / Organization',
+                          req.university.isNotEmpty ? req.university : '—',
+                        ),
+                        ('User ID', req.userId.isNotEmpty ? req.userId : '—'),
+                        (
+                          'Account Status',
                           req.accountCreated
                               ? 'Credentials issued'
                               : (req.status == 'approved'
-                                  ? 'Approved — pending account creation'
-                                  : 'No account yet')),
-                    ]),
-                    if (req.purpose.isNotEmpty) ...[
-                      const SizedBox(height: 16),
-                      _sectionLabel('Purpose',
-                          icon: Icons.notes_rounded),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius:
-                              BorderRadius.circular(8),
-                          border: Border.all(
-                              color: const Color(0xFFE2E6EA)),
+                                    ? 'Approved — pending account creation'
+                                    : 'No account yet'),
                         ),
-                        child: Text(
-                          req.purpose,
-                          style: GoogleFonts.beVietnamPro(
+                      ]),
+                      if (req.purpose.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        _sectionLabel('Purpose', icon: Icons.notes_rounded),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFE2E6EA)),
+                          ),
+                          child: Text(
+                            req.purpose,
+                            style: GoogleFonts.beVietnamPro(
                               fontSize: 13,
                               color: const Color(0xFF374151),
-                              height: 1.6),
+                              height: 1.6,
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ],
-                  ],
                   ),
                 ),
               ),
               // Footer actions
               Container(
-                padding:
-                    const EdgeInsets.fromLTRB(24, 16, 24, 20),
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
                 decoration: const BoxDecoration(
                   border: Border(top: BorderSide(color: Color(0xFFEDF0F3))),
                 ),
-                child: Row(children: [
-                  if (req.status == 'pending') ...[
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () async {
-                          Navigator.pop(ctx);
-                          await _confirmReject(req);
-                        },
-                        icon: const Icon(
-                            Icons.cancel_rounded, size: 15),
-                        label: Text('Reject',
+                child: Row(
+                  children: [
+                    if (req.status == 'pending') ...[
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () async {
+                            Navigator.pop(ctx);
+                            await _confirmReject(req);
+                          },
+                          icon: const Icon(Icons.cancel_rounded, size: 15),
+                          label: Text(
+                            'Reject',
                             style: GoogleFonts.beVietnamPro(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor:
-                              const Color(0xFFDC2626),
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                              borderRadius:
-                                  BorderRadius.circular(8)),
-                          padding:
-                              const EdgeInsets.symmetric(
-                                  vertical: 11),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFDC2626),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 11),
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () async {
-                          Navigator.pop(ctx);
-                          await _confirmApprove(req);
-                        },
-                        icon: const Icon(
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () async {
+                            Navigator.pop(ctx);
+                            await _confirmApprove(req);
+                          },
+                          icon: const Icon(
                             Icons.check_circle_rounded,
-                            size: 15),
-                        label: Text('Approve & Create Account',
+                            size: 15,
+                          ),
+                          label: Text(
+                            'Approve & Create Account',
                             style: GoogleFonts.beVietnamPro(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor:
-                              const Color(0xFF059669),
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                              borderRadius:
-                                  BorderRadius.circular(8)),
-                          padding:
-                              const EdgeInsets.symmetric(
-                                  vertical: 11),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF059669),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 11),
+                          ),
                         ),
                       ),
-                    ),
-                  ] else ...[
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor:
-                              const Color(0xFF374151),
-                          side: const BorderSide(
-                              color: Color(0xFFE2E6EA)),
-                          shape: RoundedRectangleBorder(
-                              borderRadius:
-                                  BorderRadius.circular(8)),
-                          padding:
-                              const EdgeInsets.symmetric(
-                                  vertical: 11),
-                        ),
-                        child: Text('Close',
+                    ] else ...[
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF374151),
+                            side: const BorderSide(color: Color(0xFFE2E6EA)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 11),
+                          ),
+                          child: Text(
+                            'Close',
                             style: GoogleFonts.beVietnamPro(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600)),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ],
-                ]),
+                ),
               ),
             ],
           ),
@@ -1527,26 +1676,34 @@ class _ExternalAccountState extends State<ExternalAccount> {
         spacing: 0,
         runSpacing: 12,
         children: items
-            .map((item) => SizedBox(
-                  width: 210,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(item.$1,
-                          style: GoogleFonts.beVietnamPro(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: const Color(0xFF64748B),
-                              letterSpacing: 0.4)),
-                      const SizedBox(height: 3),
-                      Text(item.$2,
-                          style: GoogleFonts.beVietnamPro(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: const Color(0xFF1A202C))),
-                    ],
-                  ),
-                ))
+            .map(
+              (item) => SizedBox(
+                width: 210,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.$1,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF64748B),
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      item.$2,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: const Color(0xFF1A202C),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
             .toList(),
       ),
     );
@@ -1565,19 +1722,40 @@ class _ExternalAccountState extends State<ExternalAccount> {
       barrierColor: Colors.black54,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(title,
-            style: GoogleFonts.beVietnamPro(fontSize: 16, fontWeight: FontWeight.w700, color: const Color(0xFF1A202C))),
-        content: Text(message,
-            style: GoogleFonts.beVietnamPro(fontSize: 14, color: const Color(0xFF64748B), height: 1.5)),
+        title: Text(
+          title,
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: const Color(0xFF1A202C),
+          ),
+        ),
+        content: Text(
+          message,
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 14,
+            color: const Color(0xFF64748B),
+            height: 1.5,
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: GoogleFonts.beVietnamPro(color: const Color(0xFF374151))),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.beVietnamPro(color: const Color(0xFF374151)),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: confirmColor, foregroundColor: Colors.white),
-            child: Text(confirmLabel, style: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w600)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: confirmColor,
+              foregroundColor: Colors.white,
+            ),
+            child: Text(
+              confirmLabel,
+              style: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w600),
+            ),
           ),
         ],
       ),
@@ -1588,11 +1766,18 @@ class _ExternalAccountState extends State<ExternalAccount> {
   Future<void> _confirmApprove(ExternalRequest req) async {
     final ok = await _confirmAction(
       title: 'Approve & Create Account',
-      message: 'Approve "${req.userName}"\'s request? This will create a guest account and email login credentials to ${req.email}.',
+      message:
+          'Approve "${req.userName}"\'s request? This will create a guest account and email login credentials to ${req.email}.',
       confirmLabel: 'Approve',
       confirmColor: const Color(0xFF059669),
     );
-    if (ok) await _setStatus(req.id, 'approved', userName: req.userName, email: req.email);
+    if (ok)
+      await _setStatus(
+        req.id,
+        'approved',
+        userName: req.userName,
+        email: req.email,
+      );
   }
 
   Future<void> _confirmBulkApprove() async {
@@ -1600,7 +1785,8 @@ class _ExternalAccountState extends State<ExternalAccount> {
     if (selected.isEmpty) return;
 
     final ok = await _confirmAction(
-      title: 'Approve ${selected.length} Request${selected.length == 1 ? '' : 's'}',
+      title:
+          'Approve ${selected.length} Request${selected.length == 1 ? '' : 's'}',
       message:
           'This creates a guest account and emails login credentials to each selected requester. Continue?',
       confirmLabel: 'Approve All',
@@ -1611,7 +1797,12 @@ class _ExternalAccountState extends State<ExternalAccount> {
     var success = 0, failed = 0;
     for (final req in selected) {
       try {
-        await _setStatus(req.id, 'approved', userName: req.userName, email: req.email);
+        await _setStatus(
+          req.id,
+          'approved',
+          userName: req.userName,
+          email: req.email,
+        );
         success++;
       } catch (_) {
         failed++;
@@ -1621,21 +1812,22 @@ class _ExternalAccountState extends State<ExternalAccount> {
     setState(() => _selectedPending.clear());
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(failed == 0
-            ? '$success request${success == 1 ? '' : 's'} approved.'
-            : '$success approved, $failed failed.'),
-        backgroundColor: failed == 0 ? const Color(0xFF059669) : const Color(0xFFEA580C),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ));
+      final message = failed == 0
+          ? '$success request${success == 1 ? '' : 's'} approved.'
+          : '$success approved, $failed failed.';
+      if (failed == 0) {
+        AppToast.success(context, message);
+      } else {
+        AppToast.warning(context, message);
+      }
     }
   }
 
   Future<void> _confirmReject(ExternalRequest req) async {
     final ok = await _confirmAction(
       title: 'Reject Request',
-      message: 'Reject the request from "${req.userName}"? They will not be granted guest access.',
+      message:
+          'Reject the request from "${req.userName}"? They will not be granted guest access.',
       confirmLabel: 'Reject',
       confirmColor: const Color(0xFFDC2626),
     );
@@ -1645,16 +1837,20 @@ class _ExternalAccountState extends State<ExternalAccount> {
   Future<void> _confirmArchive(ExternalRequest req) async {
     final ok = await _confirmAction(
       title: 'Archive Request',
-      message: 'Archive the request from "${req.userName}"? You can restore it later from the Archived filter.',
+      message:
+          'Archive the request from "${req.userName}"? You can restore it later from the Archived filter.',
       confirmLabel: 'Archive',
       confirmColor: const Color(0xFF6B7280),
     );
     if (!ok) return;
     try {
-      await FirebaseFirestore.instance.collection('external_requests').doc(req.id).update({
-        'isArchived': true,
-        'archivedAt': FieldValue.serverTimestamp(),
-      });
+      await FirebaseFirestore.instance
+          .collection('external_requests')
+          .doc(req.id)
+          .update({
+            'isArchived': true,
+            'archivedAt': FieldValue.serverTimestamp(),
+          });
       await activity_log.ActivityLogger.log(
         action: 'Archived external request for ${req.userName}',
         module: 'External Account',
@@ -1662,19 +1858,11 @@ class _ExternalAccountState extends State<ExternalAccount> {
         details: {'requestId': req.id},
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Text('Request archived.'),
-          backgroundColor: const Color(0xFF6B7280),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ));
+        AppToast.info(context, 'Request archived.');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: UpriseColors.error,
-        ));
+        AppToast.error(context, 'Error: $e');
       }
     }
   }
@@ -1682,16 +1870,17 @@ class _ExternalAccountState extends State<ExternalAccount> {
   Future<void> _confirmRestore(ExternalRequest req) async {
     final ok = await _confirmAction(
       title: 'Restore Request',
-      message: 'Restore the request from "${req.userName}" back to the active list?',
+      message:
+          'Restore the request from "${req.userName}" back to the active list?',
       confirmLabel: 'Restore',
       confirmColor: const Color(0xFF059669),
     );
     if (!ok) return;
     try {
-      await FirebaseFirestore.instance.collection('external_requests').doc(req.id).update({
-        'isArchived': false,
-        'archivedAt': FieldValue.delete(),
-      });
+      await FirebaseFirestore.instance
+          .collection('external_requests')
+          .doc(req.id)
+          .update({'isArchived': false, 'archivedAt': FieldValue.delete()});
       await activity_log.ActivityLogger.log(
         action: 'Restored external request for ${req.userName}',
         module: 'External Account',
@@ -1699,19 +1888,11 @@ class _ExternalAccountState extends State<ExternalAccount> {
         details: {'requestId': req.id},
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Text('Request restored.'),
-          backgroundColor: const Color(0xFF059669),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ));
+        AppToast.success(context, 'Request restored.');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: UpriseColors.error,
-        ));
+        AppToast.error(context, 'Error: $e');
       }
     }
   }
@@ -1722,28 +1903,30 @@ class _ExternalAccountState extends State<ExternalAccount> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _StatCard extends StatelessWidget {
-  final String   label, value;
+  final String label, value;
   final IconData icon;
-  final Color    color;
+  final Color color;
+  final VoidCallback? onTap;
   const _StatCard({
     required this.label,
     required this.value,
     required this.icon,
     required this.color,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFE8ECF0)),
-          boxShadow: _DS.cardShadow,
-        ),
-        child: Row(children: [
+    final card = Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE8ECF0)),
+        boxShadow: _DS.cardShadow,
+      ),
+      child: Row(
+        children: [
           Container(
             width: 44,
             height: 44,
@@ -1758,23 +1941,36 @@ class _StatCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label,
-                    style: GoogleFonts.beVietnamPro(
-                        fontSize: 11,
-                        color: const Color(0xFF64748B),
-                        fontWeight: FontWeight.w500)),
+                Text(
+                  label,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 11,
+                    color: const Color(0xFF64748B),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
                 const SizedBox(height: 2),
-                Text(value,
-                    style: GoogleFonts.beVietnamPro(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF1A202C))),
+                Text(
+                  value,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF1A202C),
+                  ),
+                ),
               ],
             ),
           ),
-        ]),
+        ],
       ),
     );
+    final wrapped = onTap == null
+        ? card
+        : MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(onTap: onTap, child: card),
+          );
+    return Expanded(child: wrapped);
   }
 }
 
@@ -1834,11 +2030,12 @@ class _ExportButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AdminExportButton(onSelected: (choice) => _doExport(context, choice));
+    return AdminExportButton(
+      onSelected: (choice) => _doExport(context, choice),
+    );
   }
 
-  Future<void> _doExport(
-      BuildContext context, String format) async {
+  Future<void> _doExport(BuildContext context, String format) async {
     try {
       var snap = await FirebaseFirestore.instance
           .collection('external_requests')
@@ -1847,27 +2044,25 @@ class _ExportButton extends StatelessWidget {
       var docs = snap.docs;
       if (statusFilter != 'All') {
         docs = docs
-            .where((d) =>
-                d.data()['status'] == statusFilter.toLowerCase())
+            .where((d) => d.data()['status'] == statusFilter.toLowerCase())
             .toList();
       }
       if (searchTerm.isNotEmpty) {
         final term = searchTerm.toLowerCase();
         docs = docs.where((d) {
           final data = d.data();
-          return (data['userName'] ?? '').toString().toLowerCase().contains(term) ||
+          return (data['userName'] ?? '').toString().toLowerCase().contains(
+                term,
+              ) ||
               (data['email'] ?? '').toString().toLowerCase().contains(term) ||
-              (data['university'] ?? '').toString().toLowerCase().contains(term);
+              (data['university'] ?? '').toString().toLowerCase().contains(
+                term,
+              );
         }).toList();
       }
 
       if (docs.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No data to export.'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        AppToast.warning(context, 'No data to export.');
         return;
       }
 
@@ -1880,48 +2075,55 @@ class _ExportButton extends StatelessWidget {
         for (final doc in docs) {
           final d = doc.data();
           String esc(String s) => '"${s.replaceAll('"', '""')}"';
-          final date = (d['requestDate'] as Timestamp?)
-                  ?.toDate()
-                  .toString()
-                  .substring(0, 10) ??
+          final date =
+              (d['requestDate'] as Timestamp?)?.toDate().toString().substring(
+                0,
+                10,
+              ) ??
               '';
-          buf.writeln([
-            esc(d['userName']   ?? ''),
-            esc(d['email']      ?? ''),
-            esc(d['university'] ?? ''),
-            esc(d['purpose']    ?? ''),
-            esc(d['status']     ?? ''),
-            esc(date),
-          ].join(','));
+          buf.writeln(
+            [
+              esc(d['userName'] ?? ''),
+              esc(d['email'] ?? ''),
+              esc(d['university'] ?? ''),
+              esc(d['purpose'] ?? ''),
+              esc(d['status'] ?? ''),
+              esc(date),
+            ].join(','),
+          );
         }
-        content  = buf.toString();
+        content = buf.toString();
         fileName = 'external_requests_$now.csv';
-        await AdminExportUtil.saveText(
-          content,
-          fileName,
-          mimeType: 'text/csv',
-        );
+        await AdminExportUtil.saveText(content, fileName, mimeType: 'text/csv');
       } else if (format == 'pdf') {
         final rows = docs.map((doc) {
           final d = doc.data();
-          final date = (d['requestDate'] as Timestamp?)
-                  ?.toDate()
-                  .toString()
-                  .substring(0, 10) ??
+          final date =
+              (d['requestDate'] as Timestamp?)?.toDate().toString().substring(
+                0,
+                10,
+              ) ??
               '';
           return [
-            d['userName']   ?? '',
-            d['email']      ?? '',
+            d['userName'] ?? '',
+            d['email'] ?? '',
             d['university'] ?? '',
-            d['purpose']    ?? '',
-            d['status']     ?? '',
+            d['purpose'] ?? '',
+            d['status'] ?? '',
             date,
           ].map((value) => value.toString()).toList();
         }).toList();
 
         final pdfBytes = await AdminExportPdf.generateTablePdf(
           title: 'External Requests Report',
-          headers: const ['Name', 'Email', 'University', 'Purpose', 'Status', 'Request Date'],
+          headers: const [
+            'Name',
+            'Email',
+            'University',
+            'Purpose',
+            'Status',
+            'Request Date',
+          ],
           rows: rows,
         );
         await AdminExportUtil.saveBytes(
@@ -1933,22 +2135,16 @@ class _ExportButton extends StatelessWidget {
         throw UnsupportedError('Unsupported export format: $format');
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Export failed: $e'),
-        backgroundColor: UpriseColors.error,
-        behavior: SnackBarBehavior.floating,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ));
+      AppToast.error(context, 'Export failed: $e');
     }
   }
 }
 
 class _ActionIconButton extends StatelessWidget {
-  final IconData      icon;
-  final String        tooltip;
+  final IconData icon;
+  final String tooltip;
   final VoidCallback? onTap;
-  final Color?        color;
+  final Color? color;
   const _ActionIconButton({
     required this.icon,
     required this.tooltip,
@@ -1981,8 +2177,8 @@ class _ActionIconButton extends StatelessWidget {
 }
 
 class _PageButton extends StatelessWidget {
-  final IconData     icon;
-  final bool         enabled;
+  final IconData icon;
+  final bool enabled;
   final VoidCallback onTap;
   const _PageButton({
     required this.icon,
@@ -1997,19 +2193,19 @@ class _PageButton extends StatelessWidget {
       borderRadius: BorderRadius.circular(6),
       child: Padding(
         padding: const EdgeInsets.all(4),
-        child: Icon(icon,
-            size: 20,
-            color: enabled
-                ? const Color(0xFF374151)
-                : const Color(0xFFD1D5DB)),
+        child: Icon(
+          icon,
+          size: 20,
+          color: enabled ? const Color(0xFF374151) : const Color(0xFFD1D5DB),
+        ),
       ),
     );
   }
 }
 
 class _PageNumButton extends StatelessWidget {
-  final int          page;
-  final bool         isActive;
+  final int page;
+  final bool isActive;
   final VoidCallback onTap;
   const _PageNumButton({
     required this.page,
@@ -2019,28 +2215,26 @@ class _PageNumButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 2),
-        width: 28,
-        height: 28,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: isActive
-              ? UpriseColors.primaryDark
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(
-          '$page',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 12,
-            fontWeight:
-                isActive ? FontWeight.w700 : FontWeight.normal,
-            color: isActive
-                ? Colors.white
-                : const Color(0xFF374151),
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: isActive ? UpriseColors.primaryDark : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            '$page',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 12,
+              fontWeight: isActive ? FontWeight.w700 : FontWeight.normal,
+              color: isActive ? Colors.white : const Color(0xFF374151),
+            ),
           ),
         ),
       ),

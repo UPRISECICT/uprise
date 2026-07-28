@@ -175,6 +175,57 @@ class EventCalendar extends StatefulWidget {
 class _EventCalendarState extends State<EventCalendar> {
   DateTime _currentMonth = DateTime.now();
 
+  Future<void> _pickMonth(BuildContext context) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _currentMonth,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+      initialDatePickerMode: DatePickerMode.year,
+      helpText: 'Jump to month',
+      builder: (context, child) {
+        final baseTheme = Theme.of(context);
+        // Material3's default seed color skews purple/indigo, which is why
+        // just overriding primary/secondary still left the calendar panel
+        // and header looking lavender-tinted — seeding the whole scheme
+        // from the brand color instead gives every derived surface tone a
+        // warm, on-brand cast rather than patching a couple of properties.
+        final scheme = ColorScheme.fromSeed(
+          seedColor: UpriseColors.primaryDark,
+          brightness: Brightness.light,
+        ).copyWith(
+          primary: UpriseColors.primaryDark,
+          onPrimary: Colors.white,
+          secondary: UpriseColors.accent,
+          surface: Colors.white,
+          onSurface: const Color(0xFF1A202C),
+          surfaceTint: Colors.transparent,
+        );
+        return Theme(
+          data: baseTheme.copyWith(
+            colorScheme: scheme,
+            dialogTheme: baseTheme.dialogTheme.copyWith(
+              backgroundColor: Colors.white,
+            ),
+            textTheme: GoogleFonts.beVietnamProTextTheme(
+              baseTheme.textTheme,
+            ),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: UpriseColors.primaryDark,
+                textStyle: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null) {
+      setState(() => _currentMonth = DateTime(picked.year, picked.month));
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -228,13 +279,6 @@ class _EventCalendarState extends State<EventCalendar> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(0, 24, 0, 0),
-              child: Text(
-                'Showing all CICT approved events',
-                style: GoogleFonts.beVietnamPro(fontSize: 11, color: const Color(0xFF64748B), fontStyle: FontStyle.italic),
-              ),
-            ),
             _buildToolbar(horizontalPadding),
             const SizedBox(height: 16),
             _buildCalendarStream(),
@@ -318,14 +362,32 @@ class _EventCalendarState extends State<EventCalendar> {
                     _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1);
                   }),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Text(
-                    DateFormat('MMMM yyyy').format(_currentMonth),
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF1A202C),
+                InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => _pickMonth(context),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          DateFormat('MMMM yyyy').format(_currentMonth),
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF1A202C),
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        const Icon(
+                          Icons.arrow_drop_down_rounded,
+                          size: 18,
+                          color: Color(0xFF9AA5B4),
+                        ),
+                      ],
                     ),
                   ),
                 ),

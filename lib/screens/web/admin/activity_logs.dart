@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:uprise/widgets/admin_export_button.dart';
@@ -29,18 +29,28 @@ class _DS {
 IconData _iconForAction(String action) {
   final a = action.toLowerCase();
   if (a.contains('archiv')) return Icons.archive_outlined;
-  if (a.contains('restor') || a.contains('unarchiv')) return Icons.restore_rounded;
-  if (a.contains('delet') || a.contains('remov')) return Icons.delete_outline_rounded;
-  if (a.contains('reject') || a.contains('declin') || a.contains('disable')) return Icons.cancel_outlined;
-  if (a.contains('approv') || a.contains('enable')) return Icons.check_circle_outline_rounded;
-  if (a.contains('login') || a.contains('log in') || a.contains('sign in')) return Icons.login_rounded;
-  if (a.contains('logout') || a.contains('log out') || a.contains('sign out')) return Icons.logout_rounded;
-  if (a.contains('password') || a.contains('2fa') || a.contains('security')) return Icons.lock_outline_rounded;
-  if (a.contains('export') || a.contains('download')) return Icons.download_outlined;
+  if (a.contains('restor') || a.contains('unarchiv'))
+    return Icons.restore_rounded;
+  if (a.contains('delet') || a.contains('remov'))
+    return Icons.delete_outline_rounded;
+  if (a.contains('reject') || a.contains('declin') || a.contains('disable'))
+    return Icons.cancel_outlined;
+  if (a.contains('approv') || a.contains('enable'))
+    return Icons.check_circle_outline_rounded;
+  if (a.contains('login') || a.contains('log in') || a.contains('sign in'))
+    return Icons.login_rounded;
+  if (a.contains('logout') || a.contains('log out') || a.contains('sign out'))
+    return Icons.logout_rounded;
+  if (a.contains('password') || a.contains('2fa') || a.contains('security'))
+    return Icons.lock_outline_rounded;
+  if (a.contains('export') || a.contains('download'))
+    return Icons.download_outlined;
   if (a.contains('publish')) return Icons.publish_rounded;
   if (a.contains('schedul')) return Icons.edit_calendar_outlined;
-  if (a.contains('creat') || a.contains('add') || a.contains('register')) return Icons.add_circle_outline_rounded;
-  if (a.contains('edit') || a.contains('updat') || a.contains('revis')) return Icons.edit_outlined;
+  if (a.contains('creat') || a.contains('add') || a.contains('register'))
+    return Icons.add_circle_outline_rounded;
+  if (a.contains('edit') || a.contains('updat') || a.contains('revis'))
+    return Icons.edit_outlined;
   return Icons.bolt_rounded;
 }
 
@@ -161,13 +171,68 @@ class _ActivityLogsState extends State<ActivityLogs> {
   // methods that use these are called on every rebuild (search, filter
   // changes, pagination), so building a fresh .snapshots() there each time
   // was re-subscribing to Firestore from scratch on every keystroke.
-  late final Stream<QuerySnapshot> _logsStream =
-      FirebaseFirestore.instance.collection('activity_logs').snapshots();
-  late final Stream<QuerySnapshot> _logsOrderedStream = FirebaseFirestore
-      .instance
+  late final Stream<QuerySnapshot> _logsStream = FirebaseFirestore.instance
       .collection('activity_logs')
-      .orderBy('timestamp', descending: true)
       .snapshots();
+
+  // `activity_logs` is an audit trail every significant action across the
+  // whole app writes to — it only ever grows. The table used to fetch the
+  // ENTIRE collection unfiltered and re-check the date range client-side
+  // in Dart, even though the default filter is "Today" — meaning this page
+  // got slower forever as the log history piled up, for no reason, since
+  // Firestore can apply that same filter server-side. The date range is
+  // now applied at the query level (same field as orderBy, so no composite
+  // index is needed) and the resulting stream is cached and only rebuilt
+  // when the date range actually changes — not on every rebuild/keystroke,
+  // same reasoning as caching _logsStream above.
+  Stream<QuerySnapshot>? _cachedLogsOrderedStream;
+  String? _cachedLogsOrderedStreamRange;
+
+  Stream<QuerySnapshot> get _logsOrderedStream {
+    if (_cachedLogsOrderedStream == null ||
+        _cachedLogsOrderedStreamRange != _dateRange) {
+      _cachedLogsOrderedStreamRange = _dateRange;
+      Query query = FirebaseFirestore.instance
+          .collection('activity_logs')
+          .orderBy('timestamp', descending: true);
+      final (start, end) = _dateRangeBounds(_dateRange);
+      if (start != null) {
+        query = query.where(
+          'timestamp',
+          isGreaterThanOrEqualTo: Timestamp.fromDate(start),
+        );
+      }
+      if (end != null) {
+        query = query.where(
+          'timestamp',
+          isLessThanOrEqualTo: Timestamp.fromDate(end),
+        );
+      }
+      _cachedLogsOrderedStream = query.snapshots();
+    }
+    return _cachedLogsOrderedStream!;
+  }
+
+  (DateTime?, DateTime?) _dateRangeBounds(String range) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    switch (range) {
+      case 'Today':
+        return (today, today.add(const Duration(days: 1)));
+      case 'Yesterday':
+        final yesterday = today.subtract(const Duration(days: 1));
+        return (yesterday, today);
+      case 'This Week':
+        final start = today.subtract(Duration(days: now.weekday - 1));
+        return (start, null);
+      case 'Last Week':
+        final thisWeekStart = today.subtract(Duration(days: now.weekday - 1));
+        final lastWeekStart = thisWeekStart.subtract(const Duration(days: 7));
+        return (lastWeekStart, thisWeekStart);
+      default: // 'All'
+        return (null, null);
+    }
+  }
 
   // ── Dropdown options ──────────────────────────────────────────────
   static const List<String> _modules = [
@@ -234,9 +299,8 @@ class _ActivityLogsState extends State<ActivityLogs> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-
           _buildStatsRow(isMobile, isTablet),
-         
+
           _buildToolbar(isMobile, isTablet),
           const SizedBox(height: 16),
           Expanded(child: _buildTable(isMobile, isTablet)),
@@ -287,7 +351,10 @@ class _ActivityLogsState extends State<ActivityLogs> {
                     ),
                     const SizedBox(width: 12),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFFECFDF5),
                         borderRadius: BorderRadius.circular(_DS.radiusPill),
@@ -299,7 +366,10 @@ class _ActivityLogsState extends State<ActivityLogs> {
                           Container(
                             width: 6,
                             height: 6,
-                            decoration: const BoxDecoration(color: Color(0xFF059669), shape: BoxShape.circle),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF059669),
+                              shape: BoxShape.circle,
+                            ),
                           ),
                           const SizedBox(width: 5),
                           Text(
@@ -370,6 +440,10 @@ class _ActivityLogsState extends State<ActivityLogs> {
             icon: Icons.receipt_long_rounded,
             color: UpriseColors.primaryDark,
             subtitle: 'Recent activity',
+            onTap: () => setState(() {
+              _dateRange = 'Today';
+              _currentPage = 1;
+            }),
           ),
           _StatCard(
             label: 'Critical Actions',
@@ -377,6 +451,10 @@ class _ActivityLogsState extends State<ActivityLogs> {
             icon: Icons.warning_amber_rounded,
             color: const Color(0xFF9333EA),
             subtitle: 'Require review',
+            onTap: () => setState(() {
+              _severity = 'critical';
+              _currentPage = 1;
+            }),
           ),
           _StatCard(
             label: 'Warnings',
@@ -384,6 +462,10 @@ class _ActivityLogsState extends State<ActivityLogs> {
             icon: Icons.info_outline_rounded,
             color: const Color(0xFFFB923C),
             subtitle: 'Flagged events',
+            onTap: () => setState(() {
+              _severity = 'warning';
+              _currentPage = 1;
+            }),
           ),
           _StatCard(
             label: 'Failed Attempts',
@@ -391,6 +473,10 @@ class _ActivityLogsState extends State<ActivityLogs> {
             icon: Icons.block_rounded,
             color: const Color(0xFFDC2626),
             subtitle: 'Errors & unauthorized',
+            onTap: () => setState(() {
+              _severity = 'error';
+              _currentPage = 1;
+            }),
           ),
         ];
 
@@ -428,14 +514,33 @@ class _ActivityLogsState extends State<ActivityLogs> {
         style: GoogleFonts.beVietnamPro(fontSize: 13),
         decoration: InputDecoration(
           hintText: 'Search user, action, module, org…',
-          hintStyle: GoogleFonts.beVietnamPro(fontSize: 13, color: const Color(0xFF9AA5B4)),
-          prefixIcon: const Icon(Icons.search_rounded, size: 18, color: Color(0xFF9AA5B4)),
+          hintStyle: GoogleFonts.beVietnamPro(
+            fontSize: 13,
+            color: const Color(0xFF9AA5B4),
+          ),
+          prefixIcon: const Icon(
+            Icons.search_rounded,
+            size: 18,
+            color: Color(0xFF9AA5B4),
+          ),
           filled: true,
           fillColor: Colors.white,
-          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E6EA))),
-          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E6EA))),
-          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: UpriseColors.primaryDark, width: 1.5)),
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: 0,
+            horizontal: 16,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: UpriseColors.primaryDark, width: 1.5),
+          ),
         ),
         onChanged: (_) => setState(() => _currentPage = 1),
       ),
@@ -505,13 +610,6 @@ class _ActivityLogsState extends State<ActivityLogs> {
           return Center(child: Text('Error: ${snapshot.error}'));
         }
 
-        final now = DateTime.now();
-        final today = DateTime(now.year, now.month, now.day);
-        final yesterday = today.subtract(const Duration(days: 1));
-        final thisWeekStart = today.subtract(Duration(days: now.weekday - 1));
-        final lastWeekStart = thisWeekStart.subtract(const Duration(days: 7));
-        final lastWeekEnd = thisWeekStart.subtract(const Duration(days: 1));
-
         List<Map<String, dynamic>> logs = [];
 
         for (final doc in snapshot.data!.docs) {
@@ -525,19 +623,8 @@ class _ActivityLogsState extends State<ActivityLogs> {
           else if (tsField is DateTime)
             ts = tsField;
 
-          // Date filter
-          if (_dateRange != 'All') {
-            if (ts == null) continue;
-            final logDate = DateTime(ts.year, ts.month, ts.day);
-            if (_dateRange == 'Today' && logDate != today) continue;
-            if (_dateRange == 'Yesterday' && logDate != yesterday) continue;
-            if (_dateRange == 'This Week' && logDate.isBefore(thisWeekStart))
-              continue;
-            if (_dateRange == 'Last Week' &&
-                (logDate.isBefore(lastWeekStart) ||
-                    logDate.isAfter(lastWeekEnd)))
-              continue;
-          }
+          // Date range is already applied server-side by _logsOrderedStream
+          // (see its getter above) — no need to re-check it per doc here.
 
           // Module filter
           if (_selectedModule != 'All Modules') {
@@ -559,7 +646,8 @@ class _ActivityLogsState extends State<ActivityLogs> {
             if (!user.contains(term) &&
                 !action.contains(term) &&
                 !module.contains(term) &&
-                !orgId.contains(term)) continue;
+                !orgId.contains(term))
+              continue;
           }
 
           logs.add({...data, '_ts': ts});
@@ -718,40 +806,45 @@ class _ActivityLogsState extends State<ActivityLogs> {
               ),
             ),
             // Action
-            // Action
-Expanded(
-  flex: 4,
-  child: Padding(
-    padding: const EdgeInsets.only(left: 8), // ← adds space on left
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(_iconForAction(action), size: 14, color: const Color(0xFF9AA5B4)),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            action,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 13,
-              color: const Color(0xFF374151),
+            Expanded(
+              flex: 4,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      _iconForAction(action),
+                      size: 14,
+                      color: const Color(0xFF9AA5B4),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        action,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          color: const Color(0xFF374151),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-            overflow: TextOverflow.ellipsis,
-            maxLines: 2,
-          ),
-        ),
-      ],
-    ),
-  ),
-),
-            
-            
+
             // Module
             Expanded(
               flex: 4,
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: UpriseColors.primaryDark.withAlpha(18),
                     borderRadius: BorderRadius.circular(6),
@@ -763,20 +856,21 @@ Expanded(
                       fontWeight: FontWeight.w600,
                       color: UpriseColors.primaryDark,
                     ),
+                    maxLines: 1,
+                    softWrap: false,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ),
             ),
             // Severity
-            // Severity
-Expanded(
-  flex: 2,
-  child: Align(
-    alignment: Alignment.centerLeft, // ← shift left
-    child: _SeverityBadge(severity),
-  ),
-),
+            Expanded(
+              flex: 2,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: _SeverityBadge(severity),
+              ),
+            ),
             // Timestamp
             Expanded(
               flex: 3,
@@ -937,7 +1031,9 @@ Expanded(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         child: Container(
           width: 500,
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.85,
+          ),
           decoration: const BoxDecoration(
             color: Color(0xFFFFFAF5),
             borderRadius: BorderRadius.all(Radius.circular(18)),
@@ -952,7 +1048,10 @@ Expanded(
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [UpriseColors.primaryDark, UpriseColors.primaryDark.withAlpha(225)],
+                    colors: [
+                      UpriseColors.primaryDark,
+                      UpriseColors.primaryDark.withAlpha(225),
+                    ],
                   ),
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(18),
@@ -1012,68 +1111,68 @@ Expanded(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(24),
                   child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: _detailItem(
-                            'User',
-                            user,
-                            Icons.person_outline_rounded,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: _detailItem(
+                              'User',
+                              user,
+                              Icons.person_outline_rounded,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _detailItem(
-                            'Module',
-                            module,
-                            Icons.apps_rounded,
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _detailItem(
+                              'Module',
+                              module,
+                              Icons.apps_rounded,
+                            ),
                           ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      _detailItem('Action', action, Icons.bolt_rounded),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _detailItem(
+                              'Severity',
+                              severity.toUpperCase(),
+                              Icons.flag_outlined,
+                              valueWidget: _SeverityBadge(severity),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _detailItem(
+                              'Org ID',
+                              orgId.isNotEmpty ? orgId : '—',
+                              Icons.business_outlined,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (timestamp != null) ...[
+                        const SizedBox(height: 14),
+                        _detailItem(
+                          'Timestamp',
+                          '${DateFormat('MMM dd, yyyy').format(timestamp)}  •  ${DateFormat('hh:mm:ss a').format(timestamp)}',
+                          Icons.access_time_rounded,
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 14),
-                    _detailItem('Action', action, Icons.bolt_rounded),
-                    const SizedBox(height: 14),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _detailItem(
-                            'Severity',
-                            severity.toUpperCase(),
-                            Icons.flag_outlined,
-                            valueWidget: _SeverityBadge(severity),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _detailItem(
-                            'Org ID',
-                            orgId.isNotEmpty ? orgId : '—',
-                            Icons.business_outlined,
-                          ),
+                      if (data['ipAddress'] != null) ...[
+                        const SizedBox(height: 14),
+                        _detailItem(
+                          'IP Address',
+                          data['ipAddress'].toString(),
+                          Icons.router_outlined,
                         ),
                       ],
-                    ),
-                    if (timestamp != null) ...[
-                      const SizedBox(height: 14),
-                      _detailItem(
-                        'Timestamp',
-                        '${DateFormat('MMM dd, yyyy').format(timestamp)}  •  ${DateFormat('hh:mm:ss a').format(timestamp)}',
-                        Icons.access_time_rounded,
-                      ),
                     ],
-                    if (data['ipAddress'] != null) ...[
-                      const SizedBox(height: 14),
-                      _detailItem(
-                        'IP Address',
-                        data['ipAddress'].toString(),
-                        Icons.router_outlined,
-                      ),
-                    ],
-                  ],
                   ),
                 ),
               ),
@@ -1126,7 +1225,11 @@ Expanded(
       children: [
         Row(
           children: [
-            Icon(icon, size: 13, color: UpriseColors.primaryDark.withAlpha(150)),
+            Icon(
+              icon,
+              size: 13,
+              color: UpriseColors.primaryDark.withAlpha(150),
+            ),
             const SizedBox(width: 5),
             Text(
               label,
@@ -1175,17 +1278,19 @@ class _StatCard extends StatelessWidget {
   final String label, value, subtitle;
   final IconData icon;
   final Color color;
+  final VoidCallback? onTap;
   const _StatCard({
     required this.label,
     required this.value,
     required this.icon,
     required this.color,
     required this.subtitle,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final card = Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -1239,6 +1344,11 @@ class _StatCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+    if (onTap == null) return card;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(onTap: onTap, child: card),
     );
   }
 }
@@ -1497,23 +1607,26 @@ class _PageNumButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 2),
-        width: 28,
-        height: 28,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: isActive ? UpriseColors.primaryDark : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(
-          '$page',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 12,
-            fontWeight: isActive ? FontWeight.w700 : FontWeight.normal,
-            color: isActive ? Colors.white : const Color(0xFF374151),
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: isActive ? UpriseColors.primaryDark : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            '$page',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 12,
+              fontWeight: isActive ? FontWeight.w700 : FontWeight.normal,
+              color: isActive ? Colors.white : const Color(0xFF374151),
+            ),
           ),
         ),
       ),

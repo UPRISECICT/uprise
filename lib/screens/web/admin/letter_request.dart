@@ -1,4 +1,4 @@
-﻿// lib/screens/web/admin/letter_request.dart - CORRECTED VERSION
+// lib/screens/web/admin/letter_request.dart - CORRECTED VERSION
 
 import 'dart:convert';
 import 'dart:typed_data';
@@ -19,6 +19,7 @@ import '../../../services/notification_service.dart';
 import '../../../utils/platform_file_utils.dart' as platform_file_utils;
 import '../../../utils/file_validation.dart';
 import '../../../widgets/anchored_dropdown.dart';
+import '../../../widgets/app_toast.dart';
 
 // Strips a near-white background from an imported signature photo/scan so it
 // overlays cleanly on a document instead of showing as an opaque white box.
@@ -208,36 +209,60 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
             value: '$total',
             icon: Icons.description_rounded,
             color: AdminColors.primaryDark,
+            onTap: () => setState(() {
+              _statusFilter = 'All';
+              _currentPage = 1;
+            }),
           ),
           _StatCard(
             label: 'Approved',
             value: '$approved',
             icon: Icons.check_circle_rounded,
             color: AdminColors.success,
+            onTap: () => setState(() {
+              _statusFilter = 'Approved';
+              _currentPage = 1;
+            }),
           ),
           _StatCard(
             label: 'Pending',
             value: '$pending',
             icon: Icons.pending_rounded,
             color: AdminColors.warning,
+            onTap: () => setState(() {
+              _statusFilter = 'Pending';
+              _currentPage = 1;
+            }),
           ),
           _StatCard(
             label: 'Resubmitted',
             value: '$resubmitted',
             icon: Icons.refresh_rounded,
             color: AdminColors.info,
+            onTap: () => setState(() {
+              _statusFilter = 'Resubmitted';
+              _currentPage = 1;
+            }),
           ),
           _StatCard(
             label: 'Needs Revision',
             value: '$revision',
             icon: Icons.edit_note_rounded,
             color: AdminColors.purple,
+            onTap: () => setState(() {
+              _statusFilter = 'Needs Revision';
+              _currentPage = 1;
+            }),
           ),
           _StatCard(
             label: 'Rejected',
             value: '$rejected',
             icon: Icons.cancel_rounded,
             color: AdminColors.error,
+            onTap: () => setState(() {
+              _statusFilter = 'Rejected';
+              _currentPage = 1;
+            }),
           ),
         ];
 
@@ -321,6 +346,8 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
             'Approved',
             'Rejected',
             'Archived',
+            'Resubmitted',
+            'Needs Revision',
           ],
           hint: 'Status',
           icon: Icons.tune_rounded,
@@ -459,7 +486,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
 
   Widget _buildTableHeader() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
       decoration: const BoxDecoration(
         color: Color(0xFFFFF7ED),
         borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
@@ -467,12 +494,18 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
       ),
       child: Row(
         children: [
-          Expanded(flex: 3, child: _headerCell('REQUESTOR')),
-          Expanded(flex: 2, child: _headerCell('LETTER ID')),
+          Expanded(flex: 2, child: _headerCell('REQUESTOR')),
+          const SizedBox(width: 16),
           Expanded(flex: 3, child: _headerCell('SUBJECT')),
-          Expanded(flex: 2, child: _headerCell('DATE SUBMITTED')),
-          Expanded(flex: 2, child: _headerCell('E-SIGNED')),
-          Expanded(flex: 2, child: _headerCell('STATUS')),
+          Expanded(flex: 1, child: _headerCell('DATE SUBMITTED')),
+          Expanded(flex: 1, child: _headerCell('E-SIGNED')),
+          Expanded(
+            flex: 1,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: _headerCell('STATUS'),
+            ),
+          ),
           Expanded(
             flex: 2,
             child: Align(
@@ -508,7 +541,6 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
         : 'Unknown';
     final orgId = data['orgId'] ?? '';
     final subject = data['subject'] ?? 'No subject';
-    final letterId = data['letterId'] ?? 'N/A';
     final message = data['message'];
 
     // E-signature, if the letter was digitally signed on approval — lets
@@ -528,7 +560,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
           hoverColor: const Color(0xFFF8F9FB),
           onTap: () => _showViewDialog(data, docId),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             decoration: BoxDecoration(
               border: isLast
                   ? null
@@ -537,70 +569,47 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
             child: Row(
               children: [
                 Expanded(
-                  flex: 3,
+                  flex: 2,
                   child: Row(
                     children: [
-                      Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: const Color(0xFFE2E6EA)),
-                        ),
-                        child: logoUrl.isNotEmpty
-                            ? ClipOval(
-                                child: Image.network(
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: SizedBox(
+                          width: 34,
+                          height: 34,
+                          child: logoUrl.isNotEmpty
+                              ? Image.network(
                                   logoUrl,
-                                  width: 36,
-                                  height: 36,
+                                  width: 34,
+                                  height: 34,
                                   fit: BoxFit.cover,
                                   errorBuilder: (_, __, ___) =>
                                       _defaultAvatar(),
-                                ),
-                              )
-                            : _defaultAvatar(),
+                                )
+                              : _defaultAvatar(),
+                        ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 10),
                       Expanded(
-                        child: Text(
-                          data['orgName'] ?? 'Unknown',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: const Color(0xFF1A202C),
+                        child: Tooltip(
+                          message: data['orgName'] ?? 'Unknown',
+                          child: Text(
+                            data['orgName'] ?? 'Unknown',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFF1A202C),
+                            ),
+                            maxLines: 1,
+                            softWrap: false,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
                   ),
                 ),
-                Expanded(
-                  flex: 2,
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AdminColors.primaryDark.withAlpha(18),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        letterId,
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: AdminColors.primaryDark,
-                          letterSpacing: 0.2,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-                ),
+                const SizedBox(width: 16),
                 Expanded(
                   flex: 3,
                   child: Column(
@@ -635,17 +644,20 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                   ),
                 ),
                 Expanded(
-                  flex: 2,
+                  flex: 1,
                   child: Text(
                     date,
                     style: GoogleFonts.beVietnamPro(
                       fontSize: 12,
                       color: const Color(0xFF64748B),
                     ),
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 Expanded(
-                  flex: 2,
+                  flex: 1,
                   child: hasSigningDate
                       ? Row(
                           mainAxisSize: MainAxisSize.min,
@@ -684,9 +696,9 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                         ),
                 ),
                 Expanded(
-                  flex: 2,
+                  flex: 1,
                   child: Align(
-                    alignment: Alignment.centerLeft,
+                    alignment: Alignment.centerRight,
                     child: _buildStatusBadge(status),
                   ),
                 ),
@@ -764,15 +776,15 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
 
   Widget _defaultAvatar() {
     return Container(
-      width: 36,
-      height: 36,
+      width: 34,
+      height: 34,
       decoration: BoxDecoration(
         color: AdminColors.primaryDark.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Icon(
         Icons.business_outlined,
-        size: 18,
+        size: 16,
         color: AdminColors.primaryDark,
       ),
     );
@@ -784,13 +796,21 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Request Revision'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Request Revision',
+          style: GoogleFonts.beVietnamPro(
+            fontWeight: FontWeight.w700,
+            color: const Color(0xFF1A202C),
+          ),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text.rich(
               TextSpan(
                 text: 'Please provide feedback/revision notes:',
+                style: GoogleFonts.beVietnamPro(color: const Color(0xFF374151)),
                 children: [
                   TextSpan(
                     text: ' *',
@@ -803,6 +823,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
             TextField(
               controller: commentController,
               maxLines: 4,
+              maxLength: 1000,
               decoration: const InputDecoration(
                 hintText: 'e.g., Please provide a more detailed letter...',
                 border: OutlineInputBorder(),
@@ -811,19 +832,22 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
           ],
         ),
         actions: [
-          TextButton(
+          OutlinedButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF374151),
+              side: const BorderSide(color: Color(0xFFE2E6EA)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: Text('Cancel', style: GoogleFonts.beVietnamPro()),
           ),
           ElevatedButton(
             onPressed: () async {
               final comment = commentController.text.trim();
               if (comment.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Please provide revision notes'),
-                  ),
-                );
+                AppToast.warning(context, 'Please provide revision notes');
                 return;
               }
               Navigator.pop(ctx);
@@ -881,20 +905,21 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
         };
     }
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
       decoration: BoxDecoration(
         color: style['bg'] as Color,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(100),
       ),
       child: Text(
         style['label'] as String,
+        maxLines: 1,
         softWrap: false,
-        overflow: TextOverflow.visible,
+        overflow: TextOverflow.ellipsis,
         style: GoogleFonts.beVietnamPro(
-          fontSize: 10,
+          fontSize: 9,
           fontWeight: FontWeight.w700,
           color: style['fg'] as Color,
-          letterSpacing: 0.8,
+          letterSpacing: 0.6,
         ),
       ),
     );
@@ -1019,21 +1044,39 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Archive Request'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Archive Request',
+          style: GoogleFonts.beVietnamPro(
+            fontWeight: FontWeight.w700,
+            color: const Color(0xFF1A202C),
+          ),
+        ),
         content: Text(
           'Archive request from "$orgName" about "$subject"? You can still view it in the archived section.',
+          style: GoogleFonts.beVietnamPro(color: const Color(0xFF374151)),
         ),
         actions: [
-          TextButton(
+          OutlinedButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF374151),
+              side: const BorderSide(color: Color(0xFFE2E6EA)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: Text('Cancel', style: GoogleFonts.beVietnamPro()),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(
               backgroundColor: AdminColors.warning,
             ),
-            child: const Text('Archive'),
+            child: Text(
+              'Archive',
+              style: GoogleFonts.beVietnamPro(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -1053,21 +1096,11 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
         details: {'docId': docId, 'orgName': orgName},
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Request archived successfully'),
-            backgroundColor: AdminColors.success,
-          ),
-        );
+        AppToast.info(context, 'Request archived successfully');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: AdminColors.error,
-          ),
-        );
+        AppToast.error(context, 'Error: $e');
       }
     }
   }
@@ -1080,21 +1113,39 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Restore Request'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Restore Request',
+          style: GoogleFonts.beVietnamPro(
+            fontWeight: FontWeight.w700,
+            color: const Color(0xFF1A202C),
+          ),
+        ),
         content: Text(
           'Restore request from "$orgName" about "$subject" out of the archive?',
+          style: GoogleFonts.beVietnamPro(color: const Color(0xFF374151)),
         ),
         actions: [
-          TextButton(
+          OutlinedButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF374151),
+              side: const BorderSide(color: Color(0xFFE2E6EA)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: Text('Cancel', style: GoogleFonts.beVietnamPro()),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(
               backgroundColor: AdminColors.success,
             ),
-            child: const Text('Restore'),
+            child: Text(
+              'Restore',
+              style: GoogleFonts.beVietnamPro(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -1114,21 +1165,11 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
         details: {'docId': docId, 'orgName': orgName},
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Request restored successfully'),
-            backgroundColor: AdminColors.success,
-          ),
-        );
+        AppToast.success(context, 'Request restored successfully');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: AdminColors.error,
-          ),
-        );
+        AppToast.error(context, 'Error: $e');
       }
     }
   }
@@ -1139,20 +1180,43 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
       barrierColor: Colors.black54,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Reject Letter Request', style: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w700)),
+        title: Text(
+          'Reject Letter Request',
+          style: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w700),
+        ),
         content: Text(
           'Reject the letter request from "$orgName"? The organization will be notified.',
-          style: GoogleFonts.beVietnamPro(fontSize: 14, color: const Color(0xFF64748B), height: 1.5),
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 14,
+            color: const Color(0xFF64748B),
+            height: 1.5,
+          ),
         ),
         actions: [
-          TextButton(
+          OutlinedButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: GoogleFonts.beVietnamPro(color: const Color(0xFF374151))),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF374151),
+              side: const BorderSide(color: Color(0xFFE2E6EA)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.beVietnamPro(color: const Color(0xFF374151)),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: AdminColors.error, foregroundColor: Colors.white),
-            child: Text('Reject', style: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w600)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AdminColors.error,
+              foregroundColor: Colors.white,
+            ),
+            child: Text(
+              'Reject',
+              style: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w600),
+            ),
           ),
         ],
       ),
@@ -1170,7 +1234,10 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
   }) async {
     try {
       final docRef = FirestoreCollections.letterRequests.doc(docId);
-      final orgId = ((await docRef.get()).data() as Map<String, dynamic>?)?['orgId']?.toString() ?? '';
+      final orgId =
+          ((await docRef.get()).data() as Map<String, dynamic>?)?['orgId']
+              ?.toString() ??
+          '';
       final Map<String, dynamic> updateData = {
         'status': newStatus,
         'updatedAt': FieldValue.serverTimestamp(),
@@ -1341,16 +1408,27 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                   ),
                 ),
                 actions: [
-                  TextButton(
+                  OutlinedButton(
                     onPressed: () => Navigator.pop(dCtx),
-                    child: const Text('Cancel'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF374151),
+                      side: const BorderSide(color: Color(0xFFE2E6EA)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: Text('Cancel', style: GoogleFonts.beVietnamPro()),
                   ),
                   ElevatedButton(
                     onPressed: () {
                       if (!formKey.currentState!.validate()) return;
                       Navigator.pop(dCtx, nameCtrl.text.trim());
                     },
-                    child: const Text('Save'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AdminColors.primaryDark,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: Text('Save', style: GoogleFonts.beVietnamPro()),
                   ),
                 ],
               ),
@@ -1366,13 +1444,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
               justImported = false;
             });
             if (ctx.mounted) {
-              ScaffoldMessenger.of(ctx).showSnackBar(
-                SnackBar(
-                  content: Text('Saved "$label" for next time.'),
-                  backgroundColor: const Color(0xFF059669),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
+              AppToast.success(ctx, 'Saved "$label" for next time.');
             }
           }
 
@@ -1387,13 +1459,23 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                   'Remove "${sig['name']}"?',
                   style: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w700),
                 ),
-                content: const Text(
+                content: Text(
                   'This saved signature will be removed from your library.',
+                  style: GoogleFonts.beVietnamPro(
+                    color: const Color(0xFF374151),
+                  ),
                 ),
                 actions: [
-                  TextButton(
+                  OutlinedButton(
                     onPressed: () => Navigator.pop(dCtx, false),
-                    child: const Text('Cancel'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF374151),
+                      side: const BorderSide(color: Color(0xFFE2E6EA)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: Text('Cancel', style: GoogleFonts.beVietnamPro()),
                   ),
                   ElevatedButton(
                     onPressed: () => Navigator.pop(dCtx, true),
@@ -1401,7 +1483,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                       backgroundColor: AdminColors.error,
                       foregroundColor: Colors.white,
                     ),
-                    child: const Text('Remove'),
+                    child: Text('Remove', style: GoogleFonts.beVietnamPro()),
                   ),
                 ],
               ),
@@ -1419,452 +1501,522 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
             ),
             child: ConstrainedBox(
               constraints: BoxConstraints(
+                maxWidth: 480,
                 maxHeight: MediaQuery.of(ctx).size.height * 0.85,
               ),
-              child: SingleChildScrollView(
-                child: Container(
-                  width: 480,
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 42,
-                            height: 42,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFECFDF5),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Icon(
-                              Icons.draw_rounded,
-                              color: Color(0xFF059669),
-                              size: 20,
-                            ),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Text(
-                              'E-Sign & Approve',
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 17,
-                                fontWeight: FontWeight.w700,
-                                color: const Color(0xFF1A202C),
-                              ),
-                            ),
-                          ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // ─── HEADER ──────────────────────────────────────────
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          AdminColors.primaryDark,
+                          AdminColors.primaryDark.withAlpha(225),
                         ],
                       ),
-                      const SizedBox(height: 20),
-                      Text(
-                        'Import your signature image to digitally sign and approve this letter for $orgName.',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 13,
-                          color: const Color(0xFF64748B),
-                        ),
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(18),
                       ),
-                      if (signatureBytes == null &&
-                          savedSignatures.isNotEmpty) ...[
-                        const SizedBox(height: 16),
-                        Text(
-                          'SAVED SIGNATURES',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: const Color(0xFF9AA5B4),
-                            letterSpacing: 0.8,
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.draw_rounded,
+                            color: Colors.white,
+                            size: 20,
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: savedSignatures.map((sig) {
-                            return InkWell(
-                              onTap: () => useSavedSignature(sig),
-                              borderRadius: BorderRadius.circular(10),
-                              child: Container(
-                                padding: const EdgeInsets.fromLTRB(10, 8, 6, 8),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFAFBFC),
-                                  border: Border.all(
-                                    color: const Color(0xFFE2E6EA),
-                                  ),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Image.memory(
-                                      sig['bytes'] as Uint8List,
-                                      height: 28,
-                                      width: 60,
-                                      fit: BoxFit.contain,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      (sig['name'] as String),
-                                      style: GoogleFonts.beVietnamPro(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        color: const Color(0xFF374151),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 2),
-                                    InkWell(
-                                      onTap: () => deleteSavedSignature(sig),
-                                      borderRadius: BorderRadius.circular(12),
-                                      child: const Padding(
-                                        padding: EdgeInsets.all(4),
-                                        child: Icon(
-                                          Icons.close_rounded,
-                                          size: 13,
-                                          color: Color(0xFF9AA5B4),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                        const SizedBox(height: 14),
-                        Row(
-                          children: [
-                            const Expanded(
-                              child: Divider(color: Color(0xFFE2E6EA)),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                              ),
-                              child: Text(
-                                'or import new',
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'E-Sign & Approve',
                                 style: GoogleFonts.beVietnamPro(
-                                  fontSize: 11,
-                                  color: const Color(0xFF9AA5B4),
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
                                 ),
                               ),
-                            ),
-                            const Expanded(
-                              child: Divider(color: Color(0xFFE2E6EA)),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-                      ] else
-                        const SizedBox(height: 18),
-                      Container(
-                        height: 160,
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFAFBFC),
-                          border: Border.all(color: const Color(0xFFE2E6EA)),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: isProcessing
-                            ? const Center(
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
+                              Text(
+                                orgName,
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 12,
+                                  color: Colors.white.withOpacity(0.7),
                                 ),
-                              )
-                            : signatureBytes == null
-                            ? InkWell(
-                                onTap: pickSignature,
-                                borderRadius: BorderRadius.circular(10),
-                                child: Center(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(
-                                        Icons.upload_file_rounded,
-                                        size: 28,
-                                        color: Color(0xFF9AA5B4),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                          onPressed: isSaving ? null : () => Navigator.pop(ctx),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // ─── BODY ────────────────────────────────────────────
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Import your signature image to digitally sign and approve this letter for $orgName.',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13,
+                              color: const Color(0xFF64748B),
+                            ),
+                          ),
+                          if (signatureBytes == null &&
+                              savedSignatures.isNotEmpty) ...[
+                            const SizedBox(height: 16),
+                            Text(
+                              'SAVED SIGNATURES',
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFF9AA5B4),
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: savedSignatures.map((sig) {
+                                return InkWell(
+                                  onTap: () => useSavedSignature(sig),
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: Container(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      10,
+                                      8,
+                                      6,
+                                      8,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFAFBFC),
+                                      border: Border.all(
+                                        color: const Color(0xFFE2E6EA),
                                       ),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        'Import Signature Image',
-                                        style: GoogleFonts.beVietnamPro(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: const Color(0xFF64748B),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        'Photo or scan of your signature on plain paper',
-                                        style: GoogleFonts.beVietnamPro(
-                                          fontSize: 11,
-                                          color: const Color(0xFF9AA5B4),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              )
-                            : Stack(
-                                clipBehavior: Clip.none,
-                                alignment: Alignment.topCenter,
-                                children: [
-                                  // Live preview of the signature-over-printed-name stamp.
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 44),
-                                    child: Column(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        SizedBox(
-                                          width: 200,
-                                          child: Divider(
-                                            color: const Color(
-                                              0xFF059669,
-                                            ).withAlpha(120),
-                                            thickness: 1,
-                                          ),
+                                        Image.memory(
+                                          sig['bytes'] as Uint8List,
+                                          height: 28,
+                                          width: 60,
+                                          fit: BoxFit.contain,
                                         ),
-                                        const SizedBox(height: 3),
+                                        const SizedBox(width: 8),
                                         Text(
-                                          signedByName,
+                                          (sig['name'] as String),
                                           style: GoogleFonts.beVietnamPro(
                                             fontSize: 12,
-                                            fontWeight: FontWeight.w700,
-                                            color: const Color(0xFF1A202C),
+                                            fontWeight: FontWeight.w600,
+                                            color: const Color(0xFF374151),
                                           ),
                                         ),
-                                        Text(
-                                          'Admin, Uprise',
-                                          style: GoogleFonts.beVietnamPro(
-                                            fontSize: 10,
-                                            color: const Color(0xFF64748B),
+                                        const SizedBox(width: 2),
+                                        InkWell(
+                                          onTap: () =>
+                                              deleteSavedSignature(sig),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          child: const Padding(
+                                            padding: EdgeInsets.all(4),
+                                            child: Icon(
+                                              Icons.close_rounded,
+                                              size: 13,
+                                              color: Color(0xFF9AA5B4),
+                                            ),
                                           ),
                                         ),
                                       ],
                                     ),
                                   ),
-                                  Positioned(
-                                    top: 6,
-                                    child: Image.memory(
-                                      signatureBytes!,
-                                      height: 56,
-                                      fit: BoxFit.contain,
+                                );
+                              }).toList(),
+                            ),
+                            const SizedBox(height: 14),
+                            Row(
+                              children: [
+                                const Expanded(
+                                  child: Divider(color: Color(0xFFE2E6EA)),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                  ),
+                                  child: Text(
+                                    'or import new',
+                                    style: GoogleFonts.beVietnamPro(
+                                      fontSize: 11,
+                                      color: const Color(0xFF9AA5B4),
                                     ),
                                   ),
-                                  Positioned(
-                                    right: 6,
-                                    top: 6,
-                                    child: IconButton(
-                                      icon: const Icon(
-                                        Icons.close_rounded,
-                                        size: 16,
-                                        color: Color(0xFF9AA5B4),
+                                ),
+                                const Expanded(
+                                  child: Divider(color: Color(0xFFE2E6EA)),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+                          ] else
+                            const SizedBox(height: 18),
+                          Container(
+                            height: 160,
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFAFBFC),
+                              border: Border.all(
+                                color: const Color(0xFFE2E6EA),
+                              ),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: isProcessing
+                                ? const Center(
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : signatureBytes == null
+                                ? InkWell(
+                                    onTap: pickSignature,
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: Center(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(
+                                            Icons.upload_file_rounded,
+                                            size: 28,
+                                            color: Color(0xFF9AA5B4),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            'Import Signature Image',
+                                            style: GoogleFonts.beVietnamPro(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                              color: const Color(0xFF64748B),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'Photo or scan of your signature on plain paper',
+                                            style: GoogleFonts.beVietnamPro(
+                                              fontSize: 11,
+                                              color: const Color(0xFF9AA5B4),
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                      tooltip: 'Remove',
-                                      onPressed: () => setDialogState(
-                                        () => signatureBytes = null,
+                                    ),
+                                  )
+                                : Stack(
+                                    clipBehavior: Clip.none,
+                                    alignment: Alignment.topCenter,
+                                    children: [
+                                      // Live preview of the signature-over-printed-name stamp.
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 44),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            SizedBox(
+                                              width: 200,
+                                              child: Divider(
+                                                color: const Color(
+                                                  0xFF059669,
+                                                ).withAlpha(120),
+                                                thickness: 1,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 3),
+                                            Text(
+                                              signedByName,
+                                              style: GoogleFonts.beVietnamPro(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w700,
+                                                color: const Color(0xFF1A202C),
+                                              ),
+                                            ),
+                                            Text(
+                                              'Admin, Uprise',
+                                              style: GoogleFonts.beVietnamPro(
+                                                fontSize: 10,
+                                                color: const Color(0xFF64748B),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
+                                      Positioned(
+                                        top: 6,
+                                        child: Image.memory(
+                                          signatureBytes!,
+                                          height: 56,
+                                          fit: BoxFit.contain,
+                                        ),
+                                      ),
+                                      Positioned(
+                                        right: 6,
+                                        top: 6,
+                                        child: IconButton(
+                                          icon: const Icon(
+                                            Icons.close_rounded,
+                                            size: 16,
+                                            color: Color(0xFF9AA5B4),
+                                          ),
+                                          tooltip: 'Remove',
+                                          onPressed: () => setDialogState(
+                                            () => signatureBytes = null,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                          ),
+                          if (signatureBytes != null) ...[
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                TextButton.icon(
+                                  onPressed: pickSignature,
+                                  icon: const Icon(
+                                    Icons.refresh_rounded,
+                                    size: 14,
+                                  ),
+                                  label: Text(
+                                    'Replace image',
+                                    style: GoogleFonts.beVietnamPro(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  style: TextButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                    ),
+                                  ),
+                                ),
+                                if (justImported) ...[
+                                  const SizedBox(width: 4),
+                                  TextButton.icon(
+                                    onPressed: saveCurrentSignature,
+                                    icon: const Icon(
+                                      Icons.bookmark_add_outlined,
+                                      size: 14,
+                                    ),
+                                    label: Text(
+                                      'Save for next time',
+                                      style: GoogleFonts.beVietnamPro(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    style: TextButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 4,
+                                      ),
+                                      foregroundColor: const Color(0xFF059669),
                                     ),
                                   ),
                                 ],
-                              ),
-                      ),
-                      if (signatureBytes != null) ...[
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            TextButton.icon(
-                              onPressed: pickSignature,
-                              icon: const Icon(Icons.refresh_rounded, size: 14),
-                              label: Text(
-                                'Replace image',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              style: TextButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 4,
-                                ),
+                              ],
+                            ),
+                          ],
+                          if (error != null) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              error!,
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 11,
+                                color: AdminColors.error,
                               ),
                             ),
-                            if (justImported) ...[
-                              const SizedBox(width: 4),
-                              TextButton.icon(
-                                onPressed: saveCurrentSignature,
-                                icon: const Icon(
-                                  Icons.bookmark_add_outlined,
-                                  size: 14,
-                                ),
-                                label: Text(
-                                  'Save for next time',
+                          ],
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: remarkCtrl,
+                            maxLines: 2,
+                            maxLength: 300,
+                            style: GoogleFonts.beVietnamPro(fontSize: 13),
+                            decoration: InputDecoration(
+                              labelText: 'Remark (optional)',
+                              hintText: 'e.g. Approved with noted conditions',
+                              labelStyle: GoogleFonts.beVietnamPro(
+                                fontSize: 12,
+                              ),
+                              hintStyle: GoogleFonts.beVietnamPro(
+                                fontSize: 12,
+                                color: const Color(0xFF9AA5B4),
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.info_outline_rounded,
+                                size: 13,
+                                color: Color(0xFF9AA5B4),
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  'Stamped directly onto the submitted PDF\'s last page, next to the signature.',
                                   style: GoogleFonts.beVietnamPro(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
+                                    fontSize: 11,
+                                    color: const Color(0xFF9AA5B4),
                                   ),
-                                ),
-                                style: TextButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 4,
-                                  ),
-                                  foregroundColor: const Color(0xFF059669),
                                 ),
                               ),
                             ],
-                          ],
-                        ),
-                      ],
-                      if (error != null) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          error!,
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 11,
-                            color: AdminColors.error,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: remarkCtrl,
-                        maxLines: 2,
-                        style: GoogleFonts.beVietnamPro(fontSize: 13),
-                        decoration: InputDecoration(
-                          labelText: 'Remark (optional)',
-                          hintText: 'e.g. Approved with noted conditions',
-                          labelStyle: GoogleFonts.beVietnamPro(fontSize: 12),
-                          hintStyle: GoogleFonts.beVietnamPro(
-                            fontSize: 12,
-                            color: const Color(0xFF9AA5B4),
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.info_outline_rounded,
-                            size: 13,
-                            color: Color(0xFF9AA5B4),
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              'Stamped directly onto the submitted PDF\'s last page, next to the signature.',
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 11,
-                                color: const Color(0xFF9AA5B4),
-                              ),
-                            ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 20),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          OutlinedButton(
-                            // Approval always requires a signature now — this
-                            // just closes the dialog without approving
-                            // anything, it never skips signing.
-                            onPressed: isSaving ? null : () => Navigator.pop(ctx),
-                            style: OutlinedButton.styleFrom(
-                              side: const BorderSide(color: Color(0xFFE2E6EA)),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 18,
-                                vertical: 11,
-                              ),
-                            ),
-                            child: Text(
-                              'Cancel',
-                              style: GoogleFonts.beVietnamPro(fontSize: 13, color: const Color(0xFF374151)),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          ElevatedButton.icon(
-                            onPressed: (isSaving || signatureBytes == null)
-                                ? null
-                                : () async {
-                                    setDialogState(() => isSaving = true);
-                                    // Let the spinner frame actually paint before the
-                                    // heavy PDF rasterize/encode work below blocks the
-                                    // UI thread — otherwise the button just freezes
-                                    // with no feedback instead of visibly "working".
-                                    await Future.delayed(Duration.zero);
-                                    try {
-                                      await _saveESignature(
-                                        docId: docId,
-                                        data: data,
-                                        orgName: orgName,
-                                        letterId: letterId,
-                                        subject: subject,
-                                        requestorName: requestorName,
-                                        signedByName: signedByName,
-                                        signatureBytes: signatureBytes!,
-                                        remark: remarkCtrl.text.trim(),
-                                      );
-
-                                      if (ctx.mounted) Navigator.pop(ctx);
-                                    } catch (e) {
-                                      setDialogState(() => isSaving = false);
-                                      if (ctx.mounted) {
-                                        ScaffoldMessenger.of(ctx).showSnackBar(
-                                          SnackBar(
-                                            content: Text('Signing failed: $e'),
-                                            backgroundColor: AdminColors.error,
-                                          ),
-                                        );
-                                      }
-                                    }
-                                  },
-                            icon: isSaving
-                                ? const SizedBox(
-                                    width: 14,
-                                    height: 14,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Icon(
-                                    Icons.check_circle_rounded,
-                                    size: 16,
-                                  ),
-                            label: Text(
-                              isSaving ? 'Signing…' : 'Sign & Approve',
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF059669),
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 20,
-                                vertical: 11,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                    ),
                   ),
-                ),
+
+                  // ─── FOOTER ──────────────────────────────────────────
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+                    decoration: const BoxDecoration(
+                      border: Border(top: BorderSide(color: Color(0xFFEDF0F3))),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        OutlinedButton(
+                          // Approval always requires a signature now — this
+                          // just closes the dialog without approving
+                          // anything, it never skips signing.
+                          onPressed: isSaving ? null : () => Navigator.pop(ctx),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Color(0xFFE2E6EA)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 18,
+                              vertical: 11,
+                            ),
+                          ),
+                          child: Text(
+                            'Cancel',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13,
+                              color: const Color(0xFF374151),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        ElevatedButton.icon(
+                          onPressed: (isSaving || signatureBytes == null)
+                              ? null
+                              : () async {
+                                  setDialogState(() => isSaving = true);
+                                  // Let the spinner frame actually paint before the
+                                  // heavy PDF rasterize/encode work below blocks the
+                                  // UI thread — otherwise the button just freezes
+                                  // with no feedback instead of visibly "working".
+                                  await Future.delayed(Duration.zero);
+                                  try {
+                                    await _saveESignature(
+                                      docId: docId,
+                                      data: data,
+                                      orgName: orgName,
+                                      letterId: letterId,
+                                      subject: subject,
+                                      requestorName: requestorName,
+                                      signedByName: signedByName,
+                                      signatureBytes: signatureBytes!,
+                                      remark: remarkCtrl.text.trim(),
+                                    );
+
+                                    if (ctx.mounted) Navigator.pop(ctx);
+                                  } catch (e) {
+                                    setDialogState(() => isSaving = false);
+                                    if (ctx.mounted) {
+                                      ScaffoldMessenger.of(ctx).showSnackBar(
+                                        SnackBar(
+                                          content: Text('Signing failed: $e'),
+                                          backgroundColor: AdminColors.error,
+                                        ),
+                                      );
+                                    }
+                                  }
+                                },
+                          icon: isSaving
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.check_circle_rounded,
+                                  size: 16,
+                                ),
+                          label: Text(
+                            isSaving ? 'Signing…' : 'Sign & Approve',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF059669),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 11,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           );
@@ -1945,7 +2097,8 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
         NotificationService.sendToOrgMembers(
           orgId: orgId,
           title: 'Letter request approved',
-          body: 'Your letter request "$subject" has been approved and digitally signed.',
+          body:
+              'Your letter request "$subject" has been approved and digitally signed.',
           type: 'letter_status',
         );
       }
@@ -2028,7 +2181,6 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     final message = data['message'];
     final orgId = data['orgId'] ?? '';
     final orgName = data['orgName'] ?? 'Unknown';
-    final letterId = data['letterId'] ?? 'N/A';
     final subject = data['subject'] ?? 'No subject';
     // Requestor – could be a specific person's name or the org name
     final requestor = data['requestedBy'] ?? data['submittedBy'] ?? orgName;
@@ -2063,7 +2215,10 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                       gradient: LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
-                        colors: [AdminColors.primaryDark, AdminColors.primaryDark.withAlpha(225)],
+                        colors: [
+                          AdminColors.primaryDark,
+                          AdminColors.primaryDark.withAlpha(225),
+                        ],
                       ),
                       borderRadius: const BorderRadius.vertical(
                         top: Radius.circular(18),
@@ -2076,7 +2231,9 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                           height: 44,
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: Colors.white.withAlpha(70)),
+                            border: Border.all(
+                              color: Colors.white.withAlpha(70),
+                            ),
                           ),
                           child: const Icon(
                             Icons.mail_outline_rounded,
@@ -2093,7 +2250,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                                 children: [
                                   Flexible(
                                     child: Text(
-                                      letterId,
+                                      subject,
                                       style: GoogleFonts.beVietnamPro(
                                         fontSize: 16,
                                         fontWeight: FontWeight.w700,
@@ -2107,7 +2264,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                                 ],
                               ),
                               Text(
-                                subject,
+                                requestor,
                                 style: GoogleFonts.beVietnamPro(
                                   fontSize: 12,
                                   color: Colors.white.withOpacity(0.7),
@@ -2245,45 +2402,32 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                                   children: [
                                     Expanded(
                                       child: _detailItem(
-                                        'Letter ID',
-                                        letterId,
-                                        Icons.numbers_rounded,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 16),
-                                    Expanded(
-                                      child: _detailItem(
                                         'Subject',
                                         subject,
                                         Icons.subject_rounded,
                                       ),
                                     ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
+                                    const SizedBox(width: 16),
                                     Expanded(
                                       child: _detailItem(
                                         'School Year',
-                                        (data['schoolYear'] ?? '').toString().isNotEmpty
+                                        (data['schoolYear'] ?? '')
+                                                .toString()
+                                                .isNotEmpty
                                             ? data['schoolYear'].toString()
                                             : '—',
                                         Icons.school_outlined,
                                       ),
                                     ),
-                                    const SizedBox(width: 16),
-                                    Expanded(
-                                      child: _detailItem(
-                                        'Semester',
-                                        (data['semester'] ?? '').toString().isNotEmpty
-                                            ? data['semester'].toString()
-                                            : '—',
-                                        Icons.date_range_outlined,
-                                      ),
-                                    ),
                                   ],
+                                ),
+                                const SizedBox(height: 12),
+                                _detailItem(
+                                  'Semester',
+                                  (data['semester'] ?? '').toString().isNotEmpty
+                                      ? data['semester'].toString()
+                                      : '—',
+                                  Icons.date_range_outlined,
                                 ),
                               ],
                             ),
@@ -2767,7 +2911,17 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
           showDialog(
             context: context,
             builder: (ctx) => AlertDialog(
-              title: Text(fileName),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              title: Text(
+                fileName,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF1A202C),
+                ),
+              ),
               content: Container(
                 width: 500,
                 constraints: const BoxConstraints(maxHeight: 400),
@@ -2779,11 +2933,18 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                 ),
               ),
               actions: [
-                TextButton(
+                OutlinedButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Close'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF374151),
+                    side: const BorderSide(color: Color(0xFFE2E6EA)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: Text('Close', style: GoogleFonts.beVietnamPro()),
                 ),
-                TextButton(
+                ElevatedButton(
                   onPressed: () {
                     Navigator.pop(ctx);
                     platform_file_utils.saveBytesToTempAndOpen(
@@ -2792,7 +2953,11 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                       mimeType: mime,
                     );
                   },
-                  child: const Text('Download'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AdminColors.primaryDark,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: Text('Download', style: GoogleFonts.beVietnamPro()),
                 ),
               ],
             ),
@@ -2806,16 +2971,20 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
           showDialog(
             context: context,
             builder: (ctx) => Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Padding(
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(14),
                     child: Text(
                       fileName,
                       style: GoogleFonts.beVietnamPro(
                         fontSize: 14,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF1A202C),
                       ),
                     ),
                   ),
@@ -2826,26 +2995,46 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                       child: Image.memory(bytes),
                     ),
                   ),
-                  OverflowBar(
-                    spacing: 8,
-                    alignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        child: const Text('Close'),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          platform_file_utils.saveBytesToTempAndOpen(
-                            bytes,
-                            fileName,
-                            mimeType: mime,
-                          );
-                        },
-                        child: const Text('Download'),
-                      ),
-                    ],
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        OutlinedButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF374151),
+                            side: const BorderSide(color: Color(0xFFE2E6EA)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: Text(
+                            'Close',
+                            style: GoogleFonts.beVietnamPro(),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        ElevatedButton(
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            platform_file_utils.saveBytesToTempAndOpen(
+                              bytes,
+                              fileName,
+                              mimeType: mime,
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AdminColors.primaryDark,
+                            foregroundColor: Colors.white,
+                          ),
+                          child: Text(
+                            'Download',
+                            style: GoogleFonts.beVietnamPro(),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -2907,70 +3096,77 @@ class _StatCard extends StatelessWidget {
   final String label, value;
   final IconData icon;
   final Color color;
+  final VoidCallback? onTap;
   const _StatCard({
     required this.label,
     required this.value,
     required this.icon,
     required this.color,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFE8ECF0)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withAlpha(15),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
+    final card = Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE8ECF0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(15),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: color.withAlpha(26),
+              borderRadius: BorderRadius.circular(12),
             ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: color.withAlpha(26),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: color, size: 22),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11,
-                      color: const Color(0xFF64748B),
-                      fontWeight: FontWeight.w500,
-                    ),
+            child: Icon(icon, color: color, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 11,
+                    color: const Color(0xFF64748B),
+                    fontWeight: FontWeight.w500,
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    value,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF1A202C),
-                    ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF1A202C),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
+    final wrapped = onTap == null
+        ? card
+        : MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(onTap: onTap, child: card),
+          );
+    return Expanded(child: wrapped);
   }
 }
 
@@ -3077,9 +3273,7 @@ class _ExportButton extends StatelessWidget {
       final now = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
       if (format == 'csv') {
         final buffer = StringBuffer();
-        buffer.writeln(
-          'Letter ID,Organization,Subject,Message,Status,Date Submitted',
-        );
+        buffer.writeln('Organization,Subject,Message,Status,Date Submitted');
         for (final doc in docs) {
           final d = doc.data() as Map<String, dynamic>?;
           final date =
@@ -3092,7 +3286,6 @@ class _ExportButton extends StatelessWidget {
           String escape(String value) => '"${value.replaceAll('"', '""')}"';
           buffer.writeln(
             [
-              escape(d?['letterId'] ?? ''),
               escape(d?['orgName'] ?? ''),
               escape(d?['subject'] ?? ''),
               escape(message),
@@ -3120,7 +3313,6 @@ class _ExportButton extends StatelessWidget {
               ) ??
               '';
           return [
-            d?['letterId'] ?? '',
             d?['orgName'] ?? '',
             d?['subject'] ?? '',
             d?['message'] ?? '',
@@ -3132,7 +3324,6 @@ class _ExportButton extends StatelessWidget {
         final pdfBytes = await AdminExportPdf.generateTablePdf(
           title: 'Letter Requests Report',
           headers: const [
-            'Letter ID',
             'Organization',
             'Subject',
             'Message',
@@ -3241,34 +3432,39 @@ class _PageNumButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
-        margin: const EdgeInsets.symmetric(horizontal: 2),
-        width: 30,
-        height: 30,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: isActive ? AdminColors.primaryDark : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-          border: isActive ? null : Border.all(color: const Color(0xFFE4E8EF)),
-          boxShadow: isActive
-              ? [
-                  BoxShadow(
-                    color: AdminColors.primaryDark.withOpacity(0.25),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : [],
-        ),
-        child: Text(
-          '$page',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 12.5,
-            fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-            color: isActive ? Colors.white : const Color(0xFF374151),
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          width: 30,
+          height: 30,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: isActive ? AdminColors.primaryDark : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+            border: isActive
+                ? null
+                : Border.all(color: const Color(0xFFE4E8EF)),
+            boxShadow: isActive
+                ? [
+                    BoxShadow(
+                      color: AdminColors.primaryDark.withOpacity(0.25),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : [],
+          ),
+          child: Text(
+            '$page',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 12.5,
+              fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+              color: isActive ? Colors.white : const Color(0xFF374151),
+            ),
           ),
         ),
       ),

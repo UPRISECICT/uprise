@@ -1,4 +1,4 @@
-﻿// lib/screens/web/admin/adviser_roles.dart
+// lib/screens/web/admin/adviser_roles.dart
 
 import 'dart:async';
 import 'dart:convert';
@@ -14,10 +14,25 @@ import '../../../theme/app_theme.dart';
 import '../../../widgets/anchored_dropdown.dart';
 
 // Helper for image handling
+//
+// Caches the decoded MemoryImage per data URL. Without this, every rebuild
+// of the table (e.g. every keystroke in the search box, since that calls
+// setState on the whole page) constructed a brand-new Uint8List via
+// base64Decode and wrapped it in a new MemoryImage — and since MemoryImage
+// equality is based on the byte-list object identity, no two of those were
+// ever `==`, so Flutter's image cache could never recognize them as the
+// same image. That meant every avatar/logo was fully re-decoded from
+// scratch on every rebuild instead of decoded once and reused, which is
+// exactly the kind of compounding cost that made typing in the search box
+// or paginating feel laggy.
+final Map<String, MemoryImage> _memoryImageCache = {};
+
 ImageProvider _imageProviderFromUrl(String url) {
   if (url.startsWith('data:image')) {
-    final base64Part = url.split(',').last;
-    return MemoryImage(base64Decode(base64Part));
+    return _memoryImageCache.putIfAbsent(url, () {
+      final base64Part = url.split(',').last;
+      return MemoryImage(base64Decode(base64Part));
+    });
   }
   return NetworkImage(url);
 }
@@ -467,25 +482,12 @@ class _AdviserRolesState extends State<AdviserRoles> {
   List<OrgModel> _orgs = [];
   List<String> _adviserNames = [];
   bool _loadingMeta = true;
+  bool _didInitialOfficerSync = false;
   int _totalAdvisers = 0;
   int _totalOfficers = 0;
   late StreamSubscription _metaListener;
   late StreamSubscription _officersListener;
   late StreamSubscription _orgsListener;
-
-  int _getPositionPriority(String position) {
-    final lower = position.toLowerCase().trim();
-    if (lower == 'president') return 0;
-    if (lower == 'vice president') return 1;
-    if (lower == 'secretary') return 2;
-    if (lower == 'treasurer') return 3;
-    return 999; // custom positions go last
-  }
-
-  // Cache for officer data by orgId
-  Map<String, Map<String, OfficerInfo>> _officersCache = {};
-  // Add this with the other variables (around line 95)
-  Map<String, List<OfficerInfo>> _allOfficersCache = {};
 
   @override
   void initState() {
@@ -517,10 +519,20 @@ class _AdviserRolesState extends State<AdviserRoles> {
     super.dispose();
   }
 
+  // Every Firestore .snapshots() stream replays the current state as its
+  // first event the moment you subscribe. initState already fires an
+  // explicit _loadMeta() call, so without `.skip(1)` here that first replay
+  // duplicated the exact same work a second (or third/fourth, across all
+  // three listeners) time in the first instant the page opens — a burst of
+  // redundant reads that's the real reason everything felt laggy right when
+  // this page was opened, settling down once the burst finished. Skipping
+  // the replay means these listeners only react to genuine subsequent
+  // changes, which is all they were ever meant to do.
   void _setupMetaListener() {
     _metaListener = FirebaseFirestore.instance
         .collection('adviser_roles')
         .snapshots()
+        .skip(1)
         .listen((_) => _loadMeta());
   }
 
@@ -528,6 +540,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
     _officersListener = FirebaseFirestore.instance
         .collectionGroup('officers')
         .snapshots()
+        .skip(1)
         .listen((snapshot) {
           _loadOfficersForAllOrgs();
         });
@@ -541,64 +554,57 @@ class _AdviserRolesState extends State<AdviserRoles> {
     _orgsListener = FirebaseFirestore.instance
         .collection('organizations')
         .snapshots()
+        .skip(1)
         .listen((snapshot) {
           _loadOfficersForAllOrgs();
         });
   }
 
   Future<void> _loadOfficersForAllOrgs() async {
-    for (final org in _orgs) {
-      await _loadOfficersForOrg(org.id);
-    }
-    setState(() {});
+    // Was awaiting one org at a time — for N orgs that's N sequential
+    // round trips before anything on screen updates, which is exactly the
+    // "long lag then it's fine" freeze. Firing them together cuts total
+    // wait time from O(N * roundtrip) down to about one roundtrip.
+    await Future.wait(_orgs.map((org) => _loadOfficersForOrg(org.id)));
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadOfficersForOrg(String orgId) async {
     try {
-      final orgDoc = await FirebaseFirestore.instance
-          .collection('organizations')
-          .doc(orgId)
-          .get();
+      // These three reads don't depend on each other — firing them together
+      // instead of one at a time cuts this method's latency to roughly one
+      // round trip instead of three, which matters since it runs for every
+      // org in parallel on first load (see _loadOfficersForAllOrgs).
+      final results = await Future.wait([
+        FirebaseFirestore.instance.collection('organizations').doc(orgId).get(),
+        FirebaseFirestore.instance
+            .collection('adviser_roles')
+            .where('orgId', isEqualTo: orgId)
+            .where('archived', isEqualTo: false)
+            .get(),
+        FirebaseFirestore.instance
+            .collection('organizations')
+            .doc(orgId)
+            .collection('officers')
+            .get(),
+      ]);
+      final orgDoc = results[0] as DocumentSnapshot<Map<String, dynamic>>;
+      final roleSnap = results[1] as QuerySnapshot<Map<String, dynamic>>;
+      final officerSnap = results[2] as QuerySnapshot<Map<String, dynamic>>;
 
       final orgData = orgDoc.data();
-      final adviserPhotoUrl = orgData?['adviserPhotoUrl'] ?? '';
+      final adviserPhotoUrl = (orgData?['adviserPhotoUrl'] ?? '').toString();
+      final adviserName = (orgData?['adviserName'] ?? '').toString();
+      final adviserEmail = (orgData?['adviserEmail'] ?? '').toString();
+      final adviserPhone = (orgData?['adviserPhone'] ?? '').toString();
+      final adviserTitle = (orgData?['adviserTitle'] ?? '').toString();
 
-      // Update adviser photo in roles
-      final roleSnap = await FirebaseFirestore.instance
-          .collection('adviser_roles')
-          .where('orgId', isEqualTo: orgId)
-          .where('archived', isEqualTo: false)
-          .get();
-
-      for (final doc in roleSnap.docs) {
-        if (adviserPhotoUrl.isNotEmpty) {
-          await doc.reference.update({'adviserPhotoUrl': adviserPhotoUrl});
-        }
-      }
-
-      // 👇 FETCH ALL OFFICERS from the subcollection
-      final officerSnap = await FirebaseFirestore.instance
-          .collection('organizations')
-          .doc(orgId)
-          .collection('officers')
-          .get();
-
-      // Store ALL officers in the cache
-      final allOfficers = <OfficerInfo>[];
-      for (final doc in officerSnap.docs) {
-        final data = doc.data();
-        allOfficers.add(OfficerInfo.fromMap(data));
-      }
-
-      _allOfficersCache[orgId] = allOfficers;
-
-      // Also keep the old cache for the three main positions (for backward compatibility)
       final officers = <String, OfficerInfo>{};
       for (final doc in officerSnap.docs) {
         final data = doc.data();
-        final position = (data['position'] ?? '').toString().toLowerCase();
         final officer = OfficerInfo.fromMap(data);
 
+        final position = (data['position'] ?? '').toString().toLowerCase();
         if (position == 'president') {
           officers['president'] = officer;
         } else if (position == 'vice president') {
@@ -608,95 +614,83 @@ class _AdviserRolesState extends State<AdviserRoles> {
         }
       }
 
-      _officersCache[orgId] = officers;
-      await _syncAdviserRoleOfficers(orgId, officers);
-    } catch (e) {
-      debugPrint('Error loading officers for org $orgId: $e');
-    }
-  }
-
-  Future<void> _syncAdviserRoleOfficers(
-    String orgId,
-    Map<String, OfficerInfo> officers,
-  ) async {
-    try {
-      final orgDoc = await FirebaseFirestore.instance
-          .collection('organizations')
-          .doc(orgId)
-          .get();
-
-      final orgData = orgDoc.data();
-      final adviserPhotoUrl = orgData?['adviserPhotoUrl'] ?? '';
-      final adviserName = (orgData?['adviserName'] ?? '').toString();
-      final adviserEmail = (orgData?['adviserEmail'] ?? '').toString();
-      final adviserPhone = (orgData?['adviserPhone'] ?? '').toString();
-      final adviserTitle = (orgData?['adviserTitle'] ?? '').toString();
-
-      final roleSnap = await FirebaseFirestore.instance
-          .collection('adviser_roles')
-          .where('orgId', isEqualTo: orgId)
-          .where('archived', isEqualTo: false)
-          .get();
-
+      // Keep every adviser_roles doc for this org mirrored to the org's
+      // current adviser/officer info (Organization Management is the
+      // source of truth) — one batch commit instead of an awaited update
+      // per doc, which was also re-fetching the same org doc and role
+      // query a second time via a separate sync step.
+      final batch = FirebaseFirestore.instance.batch();
+      var hasWrites = false;
       for (final doc in roleSnap.docs) {
+        final current = doc.data();
         final updates = <String, dynamic>{};
-
-        if (adviserPhotoUrl.isNotEmpty) {
-          updates['adviserPhotoUrl'] = adviserPhotoUrl;
+        // Only include fields that actually changed. `_setupMetaListener`
+        // listens on this same `adviser_roles` collection, so an
+        // unconditional write here — even one that re-sets identical
+        // values — re-fires that listener, which calls _loadMeta(), which
+        // calls back into this method for every org: a self-triggering
+        // read/write loop that never settles and is what made this page
+        // feel like it never finished loading.
+        void setIfChanged(String field, String value) {
+          if (value.isNotEmpty && current[field]?.toString() != value) {
+            updates[field] = value;
+          }
         }
-        // Keep the adviser role record's adviser fields mirrored to whatever
-        // is currently set on the org itself (Organization Management is
-        // the source of truth), so editing the adviser there reflects here
-        // automatically without re-entering it in Adviser Roles.
-        if (adviserName.isNotEmpty) updates['adviserName'] = adviserName;
-        if (adviserEmail.isNotEmpty) updates['adviserEmail'] = adviserEmail;
-        if (adviserPhone.isNotEmpty) updates['adviserPhone'] = adviserPhone;
-        if (adviserTitle.isNotEmpty) updates['adviserRank'] = adviserTitle;
+
+        setIfChanged('adviserPhotoUrl', adviserPhotoUrl);
+        setIfChanged('adviserName', adviserName);
+        setIfChanged('adviserEmail', adviserEmail);
+        setIfChanged('adviserPhone', adviserPhone);
+        setIfChanged('adviserRank', adviserTitle);
 
         if (officers.containsKey('president')) {
-          updates['president'] = officers['president']!.name;
-          updates['presidentEmail'] = officers['president']!.email;
-          updates['presidentPhone'] = officers['president']!.phone;
-          updates['presidentPhotoUrl'] = officers['president']!.photoUrl;
+          setIfChanged('president', officers['president']!.name);
+          setIfChanged('presidentEmail', officers['president']!.email);
+          setIfChanged('presidentPhone', officers['president']!.phone);
+          setIfChanged('presidentPhotoUrl', officers['president']!.photoUrl);
         }
-
         if (officers.containsKey('vicePresident')) {
-          updates['vicePresident'] = officers['vicePresident']!.name;
-          updates['vicePresidentEmail'] = officers['vicePresident']!.email;
-          updates['vicePresidentPhone'] = officers['vicePresident']!.phone;
-          updates['vicePresidentPhotoUrl'] =
-              officers['vicePresident']!.photoUrl;
+          setIfChanged('vicePresident', officers['vicePresident']!.name);
+          setIfChanged('vicePresidentEmail', officers['vicePresident']!.email);
+          setIfChanged('vicePresidentPhone', officers['vicePresident']!.phone);
+          setIfChanged(
+            'vicePresidentPhotoUrl',
+            officers['vicePresident']!.photoUrl,
+          );
         }
-
         if (officers.containsKey('secretary')) {
-          updates['secretary'] = officers['secretary']!.name;
-          updates['secretaryEmail'] = officers['secretary']!.email;
-          updates['secretaryPhone'] = officers['secretary']!.phone;
-          updates['secretaryPhotoUrl'] = officers['secretary']!.photoUrl;
+          setIfChanged('secretary', officers['secretary']!.name);
+          setIfChanged('secretaryEmail', officers['secretary']!.email);
+          setIfChanged('secretaryPhone', officers['secretary']!.phone);
+          setIfChanged('secretaryPhotoUrl', officers['secretary']!.photoUrl);
         }
 
         if (updates.isNotEmpty) {
-          await doc.reference.update(updates);
+          batch.update(doc.reference, updates);
+          hasWrites = true;
         }
       }
+      if (hasWrites) await batch.commit();
     } catch (e) {
-      debugPrint('Error syncing adviser role officers for org $orgId: $e');
+      debugPrint('Error loading officers for org $orgId: $e');
     }
   }
 
   Future<void> _loadMeta() async {
     setState(() => _loadingMeta = true);
     try {
-      final orgSnap = await FirebaseFirestore.instance
-          .collection('organizations')
-          .get();
+      // Independent reads — fire together instead of one after another.
+      final results = await Future.wait([
+        FirebaseFirestore.instance.collection('organizations').get(),
+        FirebaseFirestore.instance
+            .collection('adviser_roles')
+            .where('archived', isEqualTo: false)
+            .get(),
+      ]);
+      final orgSnap = results[0];
+      final rolesSnap = results[1];
       final orgs = orgSnap.docs.map(OrgModel.fromDoc).toList()
         ..sort((a, b) => a.name.compareTo(b.name));
-
-      final rolesSnap = await FirebaseFirestore.instance
-          .collection('adviser_roles')
-          .where('archived', isEqualTo: false)
-          .get();
 
       final validRoles = rolesSnap.docs.where((doc) {
         final d = doc.data();
@@ -724,8 +718,17 @@ class _AdviserRolesState extends State<AdviserRoles> {
         _loadingMeta = false;
       });
 
-      for (final org in orgs) {
-        await _loadOfficersForOrg(org.id);
+      // Only sync officer/adviser data from `organizations` into every
+      // `adviser_roles` doc on the very first load. `_loadMeta` itself is
+      // re-run on every add/edit/archive of an adviser role (see
+      // `_setupMetaListener`), so doing a full N-org resync here on every
+      // call meant adding or archiving a single adviser re-fetched and
+      // re-wrote data for every other org too. Actual org/officer changes
+      // are already covered by `_setupOfficersListener`/`_setupOrgsListener`.
+      if (!_didInitialOfficerSync) {
+        _didInitialOfficerSync = true;
+        await Future.wait(orgs.map((org) => _loadOfficersForOrg(org.id)));
+        if (mounted) setState(() {});
       }
     } catch (e) {
       setState(() => _loadingMeta = false);
@@ -760,6 +763,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
         value: '$_totalAdvisers',
         icon: Icons.supervisor_account_rounded,
         color: UpriseColors.primaryDark,
+        onTap: () => setState(() => _statusFilter = 'Active'),
       ),
       _StatCard(
         label: 'Total Officers',
@@ -779,6 +783,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
         icon: Icons.archive_rounded,
         color: const Color(0xFF64748B),
         stream: _archivedCountStream,
+        onTap: () => setState(() => _statusFilter = 'Archived'),
       ),
     ];
 
@@ -799,144 +804,6 @@ class _AdviserRolesState extends State<AdviserRoles> {
                 ],
               ],
             ),
-    );
-  }
-
-  Widget _officerTile({
-    required String position,
-    required String name,
-    required String email,
-    required String phone,
-    required String photoUrl,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE2E6EA)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Photo
-          Container(
-            width: 44,
-            height: 44,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: Color(0xFFE2E6EA),
-            ),
-            child: photoUrl.isNotEmpty
-                ? ClipOval(
-                    child: _buildImageWidget(
-                      photoUrl,
-                      fit: BoxFit.cover,
-                      width: 44,
-                      height: 44,
-                    ),
-                  )
-                : Center(
-                    child: Text(
-                      name.isNotEmpty ? name[0].toUpperCase() : '?',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: UpriseColors.primaryDark,
-                      ),
-                    ),
-                  ),
-          ),
-          const SizedBox(width: 14),
-          // Details
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      name,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF1A202C),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: UpriseColors.primaryDark.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        position,
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: UpriseColors.primaryDark,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                if (email.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 2),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.email_outlined,
-                          size: 12,
-                          color: const Color(0xFF9AA5B4),
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            email,
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 12,
-                              color: const Color(0xFF374151),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                if (phone.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 2),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.phone_outlined,
-                          size: 12,
-                          color: const Color(0xFF9AA5B4),
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            phone,
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 12,
-                              color: const Color(0xFF374151),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -1253,30 +1120,26 @@ class _AdviserRolesState extends State<AdviserRoles> {
               flex: 1,
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: UpriseColors.primaryDark.withAlpha(18),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        position,
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: UpriseColors.primaryDark,
-                          letterSpacing: 0.2,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: UpriseColors.primaryDark.withAlpha(18),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    position,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: UpriseColors.primaryDark,
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -1557,26 +1420,15 @@ class _AdviserRolesState extends State<AdviserRoles> {
                 ),
               ),
 
-              // ---- Adviser Card (fixed, not scrolling) ----
+              // ---- Adviser Card ----
               Padding(
-                padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
                 child: _buildAdviserCard(
                   name: data['adviserName'] ?? '—',
                   email: data['adviserEmail'] ?? '—',
                   phone: data['adviserPhone'] ?? '—',
                   rank: rank,
                   photoUrl: data['adviserPhotoUrl'] ?? '',
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // ---- Officers (scrollable) ----
-              Flexible(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                  child: _buildOfficersCard(
-                    _allOfficersCache[data['orgId']] ?? [],
-                  ),
                 ),
               ),
 
@@ -1803,72 +1655,6 @@ class _AdviserRolesState extends State<AdviserRoles> {
     );
   }
 
-  Widget _buildOfficersCard(List<OfficerInfo> officers) {
-    if (officers.isEmpty) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFE2E6EA)),
-        ),
-        child: Center(
-          child: Text(
-            'No officers listed',
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 13,
-              color: const Color(0xFF64748B),
-            ),
-          ),
-        ),
-      );
-    }
-
-    // Sort: President → VP → Secretary → Treasurer → others (alphabetical)
-    final sorted = List<OfficerInfo>.from(officers)
-      ..sort((a, b) {
-        final pa = _getPositionPriority(a.position);
-        final pb = _getPositionPriority(b.position);
-        if (pa != pb) return pa.compareTo(pb);
-        return a.position.compareTo(b.position);
-      });
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E6EA)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Officers',
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: UpriseColors.primaryDark,
-              letterSpacing: 0.3,
-            ),
-          ),
-          const SizedBox(height: 12),
-          ...sorted.map(
-            (officer) => _officerTile(
-              position: officer.position,
-              name: officer.name,
-              email: officer.email,
-              phone: officer.phone,
-              photoUrl: officer.photoUrl,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _infoChip(
     IconData icon,
     String label, {
@@ -1934,6 +1720,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
             orElse: () => null,
           )
         : null;
+    final originalOrgId = existing?['orgId']?.toString();
 
     final advNameCtrl = TextEditingController(
       text: existing?['adviserName'] ?? '',
@@ -1947,11 +1734,6 @@ class _AdviserRolesState extends State<AdviserRoles> {
     final advRankCtrl = TextEditingController(
       text: existing?['adviserRank'] ?? 'Instructor',
     );
-    final presCtrl = TextEditingController(text: existing?['president'] ?? '');
-    final vpCtrl = TextEditingController(
-      text: existing?['vicePresident'] ?? '',
-    );
-    final secCtrl = TextEditingController(text: existing?['secretary'] ?? '');
     final formKey = GlobalKey<FormState>();
 
     showDialog(
@@ -1987,12 +1769,10 @@ class _AdviserRolesState extends State<AdviserRoles> {
               return;
             }
 
+            // Email format is now enforced by the field's own validator
+            // above (formKey.currentState!.validate() already returned
+            // early if it failed), so no need to re-check it here.
             final adviserEmail = advEmailCtrl.text.trim();
-            final emailRegex = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
-            if (!emailRegex.hasMatch(adviserEmail)) {
-              setDlg(() => errorMsg = 'Please enter a valid email address.');
-              return;
-            }
 
             setDlg(() {
               isSaving = true;
@@ -2002,9 +1782,15 @@ class _AdviserRolesState extends State<AdviserRoles> {
               final adviserName = advNameCtrl.text.trim();
               final adviserPhone = advPhoneCtrl.text.trim();
               final adviserRank = advRankCtrl.text.trim();
-              final president = presCtrl.text.trim();
-              final vicePresident = vpCtrl.text.trim();
-              final secretary = secCtrl.text.trim();
+              // Officers aren't editable from this form anymore — they're
+              // synced automatically from the org's real officers
+              // subcollection (see _loadOfficersForOrg), so just carry
+              // whatever is already on the record through unchanged instead
+              // of overwriting it with blanks.
+              final president = (existing?['president'] ?? '').toString();
+              final vicePresident = (existing?['vicePresident'] ?? '')
+                  .toString();
+              final secretary = (existing?['secretary'] ?? '').toString();
 
               final payload = buildAdviserRolePayload(
                 orgId: selectedOrg!.id,
@@ -2022,6 +1808,26 @@ class _AdviserRolesState extends State<AdviserRoles> {
               );
 
               if (isEdit && docId != null) {
+                final orgChanged = selectedOrg!.id != originalOrgId;
+
+                if (orgChanged) {
+                  // Only one active adviser per org — reassigning here
+                  // must not silently bump whoever's already there.
+                  final dup = await FirebaseFirestore.instance
+                      .collection('adviser_roles')
+                      .where('orgId', isEqualTo: selectedOrg!.id)
+                      .where('archived', isEqualTo: false)
+                      .get();
+                  if (dup.docs.isNotEmpty) {
+                    setDlg(() {
+                      isSaving = false;
+                      errorMsg =
+                          '${selectedOrg!.name} already has an active adviser role.';
+                    });
+                    return;
+                  }
+                }
+
                 final batch = FirebaseFirestore.instance.batch();
                 batch.update(
                   FirebaseFirestore.instance
@@ -2040,10 +1846,29 @@ class _AdviserRolesState extends State<AdviserRoles> {
                     adviserTitle: adviserRank,
                   ),
                 );
+                if (orgChanged &&
+                    originalOrgId != null &&
+                    originalOrgId.isNotEmpty) {
+                  // Clear the adviser off their previous org so they no
+                  // longer show up there once moved.
+                  batch.update(
+                    FirebaseFirestore.instance
+                        .collection('organizations')
+                        .doc(originalOrgId),
+                    buildOrganizationAdviserPayload(
+                      adviserName: '',
+                      adviserEmail: '',
+                      adviserPhone: '',
+                      adviserTitle: '',
+                    ),
+                  );
+                }
                 await batch.commit();
 
                 await activity_log.ActivityLogger.log(
-                  action: 'Updated adviser role for ${selectedOrg!.name}',
+                  action: orgChanged
+                      ? 'Moved adviser role to ${selectedOrg!.name}'
+                      : 'Updated adviser role for ${selectedOrg!.name}',
                   module: 'Adviser Roles',
                   severity: 'info',
                   details: {'orgId': selectedOrg!.id, 'adviser': adviserName},
@@ -2159,7 +1984,14 @@ class _AdviserRolesState extends State<AdviserRoles> {
                   Container(
                     padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
                     decoration: BoxDecoration(
-                      color: UpriseColors.primaryDark,
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          UpriseColors.primaryDark,
+                          UpriseColors.primaryDark.withAlpha(225),
+                        ],
+                      ),
                       borderRadius: const BorderRadius.vertical(
                         top: Radius.circular(18),
                       ),
@@ -2210,7 +2042,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
                       ],
                     ),
                   ),
-                  Expanded(
+                  Flexible(
                     child: SingleChildScrollView(
                       padding: const EdgeInsets.all(24),
                       child: Form(
@@ -2222,127 +2054,99 @@ class _AdviserRolesState extends State<AdviserRoles> {
                               'Organization',
                               icon: Icons.business_outlined,
                             ),
-                            if (isEdit && selectedOrg != null)
-                              Container(
-                                padding: const EdgeInsets.all(14),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFF8F9FB),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: const Color(0xFFE2E6EA),
-                                  ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    _OrgAvatar(
-                                      selectedOrg!.abbrev.isNotEmpty
-                                          ? selectedOrg!.abbrev
-                                          : selectedOrg!.name.substring(
-                                              0,
-                                              selectedOrg!.name.length.clamp(
-                                                0,
-                                                2,
-                                              ),
-                                            ),
-                                      logoUrl: selectedOrg!.logoUrl,
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
+                            AnchoredDropdownField<OrgModel>(
+                              value: selectedOrg,
+                              decoration: _DS.inputDecoration(
+                                'Select Organization',
+                                icon: Icons.business_outlined,
+                                required: true,
+                              ),
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 13,
+                                color: const Color(0xFF1A202C),
+                              ),
+                              items: _orgs
+                                  .map(
+                                    (o) => DropdownMenuItem(
+                                      value: o,
+                                      child: Row(
                                         children: [
-                                          Text(
-                                            selectedOrg!.name,
-                                            style: GoogleFonts.beVietnamPro(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w600,
-                                              color: const Color(0xFF1A202C),
+                                          _OrgAvatar(
+                                            o.abbrev.isNotEmpty
+                                                ? o.abbrev
+                                                : o.name.substring(
+                                                    0,
+                                                    o.name.length.clamp(0, 2),
+                                                  ),
+                                            logoUrl: o.logoUrl,
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Text(
+                                                  o.name,
+                                                  style:
+                                                      GoogleFonts.beVietnamPro(
+                                                        fontSize: 13,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
+                                                ),
+                                                if (o.tag.isNotEmpty)
+                                                  Text(
+                                                    o.tag,
+                                                    style:
+                                                        GoogleFonts.beVietnamPro(
+                                                          fontSize: 11,
+                                                          color: const Color(
+                                                            0xFF64748B,
+                                                          ),
+                                                        ),
+                                                  ),
+                                              ],
                                             ),
                                           ),
-                                          if (selectedOrg!.tag.isNotEmpty)
-                                            Text(
-                                              selectedOrg!.tag,
-                                              style: GoogleFonts.beVietnamPro(
-                                                fontSize: 12,
-                                                color: const Color(0xFF64748B),
-                                              ),
-                                            ),
                                         ],
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (v) {
+                                setDlg(() => selectedOrg = v);
+                                onOrgChanged(v);
+                              },
+                              validator: (_) => selectedOrg == null
+                                  ? 'Select an organization'
+                                  : null,
+                            ),
+                            if (isEdit &&
+                                selectedOrg != null &&
+                                selectedOrg!.id != originalOrgId)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.info_outline_rounded,
+                                      size: 14,
+                                      color: Color(0xFFB45309),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        'This adviser will be moved to ${selectedOrg!.name} and removed from their current organization.',
+                                        style: GoogleFonts.beVietnamPro(
+                                          fontSize: 11,
+                                          color: const Color(0xFFB45309),
+                                        ),
                                       ),
                                     ),
                                   ],
                                 ),
-                              )
-                            else
-                              AnchoredDropdownField<OrgModel>(
-                                value: selectedOrg,
-                                decoration: _DS.inputDecoration(
-                                  'Select Organization',
-                                  icon: Icons.business_outlined,
-                                  required: true,
-                                ),
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 13,
-                                  color: const Color(0xFF1A202C),
-                                ),
-                                items: _orgs
-                                    .map(
-                                      (o) => DropdownMenuItem(
-                                        value: o,
-                                        child: Row(
-                                          children: [
-                                            _OrgAvatar(
-                                              o.abbrev.isNotEmpty
-                                                  ? o.abbrev
-                                                  : o.name.substring(
-                                                      0,
-                                                      o.name.length.clamp(0, 2),
-                                                    ),
-                                              logoUrl: o.logoUrl,
-                                            ),
-                                            const SizedBox(width: 10),
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  Text(
-                                                    o.name,
-                                                    style:
-                                                        GoogleFonts.beVietnamPro(
-                                                          fontSize: 13,
-                                                          fontWeight:
-                                                              FontWeight.w600,
-                                                        ),
-                                                  ),
-                                                  if (o.tag.isNotEmpty)
-                                                    Text(
-                                                      o.tag,
-                                                      style:
-                                                          GoogleFonts.beVietnamPro(
-                                                            fontSize: 11,
-                                                            color: const Color(
-                                                              0xFF64748B,
-                                                            ),
-                                                          ),
-                                                    ),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    )
-                                    .toList(),
-                                onChanged: (v) {
-                                  setDlg(() => selectedOrg = v);
-                                  onOrgChanged(v);
-                                },
-                                validator: (_) => selectedOrg == null
-                                    ? 'Select an organization'
-                                    : null,
                               ),
                             const SizedBox(height: 20),
 
@@ -2378,8 +2182,16 @@ class _AdviserRolesState extends State<AdviserRoles> {
                                       fontSize: 13,
                                     ),
                                     keyboardType: TextInputType.emailAddress,
-                                    validator: (v) =>
-                                        v!.trim().isEmpty ? 'Required' : null,
+                                    validator: (v) {
+                                      final value = v?.trim() ?? '';
+                                      if (value.isEmpty) return 'Required';
+                                      if (!RegExp(
+                                        r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                                      ).hasMatch(value)) {
+                                        return 'Enter a valid email address';
+                                      }
+                                      return null;
+                                    },
                                   ),
                                 ),
                                 const SizedBox(width: 10),
@@ -2395,8 +2207,20 @@ class _AdviserRolesState extends State<AdviserRoles> {
                                       fontSize: 13,
                                     ),
                                     keyboardType: TextInputType.phone,
-                                    validator: (v) =>
-                                        v!.trim().isEmpty ? 'Required' : null,
+                                    validator: (v) {
+                                      final value = v?.trim() ?? '';
+                                      if (value.isEmpty) return 'Required';
+                                      final digitCount = value
+                                          .replaceAll(RegExp(r'[^0-9]'), '')
+                                          .length;
+                                      if (!RegExp(
+                                            r'^[0-9+\-\s()]+$',
+                                          ).hasMatch(value) ||
+                                          digitCount < 7) {
+                                        return 'Enter a valid phone number';
+                                      }
+                                      return null;
+                                    },
                                   ),
                                 ),
                               ],
@@ -2441,41 +2265,6 @@ class _AdviserRolesState extends State<AdviserRoles> {
                               },
                               validator: (v) =>
                                   v == null || v.isEmpty ? 'Required' : null,
-                            ),
-                            const SizedBox(height: 20),
-
-                            _sectionDivider(
-                              'Officers',
-                              icon: Icons.groups_outlined,
-                            ),
-                            TextFormField(
-                              controller: presCtrl,
-                              decoration: _DS.inputDecoration(
-                                'President',
-                                icon: Icons.star_outline_rounded,
-                              ),
-                              style: GoogleFonts.beVietnamPro(fontSize: 13),
-                              // No validator - optional field
-                            ),
-                            const SizedBox(height: 10),
-                            TextFormField(
-                              controller: vpCtrl,
-                              decoration: _DS.inputDecoration(
-                                'Vice President',
-                                icon: Icons.person_outline_rounded,
-                              ),
-                              style: GoogleFonts.beVietnamPro(fontSize: 13),
-                              // No validator - optional field
-                            ),
-                            const SizedBox(height: 10),
-                            TextFormField(
-                              controller: secCtrl,
-                              decoration: _DS.inputDecoration(
-                                'Secretary',
-                                icon: Icons.person_outline_rounded,
-                              ),
-                              style: GoogleFonts.beVietnamPro(fontSize: 13),
-                              // No validator - optional field
                             ),
                             if (errorMsg != null) ...[
                               const SizedBox(height: 14),
@@ -2794,10 +2583,9 @@ class _AdviserRolesState extends State<AdviserRoles> {
   // firing a fresh `.get()` — each doc embeds up to 3 base64 officer photos,
   // so re-querying the whole collection on every export was what made this
   // noticeably slower than other pages' exports.
-  List<QueryDocumentSnapshot> get _docsForExport =>
-      _statusFilter == 'Archived'
-          ? _cachedArchivedAdviserDocs
-          : _cachedActiveAdviserDocs;
+  List<QueryDocumentSnapshot> get _docsForExport => _statusFilter == 'Archived'
+      ? _cachedArchivedAdviserDocs
+      : _cachedActiveAdviserDocs;
 
   Future<void> _exportCSV() async {
     try {
@@ -3035,6 +2823,7 @@ class _StatCard extends StatelessWidget {
   final IconData icon;
   final Color color;
   final Stream<QuerySnapshot>? stream;
+  final VoidCallback? onTap;
 
   const _StatCard({
     required this.label,
@@ -3042,6 +2831,7 @@ class _StatCard extends StatelessWidget {
     required this.icon,
     required this.color,
     this.stream,
+    this.onTap,
   });
 
   @override
@@ -3080,48 +2870,53 @@ class _StatCard extends StatelessWidget {
       );
     }
 
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFE8ECF0)),
-          boxShadow: _DS.cardShadow,
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: color.withAlpha(26),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: color, size: 22),
+    final card = Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE8ECF0)),
+        boxShadow: _DS.cardShadow,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: color.withAlpha(26),
+              borderRadius: BorderRadius.circular(12),
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11,
-                      color: const Color(0xFF64748B),
-                      fontWeight: FontWeight.w500,
-                    ),
+            child: Icon(icon, color: color, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 11,
+                    color: const Color(0xFF64748B),
+                    fontWeight: FontWeight.w500,
                   ),
-                  const SizedBox(height: 2),
-                  countWidget,
-                ],
-              ),
+                ),
+                const SizedBox(height: 2),
+                countWidget,
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
+    final wrapped = onTap == null
+        ? card
+        : MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(onTap: onTap, child: card),
+          );
+    return Expanded(child: wrapped);
   }
 }
 
@@ -3263,23 +3058,26 @@ class _PageNumButton extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: onTap,
-    child: Container(
-      margin: const EdgeInsets.symmetric(horizontal: 2),
-      width: 28,
-      height: 28,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: isActive ? UpriseColors.primaryDark : Colors.transparent,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        '$page',
-        style: GoogleFonts.beVietnamPro(
-          fontSize: 12,
-          fontWeight: isActive ? FontWeight.w700 : FontWeight.normal,
-          color: isActive ? Colors.white : const Color(0xFF374151),
+  Widget build(BuildContext context) => MouseRegion(
+    cursor: SystemMouseCursors.click,
+    child: GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        width: 28,
+        height: 28,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: isActive ? UpriseColors.primaryDark : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          '$page',
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 12,
+            fontWeight: isActive ? FontWeight.w700 : FontWeight.normal,
+            color: isActive ? Colors.white : const Color(0xFF374151),
+          ),
         ),
       ),
     ),

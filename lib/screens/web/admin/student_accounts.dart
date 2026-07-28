@@ -1,4 +1,4 @@
-﻿// ignore_for_file: unused_field, duplicate_ignore, use_build_context_synchronously, deprecated_member_use
+// ignore_for_file: unused_field, duplicate_ignore, use_build_context_synchronously, deprecated_member_use
 import 'dart:io';
 import 'dart:math';
 import 'dart:convert';
@@ -16,11 +16,9 @@ import 'package:http/http.dart' as http;
 import 'package:cross_file/cross_file.dart';
 import 'export_util.dart';
 import 'export_pdf.dart';
-import 'student_accounts_import_parser.dart';
 import '../../../theme/app_theme.dart';
-import '../../../utils/file_validation.dart';
-import '../../../widgets/anchored_dropdown.dart';
 import '../../../services/activity_logger.dart' as activity_log;
+import '../../../utils/file_validation.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens (mirrors org_management.dart)
@@ -45,20 +43,15 @@ class _DS {
     IconData? icon,
     bool required = false,
   }) {
-    final labelTextStyle = GoogleFonts.beVietnamPro(
-      fontSize: 13,
-      color: const Color(0xFF64748B),
-    );
     return InputDecoration(
       label: required
           ? Text.rich(
               TextSpan(
                 text: label,
-                style: labelTextStyle,
-                children: [
+                children: const [
                   TextSpan(
                     text: ' *',
-                    style: labelTextStyle.copyWith(color: UpriseColors.error),
+                    style: TextStyle(color: Color(0xFFDC2626)),
                   ),
                 ],
               ),
@@ -69,7 +62,10 @@ class _DS {
       prefixIcon: icon != null
           ? Icon(icon, size: 18, color: const Color(0xFF9AA5B4))
           : null,
-      labelStyle: labelTextStyle,
+      labelStyle: GoogleFonts.beVietnamPro(
+        fontSize: 13,
+        color: const Color(0xFF64748B),
+      ),
       hintStyle: GoogleFonts.beVietnamPro(
         fontSize: 13,
         color: const Color(0xFF9AA5B4),
@@ -130,6 +126,26 @@ Widget _sectionLabel(String text, {IconData? icon}) {
   );
 }
 
+// Archived badge only (no status badge needed)
+Widget _archivedBadge() {
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+    decoration: BoxDecoration(
+      color: const Color(0xFFF3F4F6),
+      borderRadius: BorderRadius.circular(_DS.radiusPill),
+    ),
+    child: Text(
+      'ARCHIVED',
+      style: GoogleFonts.beVietnamPro(
+        fontSize: 10,
+        fontWeight: FontWeight.w700,
+        color: const Color(0xFF6B7280),
+        letterSpacing: 0.8,
+      ),
+    ),
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Widget
 // ─────────────────────────────────────────────────────────────────────────────
@@ -137,10 +153,10 @@ class StudentAccounts extends StatefulWidget {
   const StudentAccounts({super.key});
 
   @override
-  StudentAccountsState createState() => StudentAccountsState();
+  _StudentAccountsState createState() => _StudentAccountsState();
 }
 
-class StudentAccountsState extends State<StudentAccounts> {
+class _StudentAccountsState extends State<StudentAccounts> {
   String _courseFilter = 'All Courses';
   String _archiveFilter =
       'Active Only'; // 'Active Only', 'Archived Only', 'All'
@@ -212,18 +228,21 @@ class StudentAccountsState extends State<StudentAccounts> {
             value: '$total',
             icon: Icons.school_rounded,
             color: UpriseColors.primaryDark,
+            onTap: () => setState(() => _archiveFilter = 'All'),
           ),
           _StatCard(
             label: 'Active',
             value: '${total - archived}',
             icon: Icons.person_rounded,
             color: const Color(0xFF059669),
+            onTap: () => setState(() => _archiveFilter = 'Active Only'),
           ),
           _StatCard(
             label: 'Archived',
             value: '$archived',
             icon: Icons.archive_rounded,
             color: const Color(0xFF6B7280),
+            onTap: () => setState(() => _archiveFilter = 'Archived Only'),
           ),
         ];
 
@@ -320,54 +339,52 @@ class StudentAccountsState extends State<StudentAccounts> {
         0,
       ),
       child: isMobile
-          ? SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  searchField,
-                  SizedBox(height: itemGap),
-                  _FilterDropdown(
-                    value: _courseFilter,
-                    items: const ['All Courses', 'BSIT', 'BSIS', 'BLIS'],
-                    hint: 'Filter by Course',
-                    icon: Icons.school_outlined,
-                    onChanged: (v) => setState(() {
-                      _courseFilter = v!;
-                      _currentPage = 1;
-                    }),
-                  ),
-                  SizedBox(height: itemGap),
-                  _FilterDropdown(
-                    value: _archiveFilter,
-                    items: const ['Active Only', 'Archived Only', 'All Students'],
-                    hint: 'Archive Status',
-                    icon: Icons.archive_rounded,
-                    onChanged: (v) => setState(() {
-                      _archiveFilter = v!;
-                      _currentPage = 1;
-                    }),
-                  ),
-                  SizedBox(height: itemGap),
-                  _ExportStudentsButton(
-                    courseFilter: _courseFilter,
-                    searchTerm: _searchController.text.trim(),
-                    archiveFilter: _archiveFilter,
-                  ),
-                  SizedBox(height: itemGap),
-                  _ToolbarButton(
-                    label: 'Batch Import',
-                    icon: Icons.upload_file_rounded,
-                    onPressed: _showBatchImportDialog,
-                    outlined: true,
-                  ),
-                  SizedBox(height: itemGap),
-                  _ToolbarButton(
-                    label: 'Add Student',
-                    icon: Icons.person_add_rounded,
-                    onPressed: _showManualAddDialog,
-                  ),
-                ],
-              ),
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                searchField,
+                SizedBox(height: itemGap),
+                _FilterDropdown(
+                  value: _courseFilter,
+                  items: const ['All Courses', 'BSIT', 'BSIS', 'BLIS'],
+                  hint: 'Filter by Course',
+                  icon: Icons.school_outlined,
+                  onChanged: (v) => setState(() {
+                    _courseFilter = v!;
+                    _currentPage = 1;
+                  }),
+                ),
+                SizedBox(height: itemGap),
+                _FilterDropdown(
+                  value: _archiveFilter,
+                  items: const ['Active Only', 'Archived Only', 'All Students'],
+                  hint: 'Archive Status',
+                  icon: Icons.archive_rounded,
+                  onChanged: (v) => setState(() {
+                    _archiveFilter = v!;
+                    _currentPage = 1;
+                  }),
+                ),
+                SizedBox(height: itemGap),
+                _ExportStudentsButton(
+                  courseFilter: _courseFilter,
+                  searchTerm: _searchController.text.trim(),
+                  archiveFilter: _archiveFilter,
+                ),
+                SizedBox(height: itemGap),
+                _ToolbarButton(
+                  label: 'Batch Import',
+                  icon: Icons.upload_file_rounded,
+                  onPressed: _showBatchImportDialog,
+                  outlined: true,
+                ),
+                SizedBox(height: itemGap),
+                _ToolbarButton(
+                  label: 'Add Student',
+                  icon: Icons.person_add_rounded,
+                  onPressed: _showManualAddDialog,
+                ),
+              ],
             )
           : Row(
               children: [
@@ -451,25 +468,18 @@ class StudentAccountsState extends State<StudentAccounts> {
               .where((d) => (d.data() as Map)['course'] == _courseFilter)
               .toList();
         }
-        final searchTerm = _searchController.text.trim().toLowerCase();
-        if (searchTerm.isNotEmpty) {
+        final _searchTerm = _searchController.text.trim().toLowerCase();
+        if (_searchTerm.isNotEmpty) {
           docs = docs.where((d) {
             final data = d.data() as Map;
             return (data['fullName'] ?? '').toString().toLowerCase().contains(
-                  searchTerm,
+                  _searchTerm,
                 ) ||
                 (data['studentId'] ?? '').toString().toLowerCase().contains(
-                  searchTerm,
+                  _searchTerm,
                 ) ||
                 (data['email'] ?? '').toString().toLowerCase().contains(
-                  searchTerm,
-                ) ||
-                (data['schoolYear'] ?? data['yearLevel'] ?? '')
-                    .toString()
-                    .toLowerCase()
-                    .contains(searchTerm) ||
-                (data['section'] ?? '').toString().toLowerCase().contains(
-                  searchTerm,
+                  _searchTerm,
                 );
           }).toList();
         }
@@ -537,8 +547,8 @@ class StudentAccountsState extends State<StudentAccounts> {
           Expanded(flex: 2, child: _headerCell('STUDENT ID')),
           Expanded(flex: 3, child: _headerCell('FULL NAME')),
           Expanded(flex: 2, child: _headerCell('COURSE')),
-          Expanded(flex: 2, child: _headerCell('SCHOOL YEAR')),
-          Expanded(flex: 1, child: _headerCell('SECTION')),
+          Expanded(flex: 1, child: _headerCell('YEAR')),
+          Expanded(flex: 1, child: _headerCell('SECTION')), // NEW
           Expanded(flex: 3, child: _headerCell('EMAIL')),
           Expanded(
             flex: 2,
@@ -568,8 +578,6 @@ class StudentAccountsState extends State<StudentAccounts> {
     required bool isLast,
   }) {
     final isArchived = data['archived'] == true;
-    final schoolYear = data['schoolYear'] ?? data['yearLevel'] ?? '';
-    final section = data['section'] ?? '';
 
     return InkWell(
       hoverColor: const Color(0xFFF8F9FB),
@@ -653,9 +661,9 @@ class StudentAccountsState extends State<StudentAccounts> {
               ),
             ),
             Expanded(
-              flex: 2,
+              flex: 1,
               child: Text(
-                schoolYear.isEmpty ? '—' : schoolYear,
+                data['yearLevel'] ?? '—',
                 style: GoogleFonts.beVietnamPro(
                   fontSize: 12,
                   color: isArchived
@@ -665,10 +673,11 @@ class StudentAccountsState extends State<StudentAccounts> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
+            // NEW: Section column
             Expanded(
               flex: 1,
               child: Text(
-                section.isEmpty ? '—' : section,
+                data['section'] ?? '—',
                 style: GoogleFonts.beVietnamPro(
                   fontSize: 12,
                   color: isArchived
@@ -710,6 +719,7 @@ class StudentAccountsState extends State<StudentAccounts> {
                     ),
                     const SizedBox(width: 4),
                   ],
+                  // Archive/Restore button
                   _ActionIconButton(
                     icon: isArchived
                         ? Icons.restore_rounded
@@ -968,31 +978,21 @@ class StudentAccountsState extends State<StudentAccounts> {
                               Icons.school_outlined,
                             ),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
+                          const SizedBox(width: 16),
                           Expanded(
                             child: _detailItem(
-                              'School Year',
-                              data['schoolYear'] ?? data['yearLevel'] ?? '—',
+                              'Year Level',
+                              data['yearLevel'] ?? '—',
                               Icons.calendar_today_outlined,
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _detailItem(
-                              'Section',
-                              data['section'] ?? '—',
-                              Icons.groups_outlined,
-                            ),
-                          ),
-                        ],
+                      _detailItem(
+                        'Section',
+                        data['section'] ?? '—',
+                        Icons.groups_outlined,
                       ),
                       const SizedBox(height: 16),
                       _detailItem(
@@ -1191,10 +1191,6 @@ class StudentAccountsState extends State<StudentAccounts> {
                         color: const Color(0xFF1A202C),
                       ),
                     ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded, size: 18),
-                    onPressed: () => Navigator.pop(ctx, false),
                   ),
                 ],
               ),
@@ -1458,6 +1454,9 @@ class StudentAccountsState extends State<StudentAccounts> {
     try {
       final newArchivedStatus = !isArchived;
 
+      // students doc ID is the uid, same as the users doc ID — write both
+      // in a batch so the login-time archived checks (which read `users`)
+      // stay in sync with the admin-facing `students` record.
       final batch = FirebaseFirestore.instance.batch();
       batch.update(
         FirebaseFirestore.instance.collection('students').doc(docId),
@@ -1522,10 +1521,6 @@ class StudentAccountsState extends State<StudentAccounts> {
     bool isUploading = false;
     String? resultMessage;
     bool resultIsError = false;
-    Map<String, String>? previewHeaderMapping;
-    List<Map<String, String>>? previewSampleRows;
-    int importDone = 0;
-    int importTotal = 0;
 
     showDialog(
       context: context,
@@ -1533,10 +1528,6 @@ class StudentAccountsState extends State<StudentAccounts> {
       barrierColor: Colors.black54,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => Dialog(
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 32,
-            vertical: 24,
-          ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
           ),
@@ -1551,7 +1542,14 @@ class StudentAccountsState extends State<StudentAccounts> {
                 Container(
                   padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
                   decoration: BoxDecoration(
-                    color: UpriseColors.primaryDark,
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        UpriseColors.primaryDark,
+                        UpriseColors.primaryDark.withAlpha(225),
+                      ],
+                    ),
                     borderRadius: const BorderRadius.vertical(
                       top: Radius.circular(18),
                     ),
@@ -1598,376 +1596,209 @@ class StudentAccountsState extends State<StudentAccounts> {
                 Flexible(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          _sectionLabel(
-                            'Select File',
-                            icon: Icons.attach_file_rounded,
-                          ),
-                          TextButton.icon(
-                            onPressed: isUploading
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _sectionLabel(
+                          'Select File',
+                          icon: Icons.attach_file_rounded,
+                        ),
+                        MouseRegion(
+                          cursor: isUploading
+                              ? MouseCursor.defer
+                              : SystemMouseCursors.click,
+                          child: GestureDetector(
+                            onTap: isUploading
                                 ? null
-                                : _downloadImportTemplate,
-                            icon: const Icon(
-                              Icons.download_rounded,
-                              size: 16,
-                            ),
-                            label: Text(
-                              'Download Template',
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
+                                : () async {
+                                    final result = await FilePicker.platform
+                                        .pickFiles(
+                                          type: FileType.custom,
+                                          allowedExtensions: [
+                                            'xlsx',
+                                            'xls',
+                                            'csv',
+                                          ],
+                                        );
+                                    if (result != null) {
+                                      final pickedSize =
+                                          result.files.single.size;
+                                      if (pickedSize >
+                                          FileValidation
+                                              .defaultMaxDocumentBytes) {
+                                        setDialogState(() {
+                                          resultMessage =
+                                              'File is too large. Max size is '
+                                              '${(FileValidation.defaultMaxDocumentBytes / (1024 * 1024)).toStringAsFixed(0)}MB.';
+                                          resultIsError = true;
+                                        });
+                                        return;
+                                      }
+                                      setDialogState(() {
+                                        if (kIsWeb) {
+                                          pickedFile = XFile.fromData(
+                                            result.files.single.bytes!,
+                                            name: result.files.single.name,
+                                          );
+                                        } else {
+                                          pickedFile = XFile(
+                                            result.files.single.path!,
+                                          );
+                                        }
+                                        fileName = result.files.single.name;
+                                        resultMessage = null;
+                                      });
+                                    }
+                                  },
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(20),
+                              decoration: BoxDecoration(
+                                color: fileName.isEmpty
+                                    ? const Color(0xFFF8F9FB)
+                                    : const Color(0xFFECFDF5),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: fileName.isEmpty
+                                      ? const Color(0xFFE2E6EA)
+                                      : const Color(0xFF059669),
+                                  width: fileName.isEmpty ? 1 : 1.5,
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  Icon(
+                                    fileName.isEmpty
+                                        ? Icons.cloud_upload_rounded
+                                        : Icons.check_circle_rounded,
+                                    size: 36,
+                                    color: fileName.isEmpty
+                                        ? const Color(0xFF9AA5B4)
+                                        : const Color(0xFF059669),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    fileName.isEmpty
+                                        ? 'Click to browse or drop your file here'
+                                        : fileName,
+                                    style: GoogleFonts.beVietnamPro(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: fileName.isEmpty
+                                          ? const Color(0xFF64748B)
+                                          : const Color(0xFF059669),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Supported: .xlsx, .xls, .csv · Max size: '
+                                    '${(FileValidation.defaultMaxDocumentBytes / (1024 * 1024)).toStringAsFixed(0)}MB',
+                                    style: GoogleFonts.beVietnamPro(
+                                      fontSize: 11,
+                                      color: const Color(0xFF9AA5B4),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            style: TextButton.styleFrom(
-                              foregroundColor: UpriseColors.primaryDark,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF0F6FF),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFBFD7FF)),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(
+                                Icons.info_outline_rounded,
+                                size: 15,
+                                color: Color(0xFF2563EB),
                               ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'Required columns (in order):\nStudent ID · Full Name · Course · Year Level · Section · Email\n\nEmail must be an Outlook/Microsoft account (outlook.com, hotmail.com, live.com, or msn.com) — other domains will be skipped.',
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 12,
+                                    color: const Color(0xFF1D4ED8),
+                                    height: 1.5,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (isUploading) ...[
+                          const SizedBox(height: 16),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: LinearProgressIndicator(
+                              backgroundColor: const Color(0xFFE2E6EA),
+                              color: UpriseColors.primaryDark,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Importing students…',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 12,
+                              color: const Color(0xFF64748B),
                             ),
                           ),
                         ],
-                      ),
-                      GestureDetector(
-                        onTap: isUploading
-                            ? null
-                            : () async {
-                                final result = await FilePicker.platform
-                                    .pickFiles(
-                                      type: FileType.custom,
-                                      allowedExtensions: ['xlsx', 'xls', 'csv'],
-                                    );
-                                if (result != null) {
-                                  final pickedSize = result.files.single.size;
-                                  if (pickedSize >
-                                      FileValidation.defaultMaxDocumentBytes) {
-                                    setDialogState(() {
-                                      resultMessage =
-                                          'File is too large. Max size is '
-                                          '${(FileValidation.defaultMaxDocumentBytes / (1024 * 1024)).toStringAsFixed(0)}MB.';
-                                    });
-                                    return;
-                                  }
-                                  setDialogState(() {
-                                    if (kIsWeb) {
-                                      pickedFile = XFile.fromData(
-                                        result.files.single.bytes!,
-                                        name: result.files.single.name,
-                                      );
-                                    } else {
-                                      pickedFile = XFile(
-                                        result.files.single.path!,
-                                      );
-                                    }
-                                    fileName = result.files.single.name;
-                                    resultMessage = null;
-                                    previewHeaderMapping = null;
-                                    previewSampleRows = null;
-                                  });
-
-                                  if (pickedFile != null) {
-                                    try {
-                                      final preview = kIsWeb
-                                          ? await _previewXFileImport(
-                                              pickedFile!,
-                                            )
-                                          : await _previewFileImport(
-                                              File(pickedFile!.path),
-                                            );
-                                      setDialogState(() {
-                                        previewHeaderMapping = preview.mapping;
-                                        previewSampleRows = preview.sampleRows;
-                                      });
-                                    } catch (e) {
-                                      setDialogState(() {
-                                        resultMessage =
-                                            'Unable to preview file headers: $e';
-                                        resultIsError = true;
-                                      });
-                                    }
-                                  }
-                                }
-                              },
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: fileName.isEmpty
-                                ? const Color(0xFFF8F9FB)
-                                : const Color(0xFFECFDF5),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: fileName.isEmpty
-                                  ? const Color(0xFFE2E6EA)
-                                  : const Color(0xFF059669),
-                              width: fileName.isEmpty ? 1 : 1.5,
-                            ),
-                          ),
-                          child: Column(
-                            children: [
-                              Icon(
-                                fileName.isEmpty
-                                    ? Icons.cloud_upload_rounded
-                                    : Icons.check_circle_rounded,
-                                size: 36,
-                                color: fileName.isEmpty
-                                    ? const Color(0xFF9AA5B4)
-                                    : const Color(0xFF059669),
+                        if (resultMessage != null) ...[
+                          const SizedBox(height: 14),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: resultIsError
+                                  ? const Color(0xFFFEF2F2)
+                                  : const Color(0xFFECFDF5),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: resultIsError
+                                    ? const Color(0xFFFCA5A5)
+                                    : const Color(0xFF6EE7B7),
                               ),
-                              const SizedBox(height: 10),
-                              Text(
-                                fileName.isEmpty
-                                    ? 'Click to browse or drop your file here'
-                                    : fileName,
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: fileName.isEmpty
-                                      ? const Color(0xFF64748B)
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  resultIsError
+                                      ? Icons.error_outline_rounded
+                                      : Icons.check_circle_outline_rounded,
+                                  size: 16,
+                                  color: resultIsError
+                                      ? const Color(0xFFDC2626)
                                       : const Color(0xFF059669),
                                 ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Supported: .xlsx, .xls, .csv',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 11,
-                                  color: const Color(0xFF9AA5B4),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF0F6FF),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0xFFBFD7FF)),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Icon(
-                              Icons.info_outline_rounded,
-                              size: 15,
-                              color: Color(0xFF2563EB),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                'Expected headers or column order:\nStudent ID · Full Name · Course · School Year · Section · Email',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 12,
-                                  color: const Color(0xFF1D4ED8),
-                                  height: 1.5,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (isUploading) ...[
-                        const SizedBox(height: 16),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: LinearProgressIndicator(
-                            value: importTotal > 0
-                                ? importDone / importTotal
-                                : null,
-                            backgroundColor: const Color(0xFFE2E6EA),
-                            color: UpriseColors.primaryDark,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          importTotal > 0
-                              ? 'Importing $importDone of $importTotal…'
-                              : 'Importing students…',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 12,
-                            color: const Color(0xFF64748B),
-                          ),
-                        ),
-                      ],
-                      if (previewHeaderMapping != null) ...[
-                        const SizedBox(height: 18),
-                        _sectionLabel(
-                          'Header Preview',
-                          icon: Icons.view_column_outlined,
-                        ),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF9FAFB),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFFE2E8F0)),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Detected column mapping',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  color: const Color(0xFF1F2937),
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              Column(
-                                children: previewHeaderMapping!.entries.map((
-                                  entry,
-                                ) {
-                                  final isMissing = entry.value.isEmpty;
-                                  return Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 4,
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    resultMessage!,
+                                    style: GoogleFonts.beVietnamPro(
+                                      fontSize: 12,
+                                      color: resultIsError
+                                          ? const Color(0xFF991B1B)
+                                          : const Color(0xFF065F46),
                                     ),
-                                    child: Row(
-                                      children: [
-                                        Expanded(
-                                          flex: 4,
-                                          child: Text(
-                                            entry.key,
-                                            style: GoogleFonts.beVietnamPro(
-                                              fontSize: 12,
-                                              color: const Color(0xFF374151),
-                                            ),
-                                          ),
-                                        ),
-                                        Expanded(
-                                          flex: 6,
-                                          child: Text(
-                                            isMissing
-                                                ? 'Missing column'
-                                                : entry.value,
-                                            style: GoogleFonts.beVietnamPro(
-                                              fontSize: 12,
-                                              color: isMissing
-                                                  ? const Color(0xFFB91C1C)
-                                                  : const Color(0xFF475569),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                }).toList(),
-                              ),
-                              if (previewHeaderMapping!.values.any(
-                                (header) => header.isEmpty,
-                              )) ...[
-                                const SizedBox(height: 10),
-                                Text(
-                                  'Some expected fields are missing. Please update your spreadsheet headers before importing.',
-                                  style: GoogleFonts.beVietnamPro(
-                                    fontSize: 11,
-                                    color: const Color(0xFFB91C1C),
                                   ),
                                 ),
                               ],
-                            ],
-                          ),
-                        ),
-                      ],
-                      if (previewSampleRows != null &&
-                          previewSampleRows!.isNotEmpty) ...[
-                        const SizedBox(height: 18),
-                        _sectionLabel(
-                          'Sample row preview',
-                          icon: Icons.visibility_outlined,
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: previewSampleRows!
-                              .map(
-                                (row) => Padding(
-                                  padding: const EdgeInsets.only(top: 8),
-                                  child: Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFFFFFFF),
-                                      borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(
-                                        color: const Color(0xFFE5E7EB),
-                                      ),
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: row.entries.map((entry) {
-                                        return Text(
-                                          '${entry.key}: ${entry.value.isEmpty ? '<empty>' : entry.value}',
-                                          style: GoogleFonts.beVietnamPro(
-                                            fontSize: 11.5,
-                                            color: const Color(0xFF475569),
-                                          ),
-                                        );
-                                      }).toList(),
-                                    ),
-                                  ),
-                                ),
-                              )
-                              .toList(),
-                        ),
-                      ],
-                      if (resultMessage != null) ...[
-                        const SizedBox(height: 14),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: resultIsError
-                                ? const Color(0xFFFEF2F2)
-                                : const Color(0xFFECFDF5),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: resultIsError
-                                  ? const Color(0xFFFCA5A5)
-                                  : const Color(0xFF6EE7B7),
                             ),
                           ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                resultIsError
-                                    ? Icons.error_outline_rounded
-                                    : Icons.check_circle_outline_rounded,
-                                size: 16,
-                                color: resultIsError
-                                    ? const Color(0xFFDC2626)
-                                    : const Color(0xFF059669),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  resultMessage!,
-                                  style: GoogleFonts.beVietnamPro(
-                                    fontSize: 12,
-                                    color: resultIsError
-                                        ? const Color(0xFF991B1B)
-                                        : const Color(0xFF065F46),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                        ],
                       ],
-                    ],
-                  ),
+                    ),
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
                   decoration: const BoxDecoration(
                     border: Border(top: BorderSide(color: Color(0xFFE8ECF0))),
                     color: Color(0xFFF8F9FB),
@@ -1976,24 +1807,43 @@ class StudentAccountsState extends State<StudentAccounts> {
                     ),
                   ),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      TextButton(
+                      OutlinedButton(
                         onPressed: isUploading
                             ? null
                             : () => Navigator.pop(ctx),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: Color(0xFFE2E6EA)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 18,
+                            vertical: 11,
+                          ),
+                        ),
                         child: Text(
                           'Cancel',
                           style: GoogleFonts.beVietnamPro(
                             fontSize: 13,
-                            color: const Color(0xFF64748B),
+                            color: const Color(0xFF374151),
                           ),
                         ),
                       ),
+                      const SizedBox(width: 12),
                       ElevatedButton.icon(
-                        onPressed: isUploading || pickedFile == null
+                        onPressed: isUploading
                             ? null
                             : () async {
+                                if (pickedFile == null) {
+                                  setDialogState(() {
+                                    resultMessage =
+                                        'Please select a file to import.';
+                                    resultIsError = true;
+                                  });
+                                  return;
+                                }
                                 setDialogState(() {
                                   isUploading = true;
                                   resultMessage = null;
@@ -2009,23 +1859,19 @@ class StudentAccountsState extends State<StudentAccounts> {
                                   }
                                   if (students.isEmpty) {
                                     throw Exception(
-                                      'No valid data found. Check column order.',
+                                      'No valid data found. Check column order '
+                                      'and make sure every email is an '
+                                      'Outlook/Microsoft account.',
                                     );
                                   }
-                                  final validationMessage =
-                                      await _validateImportedStudents(students);
-                                  setDialogState(() {
-                                    resultMessage = validationMessage;
-                                    resultIsError = false;
-                                  });
-
                                   int success = 0, failed = 0, failedEmails = 0;
-                                  setDialogState(() {
-                                    importTotal = students.length;
-                                    importDone = 0;
-                                  });
                                   for (final s in students) {
                                     try {
+                                      // Credentials email is already sent
+                                      // (and queued on failure) inside
+                                      // _createStudentAccount — sending it
+                                      // again here was emailing every
+                                      // imported student twice.
                                       final cred = await _createStudentAccount(
                                         s,
                                       );
@@ -2036,12 +1882,11 @@ class StudentAccountsState extends State<StudentAccounts> {
                                     } catch (_) {
                                       failed++;
                                     }
-                                    setDialogState(() => importDone++);
                                   }
                                   setDialogState(() {
                                     isUploading = false;
                                     resultMessage =
-                                        '$validationMessage\n\nImport complete: $success created, $failed skipped.${failedEmails > 0 ? ' $failedEmails credential emails failed to send.' : ''}';
+                                        'Import complete: $success created, $failed skipped.${failedEmails > 0 ? ' $failedEmails credential emails failed to send.' : ''}';
                                     resultIsError = failed > 0 && success == 0;
                                   });
                                   if (success > 0) {
@@ -2127,10 +1972,9 @@ class StudentAccountsState extends State<StudentAccounts> {
     final idCtrl = TextEditingController();
     final nameCtrl = TextEditingController();
     final emailCtrl = TextEditingController();
-    final sectionCtrl = TextEditingController();
+    final sectionCtrl = TextEditingController(); // NEW
     String course = 'BSIT';
-    final schoolYearOptions = _generateSchoolYearOptions();
-    String schoolYear = schoolYearOptions[schoolYearOptions.length - 2];
+    String yearLevel = '1st Year';
     bool isCreating = false;
     String? errorMsg;
 
@@ -2158,7 +2002,14 @@ class StudentAccountsState extends State<StudentAccounts> {
                 Container(
                   padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
                   decoration: BoxDecoration(
-                    color: UpriseColors.primaryDark,
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        UpriseColors.primaryDark,
+                        UpriseColors.primaryDark.withAlpha(225),
+                      ],
+                    ),
                     borderRadius: const BorderRadius.vertical(
                       top: Radius.circular(18),
                     ),
@@ -2253,14 +2104,12 @@ class StudentAccountsState extends State<StudentAccounts> {
                           Row(
                             children: [
                               Expanded(
-                                child: AnchoredDropdownField<String>(
+                                child: DropdownButtonFormField<String>(
                                   value: course,
                                   decoration: _DS.inputDecoration(
                                     'Course',
                                     required: true,
                                   ),
-                                  validator: (v) =>
-                                      v == null ? 'Required' : null,
                                   style: GoogleFonts.beVietnamPro(
                                     fontSize: 13,
                                     color: const Color(0xFF1A202C),
@@ -2275,64 +2124,66 @@ class StudentAccountsState extends State<StudentAccounts> {
                                       .toList(),
                                   onChanged: (v) =>
                                       setDialogState(() => course = v!),
+                                  validator: (v) =>
+                                      v == null ? 'Required' : null,
                                 ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
-                                child: AnchoredDropdownField<String>(
-                                  value: schoolYear,
+                                child: DropdownButtonFormField<String>(
+                                  value: yearLevel,
                                   decoration: _DS.inputDecoration(
-                                    'School Year',
-                                    icon: Icons.calendar_today_outlined,
+                                    'Year Level',
                                     required: true,
                                   ),
-                                  validator: (v) =>
-                                      v == null ? 'Required' : null,
                                   style: GoogleFonts.beVietnamPro(
                                     fontSize: 13,
                                     color: const Color(0xFF1A202C),
                                   ),
-                                  items: schoolYearOptions
-                                      .map(
-                                        (y) => DropdownMenuItem(
-                                          value: y,
-                                          child: Text(y),
-                                        ),
-                                      )
-                                      .toList(),
+                                  items:
+                                      const [
+                                            '1st Year',
+                                            '2nd Year',
+                                            '3rd Year',
+                                            '4th Year',
+                                            '5th Year',
+                                          ]
+                                          .map(
+                                            (y) => DropdownMenuItem(
+                                              value: y,
+                                              child: Text(y),
+                                            ),
+                                          )
+                                          .toList(),
                                   onChanged: (v) =>
-                                      setDialogState(() => schoolYear = v!),
+                                      setDialogState(() => yearLevel = v!),
+                                  validator: (v) =>
+                                      v == null ? 'Required' : null,
                                 ),
                               ),
                             ],
                           ),
                           const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextFormField(
-                                  controller: sectionCtrl,
-                                  decoration: _DS.inputDecoration(
-                                    'Section',
-                                    hint: 'e.g., 3H-G1',
-                                    icon: Icons.groups_outlined,
-                                    required: true,
-                                  ),
-                                  style: GoogleFonts.beVietnamPro(fontSize: 13),
-                                  validator: (v) =>
-                                      v == null || v.trim().isEmpty
-                                      ? 'Required'
-                                      : null,
-                                ),
-                              ),
-                            ],
+                          // NEW: Section field
+                          TextFormField(
+                            controller: sectionCtrl,
+                            decoration: _DS.inputDecoration(
+                              'Section',
+                              hint: 'e.g., 3H-G1',
+                              icon: Icons.groups_outlined,
+                              required: true,
+                            ),
+                            style: GoogleFonts.beVietnamPro(fontSize: 13),
+                            validator: (v) => v == null || v.trim().isEmpty
+                                ? 'Required'
+                                : null,
                           ),
                           const SizedBox(height: 12),
                           TextFormField(
                             controller: emailCtrl,
                             decoration: _DS.inputDecoration(
                               'Email Address',
-                              hint: 'e.g., student@university.edu.ph',
+                              hint: 'e.g., student@outlook.com',
                               icon: Icons.email_outlined,
                               required: true,
                             ),
@@ -2344,6 +2195,10 @@ class StudentAccountsState extends State<StudentAccounts> {
                               }
                               if (!v.contains('@') || !v.contains('.')) {
                                 return 'Enter a valid email';
+                              }
+                              if (!_isMicrosoftEmail(v)) {
+                                return 'Must be an Outlook/Microsoft email '
+                                    '(outlook.com, hotmail.com, live.com, msn.com)';
                               }
                               return null;
                             },
@@ -2432,9 +2287,8 @@ class StudentAccountsState extends State<StudentAccounts> {
                                     'studentId': idCtrl.text.trim(),
                                     'fullName': nameCtrl.text.trim(),
                                     'course': course,
-                                    'schoolYear': schoolYear,
-                                    'yearLevel': schoolYear,
-                                    'section': sectionCtrl.text.trim(),
+                                    'yearLevel': yearLevel,
+                                    'section': sectionCtrl.text.trim(), // NEW
                                     'email': emailCtrl.text
                                         .trim()
                                         .toLowerCase(),
@@ -2508,138 +2362,10 @@ class StudentAccountsState extends State<StudentAccounts> {
 
   // ── Helpers ───────────────────────────────────────────────────────
 
-  Future<void> _downloadImportTemplate() async {
-    final excel = Excel.createExcel();
-    final defaultSheetName = excel.getDefaultSheet() ?? 'Sheet1';
-    excel.rename(defaultSheetName, 'Students');
-    final sheet = excel['Students'];
-    sheet.appendRow([
-      TextCellValue('Student ID'),
-      TextCellValue('Full Name'),
-      TextCellValue('Course'),
-      TextCellValue('School Year'),
-      TextCellValue('Section'),
-      TextCellValue('Email'),
-    ]);
-    sheet.appendRow([
-      TextCellValue('2021-00001'),
-      TextCellValue('Juan Dela Cruz'),
-      TextCellValue('BSIT'),
-      TextCellValue(_generateSchoolYearOptions()[3]),
-      TextCellValue('3H-G1'),
-      TextCellValue('juan.delacruz@example.com'),
-    ]);
-    final bytes = excel.encode();
-    if (bytes == null) return;
-    await AdminExportUtil.saveBytes(
-      bytes,
-      'student_import_template.xlsx',
-      mimeType:
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    );
-  }
-
-  // Academic year runs Aug–Jul (see reports_management.dart's semester
-  // logic), so before August the "current" school year is still the one
-  // that started last calendar year. Offers a few years back and one ahead
-  // so admins can still add records for recently graduated/incoming batches.
-  List<String> _generateSchoolYearOptions() {
-    final now = DateTime.now();
-    final startYear = now.month >= 8 ? now.year : now.year - 1;
-    return [
-      for (var i = -3; i <= 1; i++) '${startYear + i}-${startYear + i + 1}',
-    ];
-  }
-
   String _generatePassword() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ0123456789';
     final rng = Random.secure();
     return 'STU-${List.generate(6, (_) => chars[rng.nextInt(chars.length)]).join()}';
-  }
-
-  Future<String> _validateImportedStudents(
-    List<Map<String, String>> students,
-  ) async {
-    if (students.isEmpty) {
-      return 'No data to validate.';
-    }
-
-    // Sample preview is already shown in the dialog, no need to use this variable
-// Keeping it as an underscore to avoid unused warning
-final _ = students.take(8).map((row) {
-  return {
-    'Student ID': row['studentId'] ?? '',
-    'Full Name': row['fullName'] ?? '',
-    'Course': row['course'] ?? '',
-    'College': row['college'] ?? '',
-    'Program': row['program'] ?? '',
-    'School Year': row['schoolYear'] ?? '',
-    'Semester': row['semester'] ?? '',
-    'Section': row['section'] ?? '',
-    'Email': row['email'] ?? '',
-  };
-}).toList();
-
-    return _localImportValidationSummary(students);
-  }
-
-  String _localImportValidationSummary(List<Map<String, String>> students) {
-    final invalidEmails = <String>[];
-    final missingStudentIds = <int>[];
-    final missingEmails = <int>[];
-    final missingRequired = <int>[];
-
-    for (var i = 0; i < students.length; i++) {
-      final row = students[i];
-      final email = row['email'] ?? '';
-      final studentId = row['studentId'] ?? '';
-      final fullName = row['fullName'] ?? '';
-      final sem = row['semester'] ?? '';
-      final course = row['course'] ?? '';
-
-      if (studentId.isEmpty) missingStudentIds.add(i + 1);
-      if (email.isEmpty) missingEmails.add(i + 1);
-      if (fullName.isEmpty || course.isEmpty || sem.isEmpty) {
-        missingRequired.add(i + 1);
-      }
-      if (email.isNotEmpty &&
-          !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+\$').hasMatch(email)) {
-        invalidEmails.add(email);
-      }
-    }
-
-    final buffer = StringBuffer();
-    buffer.writeln('Local validation summary:');
-    buffer.writeln('- Rows parsed: ${students.length}.');
-    if (missingStudentIds.isNotEmpty) {
-      buffer.writeln(
-        '- Missing Student ID in rows: ${missingStudentIds.join(', ')}.',
-      );
-    }
-    if (missingEmails.isNotEmpty) {
-      buffer.writeln('- Missing Email in rows: ${missingEmails.join(', ')}.');
-    }
-    if (invalidEmails.isNotEmpty) {
-      buffer.writeln('- Invalid email format: ${invalidEmails.join(', ')}.');
-    }
-    if (missingRequired.isNotEmpty) {
-      buffer.writeln(
-        '- Rows missing required fields (course/full name): ${missingRequired.join(', ')}.',
-      );
-    }
-    if (missingStudentIds.isEmpty &&
-        missingEmails.isEmpty &&
-        invalidEmails.isEmpty &&
-        missingRequired.isEmpty) {
-      buffer.writeln('- Sample data looks well-formed for import.');
-    }
-    buffer.writeln(
-      '- Expected fields matched: Student ID, Full Name, Course, School Year, Section, Email.',
-    );
-    buffer.writeln(
-      'If any rows look wrong, please correct the spreadsheet before importing.',
-    );
-    return buffer.toString();
   }
 
   Future<Map<String, String>> _createStudentAccount(
@@ -2680,12 +2406,8 @@ final _ = students.take(8).map((row) {
       'studentId': studentId,
       'fullName': fullName,
       'course': student['course'],
-      'college': student['college'] ?? '',
-      'program': student['program'] ?? '',
-      'schoolYear': student['schoolYear'] ?? student['yearLevel'] ?? '',
-      'yearLevel': student['yearLevel'] ?? student['schoolYear'] ?? '',
-      'semester': student['semester'] ?? '1st Semester',
-      'section': student['section'] ?? '',
+      'yearLevel': student['yearLevel'],
+      'section': student['section'] ?? '', // NEW
       'email': email,
       'tempPassword': password,
       'mustChangePassword': true,
@@ -2699,11 +2421,6 @@ final _ = students.take(8).map((row) {
       'email': email,
       'fullName': fullName,
       'role': 'student',
-      'college': student['college'] ?? '',
-      'program': student['program'] ?? '',
-      'schoolYear': student['schoolYear'] ?? student['yearLevel'] ?? '',
-      'semester': student['semester'] ?? '1st Semester',
-      'section': student['section'] ?? '',
       'mustChangePassword': true,
       'createdAt': FieldValue.serverTimestamp(),
     });
@@ -2764,9 +2481,8 @@ final _ = students.take(8).map((row) {
       } catch (e) {
         debugPrint('❌ Failed to send email to $email (attempt $attempt): $e');
       }
-      if (attempt < maxAttempts) {
+      if (attempt < maxAttempts)
         await Future.delayed(Duration(seconds: attempt));
-      }
     }
     return false;
   }
@@ -2791,236 +2507,130 @@ final _ = students.take(8).map((row) {
   }
 
   Future<List<Map<String, String>>> _parseFile(File file) async {
-    try {
-      final ext = file.path.split('.').last.toLowerCase();
-      final List<List<dynamic>> rows = [];
-      
-      if (ext == 'csv') {
-        final csvString = await file.readAsString();
-        if (csvString.isEmpty) {
-          throw Exception('CSV file is empty');
+    final List<Map<String, String>> students = [];
+    final ext = file.path.split('.').last.toLowerCase();
+    if (ext == 'csv') {
+      final csvString = await file.readAsString();
+      final rows = const CsvToListConverter().convert(csvString);
+      for (int i = 1; i < rows.length; i++) {
+        final row = rows[i];
+        if (row.length >= 5) {
+          final hasSection =
+              row.length >= 6; // NEW: section is column 4 when 6 cols present
+          students.add({
+            'studentId': row[0]?.toString().trim() ?? '',
+            'fullName': row[1]?.toString().trim() ?? '',
+            'course': _normalizeCourse(row[2]?.toString().trim() ?? ''),
+            'yearLevel': row[3]?.toString().trim() ?? '',
+            'section': hasSection
+                ? (row[4]?.toString().trim() ?? '')
+                : '', // NEW
+            'email': hasSection
+                ? (row[5]?.toString().trim() ?? '')
+                : (row[4]?.toString().trim() ?? ''), // NEW
+          });
         }
-        rows.addAll(const CsvToListConverter().convert(csvString));
-      } else {
-        final bytes = await file.readAsBytes();
-        if (bytes.isEmpty) {
-          throw Exception('Excel file is empty');
-        }
-        final excel = Excel.decodeBytes(bytes);
-        for (final table in excel.tables.keys) {
-          final sheet = excel.tables[table];
-          if (sheet != null && sheet.rows.isNotEmpty) {
-            rows.addAll(sheet.rows.map((row) => row.map((cell) => cell?.value).toList()));
+      }
+    } else {
+      final bytes = await file.readAsBytes();
+      final excel = Excel.decodeBytes(bytes);
+      for (final table in excel.tables.keys) {
+        final sheet = excel.tables[table];
+        for (int i = 1; i < (sheet?.rows.length ?? 0); i++) {
+          final row = sheet!.rows[i];
+          if (row.length >= 5) {
+            final hasSection = row.length >= 6; // NEW
+            students.add({
+              'studentId': row[0]?.value?.toString().trim() ?? '',
+              'fullName': row[1]?.value?.toString().trim() ?? '',
+              'course': _normalizeCourse(
+                row[2]?.value?.toString().trim() ?? '',
+              ),
+              'yearLevel': row[3]?.value?.toString().trim() ?? '',
+              'section': hasSection
+                  ? (row[4]?.value?.toString().trim() ?? '')
+                  : '', // NEW
+              'email': hasSection
+                  ? (row[5]?.value?.toString().trim() ?? '')
+                  : (row[4]?.value?.toString().trim() ?? ''), // NEW
+            });
           }
-          break;
         }
+        break;
       }
-
-      if (rows.isEmpty) {
-        throw Exception('No data found in the file');
-      }
-
-      final parsed = StudentImportParser.parseRows(rows, hasHeaderRow: true);
-      final normalized = _normalizeImportedStudents(parsed);
-      
-      if (normalized.isEmpty) {
-        throw Exception('No valid student data found. Please check the column headers.');
-      }
-      
-      return normalized;
-    } catch (e) {
-      debugPrint('Parse file error: $e');
-      throw Exception('Failed to parse file: $e');
     }
+    students.removeWhere(
+      (s) =>
+          s['studentId']!.isEmpty ||
+          (s['fullName'] ?? '').isEmpty ||
+          s['email']!.isEmpty ||
+          !_isMicrosoftEmail(s['email']!),
+    );
+    return students;
   }
 
   Future<List<Map<String, String>>> _parseXFile(XFile xfile) async {
-    try {
-      final bytes = await xfile.readAsBytes();
-      if (bytes.isEmpty) {
-        throw Exception('File is empty');
-      }
-      
-      final name = xfile.name.toLowerCase();
-      final List<List<dynamic>> rows = [];
-      
-      if (name.endsWith('.csv')) {
-        final csvString = String.fromCharCodes(bytes);
-        if (csvString.isEmpty) {
-          throw Exception('CSV file is empty');
-        }
-        rows.addAll(const CsvToListConverter().convert(csvString));
-      } else {
-        final excel = Excel.decodeBytes(bytes);
-        for (final table in excel.tables.keys) {
-          final sheet = excel.tables[table];
-          if (sheet != null && sheet.rows.isNotEmpty) {
-            rows.addAll(sheet.rows.map((row) => row.map((cell) => cell?.value).toList()));
-          }
-          break;
-        }
-      }
-
-      if (rows.isEmpty) {
-        throw Exception('No data found in the file');
-      }
-
-      final parsed = StudentImportParser.parseRows(rows, hasHeaderRow: true);
-      final normalized = _normalizeImportedStudents(parsed);
-      
-      if (normalized.isEmpty) {
-        throw Exception('No valid student data found. Please check the column headers.');
-      }
-      
-      return normalized;
-    } catch (e) {
-      debugPrint('Parse XFile error: $e');
-      throw Exception('Failed to parse file: $e');
-    }
-  }
-
-  List<Map<String, String>> _normalizeImportedStudents(
-    List<Map<String, String>> students,
-  ) {
-    final normalized = <Map<String, String>>[];
-    
-    for (final student in students) {
-      final studentId = (student['studentId'] ?? '').trim();
-      final fullName = (student['fullName'] ?? '').trim();
-      final email = (student['email'] ?? '').trim().toLowerCase();
-      final course = _normalizeCourse(student['course'] ?? '');
-      final schoolYear = (student['schoolYear'] ?? student['yearLevel'] ?? '').trim();
-      final section = (student['section'] ?? '').trim();
-      
-      // Skip rows missing required fields
-      if (studentId.isEmpty || email.isEmpty || fullName.isEmpty) {
-        continue;
-      }
-      
-      normalized.add({
-        'studentId': studentId,
-        'fullName': fullName,
-        'course': course,
-        'college': student['college']?.trim() ?? '',
-        'program': student['program']?.trim() ?? '',
-        'schoolYear': schoolYear,
-        'yearLevel': schoolYear,
-        'semester': _normalizeSemester(student['semester'] ?? ''),
-        'section': section,
-        'email': email,
-      });
-    }
-    
-    return normalized;
-  }
-
-  Future<_ImportPreview> _previewFileImport(File file) async {
-  try {
-    final ext = file.path.split('.').last.toLowerCase();
-    final List<List<dynamic>> rows = [];
-    if (ext == 'csv') {
-      final csvString = await file.readAsString();
-      if (csvString.isEmpty) {
-        throw Exception('CSV file is empty');
-      }
-      rows.addAll(const CsvToListConverter().convert(csvString));
-    } else {
-      final bytes = await file.readAsBytes();
-      if (bytes.isEmpty) {
-        throw Exception('Excel file is empty');
-      }
-      final excel = Excel.decodeBytes(bytes);
-      for (final table in excel.tables.keys) {
-        final sheet = excel.tables[table];
-        if (sheet != null && sheet.rows.isNotEmpty) {
-          rows.addAll(sheet.rows.map((row) => row.map((cell) => cell?.value).toList()));
-        }
-        break;
-      }
-    }
-    return _buildImportPreview(rows);
-  } catch (e) {
-    debugPrint('Preview file error: $e');
-    throw Exception('Failed to preview file: $e');
-  }
-}
-
-Future<_ImportPreview> _previewXFileImport(XFile xfile) async {
-  try {
     final bytes = await xfile.readAsBytes();
-    if (bytes.isEmpty) {
-      throw Exception('File is empty');
-    }
-    
     final name = xfile.name.toLowerCase();
-    final List<List<dynamic>> rows = [];
-    
+    final List<Map<String, String>> students = [];
     if (name.endsWith('.csv')) {
       final csvString = String.fromCharCodes(bytes);
-      if (csvString.isEmpty) {
-        throw Exception('CSV file is empty');
+      final rows = const CsvToListConverter().convert(csvString);
+      for (int i = 1; i < rows.length; i++) {
+        final row = rows[i];
+        if (row.length >= 5) {
+          final hasSection = row.length >= 6; // NEW
+          students.add({
+            'studentId': row[0]?.toString().trim() ?? '',
+            'fullName': row[1]?.toString().trim() ?? '',
+            'course': _normalizeCourse(row[2]?.toString().trim() ?? ''),
+            'yearLevel': row[3]?.toString().trim() ?? '',
+            'section': hasSection
+                ? (row[4]?.toString().trim() ?? '')
+                : '', // NEW
+            'email': hasSection
+                ? (row[5]?.toString().trim() ?? '')
+                : (row[4]?.toString().trim() ?? ''), // NEW
+          });
+        }
       }
-      rows.addAll(const CsvToListConverter().convert(csvString));
     } else {
       final excel = Excel.decodeBytes(bytes);
       for (final table in excel.tables.keys) {
         final sheet = excel.tables[table];
-        if (sheet != null && sheet.rows.isNotEmpty) {
-          rows.addAll(sheet.rows.map((row) => row.map((cell) => cell?.value).toList()));
+        for (int i = 1; i < (sheet?.rows.length ?? 0); i++) {
+          final row = sheet!.rows[i];
+          if (row.length >= 5) {
+            final hasSection = row.length >= 6; // NEW
+            students.add({
+              'studentId': row[0]?.value?.toString().trim() ?? '',
+              'fullName': row[1]?.value?.toString().trim() ?? '',
+              'course': _normalizeCourse(
+                row[2]?.value?.toString().trim() ?? '',
+              ),
+              'yearLevel': row[3]?.value?.toString().trim() ?? '',
+              'section': hasSection
+                  ? (row[4]?.value?.toString().trim() ?? '')
+                  : '', // NEW
+              'email': hasSection
+                  ? (row[5]?.value?.toString().trim() ?? '')
+                  : (row[4]?.value?.toString().trim() ?? ''), // NEW
+            });
+          }
         }
         break;
       }
     }
-    return _buildImportPreview(rows);
-  } catch (e) {
-    debugPrint('Preview XFile error: $e');
-    throw Exception('Failed to preview file: $e');
-  }
-}
-
-_ImportPreview _buildImportPreview(List<List<dynamic>> rows) {
-  if (rows.isEmpty) {
-    return _ImportPreview(headers: [], mapping: {}, sampleRows: []);
+    students.removeWhere(
+      (s) =>
+          s['studentId']!.isEmpty ||
+          (s['fullName'] ?? '').isEmpty ||
+          s['email']!.isEmpty ||
+          !_isMicrosoftEmail(s['email']!),
+    );
+    return students;
   }
 
-  final headerValues = rows.first
-      .map((cell) => cell?.toString().trim() ?? '')
-      .toList();
-  final mapping = StudentImportParser.inferHeaderMapping(headerValues);
-  final sampleRows = rows
-      .skip(1)
-      .where(
-        (row) => (row.any((cell) => (cell?.toString().trim() ?? '').isNotEmpty)),
-      )
-      .take(3)
-      .map((row) {
-        final parsed = StudentImportParser.parseRows([
-          rows.first,
-          row,
-        ], hasHeaderRow: true);
-        if (parsed.isEmpty) {
-          return <String, String>{};
-        }
-        return {
-          'Student ID': parsed.first['studentId'] ?? '',
-          'Full Name': parsed.first['fullName'] ?? '',
-          'Course': parsed.first['course'] ?? '',
-          'College': parsed.first['college'] ?? '',
-          'Program': parsed.first['program'] ?? '',
-          'School Year': parsed.first['schoolYear'] ?? '',
-          'Semester': parsed.first['semester'] ?? '',
-          'Section': parsed.first['section'] ?? '',
-          'Email': parsed.first['email'] ?? '',
-        };
-      })
-      .toList();
-
-  return _ImportPreview(
-    headers: headerValues,
-    mapping: mapping,
-    sampleRows: sampleRows,
-  );
-}
   String _normalizeCourse(String course) {
     final upper = course.toUpperCase();
     if (upper.contains('BSIT')) return 'BSIT';
@@ -3029,26 +2639,18 @@ _ImportPreview _buildImportPreview(List<List<dynamic>> rows) {
     return 'BSIT';
   }
 
-  String _normalizeSemester(String semester) {
-    final upper = semester.toUpperCase();
-    if (upper.contains('SUMMER')) return 'Summer';
-    if (upper.contains('2ND') || upper.contains('SECOND')) {
-      return '2nd Semester';
-    }
-    return '1st Semester';
+  static const _microsoftEmailDomains = {
+    'outlook.com',
+    'hotmail.com',
+    'live.com',
+    'msn.com',
+  };
+
+  bool _isMicrosoftEmail(String email) {
+    final at = email.trim().toLowerCase().lastIndexOf('@');
+    if (at == -1) return false;
+    return _microsoftEmailDomains.contains(email.substring(at + 1));
   }
-}
-
-class _ImportPreview {
-  final List<String> headers;
-  final Map<String, String> mapping;
-  final List<Map<String, String>> sampleRows;
-
-  _ImportPreview({
-    required this.headers,
-    required this.mapping,
-    required this.sampleRows,
-  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3059,16 +2661,18 @@ class _StatCard extends StatelessWidget {
   final String label, value;
   final IconData icon;
   final Color color;
+  final VoidCallback? onTap;
   const _StatCard({
     required this.label,
     required this.value,
     required this.icon,
     required this.color,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final card = Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -3115,6 +2719,11 @@ class _StatCard extends StatelessWidget {
         ],
       ),
     );
+    if (onTap == null) return card;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(onTap: onTap, child: card),
+    );
   }
 }
 
@@ -3136,39 +2745,34 @@ class _FilterDropdown extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: const BoxConstraints(minWidth: 120),
-      child: AnchoredMenuTrigger<String>(
-        items: items,
-        labelOf: (s) => s,
-        selectedValue: value,
-        onSelected: onChanged,
-        trigger: Container(
-          height: 40,
-          alignment: Alignment.centerLeft,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFFE2E6EA)),
+      height: 40,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFE2E6EA)),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: value,
+          icon: const Icon(
+            Icons.keyboard_arrow_down_rounded,
+            size: 18,
+            color: Color(0xFF9AA5B4),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                value,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  color: const Color(0xFF374151),
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 13,
+            color: const Color(0xFF374151),
+          ),
+          items: items
+              .map(
+                (s) => DropdownMenuItem(
+                  value: s,
+                  child: Text(s, style: GoogleFonts.beVietnamPro(fontSize: 13)),
                 ),
-              ),
-              const SizedBox(width: 6),
-              const Icon(
-                Icons.keyboard_arrow_down_rounded,
-                size: 18,
-                color: Color(0xFF9AA5B4),
-              ),
-            ],
-          ),
+              )
+              .toList(),
+          onChanged: onChanged,
         ),
       ),
     );
@@ -3298,8 +2902,8 @@ class _ExportStudentsButton extends StatelessWidget {
       if (format == 'csv') {
         final buf = StringBuffer();
         buf.writeln(
-          'Student ID,Full Name,Course,School Year,Section,Email,Archived',
-        );
+          'Student ID,Full Name,Course,Year Level,Section,Email,Archived',
+        ); // NEW: added Section
         for (final doc in docs) {
           final d = doc.data();
           String esc(String s) => '"${s.replaceAll('"', '""')}"';
@@ -3308,8 +2912,8 @@ class _ExportStudentsButton extends StatelessWidget {
               esc(d['studentId'] ?? ''),
               esc(d['fullName'] ?? ''),
               esc(d['course'] ?? ''),
-              esc(d['schoolYear'] ?? d['yearLevel'] ?? ''),
-              esc(d['section'] ?? ''),
+              esc(d['yearLevel'] ?? ''),
+              esc(d['section'] ?? ''), // NEW
               esc(d['email'] ?? ''),
               esc(d['archived'] == true ? 'Yes' : 'No'),
             ].join(','),
@@ -3327,8 +2931,8 @@ class _ExportStudentsButton extends StatelessWidget {
             d['studentId'] ?? '',
             d['fullName'] ?? '',
             d['course'] ?? '',
-            d['schoolYear'] ?? d['yearLevel'] ?? '',
-            d['section'] ?? '',
+            d['yearLevel'] ?? '',
+            d['section'] ?? '', // NEW
             d['email'] ?? '',
           ].map((value) => value.toString()).toList();
         }).toList();
@@ -3339,10 +2943,10 @@ class _ExportStudentsButton extends StatelessWidget {
             'Student ID',
             'Full Name',
             'Course',
-            'School Year',
+            'Year Level',
             'Section',
             'Email',
-          ],
+          ], // NEW
           rows: rows,
         );
         await AdminExportUtil.saveBytes(
@@ -3400,6 +3004,8 @@ class _StudentAvatar extends StatelessWidget {
   }
 }
 
+// Compact colored chip — matches the icon actions in org_event_proposals.dart
+// (_IconChip) / organization_management.dart, instead of a bare unstyled icon.
 class _ActionIconButton extends StatelessWidget {
   final IconData icon;
   final String tooltip;
@@ -3472,192 +3078,29 @@ class _PageNumButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 2),
-        width: 28,
-        height: 28,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: isActive ? UpriseColors.primaryDark : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(
-          '$page',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 12,
-            fontWeight: isActive ? FontWeight.w700 : FontWeight.normal,
-            color: isActive ? Colors.white : const Color(0xFF374151),
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: isActive ? UpriseColors.primaryDark : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            '$page',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 12,
+              fontWeight: isActive ? FontWeight.w700 : FontWeight.normal,
+              color: isActive ? Colors.white : const Color(0xFF374151),
+            ),
           ),
         ),
       ),
     );
-  }
-}
-
-class StudentImportParser {
-  static List<Map<String, String>> parseRows(
-    List<List<dynamic>> rows, {
-    bool hasHeaderRow = true,
-  }) {
-    if (rows.isEmpty) return const [];
-
-    final List<List<String>> normalizedRows = [];
-    for (final rawRow in rows) {
-      normalizedRows.add(
-        rawRow.map((cell) => cell?.toString().trim() ?? '').toList(),
-      );
-    }
-
-    final dataRows = hasHeaderRow
-        ? normalizedRows.skip(1).toList()
-        : normalizedRows;
-    final headers = hasHeaderRow ? normalizedRows.first : null;
-
-    final students = <Map<String, String>>[];
-    for (final row in dataRows) {
-      if (row.every((cell) => cell.isEmpty)) continue;
-
-      final record = _parseRecord(row, headers: headers);
-      if (record['studentId']!.isNotEmpty || record['email']!.isNotEmpty) {
-        students.add(record);
-      }
-    }
-
-    students.removeWhere((s) => s['studentId']!.isEmpty || s['email']!.isEmpty);
-    return students;
-  }
-
-  static Map<String, String> _parseRecord(
-    List<String> row, {
-    List<String>? headers,
-  }) {
-    // If the row is empty, return empty record
-    if (row.isEmpty || row.every((cell) => cell.trim().isEmpty)) {
-      return {
-        'studentId': '',
-        'fullName': '',
-        'course': '',
-        'schoolYear': '',
-        'section': '',
-        'email': '',
-        'yearLevel': '',
-      };
-    }
-
-    // Pad the row if it's shorter than expected
-    final paddedRow = List<String>.from(row);
-    while (paddedRow.length < 6) {
-      paddedRow.add('');
-    }
-
-    final fallback = <String, String>{
-      'studentId': paddedRow[0],
-      'fullName': paddedRow[1],
-      'course': paddedRow[2],
-      'schoolYear': paddedRow[3],
-      'section': paddedRow[4],
-      'email': paddedRow[5],
-      'yearLevel': paddedRow[3],
-    };
-
-    if (headers == null) {
-      return fallback;
-    }
-
-    final normalizedHeaders = headers
-        .map((header) => normalizeHeader(header))
-        .toList(growable: false);
-
-    final indexByHeader = <String, int>{};
-    for (var i = 0; i < normalizedHeaders.length; i++) {
-      if (normalizedHeaders[i].isEmpty) continue;
-      indexByHeader.putIfAbsent(normalizedHeaders[i], () => i);
-    }
-
-    String getValue(String key) {
-      final index = indexByHeader[key];
-      if (index == null || index >= paddedRow.length) return '';
-      return paddedRow[index];
-    }
-
-    final studentId = getValue('student id');
-    final fullName = getValue('full name');
-    final course = getValue('course');
-    final schoolYear = getValue('school year') != ''
-        ? getValue('school year')
-        : (getValue('year level') != ''
-            ? getValue('year level')
-            : getValue('year'));
-    final section = getValue('section');
-    final email = getValue('email');
-
-    return {
-      'studentId': studentId,
-      'fullName': fullName,
-      'course': course,
-      'schoolYear': schoolYear,
-      'section': section,
-      'email': email,
-      'yearLevel': schoolYear,
-    };
-  }
-
-  static String normalizeHeader(String header) {
-    final normalized = header
-        .trim()
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
-        .trim();
-
-    const synonyms = {
-      'student no': 'student id',
-      'student number': 'student id',
-      'studentid': 'student id',
-      'id number': 'student id',
-      'id': 'student id',
-      'name': 'full name',
-      'fullname': 'full name',
-      'email address': 'email',
-      'email addr': 'email',
-      'e mail': 'email',
-      'school year': 'school year',
-      'year level': 'year level',
-      'yearlevel': 'year level',
-      'sem': 'semester',
-      'section name': 'section',
-      'programme': 'program',
-      'major': 'program',
-      'course code': 'course',
-    };
-
-    return synonyms[normalized] ?? normalized;
-  }
-
-  static Map<String, String> inferHeaderMapping(List<String> headers) {
-    final normalizedHeaders = headers
-        .map(normalizeHeader)
-        .toList(growable: false);
-    final expectedFields = {
-      'student id': 'Student ID',
-      'full name': 'Full Name',
-      'course': 'Course',
-      'school year': 'School Year',
-      'year level': 'Year Level',
-      'section': 'Section',
-      'email': 'Email',
-    };
-
-    final mapping = <String, String>{};
-    for (final entry in expectedFields.entries) {
-      final index = normalizedHeaders.indexWhere((h) => h == entry.key);
-      if (index != -1) {
-        mapping[entry.value] = headers[index];
-      } else {
-        mapping[entry.value] = '';
-      }
-    }
-    return mapping;
   }
 }

@@ -1,4 +1,4 @@
-﻿import 'dart:typed_data';
+import 'dart:typed_data';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../../../utils/platform_file_utils.dart' as platform_file_utils;
@@ -14,6 +14,7 @@ import '../../../services/activity_logger.dart' as activity_log;
 import '../../../services/notification_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/anchored_dropdown.dart';
+import '../../../widgets/app_toast.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper: get user full name from UID
@@ -162,6 +163,9 @@ Widget _statusBadge(String status) {
     ),
     child: Text(
       s.label,
+      maxLines: 1,
+      softWrap: false,
+      overflow: TextOverflow.ellipsis,
       style: GoogleFonts.beVietnamPro(
         fontSize: 9,
         fontWeight: FontWeight.w700,
@@ -262,6 +266,10 @@ class _EventProposalsState extends State<EventProposals> {
 
   // Cache for organization logos
   final Map<String, String> _orgLogoCache = {};
+  // Cache for organization short names (acronyms) — table rows show this
+  // instead of the full org name so long names don't crowd out the event
+  // title column.
+  final Map<String, String> _orgShortNameCache = {};
 
   // Helper to check if widget is still mounted
   bool get _isMounted => mounted;
@@ -281,7 +289,9 @@ class _EventProposalsState extends State<EventProposals> {
       if (orgDoc.exists) {
         final data = orgDoc.data() as Map<String, dynamic>;
         final logoUrl = data['logoUrl'] as String? ?? '';
+        final shortName = data['shortName'] as String? ?? '';
         _orgLogoCache[orgId] = logoUrl;
+        _orgShortNameCache[orgId] = shortName;
         return logoUrl;
       }
     } catch (e) {
@@ -342,36 +352,60 @@ class _EventProposalsState extends State<EventProposals> {
             value: '$total',
             icon: Icons.event_note_rounded,
             color: UpriseColors.primaryDark,
+            onTap: () => setState(() {
+              _statusFilter = 'All';
+              _currentPage = 1;
+            }),
           ),
           _StatCard(
             label: 'Approved',
             value: '$approved',
             icon: Icons.check_circle_rounded,
             color: const Color(0xFF059669),
+            onTap: () => setState(() {
+              _statusFilter = 'Approved';
+              _currentPage = 1;
+            }),
           ),
           _StatCard(
             label: 'Pending',
             value: '$pending',
             icon: Icons.pending_rounded,
             color: const Color(0xFFFB923C),
+            onTap: () => setState(() {
+              _statusFilter = 'Pending';
+              _currentPage = 1;
+            }),
           ),
           _StatCard(
             label: 'Rejected',
             value: '$rejected',
             icon: Icons.cancel_rounded,
             color: const Color(0xFFDC2626),
+            onTap: () => setState(() {
+              _statusFilter = 'Rejected';
+              _currentPage = 1;
+            }),
           ),
           _StatCard(
             label: 'Archived',
             value: '$archived',
             icon: Icons.archive_rounded,
             color: const Color(0xFF6B7280),
+            onTap: () => setState(() {
+              _statusFilter = 'Archived';
+              _currentPage = 1;
+            }),
           ),
           _StatCard(
             label: 'For Review',
             value: '$forReview',
             icon: Icons.rate_review_rounded,
             color: const Color(0xFFBE4700),
+            onTap: () => setState(() {
+              _statusFilter = 'For Review';
+              _currentPage = 1;
+            }),
           ),
         ];
 
@@ -481,6 +515,7 @@ class _EventProposalsState extends State<EventProposals> {
                     'Approved',
                     'Rejected',
                     'Archived',
+                    'For Review',
                   ],
                   hint: 'Status',
                   icon: Icons.tune_rounded,
@@ -508,6 +543,7 @@ class _EventProposalsState extends State<EventProposals> {
                     'Approved',
                     'Rejected',
                     'Archived',
+                    'For Review',
                   ],
                   hint: 'Status',
                   icon: Icons.tune_rounded,
@@ -547,11 +583,12 @@ class _EventProposalsState extends State<EventProposals> {
               .where((d) => (d.data() as Map)['status'] != 'archived')
               .toList();
         } else {
+          // 'For Review' -> 'for_review': the one status value that isn't
+          // a single lowercased word, so the naive .toLowerCase() compare
+          // below needs the space converted to match the stored value.
+          final statusValue = _statusFilter.toLowerCase().replaceAll(' ', '_');
           docs = docs
-              .where(
-                (d) =>
-                    (d.data() as Map)['status'] == _statusFilter.toLowerCase(),
-              )
+              .where((d) => (d.data() as Map)['status'] == statusValue)
               .toList();
         }
 
@@ -630,19 +667,19 @@ class _EventProposalsState extends State<EventProposals> {
       ),
       child: Row(
         children: [
-          Expanded(flex: 2, child: _headerCell('ORGANIZATION')),
-          Expanded(flex: 3, child: _headerCell('EVENT TITLE')),
-          Expanded(flex: 2, child: _headerCell('CATEGORY')), // back to 2
-          Expanded(flex: 2, child: _headerCell('DATE')), // back to 2
+          Expanded(flex: 1, child: _headerCell('ORGANIZATION')),
+          Expanded(flex: 4, child: _headerCell('EVENT TITLE')),
+          Expanded(flex: 1, child: _headerCell('CATEGORY')),
+          Expanded(flex: 1, child: _headerCell('DATE')),
           Expanded(
-            flex: 1, // back to 1
+            flex: 1,
             child: Align(
               alignment: Alignment.centerRight, // right‑align header
               child: _headerCell('STATUS'),
             ),
           ),
           Expanded(
-            flex: 2, // back to 2
+            flex: 2,
             child: Align(
               alignment: Alignment.centerRight,
               child: _headerCell('ACTIONS'),
@@ -695,200 +732,208 @@ class _EventProposalsState extends State<EventProposals> {
       future: _fetchOrgLogo(orgId),
       builder: (context, logoSnapshot) {
         final logoUrl = orgLogoUrl ?? (logoSnapshot.data ?? '');
+        final shortName = _orgShortNameCache[orgId];
+        final displayName = (shortName != null && shortName.isNotEmpty)
+            ? shortName
+            : orgName;
 
         return InkWell(
-              hoverColor: const Color(0xFFF8F9FB),
-              onTap: () => _showProposalDetailDialog(docId, data),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 14,
-                ),
-                decoration: BoxDecoration(
-                  border: isLast
-                      ? null
-                      : const Border(
-                          bottom: BorderSide(color: Color(0xFFF1F5F9)),
-                        ),
-                ),
-                child: Row(
-                  children: [
-                    // ORGANIZATION – unchanged
-                    Expanded(
-                      flex: 2,
-                      child: Row(
-                        children: [
-                          _OrgAvatar(name: orgName, logoUrl: logoUrl),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              orgName,
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: const Color(0xFF1A202C),
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    // EVENT TITLE – unchanged
-                    Expanded(
-                      flex: 3,
-                      child: Row(
-                        children: [
-                          if (imageThumbnail != null) ...[
-                            imageThumbnail,
-                            const SizedBox(width: 10),
-                          ],
-                          Expanded(
-                            child: Text(
-                              data['title'] ?? '—',
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: const Color(0xFF1A202C),
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    // CATEGORY – flex back to 2
-                    Expanded(
-                      flex: 2,
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: UpriseColors.primaryDark.withAlpha(18),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
+          hoverColor: const Color(0xFFF8F9FB),
+          onTap: () => _showProposalDetailDialog(docId, data),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            decoration: BoxDecoration(
+              border: isLast
+                  ? null
+                  : const Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+            ),
+            child: Row(
+              children: [
+                // ORGANIZATION – shows the org's short name/acronym
+                Expanded(
+                  flex: 1,
+                  child: Row(
+                    children: [
+                      _OrgAvatar(name: orgName, logoUrl: logoUrl),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Tooltip(
+                          message: orgName,
                           child: Text(
-                            data['category'] == 'Other' &&
-                                    (data['otherCategory'] ?? '')
-                                        .toString()
-                                        .isNotEmpty
-                                ? data['otherCategory']
-                                : (data['category'] ?? '—'),
+                            displayName,
                             style: GoogleFonts.beVietnamPro(
-                              fontSize: 12,
+                              fontSize: 13,
                               fontWeight: FontWeight.w600,
-                              color: UpriseColors.primaryDark,
+                              color: const Color(0xFF1A202C),
                             ),
+                            maxLines: 1,
+                            softWrap: false,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ),
-                    ),
-                    // DATE – flex back to 2
-                    Expanded(
-                      flex: 2,
+                    ],
+                  ),
+                ),
+                // EVENT TITLE – widened so long titles show more
+                Expanded(
+                  flex: 4,
+                  child: Row(
+                    children: [
+                      if (imageThumbnail != null) ...[
+                        imageThumbnail,
+                        const SizedBox(width: 10),
+                      ],
+                      Expanded(
+                        child: Text(
+                          data['title'] ?? '—',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFF1A202C),
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // CATEGORY – flex 1, matches the header
+                Expanded(
+                  flex: 1,
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: UpriseColors.primaryDark.withAlpha(18),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
                       child: Text(
-                        dateStr,
+                        data['category'] == 'Other' &&
+                                (data['otherCategory'] ?? '')
+                                    .toString()
+                                    .isNotEmpty
+                            ? data['otherCategory']
+                            : (data['category'] ?? '—'),
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 12,
-                          color: const Color(0xFF64748B),
+                          fontWeight: FontWeight.w600,
+                          color: UpriseColors.primaryDark,
                         ),
+                        maxLines: 1,
+                        softWrap: false,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    // STATUS – flex back to 2, but right‑aligned
-                    Expanded(
-                      flex: 2,
-                      child: Align(
-                        alignment: Alignment.centerRight,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Flexible(child: _statusBadge(status)),
-                            if (isPublished) ...[
-                              const SizedBox(width: 1),
-                              const Tooltip(
-                                message: 'Published to students',
-                                child: Icon(
-                                  Icons.circle,
-                                  size: 8,
-                                  color: Color(0xFF2563EB),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                    // ACTIONS – flex back to 2, right‑aligned (unchanged)
-                    Expanded(
-                      flex: 2,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          _ActionIconButton(
-                            icon: Icons.visibility_outlined,
-                            tooltip: 'View Details',
-                            color: const Color(0xFF3B82F6),
-                            onTap: () => _showProposalDetailDialog(docId, data),
-                          ),
-                          const SizedBox(width: 4),
-                          if (status == 'pending') ...[
-                            _ActionIconButton(
-                              icon: Icons.check_circle_outline_rounded,
-                              tooltip: 'Approve',
-                              color: const Color(0xFF059669),
-                              onTap: () => _confirmSetStatus(
-                                docId,
-                                data['title'] ?? 'this event',
-                                'approved',
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            _ActionIconButton(
-                              icon: Icons.cancel_outlined,
-                              tooltip: 'Reject',
-                              color: const Color(0xFFDC2626),
-                              onTap: () => _showRejectReasonDialog(
-                                docId,
-                                data['title'] ?? 'this event',
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                          ],
-                          if (status != 'archived')
-                            _ActionIconButton(
-                              icon: Icons.archive_outlined,
-                              tooltip: 'Archive',
-                              color: const Color(0xFF6B7280),
-                              onTap: () => _confirmSetStatus(
-                                docId,
-                                data['title'] ?? 'this event',
-                                'archived',
-                              ),
-                            ),
-                          if (status == 'archived')
-                            _ActionIconButton(
-                              icon: Icons.restore_rounded,
-                              tooltip: 'Restore',
-                              color: const Color(0xFFFB923C),
-                              onTap: () => _confirmSetStatus(
-                                docId,
-                                data['title'] ?? 'this event',
-                                'pending',
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            );
+                // DATE – flex 1, matches the header
+                Expanded(
+                  flex: 1,
+                  child: Text(
+                    dateStr,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 12,
+                      color: const Color(0xFF64748B),
+                    ),
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                // STATUS – flex 1, matches the header's STATUS column
+                Expanded(
+                  flex: 1,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(child: _statusBadge(status)),
+                        if (isPublished) ...[
+                          const SizedBox(width: 1),
+                          const Tooltip(
+                            message: 'Published to students',
+                            child: Icon(
+                              Icons.circle,
+                              size: 8,
+                              color: Color(0xFF2563EB),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                // ACTIONS – flex back to 2, right‑aligned (unchanged)
+                Expanded(
+                  flex: 2,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      _ActionIconButton(
+                        icon: Icons.visibility_outlined,
+                        tooltip: 'View Details',
+                        color: const Color(0xFF3B82F6),
+                        onTap: () => _showProposalDetailDialog(docId, data),
+                      ),
+                      const SizedBox(width: 4),
+                      if (status == 'pending') ...[
+                        _ActionIconButton(
+                          icon: Icons.check_circle_outline_rounded,
+                          tooltip: 'Approve',
+                          color: const Color(0xFF059669),
+                          onTap: () => _confirmSetStatus(
+                            docId,
+                            data['title'] ?? 'this event',
+                            'approved',
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        _ActionIconButton(
+                          icon: Icons.cancel_outlined,
+                          tooltip: 'Reject',
+                          color: const Color(0xFFDC2626),
+                          onTap: () => _showRejectReasonDialog(
+                            docId,
+                            data['title'] ?? 'this event',
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                      if (status != 'archived')
+                        _ActionIconButton(
+                          icon: Icons.archive_outlined,
+                          tooltip: 'Archive',
+                          color: const Color(0xFF6B7280),
+                          onTap: () => _confirmSetStatus(
+                            docId,
+                            data['title'] ?? 'this event',
+                            'archived',
+                          ),
+                        ),
+                      if (status == 'archived')
+                        _ActionIconButton(
+                          icon: Icons.restore_rounded,
+                          tooltip: 'Restore',
+                          color: const Color(0xFFFB923C),
+                          onTap: () => _confirmSetStatus(
+                            docId,
+                            data['title'] ?? 'this event',
+                            'pending',
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
       },
     );
   }
@@ -1197,6 +1242,7 @@ class _EventProposalsState extends State<EventProposals> {
               TextField(
                 controller: reasonController,
                 maxLines: 3,
+                maxLength: 1000,
                 style: GoogleFonts.beVietnamPro(fontSize: 13),
                 decoration: InputDecoration(
                   hintText: 'Reason for rejection…',
@@ -1253,14 +1299,9 @@ class _EventProposalsState extends State<EventProposals> {
                     onPressed: () async {
                       final reason = reasonController.text.trim();
                       if (reason.isEmpty) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Please provide a reason for rejection.',
-                            ),
-                            backgroundColor: Colors.orange,
-                            behavior: SnackBarBehavior.floating,
-                          ),
+                        AppToast.warning(
+                          ctx,
+                          'Please provide a reason for rejection.',
                         );
                         return;
                       }
@@ -1475,7 +1516,7 @@ class _EventProposalsState extends State<EventProposals> {
     showDialog(
       context: parentCtx,
       builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Container(
           width: 420,
           padding: const EdgeInsets.all(24),
@@ -1523,6 +1564,7 @@ class _EventProposalsState extends State<EventProposals> {
               TextField(
                 controller: ctrl,
                 maxLines: 4,
+                maxLength: 1000,
                 style: GoogleFonts.beVietnamPro(fontSize: 13),
                 decoration: InputDecoration(
                   hintText:
@@ -1579,7 +1621,13 @@ class _EventProposalsState extends State<EventProposals> {
                   ElevatedButton.icon(
                     onPressed: () async {
                       final feedback = ctrl.text.trim();
-                      if (feedback.isEmpty) return;
+                      if (feedback.isEmpty) {
+                        AppToast.warning(
+                          ctx,
+                          'Please describe what needs to be revised.',
+                        );
+                        return;
+                      }
                       Navigator.pop(ctx);
                       Navigator.pop(parentCtx);
                       await _requestRevision(docId, title, feedback);
@@ -2396,21 +2444,45 @@ class _EventProposalsState extends State<EventProposals> {
               showDialog(
                 context: context,
                 builder: (_) => AlertDialog(
-                  title: const Text('Open Attachment'),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  title: Text(
+                    'Open Attachment',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF1A202C),
+                    ),
+                  ),
                   content: Text(
                     'Cannot download attachment. Open in browser instead?',
+                    style: GoogleFonts.beVietnamPro(
+                      color: const Color(0xFF374151),
+                    ),
                   ),
                   actions: [
-                    TextButton(
+                    OutlinedButton(
                       onPressed: () => Navigator.pop(context),
-                      child: const Text('Cancel'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF374151),
+                        side: const BorderSide(color: Color(0xFFE2E6EA)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: Text('Cancel', style: GoogleFonts.beVietnamPro()),
                     ),
-                    TextButton(
+                    ElevatedButton(
                       onPressed: () {
                         Navigator.pop(context);
                         platform_file_utils.openUrl(url);
                       },
-                      child: const Text('Open'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: UpriseColors.primaryDark,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: Text('Open', style: GoogleFonts.beVietnamPro()),
                     ),
                   ],
                 ),
@@ -2444,7 +2516,17 @@ class _EventProposalsState extends State<EventProposals> {
           showDialog(
             context: context,
             builder: (ctx) => AlertDialog(
-              title: Text(fileName),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              title: Text(
+                fileName,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF1A202C),
+                ),
+              ),
               content: SingleChildScrollView(
                 child: SelectableText(
                   content,
@@ -2452,11 +2534,18 @@ class _EventProposalsState extends State<EventProposals> {
                 ),
               ),
               actions: [
-                TextButton(
+                OutlinedButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Close'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF374151),
+                    side: const BorderSide(color: Color(0xFFE2E6EA)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: Text('Close', style: GoogleFonts.beVietnamPro()),
                 ),
-                TextButton(
+                ElevatedButton(
                   onPressed: () {
                     Navigator.pop(ctx);
                     platform_file_utils.saveBytesToTempAndOpen(
@@ -2465,7 +2554,11 @@ class _EventProposalsState extends State<EventProposals> {
                       mimeType: mime,
                     );
                   },
-                  child: const Text('Download'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: UpriseColors.primaryDark,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: Text('Download', style: GoogleFonts.beVietnamPro()),
                 ),
               ],
             ),
@@ -2479,16 +2572,20 @@ class _EventProposalsState extends State<EventProposals> {
           showDialog(
             context: context,
             builder: (ctx) => Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Padding(
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(14),
                     child: Text(
                       fileName,
                       style: GoogleFonts.beVietnamPro(
                         fontSize: 14,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF1A202C),
                       ),
                     ),
                   ),
@@ -2499,24 +2596,46 @@ class _EventProposalsState extends State<EventProposals> {
                       child: Image.memory(bytes),
                     ),
                   ),
-                  ButtonBar(
-                    children: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        child: const Text('Close'),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          platform_file_utils.saveBytesToTempAndOpen(
-                            bytes,
-                            fileName,
-                            mimeType: mime,
-                          );
-                        },
-                        child: const Text('Download'),
-                      ),
-                    ],
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        OutlinedButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF374151),
+                            side: const BorderSide(color: Color(0xFFE2E6EA)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: Text(
+                            'Close',
+                            style: GoogleFonts.beVietnamPro(),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        ElevatedButton(
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            platform_file_utils.saveBytesToTempAndOpen(
+                              bytes,
+                              fileName,
+                              mimeType: mime,
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: UpriseColors.primaryDark,
+                            foregroundColor: Colors.white,
+                          ),
+                          child: Text(
+                            'Download',
+                            style: GoogleFonts.beVietnamPro(),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -2618,16 +2737,18 @@ class _StatCard extends StatelessWidget {
   final String label, value;
   final IconData icon;
   final Color color;
+  final VoidCallback? onTap;
   const _StatCard({
     required this.label,
     required this.value,
     required this.icon,
     required this.color,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final card = Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -2673,6 +2794,11 @@ class _StatCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+    if (onTap == null) return card;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(onTap: onTap, child: card),
     );
   }
 }
@@ -2934,23 +3060,26 @@ class _PageNumButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 2),
-        width: 28,
-        height: 28,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: isActive ? UpriseColors.primaryDark : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(
-          '$page',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 12,
-            fontWeight: isActive ? FontWeight.w700 : FontWeight.normal,
-            color: isActive ? Colors.white : const Color(0xFF374151),
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: isActive ? UpriseColors.primaryDark : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            '$page',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 12,
+              fontWeight: isActive ? FontWeight.w700 : FontWeight.normal,
+              color: isActive ? Colors.white : const Color(0xFF374151),
+            ),
           ),
         ),
       ),

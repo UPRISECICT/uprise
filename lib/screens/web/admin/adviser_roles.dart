@@ -10,8 +10,9 @@ import 'package:uprise/widgets/admin_export_button.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 import 'export_util.dart';
 import 'export_pdf.dart';
-import '../../../theme/app_theme.dart';
+import '../../../theme/admin_theme.dart';
 import '../../../widgets/anchored_dropdown.dart';
+import '../../../widgets/admin_stat_cards_row.dart';
 
 // Helper for image handling
 //
@@ -144,7 +145,7 @@ class _DS {
                 children: [
                   TextSpan(
                     text: ' *',
-                    style: labelTextStyle.copyWith(color: UpriseColors.error),
+                    style: labelTextStyle.copyWith(color: AdminColors.error),
                   ),
                 ],
               ),
@@ -173,15 +174,15 @@ class _DS {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(radiusSm),
-        borderSide: BorderSide(color: UpriseColors.primaryDark, width: 1.5),
+        borderSide: BorderSide(color: AdminColors.primaryDark, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(radiusSm),
-        borderSide: BorderSide(color: UpriseColors.error, width: 1),
+        borderSide: BorderSide(color: AdminColors.error, width: 1),
       ),
       focusedErrorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(radiusSm),
-        borderSide: BorderSide(color: UpriseColors.error, width: 1.5),
+        borderSide: BorderSide(color: AdminColors.error, width: 1.5),
       ),
     );
   }
@@ -196,7 +197,7 @@ Widget _sectionDivider(String text, {IconData? icon}) {
     child: Row(
       children: [
         if (icon != null) ...[
-          Icon(icon, size: 15, color: UpriseColors.primaryDark),
+          Icon(icon, size: 15, color: AdminColors.primaryDark),
           const SizedBox(width: 7),
         ],
         Text(
@@ -204,7 +205,7 @@ Widget _sectionDivider(String text, {IconData? icon}) {
           style: GoogleFonts.beVietnamPro(
             fontSize: 12,
             fontWeight: FontWeight.w700,
-            color: UpriseColors.primaryDark,
+            color: AdminColors.primaryDark,
             letterSpacing: 0.3,
           ),
         ),
@@ -320,7 +321,7 @@ class _OrgAvatar extends StatelessWidget {
       width: 34,
       height: 34,
       decoration: BoxDecoration(
-        color: UpriseColors.primaryDark.withAlpha(26),
+        color: AdminColors.primaryDark.withAlpha(26),
         borderRadius: BorderRadius.circular(_DS.radiusSm),
       ),
       alignment: Alignment.center,
@@ -329,7 +330,7 @@ class _OrgAvatar extends StatelessWidget {
         style: GoogleFonts.beVietnamPro(
           fontSize: 11,
           fontWeight: FontWeight.w800,
-          color: UpriseColors.primaryDark,
+          color: AdminColors.primaryDark,
         ),
       ),
     );
@@ -484,7 +485,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
   bool _loadingMeta = true;
   bool _didInitialOfficerSync = false;
   int _totalAdvisers = 0;
-  int _totalOfficers = 0;
+  int _orgsWithoutAdviser = 0;
   late StreamSubscription _metaListener;
   late StreamSubscription _officersListener;
   late StreamSubscription _orgsListener;
@@ -699,22 +700,23 @@ class _AdviserRolesState extends State<AdviserRoles> {
         return orgId.isNotEmpty && orgName.isNotEmpty;
       }).toList();
 
-      int officers = 0;
       final namesSet = <String>{};
+      final orgIdsWithAdviser = <String>{};
       for (final doc in validRoles) {
         final d = doc.data();
-        if ((d['president'] ?? '').toString().trim().isNotEmpty) officers++;
-        if ((d['vicePresident'] ?? '').toString().trim().isNotEmpty) officers++;
-        if ((d['secretary'] ?? '').toString().trim().isNotEmpty) officers++;
         final n = d['adviserName']?.toString().trim();
         if (n != null && n.isNotEmpty) namesSet.add(n);
+        orgIdsWithAdviser.add((d['orgId'] ?? '').toString().trim());
       }
+      final orgsWithoutAdviser = orgs
+          .where((o) => !orgIdsWithAdviser.contains(o.id))
+          .length;
 
       setState(() {
         _orgs = orgs;
         _adviserNames = namesSet.toList()..sort();
         _totalAdvisers = validRoles.length;
-        _totalOfficers = officers;
+        _orgsWithoutAdviser = orgsWithoutAdviser;
         _loadingMeta = false;
       });
 
@@ -759,26 +761,28 @@ class _AdviserRolesState extends State<AdviserRoles> {
   Widget _buildStatsRow(bool isMobile, bool isTablet) {
     final cards = [
       _StatCard(
-        label: 'Total Advisers',
+        label: 'Active Advisers',
         value: '$_totalAdvisers',
         icon: Icons.supervisor_account_rounded,
-        color: UpriseColors.primaryDark,
+        color: AdminColors.primaryDark,
         onTap: () => setState(() => _statusFilter = 'Active'),
       ),
       _StatCard(
-        label: 'Total Officers',
-        value: '$_totalOfficers',
-        icon: Icons.groups_rounded,
-        color: const Color(0xFF059669),
-      ),
-      _StatCard(
-        label: 'Organizations',
-        value: '${_orgs.length}',
-        icon: Icons.business_rounded,
+        label: 'Unique Individuals',
+        value: '${_adviserNames.length}',
+        icon: Icons.badge_outlined,
         color: const Color(0xFF2563EB),
       ),
       _StatCard(
-        label: 'Archived Records',
+        label: 'Orgs Without an Adviser',
+        value: '$_orgsWithoutAdviser',
+        icon: Icons.report_gmailerrorred_rounded,
+        color: _orgsWithoutAdviser > 0
+            ? const Color(0xFFDC2626)
+            : const Color(0xFF059669),
+      ),
+      _StatCard(
+        label: 'Archived Advisers',
         value: '—',
         icon: Icons.archive_rounded,
         color: const Color(0xFF64748B),
@@ -789,21 +793,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(28, 24, 28, 0),
-      child: isMobile
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (var card in cards) ...[card, const SizedBox(height: 14)],
-              ],
-            )
-          : Row(
-              children: [
-                for (var card in cards) ...[
-                  Expanded(child: card),
-                  const SizedBox(width: 14),
-                ],
-              ],
-            ),
+      child: StatCardsRow(cards: cards, isMobile: isMobile),
     );
   }
 
@@ -840,7 +830,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide(color: UpriseColors.primaryDark, width: 1.5),
+            borderSide: BorderSide(color: AdminColors.primaryDark, width: 1.5),
           ),
         ),
         onChanged: (_) => setState(() => _currentPage = 1),
@@ -1126,7 +1116,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
                     vertical: 3,
                   ),
                   decoration: BoxDecoration(
-                    color: UpriseColors.primaryDark.withAlpha(18),
+                    color: AdminColors.primaryDark.withAlpha(18),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
@@ -1137,7 +1127,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
                     style: GoogleFonts.beVietnamPro(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: UpriseColors.primaryDark,
+                      color: AdminColors.primaryDark,
                     ),
                   ),
                 ),
@@ -1162,7 +1152,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
                     _ActionIcon(
                       icon: Icons.edit_outlined,
                       tooltip: 'Edit',
-                      color: UpriseColors.primaryDark,
+                      color: AdminColors.primaryDark,
                       onTap: () => _showEditDialog(data, docId),
                     ),
                   ],
@@ -1343,8 +1333,8 @@ class _AdviserRolesState extends State<AdviserRoles> {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      UpriseColors.primaryDark,
-                      UpriseColors.primaryDark.withAlpha(225),
+                      AdminColors.primaryDark,
+                      AdminColors.primaryDark.withAlpha(225),
                     ],
                   ),
                   borderRadius: const BorderRadius.vertical(
@@ -1529,7 +1519,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
                           ),
                         ),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: UpriseColors.primaryDark,
+                          backgroundColor: AdminColors.primaryDark,
                           foregroundColor: Colors.white,
                           elevation: 0,
                           shape: RoundedRectangleBorder(
@@ -1570,7 +1560,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
                 style: GoogleFonts.beVietnamPro(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: UpriseColors.primaryDark,
+                  color: AdminColors.primaryDark,
                   letterSpacing: 0.5,
                 ),
               ),
@@ -1642,7 +1632,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
                 _infoChip(
                   Icons.work_outline,
                   rank,
-                  color: UpriseColors.primaryDark,
+                  color: AdminColors.primaryDark,
                 ),
                 const SizedBox(height: 8),
                 _infoRow(Icons.email_outlined, email),
@@ -1689,7 +1679,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
       padding: const EdgeInsets.only(bottom: 4),
       child: Row(
         children: [
-          Icon(icon, size: 14, color: UpriseColors.primaryDark.withAlpha(150)),
+          Icon(icon, size: 14, color: AdminColors.primaryDark.withAlpha(150)),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -1988,8 +1978,8 @@ class _AdviserRolesState extends State<AdviserRoles> {
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          UpriseColors.primaryDark,
-                          UpriseColors.primaryDark.withAlpha(225),
+                          AdminColors.primaryDark,
+                          AdminColors.primaryDark.withAlpha(225),
                         ],
                       ),
                       borderRadius: const BorderRadius.vertical(
@@ -2133,7 +2123,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
                                     const Icon(
                                       Icons.info_outline_rounded,
                                       size: 14,
-                                      color: Color(0xFFB45309),
+                                      color: AdminColors.warning,
                                     ),
                                     const SizedBox(width: 6),
                                     Expanded(
@@ -2141,7 +2131,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
                                         'This adviser will be moved to ${selectedOrg!.name} and removed from their current organization.',
                                         style: GoogleFonts.beVietnamPro(
                                           fontSize: 11,
-                                          color: const Color(0xFFB45309),
+                                          color: AdminColors.warning,
                                         ),
                                       ),
                                     ),
@@ -2164,8 +2154,16 @@ class _AdviserRolesState extends State<AdviserRoles> {
                                 required: true,
                               ),
                               style: GoogleFonts.beVietnamPro(fontSize: 13),
-                              validator: (v) =>
-                                  v!.trim().isEmpty ? 'Required' : null,
+                              validator: (v) {
+                                final value = v?.trim() ?? '';
+                                if (value.isEmpty) return 'Required';
+                                if (!RegExp(
+                                  r"^[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'.-]*(?: [A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'.-]*)+$",
+                                ).hasMatch(value)) {
+                                  return 'Enter a full name (first and last)';
+                                }
+                                return null;
+                              },
                             ),
                             const SizedBox(height: 10),
                             Row(
@@ -2366,7 +2364,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
                             ),
                           ),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: UpriseColors.primaryDark,
+                            backgroundColor: AdminColors.primaryDark,
                             foregroundColor: Colors.white,
                             elevation: 0,
                             shape: RoundedRectangleBorder(
@@ -2649,7 +2647,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Export failed: $e'),
-            backgroundColor: UpriseColors.error,
+            backgroundColor: AdminColors.error,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
@@ -2756,7 +2754,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Export failed: $e'),
-            backgroundColor: UpriseColors.error,
+            backgroundColor: AdminColors.error,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
@@ -2916,7 +2914,7 @@ class _StatCard extends StatelessWidget {
             cursor: SystemMouseCursors.click,
             child: GestureDetector(onTap: onTap, child: card),
           );
-    return Expanded(child: wrapped);
+    return wrapped;
   }
 }
 
@@ -2949,7 +2947,7 @@ class _TabToggle extends StatelessWidget {
               duration: const Duration(milliseconds: 150),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
               decoration: BoxDecoration(
-                color: isActive ? UpriseColors.primaryDark : Colors.transparent,
+                color: isActive ? AdminColors.primaryDark : Colors.transparent,
                 borderRadius: BorderRadius.circular(7),
               ),
               child: Text(
@@ -3068,7 +3066,7 @@ class _PageNumButton extends StatelessWidget {
         height: 28,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: isActive ? UpriseColors.primaryDark : Colors.transparent,
+          color: isActive ? AdminColors.primaryDark : Colors.transparent,
           borderRadius: BorderRadius.circular(6),
         ),
         child: Text(

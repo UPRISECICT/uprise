@@ -6,7 +6,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 class AdminExportPdf {
-  static const PdfColor _accent = PdfColor.fromInt(0xFFB45309);
+  static const PdfColor _accent = PdfColor.fromInt(0xFF334155);
 
   // The default PDF base font (Helvetica) has no ₱ glyph, so it silently
   // drops the peso sign — fall back to Noto Sans (which does have it) only
@@ -50,7 +50,8 @@ class AdminExportPdf {
               if (upriseLogo != null) pw.Image(upriseLogo, height: 34),
               if (upriseLogo != null && bsuLogo != null) pw.SizedBox(width: 16),
               if (bsuLogo != null) pw.Image(bsuLogo, height: 46),
-              if ((upriseLogo != null || bsuLogo != null) && cictLogo != null) pw.SizedBox(width: 16),
+              if ((upriseLogo != null || bsuLogo != null) && cictLogo != null)
+                pw.SizedBox(width: 16),
               if (cictLogo != null) pw.Image(cictLogo, height: 38),
             ],
           ),
@@ -60,7 +61,11 @@ class AdminExportPdf {
           pw.Text(
             'BULACAN STATE UNIVERSITY  |  COLLEGE OF INFORMATION AND COMMUNICATIONS TECHNOLOGY',
             textAlign: pw.TextAlign.center,
-            style: pw.TextStyle(fontSize: 7, color: PdfColors.grey600, letterSpacing: 0.6),
+            style: pw.TextStyle(
+              fontSize: 7,
+              color: PdfColors.grey600,
+              letterSpacing: 0.6,
+            ),
           ),
         ],
       ),
@@ -73,7 +78,11 @@ class AdminExportPdf {
       child: pw.Column(
         mainAxisSize: pw.MainAxisSize.min,
         children: [
-          pw.Container(height: 0.75, width: double.infinity, color: PdfColors.grey300),
+          pw.Container(
+            height: 0.75,
+            width: double.infinity,
+            color: PdfColors.grey300,
+          ),
           pw.SizedBox(height: 8),
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -84,7 +93,11 @@ class AdminExportPdf {
               ),
               pw.Text(
                 'Page ${context.pageNumber} of ${context.pagesCount}',
-                style: pw.TextStyle(fontSize: 8.5, color: PdfColors.grey600, fontWeight: pw.FontWeight.bold),
+                style: pw.TextStyle(
+                  fontSize: 8.5,
+                  color: PdfColors.grey600,
+                  fontWeight: pw.FontWeight.bold,
+                ),
               ),
             ],
           ),
@@ -108,13 +121,21 @@ class AdminExportPdf {
         pw.Text(
           eyebrow,
           style: pw.TextStyle(
-              fontSize: 9, color: _accent, fontWeight: pw.FontWeight.bold, letterSpacing: 2.2),
+            fontSize: 9,
+            color: _accent,
+            fontWeight: pw.FontWeight.bold,
+            letterSpacing: 2.2,
+          ),
         ),
         pw.SizedBox(height: 8),
         pw.Text(
           title,
           textAlign: pw.TextAlign.center,
-          style: pw.TextStyle(fontSize: 23, fontWeight: pw.FontWeight.bold, color: PdfColors.grey900),
+          style: pw.TextStyle(
+            fontSize: 23,
+            fontWeight: pw.FontWeight.bold,
+            color: PdfColors.grey900,
+          ),
         ),
         if (subtitle != null && subtitle.isNotEmpty) ...[
           pw.SizedBox(height: 5),
@@ -127,7 +148,10 @@ class AdminExportPdf {
         pw.SizedBox(height: 10),
         pw.Container(width: 64, height: 2.2, color: _accent),
         pw.SizedBox(height: 10),
-        pw.Text('Generated $generatedAt', style: pw.TextStyle(fontSize: 9, color: PdfColors.grey500)),
+        pw.Text(
+          'Generated $generatedAt',
+          style: pw.TextStyle(fontSize: 9, color: PdfColors.grey500),
+        ),
       ],
     );
   }
@@ -143,13 +167,19 @@ class AdminExportPdf {
     final cictLogo = await _loadImage('assets/images/cict_logo.png');
     final upriseLogo = await _loadImage('assets/images/logo.png');
     final now = DateFormat('MMMM d, yyyy \'at\' h:mm a').format(DateTime.now());
-    final pageFormat = headers.length > 5 ? PdfPageFormat.a4.landscape : PdfPageFormat.a4;
+    final pageFormat = headers.length > 5
+        ? PdfPageFormat.a4.landscape
+        : PdfPageFormat.a4;
 
     pdf.addPage(
       pw.MultiPage(
         pageFormat: pageFormat,
         margin: const pw.EdgeInsets.fromLTRB(32, 28, 32, 28),
-        header: (context) => _brandHeader(upriseLogo: upriseLogo, cictLogo: cictLogo, bsuLogo: bsuLogo),
+        header: (context) => _brandHeader(
+          upriseLogo: upriseLogo,
+          cictLogo: cictLogo,
+          bsuLogo: bsuLogo,
+        ),
         footer: (context) => _brandFooter(context),
         build: (context) => [
           pw.Center(
@@ -170,31 +200,49 @@ class AdminExportPdf {
             ),
             child: pw.Text(
               '${rows.length} record${rows.length == 1 ? '' : 's'}',
-              style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700, fontWeight: pw.FontWeight.bold),
+              style: pw.TextStyle(
+                fontSize: 9,
+                color: PdfColors.grey700,
+                fontWeight: pw.FontWeight.bold,
+              ),
             ),
           ),
           pw.Table(
             border: const pw.TableBorder(
-              horizontalInside: pw.BorderSide(color: PdfColors.grey300, width: 0.5),
+              horizontalInside: pw.BorderSide(
+                color: PdfColors.grey300,
+                width: 0.5,
+              ),
             ),
             defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
             columnWidths: {
               for (var i = 0; i < headers.length; i++)
-                i: pw.FlexColumnWidth(headers[i].length.toDouble().clamp(8, 22)),
+                i: pw.FlexColumnWidth(
+                  headers[i].length.toDouble().clamp(8, 22),
+                ),
             },
             children: [
               pw.TableRow(
                 decoration: const pw.BoxDecoration(
                   color: _accent,
-                  borderRadius: pw.BorderRadius.vertical(top: pw.Radius.circular(4)),
+                  borderRadius: pw.BorderRadius.vertical(
+                    top: pw.Radius.circular(4),
+                  ),
                 ),
                 children: headers.map((header) {
                   return pw.Padding(
-                    padding: const pw.EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                    padding: const pw.EdgeInsets.symmetric(
+                      vertical: 10,
+                      horizontal: 8,
+                    ),
                     child: pw.Text(
                       header.toUpperCase(),
                       style: pw.TextStyle(
-                          fontWeight: pw.FontWeight.bold, fontSize: 9, color: PdfColors.white, letterSpacing: 0.4),
+                        fontWeight: pw.FontWeight.bold,
+                        fontSize: 9,
+                        color: PdfColors.white,
+                        letterSpacing: 0.4,
+                      ),
                       textAlign: pw.TextAlign.center,
                     ),
                   );
@@ -204,12 +252,23 @@ class AdminExportPdf {
                 final row = entry.value;
                 final index = entry.key;
                 return pw.TableRow(
-                  decoration: index.isEven ? const pw.BoxDecoration(color: PdfColors.orange50) : null,
+                  decoration: index.isEven
+                      ? const pw.BoxDecoration(color: PdfColors.orange50)
+                      : null,
                   children: List.generate(headers.length, (cellIndex) {
                     final value = cellIndex < row.length ? row[cellIndex] : '';
                     return pw.Padding(
-                      padding: const pw.EdgeInsets.symmetric(vertical: 9, horizontal: 8),
-                      child: pw.Text(value, style: pw.TextStyle(fontSize: 9.5, color: PdfColors.grey900)),
+                      padding: const pw.EdgeInsets.symmetric(
+                        vertical: 9,
+                        horizontal: 8,
+                      ),
+                      child: pw.Text(
+                        value,
+                        style: pw.TextStyle(
+                          fontSize: 9.5,
+                          color: PdfColors.grey900,
+                        ),
+                      ),
                     );
                   }),
                 );
@@ -220,8 +279,14 @@ class AdminExportPdf {
             pw.Padding(
               padding: const pw.EdgeInsets.symmetric(vertical: 20),
               child: pw.Center(
-                child: pw.Text('No records to display.',
-                    style: pw.TextStyle(fontSize: 10, color: PdfColors.grey500, fontStyle: pw.FontStyle.italic)),
+                child: pw.Text(
+                  'No records to display.',
+                  style: pw.TextStyle(
+                    fontSize: 10,
+                    color: PdfColors.grey500,
+                    fontStyle: pw.FontStyle.italic,
+                  ),
+                ),
               ),
             ),
         ],
@@ -253,7 +318,10 @@ class AdminExportPdf {
     // raster + re-encode work for multi-page documents (this whole pipeline
     // runs on the UI thread on web, so fewer pixels = less visible freeze).
     const dpi = 110.0;
-    final rasterPages = await Printing.raster(originalPdfBytes, dpi: dpi).toList();
+    final rasterPages = await Printing.raster(
+      originalPdfBytes,
+      dpi: dpi,
+    ).toList();
     if (rasterPages.isEmpty) {
       throw Exception('Could not read the original document pages.');
     }
@@ -277,7 +345,9 @@ class AdminExportPdf {
           build: (context) => pw.Stack(
             overflow: pw.Overflow.visible,
             children: [
-              pw.Positioned.fill(child: pw.Image(pageImage, fit: pw.BoxFit.fill)),
+              pw.Positioned.fill(
+                child: pw.Image(pageImage, fit: pw.BoxFit.fill),
+              ),
               if (isLastPage)
                 pw.Positioned(
                   right: 36,
@@ -322,25 +392,51 @@ class AdminExportPdf {
             children: [
               pw.Padding(
                 padding: const pw.EdgeInsets.only(top: 28),
-                child: pw.Column(children: [
-                  pw.Container(height: 0.8, width: width - 10, color: PdfColors.grey500),
-                  pw.SizedBox(height: 3),
-                  pw.Text(signedByName,
-                      style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.grey900),
-                      textAlign: pw.TextAlign.center),
-                  pw.Text(role, style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
-                  if (showTimestamp) ...[
-                    pw.SizedBox(height: 2),
-                    pw.Text(
-                      'Digitally signed on ${DateFormat('MMM d, yyyy h:mm a').format(signedAt)}',
-                      style: pw.TextStyle(fontSize: 6.5, color: PdfColors.grey500, fontStyle: pw.FontStyle.italic),
+                child: pw.Column(
+                  children: [
+                    pw.Container(
+                      height: 0.8,
+                      width: width - 10,
+                      color: PdfColors.grey500,
                     ),
+                    pw.SizedBox(height: 3),
+                    pw.Text(
+                      signedByName,
+                      style: pw.TextStyle(
+                        fontSize: 10,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.grey900,
+                      ),
+                      textAlign: pw.TextAlign.center,
+                    ),
+                    pw.Text(
+                      role,
+                      style: pw.TextStyle(
+                        fontSize: 8,
+                        color: PdfColors.grey600,
+                      ),
+                    ),
+                    if (showTimestamp) ...[
+                      pw.SizedBox(height: 2),
+                      pw.Text(
+                        'Digitally signed on ${DateFormat('MMM d, yyyy h:mm a').format(signedAt)}',
+                        style: pw.TextStyle(
+                          fontSize: 6.5,
+                          color: PdfColors.grey500,
+                          fontStyle: pw.FontStyle.italic,
+                        ),
+                      ),
+                    ],
                   ],
-                ]),
+                ),
               ),
               pw.Positioned(
                 top: -8,
-                child: pw.SizedBox(height: 48, width: width - 20, child: pw.Image(signatureImage, fit: pw.BoxFit.contain)),
+                child: pw.SizedBox(
+                  height: 48,
+                  width: width - 20,
+                  child: pw.Image(signatureImage, fit: pw.BoxFit.contain),
+                ),
               ),
             ],
           ),
@@ -359,12 +455,24 @@ class AdminExportPdf {
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               mainAxisSize: pw.MainAxisSize.min,
               children: [
-                pw.Text('REMARK',
-                    style: pw.TextStyle(
-                        fontSize: 6.5, fontWeight: pw.FontWeight.bold, color: PdfColors.grey600, letterSpacing: 0.5)),
+                pw.Text(
+                  'REMARK',
+                  style: pw.TextStyle(
+                    fontSize: 6.5,
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColors.grey600,
+                    letterSpacing: 0.5,
+                  ),
+                ),
                 pw.SizedBox(height: 2),
-                pw.Text(remark.trim(),
-                    style: pw.TextStyle(fontSize: 8, color: PdfColors.grey900, fontStyle: pw.FontStyle.italic)),
+                pw.Text(
+                  remark.trim(),
+                  style: pw.TextStyle(
+                    fontSize: 8,
+                    color: PdfColors.grey900,
+                    fontStyle: pw.FontStyle.italic,
+                  ),
+                ),
               ],
             ),
           ),
@@ -374,16 +482,29 @@ class AdminExportPdf {
   }
 
   static pw.Widget _signedRow(String label, String value) => pw.Padding(
-        padding: const pw.EdgeInsets.symmetric(vertical: 4),
-        child: pw.Row(children: [
-          pw.SizedBox(
-            width: 110,
-            child: pw.Text(label,
-                style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600, fontWeight: pw.FontWeight.bold)),
+    padding: const pw.EdgeInsets.symmetric(vertical: 4),
+    child: pw.Row(
+      children: [
+        pw.SizedBox(
+          width: 110,
+          child: pw.Text(
+            label,
+            style: pw.TextStyle(
+              fontSize: 10,
+              color: PdfColors.grey600,
+              fontWeight: pw.FontWeight.bold,
+            ),
           ),
-          pw.Expanded(child: pw.Text(value, style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey900))),
-        ]),
-      );
+        ),
+        pw.Expanded(
+          child: pw.Text(
+            value,
+            style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey900),
+          ),
+        ),
+      ],
+    ),
+  );
 
   /// One-page certificate proving a letter request was reviewed and
   /// digitally signed — the drawn signature is embedded as an image, plus
@@ -413,12 +534,17 @@ class AdminExportPdf {
         build: (context) => pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            _brandHeader(upriseLogo: upriseLogo, cictLogo: cictLogo, bsuLogo: bsuLogo),
+            _brandHeader(
+              upriseLogo: upriseLogo,
+              cictLogo: cictLogo,
+              bsuLogo: bsuLogo,
+            ),
             pw.Center(
               child: _titleBlock(
                 eyebrow: 'LETTER APPROVAL',
                 title: 'E-Signature Certificate',
-                subtitle: 'This certifies that the letter request below has been reviewed and approved.',
+                subtitle:
+                    'This certifies that the letter request below has been reviewed and approved.',
                 generatedAt: now,
               ),
             ),
@@ -430,12 +556,15 @@ class AdminExportPdf {
                 border: pw.Border.all(color: PdfColors.grey300),
                 borderRadius: pw.BorderRadius.circular(8),
               ),
-              child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                _signedRow('Letter ID', letterId),
-                _signedRow('Subject', subject),
-                _signedRow('Organization', orgName),
-                _signedRow('Requested by', requestorName),
-              ]),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  _signedRow('Letter ID', letterId),
+                  _signedRow('Subject', subject),
+                  _signedRow('Organization', orgName),
+                  _signedRow('Requested by', requestorName),
+                ],
+              ),
             ),
             pw.SizedBox(height: 40),
             pw.Row(
@@ -452,20 +581,35 @@ class AdminExportPdf {
                   remark: remark,
                 ),
                 pw.Container(
-                  padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  padding: const pw.EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
                   decoration: pw.BoxDecoration(
                     border: pw.Border.all(color: PdfColors.green700, width: 2),
                     borderRadius: pw.BorderRadius.circular(6),
                   ),
-                  child: pw.Text('APPROVED',
-                      style: pw.TextStyle(
-                          color: PdfColors.green700, fontWeight: pw.FontWeight.bold, fontSize: 16, letterSpacing: 2)),
+                  child: pw.Text(
+                    'APPROVED',
+                    style: pw.TextStyle(
+                      color: PdfColors.green700,
+                      fontWeight: pw.FontWeight.bold,
+                      fontSize: 16,
+                      letterSpacing: 2,
+                    ),
+                  ),
                 ),
               ],
             ),
             pw.SizedBox(height: 10),
-            pw.Text('Digitally signed on $now',
-                style: pw.TextStyle(fontSize: 9, color: PdfColors.grey500, fontStyle: pw.FontStyle.italic)),
+            pw.Text(
+              'Digitally signed on $now',
+              style: pw.TextStyle(
+                fontSize: 9,
+                color: PdfColors.grey500,
+                fontStyle: pw.FontStyle.italic,
+              ),
+            ),
           ],
         ),
       ),

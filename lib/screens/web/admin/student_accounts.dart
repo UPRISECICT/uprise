@@ -16,8 +16,9 @@ import 'package:http/http.dart' as http;
 import 'package:cross_file/cross_file.dart';
 import 'export_util.dart';
 import 'export_pdf.dart';
-import '../../../theme/app_theme.dart';
+import '../../../theme/admin_theme.dart';
 import '../../../services/activity_logger.dart' as activity_log;
+import '../../../widgets/admin_stat_cards_row.dart';
 import '../../../utils/file_validation.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -83,15 +84,15 @@ class _DS {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(radiusSm),
-        borderSide: BorderSide(color: UpriseColors.primaryDark, width: 1.5),
+        borderSide: BorderSide(color: AdminColors.primaryDark, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(radiusSm),
-        borderSide: BorderSide(color: UpriseColors.error, width: 1),
+        borderSide: BorderSide(color: AdminColors.error, width: 1),
       ),
       focusedErrorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(radiusSm),
-        borderSide: BorderSide(color: UpriseColors.error, width: 1.5),
+        borderSide: BorderSide(color: AdminColors.error, width: 1.5),
       ),
     );
   }
@@ -107,7 +108,7 @@ Widget _sectionLabel(String text, {IconData? icon}) {
     child: Row(
       children: [
         if (icon != null) ...[
-          Icon(icon, size: 16, color: UpriseColors.primaryDark),
+          Icon(icon, size: 16, color: AdminColors.primaryDark),
           const SizedBox(width: 8),
         ],
         Text(
@@ -115,7 +116,7 @@ Widget _sectionLabel(String text, {IconData? icon}) {
           style: GoogleFonts.beVietnamPro(
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: UpriseColors.primaryDark,
+            color: AdminColors.primaryDark,
             letterSpacing: 0.3,
           ),
         ),
@@ -227,8 +228,8 @@ class _StudentAccountsState extends State<StudentAccounts> {
             label: 'Total Students',
             value: '$total',
             icon: Icons.school_rounded,
-            color: UpriseColors.primaryDark,
-            onTap: () => setState(() => _archiveFilter = 'All'),
+            color: AdminColors.primaryDark,
+            onTap: () => setState(() => _archiveFilter = 'All Students'),
           ),
           _StatCard(
             label: 'Active',
@@ -253,35 +254,11 @@ class _StudentAccountsState extends State<StudentAccounts> {
             horizontalPadding,
             0,
           ),
-          child: isMobile
-              ? SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: List.generate(
-                      statCards.length,
-                      (index) => Padding(
-                        padding: EdgeInsets.only(
-                          right: index < statCards.length - 1 ? cardGap : 0,
-                        ),
-                        child: SizedBox(width: 220, child: statCards[index]),
-                      ),
-                    ),
-                  ),
-                )
-              : Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: List.generate(
-                    statCards.length,
-                    (index) => Expanded(
-                      child: Padding(
-                        padding: EdgeInsets.only(
-                          right: index < statCards.length - 1 ? cardGap : 0,
-                        ),
-                        child: statCards[index],
-                      ),
-                    ),
-                  ),
-                ),
+          child: StatCardsRow(
+            cards: statCards,
+            isMobile: isMobile,
+            gap: cardGap,
+          ),
         );
       },
     );
@@ -324,7 +301,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide(color: UpriseColors.primaryDark, width: 1.5),
+            borderSide: BorderSide(color: AdminColors.primaryDark, width: 1.5),
           ),
         ),
         onChanged: (_) => setState(() => _currentPage = 1),
@@ -601,7 +578,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
                   fontWeight: FontWeight.w600,
                   color: isArchived
                       ? const Color(0xFF9AA5B4)
-                      : UpriseColors.primaryDark,
+                      : AdminColors.primaryDark,
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
@@ -643,7 +620,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
                   decoration: BoxDecoration(
                     color: isArchived
                         ? const Color(0xFFF3F4F6)
-                        : UpriseColors.primaryDark.withAlpha(18),
+                        : AdminColors.primaryDark.withAlpha(18),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
@@ -653,7 +630,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
                       fontWeight: FontWeight.w600,
                       color: isArchived
                           ? const Color(0xFF6B7280)
-                          : UpriseColors.primaryDark,
+                          : AdminColors.primaryDark,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -882,8 +859,8 @@ class _StudentAccountsState extends State<StudentAccounts> {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      UpriseColors.primaryDark,
-                      UpriseColors.primaryDark.withAlpha(225),
+                      AdminColors.primaryDark,
+                      AdminColors.primaryDark.withAlpha(225),
                     ],
                   ),
                   borderRadius: const BorderRadius.vertical(
@@ -1118,11 +1095,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
       children: [
         Row(
           children: [
-            Icon(
-              icon,
-              size: 12,
-              color: UpriseColors.primaryDark.withAlpha(150),
-            ),
+            Icon(icon, size: 12, color: AdminColors.primaryDark.withAlpha(150)),
             const SizedBox(width: 5),
             Text(
               label,
@@ -1172,12 +1145,12 @@ class _StudentAccountsState extends State<StudentAccounts> {
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFFFF7ED),
+                      color: const Color(0xFFF1F5F9),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Icon(
                       Icons.email_outlined,
-                      color: Color(0xFFEA580C),
+                      color: AdminColors.primaryDark,
                       size: 20,
                     ),
                   ),
@@ -1268,7 +1241,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
                       ),
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFEA580C),
+                      backgroundColor: AdminColors.primaryDark,
                       foregroundColor: Colors.white,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
@@ -1507,7 +1480,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error: $e'),
-            backgroundColor: UpriseColors.error,
+            backgroundColor: AdminColors.error,
           ),
         );
       }
@@ -1546,8 +1519,8 @@ class _StudentAccountsState extends State<StudentAccounts> {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        UpriseColors.primaryDark,
-                        UpriseColors.primaryDark.withAlpha(225),
+                        AdminColors.primaryDark,
+                        AdminColors.primaryDark.withAlpha(225),
                       ],
                     ),
                     borderRadius: const BorderRadius.vertical(
@@ -1739,7 +1712,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
                             borderRadius: BorderRadius.circular(4),
                             child: LinearProgressIndicator(
                               backgroundColor: const Color(0xFFE2E6EA),
-                              color: UpriseColors.primaryDark,
+                              color: AdminColors.primaryDark,
                             ),
                           ),
                           const SizedBox(height: 6),
@@ -1943,7 +1916,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
                           ),
                         ),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: UpriseColors.primaryDark,
+                          backgroundColor: AdminColors.primaryDark,
                           foregroundColor: Colors.white,
                           elevation: 0,
                           shape: RoundedRectangleBorder(
@@ -2006,8 +1979,8 @@ class _StudentAccountsState extends State<StudentAccounts> {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        UpriseColors.primaryDark,
-                        UpriseColors.primaryDark.withAlpha(225),
+                        AdminColors.primaryDark,
+                        AdminColors.primaryDark.withAlpha(225),
                       ],
                     ),
                     borderRadius: const BorderRadius.vertical(
@@ -2075,10 +2048,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
                                     required: true,
                                   ),
                                   style: GoogleFonts.beVietnamPro(fontSize: 13),
-                                  validator: (v) =>
-                                      v == null || v.trim().isEmpty
-                                      ? 'Required'
-                                      : null,
+                                  validator: _validateStudentId,
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -2092,10 +2062,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
                                     required: true,
                                   ),
                                   style: GoogleFonts.beVietnamPro(fontSize: 13),
-                                  validator: (v) =>
-                                      v == null || v.trim().isEmpty
-                                      ? 'Required'
-                                      : null,
+                                  validator: _validateFullName,
                                 ),
                               ),
                             ],
@@ -2174,9 +2141,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
                               required: true,
                             ),
                             style: GoogleFonts.beVietnamPro(fontSize: 13),
-                            validator: (v) => v == null || v.trim().isEmpty
-                                ? 'Required'
-                                : null,
+                            validator: _validateSection,
                           ),
                           const SizedBox(height: 12),
                           TextFormField(
@@ -2337,7 +2302,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
                           ),
                         ),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: UpriseColors.primaryDark,
+                          backgroundColor: AdminColors.primaryDark,
                           foregroundColor: Colors.white,
                           elevation: 0,
                           shape: RoundedRectangleBorder(
@@ -2564,7 +2529,11 @@ class _StudentAccountsState extends State<StudentAccounts> {
           s['studentId']!.isEmpty ||
           (s['fullName'] ?? '').isEmpty ||
           s['email']!.isEmpty ||
-          !_isMicrosoftEmail(s['email']!),
+          !_isMicrosoftEmail(s['email']!) ||
+          !_studentIdPattern.hasMatch(s['studentId']!) ||
+          !_fullNamePattern.hasMatch(s['fullName']!) ||
+          ((s['section'] ?? '').isNotEmpty &&
+              !_sectionPattern.hasMatch(s['section']!)),
     );
     return students;
   }
@@ -2626,7 +2595,11 @@ class _StudentAccountsState extends State<StudentAccounts> {
           s['studentId']!.isEmpty ||
           (s['fullName'] ?? '').isEmpty ||
           s['email']!.isEmpty ||
-          !_isMicrosoftEmail(s['email']!),
+          !_isMicrosoftEmail(s['email']!) ||
+          !_studentIdPattern.hasMatch(s['studentId']!) ||
+          !_fullNamePattern.hasMatch(s['fullName']!) ||
+          ((s['section'] ?? '').isNotEmpty &&
+              !_sectionPattern.hasMatch(s['section']!)),
     );
     return students;
   }
@@ -2650,6 +2623,39 @@ class _StudentAccountsState extends State<StudentAccounts> {
     final at = email.trim().toLowerCase().lastIndexOf('@');
     if (at == -1) return false;
     return _microsoftEmailDomains.contains(email.substring(at + 1));
+  }
+
+  static final RegExp _studentIdPattern = RegExp(r'^[0-9]{2,4}-[0-9]{3,8}$');
+  static final RegExp _fullNamePattern = RegExp(
+    r"^[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'.-]*(?: [A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'.-]*)+$",
+  );
+  static final RegExp _sectionPattern = RegExp(r'^[0-9][A-Za-z0-9-]{1,9}$');
+
+  String? _validateStudentId(String? v) {
+    final value = v?.trim() ?? '';
+    if (value.isEmpty) return 'Required';
+    if (!_studentIdPattern.hasMatch(value)) {
+      return 'Use the format 2021-00001';
+    }
+    return null;
+  }
+
+  String? _validateFullName(String? v) {
+    final value = v?.trim() ?? '';
+    if (value.isEmpty) return 'Required';
+    if (!_fullNamePattern.hasMatch(value)) {
+      return 'Enter a full name (first and last)';
+    }
+    return null;
+  }
+
+  String? _validateSection(String? v) {
+    final value = v?.trim() ?? '';
+    if (value.isEmpty) return 'Required';
+    if (!_sectionPattern.hasMatch(value)) {
+      return 'Use the format 3H-G1';
+    }
+    return null;
   }
 }
 
@@ -2806,8 +2812,8 @@ class _ToolbarButton extends StatelessWidget {
           ),
         ),
         style: OutlinedButton.styleFrom(
-          foregroundColor: UpriseColors.primaryDark,
-          side: BorderSide(color: UpriseColors.primaryDark),
+          foregroundColor: AdminColors.primaryDark,
+          side: BorderSide(color: AdminColors.primaryDark),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
@@ -2826,7 +2832,7 @@ class _ToolbarButton extends StatelessWidget {
         ),
       ),
       style: ElevatedButton.styleFrom(
-        backgroundColor: UpriseColors.primaryDark,
+        backgroundColor: AdminColors.primaryDark,
         foregroundColor: Colors.white,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -2959,7 +2965,7 @@ class _ExportStudentsButton extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Export failed: $e'),
-          backgroundColor: UpriseColors.error,
+          backgroundColor: AdminColors.error,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
@@ -2985,7 +2991,7 @@ class _StudentAvatar extends StatelessWidget {
       decoration: BoxDecoration(
         color: isArchived
             ? const Color(0xFFF3F4F6)
-            : UpriseColors.primaryDark.withOpacity(0.1),
+            : AdminColors.primaryDark.withOpacity(0.1),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Center(
@@ -2996,7 +3002,7 @@ class _StudentAvatar extends StatelessWidget {
             fontWeight: FontWeight.w700,
             color: isArchived
                 ? const Color(0xFF6B7280)
-                : UpriseColors.primaryDark,
+                : AdminColors.primaryDark,
           ),
         ),
       ),
@@ -3088,7 +3094,7 @@ class _PageNumButton extends StatelessWidget {
           height: 28,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: isActive ? UpriseColors.primaryDark : Colors.transparent,
+            color: isActive ? AdminColors.primaryDark : Colors.transparent,
             borderRadius: BorderRadius.circular(6),
           ),
           child: Text(

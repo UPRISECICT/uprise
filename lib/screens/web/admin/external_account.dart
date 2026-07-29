@@ -10,10 +10,11 @@ import 'package:uprise/widgets/admin_export_button.dart';
 import 'package:intl/intl.dart';
 import 'export_util.dart';
 import 'export_pdf.dart';
-import '../../../theme/app_theme.dart';
+import '../../../theme/admin_theme.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/app_toast.dart';
+import '../../../widgets/admin_stat_cards_row.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens (mirrors student_accounts.dart / org_management.dart)
@@ -42,7 +43,7 @@ Widget _sectionLabel(String text, {IconData? icon}) {
     child: Row(
       children: [
         if (icon != null) ...[
-          Icon(icon, size: 16, color: UpriseColors.primaryDark),
+          Icon(icon, size: 16, color: AdminColors.primaryDark),
           const SizedBox(width: 8),
         ],
         Text(
@@ -50,7 +51,7 @@ Widget _sectionLabel(String text, {IconData? icon}) {
           style: GoogleFonts.beVietnamPro(
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: UpriseColors.primaryDark,
+            color: AdminColors.primaryDark,
             letterSpacing: 0.3,
           ),
         ),
@@ -226,7 +227,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
             label: 'Total Requests',
             value: '$total',
             icon: Icons.people_rounded,
-            color: UpriseColors.primaryDark,
+            color: AdminColors.primaryDark,
             onTap: () => setState(() {
               _statusFilter = 'All';
               _currentPage = 1;
@@ -266,24 +267,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
 
         return Padding(
           padding: const EdgeInsets.fromLTRB(28, 24, 28, 0),
-          child: isMobile
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (var card in cards) ...[
-                      card,
-                      const SizedBox(height: 14),
-                    ],
-                  ],
-                )
-              : Row(
-                  children: [
-                    for (var card in cards) ...[
-                      Expanded(child: card),
-                      const SizedBox(width: 14),
-                    ],
-                  ],
-                ),
+          child: StatCardsRow(cards: cards, isMobile: isMobile),
         );
       },
     );
@@ -323,7 +307,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide(color: UpriseColors.primaryDark, width: 1.5),
+            borderSide: BorderSide(color: AdminColors.primaryDark, width: 1.5),
           ),
         ),
         onChanged: (_) => setState(() => _currentPage = 1),
@@ -615,7 +599,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
                   width: 32,
                   height: 32,
                   decoration: BoxDecoration(
-                    color: UpriseColors.primaryDark.withOpacity(0.1),
+                    color: AdminColors.primaryDark.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Center(
@@ -624,7 +608,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
                       style: GoogleFonts.beVietnamPro(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
-                        color: UpriseColors.primaryDark,
+                        color: AdminColors.primaryDark,
                       ),
                     ),
                   ),
@@ -668,7 +652,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
                         vertical: 3,
                       ),
                       decoration: BoxDecoration(
-                        color: UpriseColors.primaryDark.withOpacity(0.07),
+                        color: AdminColors.primaryDark.withOpacity(0.07),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
@@ -678,7 +662,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: UpriseColors.primaryDark,
+                          color: AdminColors.primaryDark,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -1061,7 +1045,10 @@ class _ExternalAccountState extends State<ExternalAccount> {
 
     if (mounted) {
       if (sent) {
-        AppToast.success(context, 'Approved. Credentials sent to $resolvedEmail.');
+        AppToast.success(
+          context,
+          'Approved. Credentials sent to $resolvedEmail.',
+        );
       } else {
         AppToast.warning(
           context,
@@ -1190,7 +1177,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
                     ),
                     child: Icon(
                       Icons.email_outlined,
-                      color: UpriseColors.primaryDark,
+                      color: AdminColors.primaryDark,
                       size: 20,
                     ),
                   ),
@@ -1285,7 +1272,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
                       ),
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: UpriseColors.primaryDark,
+                      backgroundColor: AdminColors.primaryDark,
                       foregroundColor: Colors.white,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
@@ -1365,7 +1352,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: UpriseColors.primaryDark,
+              backgroundColor: AdminColors.primaryDark,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
@@ -1430,8 +1417,8 @@ class _ExternalAccountState extends State<ExternalAccount> {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      UpriseColors.primaryDark,
-                      UpriseColors.primaryDark.withAlpha(225),
+                      AdminColors.primaryDark,
+                      AdminColors.primaryDark.withAlpha(225),
                     ],
                   ),
                   borderRadius: const BorderRadius.vertical(
@@ -1504,7 +1491,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
                           Icon(
                             Icons.calendar_today_outlined,
                             size: 13,
-                            color: UpriseColors.primaryDark.withAlpha(150),
+                            color: AdminColors.primaryDark.withAlpha(150),
                           ),
                           const SizedBox(width: 4),
                           Text(
@@ -1970,7 +1957,7 @@ class _StatCard extends StatelessWidget {
             cursor: SystemMouseCursors.click,
             child: GestureDetector(onTap: onTap, child: card),
           );
-    return Expanded(child: wrapped);
+    return wrapped;
   }
 }
 
@@ -2225,7 +2212,7 @@ class _PageNumButton extends StatelessWidget {
           height: 28,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: isActive ? UpriseColors.primaryDark : Colors.transparent,
+            color: isActive ? AdminColors.primaryDark : Colors.transparent,
             borderRadius: BorderRadius.circular(6),
           ),
           child: Text(

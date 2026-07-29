@@ -3,12 +3,14 @@
 // Single shared toast/snackbar system for the whole app — replaces the many
 // one-off `ScaffoldMessenger.of(context).showSnackBar(SnackBar(...))` calls
 // scattered across admin/org screens (each with its own ad-hoc color and
-// dismiss behavior) with 4 consistent types:
-//   - success: green, auto-dismisses after a few seconds
-//   - error:   red,   stays until the user dismisses it (mistakes shouldn't
-//              vanish before they're read)
-//   - warning: amber, stays until the user dismisses it
-//   - info:    blue,  stays until the user dismisses it
+// dismiss behavior) with 4 consistent types. Every type now auto-dismisses
+// (durations scaled to how much there is to read) and every type also shows
+// a close button so it can be cleared early — manual-only dismissal for
+// error/info turned out to just mean "toast that never goes away":
+//   - success: green,  auto-dismisses after 3s
+//   - warning: amber,  auto-dismisses after 5s
+//   - info:    blue,   auto-dismisses after 5s
+//   - error:   red,    auto-dismisses after 7s (longest — most to read)
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -42,11 +44,27 @@ class AppToast {
     final messenger = ScaffoldMessenger.of(context);
     messenger.hideCurrentSnackBar();
 
-    final (Color bg, IconData icon, bool autoDismiss) = switch (type) {
-      AppToastType.success => (_successBg, Icons.check_circle_rounded, true),
-      AppToastType.error => (_errorBg, Icons.error_rounded, false),
-      AppToastType.warning => (_warningBg, Icons.warning_rounded, false),
-      AppToastType.info => (_infoBg, Icons.info_rounded, false),
+    final (Color bg, IconData icon, Duration duration) = switch (type) {
+      AppToastType.success => (
+        _successBg,
+        Icons.check_circle_rounded,
+        const Duration(seconds: 3),
+      ),
+      AppToastType.warning => (
+        _warningBg,
+        Icons.warning_rounded,
+        const Duration(seconds: 5),
+      ),
+      AppToastType.info => (
+        _infoBg,
+        Icons.info_rounded,
+        const Duration(seconds: 5),
+      ),
+      AppToastType.error => (
+        _errorBg,
+        Icons.error_rounded,
+        const Duration(seconds: 7),
+      ),
     };
 
     messenger.showSnackBar(
@@ -54,9 +72,7 @@ class AppToast {
         backgroundColor: bg,
         behavior: SnackBarBehavior.floating,
         elevation: 4,
-        duration: autoDismiss
-            ? const Duration(seconds: 3)
-            : const Duration(days: 365), // effectively "until dismissed"
+        duration: duration,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         content: Row(
@@ -75,21 +91,15 @@ class AppToast {
                 ),
               ),
             ),
-            if (!autoDismiss) ...[
-              const SizedBox(width: 8),
-              InkWell(
-                onTap: () => messenger.hideCurrentSnackBar(),
-                borderRadius: BorderRadius.circular(4),
-                child: const Padding(
-                  padding: EdgeInsets.all(2),
-                  child: Icon(
-                    Icons.close_rounded,
-                    color: Colors.white,
-                    size: 18,
-                  ),
-                ),
+            const SizedBox(width: 8),
+            InkWell(
+              onTap: () => messenger.hideCurrentSnackBar(),
+              borderRadius: BorderRadius.circular(4),
+              child: const Padding(
+                padding: EdgeInsets.all(2),
+                child: Icon(Icons.close_rounded, color: Colors.white, size: 18),
               ),
-            ],
+            ),
           ],
         ),
       ),

@@ -159,7 +159,8 @@ class _AuthGateState extends State<AuthGate> {
             if (roleSnap.hasError) {
               debugPrint('AuthGate roleSnap error: \${roleSnap.error}');
               WidgetsBinding.instance.addPostFrameCallback(
-                  (_) => FirebaseAuth.instance.signOut());
+                (_) => FirebaseAuth.instance.signOut(),
+              );
               return const _LoadingScreen();
             }
 
@@ -177,7 +178,7 @@ class _AuthGateState extends State<AuthGate> {
 
             // ── Web routing ───────────────────────────────────────────
             if (role == 'admin') return const AdminDashboard();
-            if (role == 'org')   return OrgDashboard();
+            if (role == 'org') return OrgDashboard();
             if (role == 'student') {
               return _WrongPlatformScreen(
                 message: 'Student accounts are only available on Mobile.',
@@ -203,9 +204,38 @@ class _LoadingScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      backgroundColor: Color(0xFFFFF7ED),
-      body: Center(child: CircularProgressIndicator(color: Color(0xFFD97706))),
+    // Shown before the signed-in user's role is known, so it can't lean on
+    // either the admin or org side's own palette — kept neutral/on-brand
+    // for both, with the actual app mark instead of a bare spinner.
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset(
+              'assets/images/logo.png',
+              width: 64,
+              height: 64,
+              filterQuality: FilterQuality.high,
+              errorBuilder: (_, __, ___) => const Icon(
+                Icons.shield_outlined,
+                size: 48,
+                color: Color(0xFFD97706),
+              ),
+            ),
+            const SizedBox(height: 22),
+            const SizedBox(
+              width: 26,
+              height: 26,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.5,
+                color: Color(0xFFD97706),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -229,9 +259,11 @@ class _WrongPlatformScreen extends StatelessWidget {
             children: [
               Icon(icon, size: 70, color: Colors.orange),
               const SizedBox(height: 20),
-              Text(message,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 18)),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 18),
+              ),
               const SizedBox(height: 30),
               ElevatedButton(
                 onPressed: () => FirebaseAuth.instance.signOut(),
@@ -285,7 +317,8 @@ class LandingPage extends StatelessWidget {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(28),
                   border: Border.all(
-                      color: const Color(0xFFFDE68A).withOpacity(0.5)),
+                    color: const Color(0xFFFDE68A).withOpacity(0.5),
+                  ),
                   boxShadow: [
                     BoxShadow(
                       color: const Color(0xFFB45309).withOpacity(0.10),
@@ -310,68 +343,81 @@ class LandingPage extends StatelessWidget {
                         shape: BoxShape.circle,
                         color: const Color(0xFFFAF5EE),
                         border: Border.all(
-                            color: const Color(0xFFFDE68A), width: 3),
+                          color: const Color(0xFFFDE68A),
+                          width: 3,
+                        ),
                       ),
                       child: ClipOval(
-                        child: Image.asset('assets/images/logo.png',
-                            fit: BoxFit.contain,
-                            filterQuality: FilterQuality.high,
-                            errorBuilder: (_, __, ___) => const Icon(
-                                Icons.school,
-                                color: Color(0xFFD97706),
-                                size: 64)),
+                        child: Image.asset(
+                          'assets/images/logo.png',
+                          fit: BoxFit.contain,
+                          filterQuality: FilterQuality.high,
+                          errorBuilder: (_, __, ___) => const Icon(
+                            Icons.school,
+                            color: Color(0xFFD97706),
+                            size: 64,
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 16),
                     // ── Title ───────────────────────────────────────
                     RichText(
-                      text: TextSpan(children: [
-                        TextSpan(
-                          text: 'UP',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w800,
-                            color: const Color(0xFF1E293B),
-                            letterSpacing: 3,
+                      text: TextSpan(
+                        children: [
+                          TextSpan(
+                            text: 'UP',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w800,
+                              color: const Color(0xFF1E293B),
+                              letterSpacing: 3,
+                            ),
                           ),
-                        ),
-                        TextSpan(
-                          text: 'RISE',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w800,
-                            color: const Color(0xFFD97706),
-                            letterSpacing: 3,
+                          TextSpan(
+                            text: 'RISE',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w800,
+                              color: const Color(0xFFD97706),
+                              letterSpacing: 3,
+                            ),
                           ),
-                        ),
-                      ]),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       'CICT Organization Management Portal',
                       style: GoogleFonts.beVietnamPro(
-                          fontSize: 11.5, color: const Color(0xFF64748B)),
+                        fontSize: 11.5,
+                        color: const Color(0xFF64748B),
+                      ),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 20),
                     // ── Divider label ────────────────────────────────
-                    Row(children: [
-                      const Expanded(
-                          child: Divider(color: Color(0xFFF1F5F9))),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        child: Text(
-                          'SELECT YOUR PORTAL',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 10,
-                            color: const Color(0xFF94A3B8),
-                            letterSpacing: 1.5,
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Divider(color: Color(0xFFF1F5F9)),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          child: Text(
+                            'SELECT YOUR PORTAL',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 10,
+                              color: const Color(0xFF94A3B8),
+                              letterSpacing: 1.5,
+                            ),
                           ),
                         ),
-                      ),
-                      const Expanded(
-                          child: Divider(color: Color(0xFFF1F5F9))),
-                    ]),
+                        const Expanded(
+                          child: Divider(color: Color(0xFFF1F5F9)),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 16),
                     // ── Admin portal button ──────────────────────────
                     _PortalButton(
@@ -381,7 +427,9 @@ class LandingPage extends StatelessWidget {
                       isPrimary: true,
                       onTap: () => Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const AdminLandingPage()),
+                        MaterialPageRoute(
+                          builder: (_) => const AdminLandingPage(),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -393,7 +441,9 @@ class LandingPage extends StatelessWidget {
                       isPrimary: false,
                       onTap: () => Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const OrgLandingPage()),
+                        MaterialPageRoute(
+                          builder: (_) => const OrgLandingPage(),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 18),
@@ -404,15 +454,18 @@ class LandingPage extends StatelessWidget {
                         _Badge(label: 'Secure Login', showDot: true),
                         const SizedBox(width: 6),
                         _Badge(
-                            label: 'CICT Verified',
-                            icon: Icons.verified_rounded),
+                          label: 'CICT Verified',
+                          icon: Icons.verified_rounded,
+                        ),
                       ],
                     ),
                     const SizedBox(height: 14),
                     Text(
                       'No account? Contact your System Administrator',
                       style: GoogleFonts.beVietnamPro(
-                          fontSize: 11, color: const Color(0xFF94A3B8)),
+                        fontSize: 11,
+                        color: const Color(0xFF94A3B8),
+                      ),
                       textAlign: TextAlign.center,
                     ),
                   ],
@@ -467,57 +520,60 @@ class _PortalButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
           ),
           child: Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-            child: Row(children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: isPrimary
-                      ? Colors.white.withOpacity(0.22)
-                      : const Color(0xFFFEF3C7),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon,
-                    size: 18,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
                     color: isPrimary
-                        ? Colors.white
-                        : const Color(0xFFB45309)),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      label,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: isPrimary
-                            ? Colors.white
-                            : const Color(0xFF1E293B),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      description,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 10.5,
-                        color: isPrimary
-                            ? Colors.white.withOpacity(0.72)
-                            : const Color(0xFF64748B),
-                      ),
-                    ),
-                  ],
+                        ? Colors.white.withOpacity(0.22)
+                        : const Color(0xFFFEF3C7),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 18,
+                    color: isPrimary ? Colors.white : const Color(0xFFB45309),
+                  ),
                 ),
-              ),
-              Icon(Icons.chevron_right_rounded,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: isPrimary
+                              ? Colors.white
+                              : const Color(0xFF1E293B),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        description,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 10.5,
+                          color: isPrimary
+                              ? Colors.white.withOpacity(0.72)
+                              : const Color(0xFF64748B),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
                   color: isPrimary
                       ? Colors.white.withOpacity(0.6)
-                      : const Color(0xFFD97706)),
-            ]),
+                      : const Color(0xFFD97706),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -540,23 +596,33 @@ class _Badge extends StatelessWidget {
         border: Border.all(color: const Color(0xFFE2E8F0)),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        if (showDot) ...[
-          Container(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (showDot) ...[
+            Container(
               width: 5,
               height: 5,
               decoration: const BoxDecoration(
-                  color: Color(0xFF10B981), shape: BoxShape.circle)),
-          const SizedBox(width: 5),
-        ],
-        if (icon != null) ...[
-          Icon(icon, size: 11, color: const Color(0xFFD97706)),
-          const SizedBox(width: 4),
-        ],
-        Text(label,
+                color: Color(0xFF10B981),
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 5),
+          ],
+          if (icon != null) ...[
+            Icon(icon, size: 11, color: const Color(0xFFD97706)),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            label,
             style: GoogleFonts.beVietnamPro(
-                fontSize: 10, color: const Color(0xFF94A3B8))),
-      ]),
+              fontSize: 10,
+              color: const Color(0xFF94A3B8),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

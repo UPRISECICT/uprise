@@ -5,7 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import '../../../theme/app_theme.dart';
+import '../../../theme/admin_theme.dart';
 import '../../../utils/file_validation.dart';
 import 'admin_login.dart';
 
@@ -71,7 +71,7 @@ class _DS {
                 children: [
                   TextSpan(
                     text: ' *',
-                    style: labelTextStyle.copyWith(color: UpriseColors.error),
+                    style: labelTextStyle.copyWith(color: AdminColors.error),
                   ),
                 ],
               ),
@@ -104,15 +104,15 @@ class _DS {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(radiusSm),
-        borderSide: BorderSide(color: UpriseColors.primaryDark, width: 1.5),
+        borderSide: BorderSide(color: AdminColors.primaryDark, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(radiusSm),
-        borderSide: BorderSide(color: UpriseColors.error, width: 1),
+        borderSide: BorderSide(color: AdminColors.error, width: 1),
       ),
       focusedErrorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(radiusSm),
-        borderSide: BorderSide(color: UpriseColors.error, width: 1.5),
+        borderSide: BorderSide(color: AdminColors.error, width: 1.5),
       ),
     );
   }
@@ -201,7 +201,7 @@ Widget _sectionLabel(String text, {IconData? icon}) {
     child: Row(
       children: [
         if (icon != null) ...[
-          Icon(icon, size: 16, color: UpriseColors.primaryDark),
+          Icon(icon, size: 16, color: AdminColors.primaryDark),
           const SizedBox(width: 8),
         ],
         Text(
@@ -209,7 +209,7 @@ Widget _sectionLabel(String text, {IconData? icon}) {
           style: GoogleFonts.beVietnamPro(
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: UpriseColors.primaryDark,
+            color: AdminColors.primaryDark,
             letterSpacing: 0.3,
           ),
         ),
@@ -368,7 +368,7 @@ class _AdminSettingsState extends State<AdminSettings>
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message, style: GoogleFonts.beVietnamPro(fontSize: 13)),
-        backgroundColor: success ? const Color(0xFF059669) : UpriseColors.error,
+        backgroundColor: success ? const Color(0xFF059669) : AdminColors.error,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
@@ -411,9 +411,9 @@ class _AdminSettingsState extends State<AdminSettings>
           Tab(text: 'Audit Logs'),
           Tab(text: 'Signatories'),
         ],
-        labelColor: UpriseColors.primaryDark,
+        labelColor: AdminColors.primaryDark,
         unselectedLabelColor: const Color(0xFF64748B),
-        indicatorColor: UpriseColors.primaryDark,
+        indicatorColor: AdminColors.primaryDark,
         indicatorWeight: 2.5,
         indicatorSize: TabBarIndicatorSize.label,
         labelStyle: GoogleFonts.beVietnamPro(
@@ -443,7 +443,7 @@ class _AdminSettingsState extends State<AdminSettings>
         borderRadius: BorderRadius.circular(_DS.radiusSm),
         border: Border.all(
           color: value
-              ? UpriseColors.primaryDark.withOpacity(0.3)
+              ? AdminColors.primaryDark.withOpacity(0.3)
               : const Color(0xFFE2E6EA),
         ),
       ),
@@ -454,14 +454,14 @@ class _AdminSettingsState extends State<AdminSettings>
             height: 36,
             decoration: BoxDecoration(
               color: value
-                  ? UpriseColors.primaryDark.withOpacity(0.10)
+                  ? AdminColors.primaryDark.withOpacity(0.10)
                   : const Color(0xFFE8ECF0),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
               icon,
               size: 18,
-              color: value ? UpriseColors.primaryDark : const Color(0xFF9AA5B4),
+              color: value ? AdminColors.primaryDark : const Color(0xFF9AA5B4),
             ),
           ),
           const SizedBox(width: 14),
@@ -491,7 +491,7 @@ class _AdminSettingsState extends State<AdminSettings>
           Switch(
             value: value,
             onChanged: onChanged,
-            activeColor: UpriseColors.primaryDark,
+            activeColor: AdminColors.primaryDark,
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
         ],
@@ -642,7 +642,7 @@ class _AdminSettingsState extends State<AdminSettings>
                           ),
                         ),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: UpriseColors.primaryDark,
+                          backgroundColor: AdminColors.primaryDark,
                           foregroundColor: Colors.white,
                           elevation: 0,
                           minimumSize: const Size(double.infinity, 44),
@@ -850,7 +850,7 @@ class _AdminSettingsState extends State<AdminSettings>
                       vertical: 3,
                     ),
                     decoration: BoxDecoration(
-                      color: UpriseColors.primaryDark.withOpacity(0.08),
+                      color: AdminColors.primaryDark.withOpacity(0.08),
                       borderRadius: BorderRadius.circular(_DS.radiusPill),
                     ),
                     child: Text(
@@ -858,7 +858,7 @@ class _AdminSettingsState extends State<AdminSettings>
                       style: GoogleFonts.beVietnamPro(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
-                        color: UpriseColors.primaryDark,
+                        color: AdminColors.primaryDark,
                       ),
                     ),
                   ),
@@ -948,7 +948,7 @@ class _AdminSettingsState extends State<AdminSettings>
                                       vertical: 3,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: UpriseColors.primaryDark
+                                      color: AdminColors.primaryDark
                                           .withOpacity(0.07),
                                       borderRadius: BorderRadius.circular(6),
                                     ),
@@ -957,7 +957,7 @@ class _AdminSettingsState extends State<AdminSettings>
                                       style: GoogleFonts.beVietnamPro(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w600,
-                                        color: UpriseColors.primaryDark,
+                                        color: AdminColors.primaryDark,
                                       ),
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -1150,7 +1150,7 @@ class _SignatoriesTabState extends State<_SignatoriesTab> {
                   ElevatedButton(
                     onPressed: () => Navigator.pop(ctx, true),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: UpriseColors.error,
+                      backgroundColor: AdminColors.error,
                       foregroundColor: Colors.white,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
@@ -1217,7 +1217,7 @@ class _SignatoriesTabState extends State<_SignatoriesTab> {
                       ),
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: UpriseColors.primaryDark,
+                      backgroundColor: AdminColors.primaryDark,
                       foregroundColor: Colors.white,
                       elevation: 0,
                       padding: const EdgeInsets.symmetric(
@@ -1441,7 +1441,7 @@ class _SignatoryFormDialogState extends State<_SignatoryFormDialog> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(validationError),
-            backgroundColor: UpriseColors.error,
+            backgroundColor: AdminColors.error,
           ),
         );
       }
@@ -1485,7 +1485,7 @@ class _SignatoryFormDialogState extends State<_SignatoryFormDialog> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error: $e'),
-            backgroundColor: UpriseColors.error,
+            backgroundColor: AdminColors.error,
           ),
         );
       }
@@ -1517,8 +1517,8 @@ class _SignatoryFormDialogState extends State<_SignatoryFormDialog> {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      UpriseColors.primaryDark,
-                      UpriseColors.primaryDark.withAlpha(225),
+                      AdminColors.primaryDark,
+                      AdminColors.primaryDark.withAlpha(225),
                     ],
                   ),
                   borderRadius: const BorderRadius.vertical(
@@ -1628,8 +1628,16 @@ class _SignatoryFormDialogState extends State<_SignatoryFormDialog> {
                           icon: Icons.person_outline_rounded,
                           required: true,
                         ),
-                        validator: (v) =>
-                            v?.trim().isEmpty == true ? 'Required' : null,
+                        validator: (v) {
+                          final value = v?.trim() ?? '';
+                          if (value.isEmpty) return 'Required';
+                          if (!RegExp(
+                            r"^[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'.-]*(?: [A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'.-]*)+$",
+                          ).hasMatch(value)) {
+                            return 'Enter a full name (first and last)';
+                          }
+                          return null;
+                        },
                       ),
                       const SizedBox(height: 12),
                       TextFormField(
@@ -1641,8 +1649,12 @@ class _SignatoryFormDialogState extends State<_SignatoryFormDialog> {
                           icon: Icons.badge_outlined,
                           required: true,
                         ),
-                        validator: (v) =>
-                            v?.trim().isEmpty == true ? 'Required' : null,
+                        validator: (v) {
+                          final value = v?.trim() ?? '';
+                          if (value.isEmpty) return 'Required';
+                          if (value.length < 2) return 'Enter a valid title';
+                          return null;
+                        },
                       ),
                     ],
                   ),
@@ -1681,7 +1693,7 @@ class _SignatoryFormDialogState extends State<_SignatoryFormDialog> {
                     ElevatedButton(
                       onPressed: _isSaving ? null : _save,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: UpriseColors.primaryDark,
+                        backgroundColor: AdminColors.primaryDark,
                         foregroundColor: Colors.white,
                         elevation: 0,
                         shape: RoundedRectangleBorder(

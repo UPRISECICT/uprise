@@ -18,6 +18,7 @@ import '../../../services/firestore_collections.dart';
 import '../../../services/notification_service.dart';
 import '../../../utils/platform_file_utils.dart' as platform_file_utils;
 import '../../../utils/file_validation.dart';
+import '../../../widgets/admin_stat_cards_row.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/app_toast.dart';
 
@@ -43,9 +44,12 @@ Uint8List _removeSignatureBackground(Uint8List bytes) {
 }
 
 // ============ COLOR SCHEME ============
+// CICT professional scheme: gray is the primary brand color; blue (info)
+// and orange (accent) stay reserved for interactive/highlight moments.
+// Deepened to slate-800 to match the rest of the admin section.
 class AdminColors {
-  static const Color primaryDark = Color(0xFFEA580C);
-  static const Color primaryLight = Color(0xFFFB923C);
+  static const Color primaryDark = Color(0xFF1E293B);
+  static const Color primaryLight = Color(0xFF475569);
   static const Color accent = Color(0xFFF97316);
   static const Color white = Color(0xFFFFFFFF);
   static const Color lightGray = Color(0xFFF9FAFB);
@@ -185,12 +189,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     return StreamBuilder<QuerySnapshot>(
       stream: FirestoreCollections.letterRequests.snapshots(),
       builder: (context, snapshot) {
-        int total = 0,
-            pending = 0,
-            approved = 0,
-            rejected = 0,
-            revision = 0,
-            resubmitted = 0;
+        int total = 0, pending = 0, approved = 0, rejected = 0;
         if (snapshot.hasData) {
           for (final doc in snapshot.data!.docs) {
             total++;
@@ -198,8 +197,6 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
             if (s == 'pending') pending++;
             if (s == 'approved') approved++;
             if (s == 'rejected') rejected++;
-            if (s == 'revision') revision++;
-            if (s == 'resubmitted') resubmitted++;
           }
         }
 
@@ -235,26 +232,6 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
             }),
           ),
           _StatCard(
-            label: 'Resubmitted',
-            value: '$resubmitted',
-            icon: Icons.refresh_rounded,
-            color: AdminColors.info,
-            onTap: () => setState(() {
-              _statusFilter = 'Resubmitted';
-              _currentPage = 1;
-            }),
-          ),
-          _StatCard(
-            label: 'Needs Revision',
-            value: '$revision',
-            icon: Icons.edit_note_rounded,
-            color: AdminColors.purple,
-            onTap: () => setState(() {
-              _statusFilter = 'Needs Revision';
-              _currentPage = 1;
-            }),
-          ),
-          _StatCard(
             label: 'Rejected',
             value: '$rejected',
             icon: Icons.cancel_rounded,
@@ -268,24 +245,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
 
         return Padding(
           padding: const EdgeInsets.fromLTRB(28, 24, 28, 0),
-          child: isMobile
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (var card in cards) ...[
-                      card,
-                      const SizedBox(height: 14),
-                    ],
-                  ],
-                )
-              : Row(
-                  children: [
-                    for (var i = 0; i < cards.length; i++) ...[
-                      Expanded(child: cards[i]),
-                      if (i < cards.length - 1) const SizedBox(width: 14),
-                    ],
-                  ],
-                ),
+          child: StatCardsRow(cards: cards, isMobile: isMobile),
         );
       },
     );
@@ -382,9 +342,13 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
 
   Widget _buildTable(bool isMobile, bool isTablet) {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirestoreCollections.letterRequests
-          .orderBy('timestamp', descending: true)
-          .snapshots(),
+      // Deliberately no server-side orderBy('timestamp') here — Firestore
+      // silently drops any document missing that field from an ordered
+      // query, so requests written without a timestamp (or with a null
+      // one) never showed up in this table at all, even though the stats
+      // row above (a plain, unordered .snapshots()) counted them fine.
+      // Sorting client-side after fetching keeps every document visible.
+      stream: FirestoreCollections.letterRequests.snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -393,7 +357,15 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
           return Center(child: Text('Error: ${snapshot.error}'));
         }
 
-        var docs = snapshot.data!.docs;
+        var docs = snapshot.data!.docs.toList()
+          ..sort((a, b) {
+            final tsA = (a.data() as Map)['timestamp'] as Timestamp?;
+            final tsB = (b.data() as Map)['timestamp'] as Timestamp?;
+            if (tsA == null && tsB == null) return 0;
+            if (tsA == null) return 1;
+            if (tsB == null) return -1;
+            return tsB.compareTo(tsA);
+          });
 
         if (_statusFilter == 'Archived') {
           docs = docs
@@ -3166,7 +3138,7 @@ class _StatCard extends StatelessWidget {
             cursor: SystemMouseCursors.click,
             child: GestureDetector(onTap: onTap, child: card),
           );
-    return Expanded(child: wrapped);
+    return wrapped;
   }
 }
 
@@ -3239,10 +3211,18 @@ class _ExportButton extends StatelessWidget {
   Future<void> _doExport(BuildContext context, String format) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
-      var snap = await FirestoreCollections.letterRequests
-          .orderBy('timestamp', descending: true)
-          .get();
-      var docs = snap.docs;
+      // No server-side orderBy — see the note on _buildTable's stream for
+      // why that silently drops any doc missing a 'timestamp' field.
+      var snap = await FirestoreCollections.letterRequests.get();
+      var docs = snap.docs.toList()
+        ..sort((a, b) {
+          final tsA = (a.data() as Map)['timestamp'] as Timestamp?;
+          final tsB = (b.data() as Map)['timestamp'] as Timestamp?;
+          if (tsA == null && tsB == null) return 0;
+          if (tsA == null) return 1;
+          if (tsB == null) return -1;
+          return tsB.compareTo(tsA);
+        });
       if (statusFilter != 'All') {
         final fv = statusFilter == 'Needs Revision'
             ? 'revision'

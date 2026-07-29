@@ -12,9 +12,10 @@ import 'export_util.dart';
 import 'export_pdf.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../services/notification_service.dart';
-import '../../../theme/app_theme.dart';
+import '../../../theme/admin_theme.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/app_toast.dart';
+import '../../../widgets/admin_stat_cards_row.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper: get user full name from UID
@@ -121,7 +122,7 @@ Widget _sectionLabel(String text, {IconData? icon}) {
     child: Row(
       children: [
         if (icon != null) ...[
-          Icon(icon, size: 16, color: UpriseColors.primaryDark),
+          Icon(icon, size: 16, color: AdminColors.primaryDark),
           const SizedBox(width: 8),
         ],
         Text(
@@ -129,7 +130,7 @@ Widget _sectionLabel(String text, {IconData? icon}) {
           style: GoogleFonts.beVietnamPro(
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: UpriseColors.primaryDark,
+            color: AdminColors.primaryDark,
             letterSpacing: 0.3,
           ),
         ),
@@ -147,8 +148,8 @@ Widget _statusBadge(String status) {
     'rejected': _BadgeStyle(Color(0xFFFEF2F2), Color(0xFFDC2626), 'REJECTED'),
     'archived': _BadgeStyle(Color(0xFFF3F4F6), Color(0xFF6B7280), 'ARCHIVED'),
     'for_review': _BadgeStyle(
-      const Color(0xFFFFF7ED),
-      const Color(0xFFBE4700),
+      const Color(0xFFEFF6FF),
+      AdminColors.info,
       'NEEDS REVISION',
     ),
   };
@@ -212,7 +213,7 @@ class _OrgAvatar extends StatelessWidget {
       width: 34,
       height: 34,
       decoration: BoxDecoration(
-        color: UpriseColors.primaryDark.withOpacity(0.1),
+        color: AdminColors.primaryDark.withOpacity(0.1),
         borderRadius: BorderRadius.circular(_DS.radiusSm),
       ),
       child: Center(
@@ -221,7 +222,7 @@ class _OrgAvatar extends StatelessWidget {
           style: GoogleFonts.beVietnamPro(
             fontSize: 12,
             fontWeight: FontWeight.w700,
-            color: UpriseColors.primaryDark,
+            color: AdminColors.primaryDark,
           ),
         ),
       ),
@@ -327,12 +328,7 @@ class _EventProposalsState extends State<EventProposals> {
     return StreamBuilder<QuerySnapshot>(
       stream: _proposalsStream,
       builder: (context, snapshot) {
-        int total = 0,
-            pending = 0,
-            approved = 0,
-            rejected = 0,
-            archived = 0,
-            forReview = 0;
+        int total = 0, pending = 0, approved = 0, rejected = 0;
         if (snapshot.hasData) {
           total = snapshot.data!.docs.length;
           for (final doc in snapshot.data!.docs) {
@@ -340,8 +336,6 @@ class _EventProposalsState extends State<EventProposals> {
             if (status == 'pending') pending++;
             if (status == 'approved') approved++;
             if (status == 'rejected') rejected++;
-            if (status == 'archived') archived++;
-            if (status == 'for_review') forReview++;
           }
         }
         final horizontalPadding = isMobile ? 16.0 : (isTablet ? 20.0 : 28.0);
@@ -351,7 +345,7 @@ class _EventProposalsState extends State<EventProposals> {
             label: 'Total Proposals',
             value: '$total',
             icon: Icons.event_note_rounded,
-            color: UpriseColors.primaryDark,
+            color: AdminColors.primaryDark,
             onTap: () => setState(() {
               _statusFilter = 'All';
               _currentPage = 1;
@@ -387,26 +381,6 @@ class _EventProposalsState extends State<EventProposals> {
               _currentPage = 1;
             }),
           ),
-          _StatCard(
-            label: 'Archived',
-            value: '$archived',
-            icon: Icons.archive_rounded,
-            color: const Color(0xFF6B7280),
-            onTap: () => setState(() {
-              _statusFilter = 'Archived';
-              _currentPage = 1;
-            }),
-          ),
-          _StatCard(
-            label: 'For Review',
-            value: '$forReview',
-            icon: Icons.rate_review_rounded,
-            color: const Color(0xFFBE4700),
-            onTap: () => setState(() {
-              _statusFilter = 'For Review';
-              _currentPage = 1;
-            }),
-          ),
         ];
 
         return Padding(
@@ -416,35 +390,11 @@ class _EventProposalsState extends State<EventProposals> {
             horizontalPadding,
             0,
           ),
-          child: isMobile
-              ? SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: List.generate(
-                      statCards.length,
-                      (index) => Padding(
-                        padding: EdgeInsets.only(
-                          right: index < statCards.length - 1 ? cardGap : 0,
-                        ),
-                        child: SizedBox(width: 220, child: statCards[index]),
-                      ),
-                    ),
-                  ),
-                )
-              : Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: List.generate(
-                    statCards.length,
-                    (index) => Expanded(
-                      child: Padding(
-                        padding: EdgeInsets.only(
-                          right: index < statCards.length - 1 ? cardGap : 0,
-                        ),
-                        child: statCards[index],
-                      ),
-                    ),
-                  ),
-                ),
+          child: StatCardsRow(
+            cards: statCards,
+            isMobile: isMobile,
+            gap: cardGap,
+          ),
         );
       },
     );
@@ -487,7 +437,7 @@ class _EventProposalsState extends State<EventProposals> {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide(color: UpriseColors.primaryDark, width: 1.5),
+            borderSide: BorderSide(color: AdminColors.primaryDark, width: 1.5),
           ),
         ),
         onChanged: (_) => setState(() => _currentPage = 1),
@@ -809,7 +759,7 @@ class _EventProposalsState extends State<EventProposals> {
                         vertical: 3,
                       ),
                       decoration: BoxDecoration(
-                        color: UpriseColors.primaryDark.withAlpha(18),
+                        color: AdminColors.primaryDark.withAlpha(18),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
@@ -822,7 +772,7 @@ class _EventProposalsState extends State<EventProposals> {
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: UpriseColors.primaryDark,
+                          color: AdminColors.primaryDark,
                         ),
                         maxLines: 1,
                         softWrap: false,
@@ -1385,7 +1335,7 @@ class _EventProposalsState extends State<EventProposals> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error: $e'),
-            backgroundColor: UpriseColors.error,
+            backgroundColor: AdminColors.error,
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -1448,7 +1398,7 @@ class _EventProposalsState extends State<EventProposals> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error: $e'),
-            backgroundColor: UpriseColors.error,
+            backgroundColor: AdminColors.error,
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -1503,7 +1453,7 @@ class _EventProposalsState extends State<EventProposals> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error: $e'),
-            backgroundColor: UpriseColors.error,
+            backgroundColor: AdminColors.error,
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -1535,7 +1485,7 @@ class _EventProposalsState extends State<EventProposals> {
                     ),
                     child: Icon(
                       Icons.rate_review_rounded,
-                      color: UpriseColors.primaryDark,
+                      color: AdminColors.primaryDark,
                       size: 18,
                     ),
                   ),
@@ -1641,7 +1591,7 @@ class _EventProposalsState extends State<EventProposals> {
                       ),
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: UpriseColors.primaryDark,
+                      backgroundColor: AdminColors.primaryDark,
                       foregroundColor: Colors.white,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
@@ -1707,8 +1657,8 @@ class _EventProposalsState extends State<EventProposals> {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      UpriseColors.primaryDark,
-                      UpriseColors.primaryDark.withAlpha(225),
+                      AdminColors.primaryDark,
+                      AdminColors.primaryDark.withAlpha(225),
                     ],
                   ),
                   borderRadius: const BorderRadius.vertical(
@@ -2056,7 +2006,7 @@ class _EventProposalsState extends State<EventProposals> {
                                 width: 44,
                                 height: 44,
                                 decoration: BoxDecoration(
-                                  color: UpriseColors.primaryDark.withOpacity(
+                                  color: AdminColors.primaryDark.withOpacity(
                                     0.10,
                                   ),
                                   borderRadius: BorderRadius.circular(10),
@@ -2064,7 +2014,7 @@ class _EventProposalsState extends State<EventProposals> {
                                 child: Icon(
                                   Icons.insert_drive_file_rounded,
                                   size: 20,
-                                  color: UpriseColors.primaryDark,
+                                  color: AdminColors.primaryDark,
                                 ),
                               ),
                               const SizedBox(width: 14),
@@ -2104,7 +2054,7 @@ class _EventProposalsState extends State<EventProposals> {
                                   ),
                                 ),
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: UpriseColors.primaryDark,
+                                  backgroundColor: AdminColors.primaryDark,
                                   foregroundColor: Colors.white,
                                   elevation: 0,
                                   shape: RoundedRectangleBorder(
@@ -2368,11 +2318,7 @@ class _EventProposalsState extends State<EventProposals> {
       children: [
         Row(
           children: [
-            Icon(
-              icon,
-              size: 12,
-              color: UpriseColors.primaryDark.withAlpha(150),
-            ),
+            Icon(icon, size: 12, color: AdminColors.primaryDark.withAlpha(150)),
             const SizedBox(width: 4),
             Text(
               label,
@@ -2416,7 +2362,7 @@ class _EventProposalsState extends State<EventProposals> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('No attachment found'),
-              backgroundColor: UpriseColors.error,
+              backgroundColor: AdminColors.error,
             ),
           );
         }
@@ -2479,7 +2425,7 @@ class _EventProposalsState extends State<EventProposals> {
                         platform_file_utils.openUrl(url);
                       },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: UpriseColors.primaryDark,
+                        backgroundColor: AdminColors.primaryDark,
                         foregroundColor: Colors.white,
                       ),
                       child: Text('Open', style: GoogleFonts.beVietnamPro()),
@@ -2498,7 +2444,7 @@ class _EventProposalsState extends State<EventProposals> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Empty attachment'),
-              backgroundColor: UpriseColors.error,
+              backgroundColor: AdminColors.error,
             ),
           );
         }
@@ -2555,7 +2501,7 @@ class _EventProposalsState extends State<EventProposals> {
                     );
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: UpriseColors.primaryDark,
+                    backgroundColor: AdminColors.primaryDark,
                     foregroundColor: Colors.white,
                   ),
                   child: Text('Download', style: GoogleFonts.beVietnamPro()),
@@ -2626,7 +2572,7 @@ class _EventProposalsState extends State<EventProposals> {
                             );
                           },
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: UpriseColors.primaryDark,
+                            backgroundColor: AdminColors.primaryDark,
                             foregroundColor: Colors.white,
                           ),
                           child: Text(
@@ -2656,7 +2602,7 @@ class _EventProposalsState extends State<EventProposals> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error opening file: $e'),
-            backgroundColor: UpriseColors.error,
+            backgroundColor: AdminColors.error,
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -2968,7 +2914,7 @@ class _ExportProposalsButton extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Export failed: $e'),
-          backgroundColor: UpriseColors.error,
+          backgroundColor: AdminColors.error,
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -3070,7 +3016,7 @@ class _PageNumButton extends StatelessWidget {
           height: 28,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: isActive ? UpriseColors.primaryDark : Colors.transparent,
+            color: isActive ? AdminColors.primaryDark : Colors.transparent,
             borderRadius: BorderRadius.circular(6),
           ),
           child: Text(

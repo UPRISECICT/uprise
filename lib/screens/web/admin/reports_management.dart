@@ -14,6 +14,7 @@ import 'dart:convert'; // for base64Decode, utf8
 import '../../../utils/platform_file_utils.dart'
     as platform_file_utils; // adjust path if needed
 import '../../../widgets/anchored_dropdown.dart';
+import '../../../widgets/admin_stat_cards_row.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens
@@ -41,8 +42,10 @@ class UpriseColors {
   // warning/error here are tuned for this page's badge & tab-indicator
   // tints and mean something different than the shared class's fields
   // of the same name.
-  static const Color primaryDark = Color(0xFFBE4700);
-  static const Color primaryLight = Color(0xFFFFF3E8);
+  // CICT professional scheme: gray is the primary brand color here too,
+  // deepened to slate-800 to match the rest of the admin section.
+  static const Color primaryDark = Color(0xFF1E293B);
+  static const Color primaryLight = Color(0xFFF1F5F9);
   static const Color white = Color(0xFFFFFFFF);
   static const Color lightGray = Color(0xFFF7F8FA);
   static const Color mediumGray = Color(0xFFE2E6EA);
@@ -1588,6 +1591,33 @@ class _ReportsManagementState extends State<ReportsManagement>
                             lastDate: DateTime.now().add(
                               const Duration(days: 730),
                             ),
+                            // Material 3's default seed skews purple/indigo
+                            // unless the scheme is seeded from the brand
+                            // color — same fix as event_calendar.dart's
+                            // month picker.
+                            builder: (context, child) {
+                              final baseTheme = Theme.of(context);
+                              final scheme =
+                                  ColorScheme.fromSeed(
+                                    seedColor: UpriseColors.primaryDark,
+                                    brightness: Brightness.light,
+                                  ).copyWith(
+                                    primary: UpriseColors.primaryDark,
+                                    onPrimary: Colors.white,
+                                    surface: Colors.white,
+                                    onSurface: const Color(0xFF1A202C),
+                                    surfaceTint: Colors.transparent,
+                                  );
+                              return Theme(
+                                data: baseTheme.copyWith(
+                                  colorScheme: scheme,
+                                  dialogTheme: baseTheme.dialogTheme.copyWith(
+                                    backgroundColor: Colors.white,
+                                  ),
+                                ),
+                                child: child!,
+                              );
+                            },
                           );
                           if (result != null) setDlg(() => picked = result);
                         },
@@ -1971,11 +2001,14 @@ class _ReportsManagementState extends State<ReportsManagement>
                   DateTime.now().isAfter(s.eventDeadline!),
             )
             .length;
-    final late =
-        trackedFin.where((s) => s.isLate).length +
-        trackedAcc.where((s) => s.isLate).length;
-
     final cards = [
+      _StatCard(
+        label: 'Total Events',
+        value: '${_events.length}',
+        icon: Icons.event_note_rounded,
+        color: UpriseColors.primaryDark,
+        onTap: () => _tabController.animateTo(0),
+      ),
       _StatCard(
         label: 'Financial Reports',
         value: '${_financialReports.where((r) => !r.archived).length}',
@@ -1991,16 +2024,6 @@ class _ReportsManagementState extends State<ReportsManagement>
         onTap: () => _tabController.animateTo(1),
       ),
       _StatCard(
-        label: 'Late Submissions',
-        value: '$late',
-        icon: Icons.history_toggle_off_rounded,
-        color: UpriseColors.warning,
-        onTap: () {
-          setState(() => _submissionStatusFilter = 'Late');
-          _tabController.animateTo(3);
-        },
-      ),
-      _StatCard(
         label: 'Overdue (Not Submitted)',
         value: '$overdue',
         icon: Icons.error_outline_rounded,
@@ -2012,16 +2035,10 @@ class _ReportsManagementState extends State<ReportsManagement>
       ),
     ];
 
+    final width = MediaQuery.of(context).size.width;
     return Padding(
       padding: const EdgeInsets.fromLTRB(28, 20, 28, 0),
-      child: Row(
-        children: [
-          for (var i = 0; i < cards.length; i++) ...[
-            if (i > 0) const SizedBox(width: 14),
-            cards[i],
-          ],
-        ],
-      ),
+      child: StatCardsRow(cards: cards, isMobile: width < 720),
     );
   }
 
@@ -6091,7 +6108,7 @@ class _StatCard extends StatelessWidget {
                 Text(
                   value,
                   style: GoogleFonts.beVietnamPro(
-                    fontSize: 22,
+                    fontSize: 28,
                     fontWeight: FontWeight.w700,
                     color: const Color(0xFF1A202C),
                   ),
@@ -6108,7 +6125,7 @@ class _StatCard extends StatelessWidget {
             cursor: SystemMouseCursors.click,
             child: GestureDetector(onTap: onTap, child: card),
           );
-    return Expanded(child: wrapped);
+    return wrapped;
   }
 }
 

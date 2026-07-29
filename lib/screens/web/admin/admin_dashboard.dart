@@ -23,14 +23,19 @@ import 'settings.dart';
 import 'admin_profile.dart';
 import 'export_pdf.dart' show AdminExportPdf;
 import 'export_util.dart';
+import '../../../widgets/app_toast.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens — mirrors student_accounts.dart exactly
 // ─────────────────────────────────────────────────────────────────────────────
 class UpriseColors {
-  static const Color primaryDark = Color(0xFFBE4700);
-  static const Color primaryLight = Color(0xFFD47A00);
-  static const Color accent = Color(0xFFDA6937);
+  // CICT professional scheme: gray is the primary brand color; blue (info,
+  // below) and orange (accent) are used sparingly for interactive/highlight
+  // moments rather than spread across every element. Deepened to slate-800
+  // so the primary reads distinctly richer than the blue/orange accents.
+  static const Color primaryDark = Color(0xFF1E293B);
+  static const Color primaryLight = Color(0xFF475569);
+  static const Color accent = Color(0xFFF97316);
   static const Color white = Color(0xFFFFFFFF);
   static const Color lightGray = Color(0xFFF9FAFB);
   static const Color mediumGray = Color(0xFFE5E7EB);
@@ -891,15 +896,30 @@ class _AdminDashboardState extends State<AdminDashboard> {
             padding: const EdgeInsets.fromLTRB(20, 28, 20, 20),
             child: Row(
               children: [
-                SizedBox(
-                  width: 68,
-                  height: 68,
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withAlpha(40),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  padding: const EdgeInsets.all(7),
                   child: Image.asset(
                     'assets/images/logo.png',
                     fit: BoxFit.contain,
                     filterQuality: FilterQuality.high,
-                    errorBuilder: (_, __, ___) =>
-                        const Icon(Icons.school, color: Colors.white, size: 40),
+                    errorBuilder: (_, __, ___) => const Icon(
+                      Icons.school,
+                      color: UpriseColors.primaryDark,
+                      size: 28,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1040,7 +1060,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFF7ED),
+              color: const Color(0xFFF1F5F9),
               borderRadius: BorderRadius.circular(_DS.radiusPill),
               border: Border.all(color: UpriseColors.primaryDark.withAlpha(60)),
             ),
@@ -1532,7 +1552,7 @@ class _DashboardHomeState extends State<DashboardHome> {
                               vertical: 10,
                             ),
                             color: y == _selectedYear
-                                ? const Color(0xFFFDF2E9)
+                                ? const Color(0xFFF1F5F9)
                                 : Colors.transparent,
                             child: Text(
                               '$y',
@@ -1629,7 +1649,7 @@ class _DashboardHomeState extends State<DashboardHome> {
           color: UpriseColors.primaryDark,
           boxShadow: [
             BoxShadow(
-              color: Color(0x40BE4700),
+              color: Color(0x401E293B),
               blurRadius: 24,
               offset: Offset(0, 8),
             ),
@@ -2382,7 +2402,7 @@ class _DashboardHomeState extends State<DashboardHome> {
           ),
           const SizedBox(height: 20),
           SizedBox(
-            height: 310,
+            height: 230,
             child: _chartLoading
                 ? Center(
                     child: CircularProgressIndicator(
@@ -2618,6 +2638,26 @@ class _DashboardHomeState extends State<DashboardHome> {
     );
   }
 
+  // Same category palette as event_calendar.dart — was previously a single
+  // flat blue for every category here, so a Workshop and a Sports event
+  // read identically in the table with no visual differentiation at all.
+  static const Map<String, Color> _categoryBadgeColors = {
+    'Workshop': Color(0xFF8B5CF6),
+    'Seminar': Color(0xFF3B82F6),
+    'Competition': Color(0xFFEF4444),
+    'General Assembly': Color(0xFFF97316),
+    'Social': Color(0xFFEC4899),
+    'Outreach': Color(0xFF10B981),
+    'Sports': Color(0xFF14B8A6),
+    'Academic': Color(0xFF6366F1),
+    'Technical': Color(0xFF06B6D4),
+    'Cultural': Color(0xFFD946EF),
+  };
+
+  Color _categoryBadgeColor(String category) {
+    return _categoryBadgeColors[category] ?? const Color(0xFF6B7280);
+  }
+
   Future<void> _exportTable({
     required String title,
     required List<String> headers,
@@ -2638,18 +2678,11 @@ class _DashboardHomeState extends State<DashboardHome> {
         mimeType: 'application/pdf',
       );
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Exported $fileName')));
+        AppToast.success(context, 'Exported $fileName');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Export failed: $e'),
-            backgroundColor: UpriseColors.error,
-          ),
-        );
+        AppToast.error(context, 'Export failed: $e');
       }
     }
   }
@@ -2698,18 +2731,14 @@ class _DashboardHomeState extends State<DashboardHome> {
     );
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            failed == 0
-                ? 'Reminder sent to $sent organization${sent == 1 ? '' : 's'}.'
-                : 'Sent to $sent organization${sent == 1 ? '' : 's'}, $failed failed.',
-          ),
-          backgroundColor: failed == 0
-              ? UpriseColors.success
-              : UpriseColors.error,
-        ),
-      );
+      final message = failed == 0
+          ? 'Reminder sent to $sent organization${sent == 1 ? '' : 's'}.'
+          : 'Sent to $sent organization${sent == 1 ? '' : 's'}, $failed failed.';
+      if (failed == 0) {
+        AppToast.success(context, message);
+      } else {
+        AppToast.warning(context, message);
+      }
     }
   }
 
@@ -2891,7 +2920,9 @@ class _DashboardHomeState extends State<DashboardHome> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _tableCardSimple(
-            const Center(child: CircularProgressIndicator()),
+            Center(
+              child: CircularProgressIndicator(color: UpriseColors.primaryDark),
+            ),
           );
         }
         final items = [...(snapshot.data ?? [])]
@@ -2993,7 +3024,9 @@ class _DashboardHomeState extends State<DashboardHome> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _tableCardSimple(
-            const Center(child: CircularProgressIndicator()),
+            Center(
+              child: CircularProgressIndicator(color: UpriseColors.primaryDark),
+            ),
           );
         }
         final docs = snapshot.data?.docs ?? [];
@@ -3097,7 +3130,7 @@ class _DashboardHomeState extends State<DashboardHome> {
                     _cellText(rows[i]['orgName'] as String),
                     _cellBadge(
                       rows[i]['category'] as String,
-                      UpriseColors.info,
+                      _categoryBadgeColor(rows[i]['category'] as String),
                     ),
                     _cellText(fmtDate(rows[i]['date'] as DateTime?)),
                     _cellText(rows[i]['location'] as String),
@@ -3117,7 +3150,9 @@ class _DashboardHomeState extends State<DashboardHome> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _tableCardSimple(
-            const Center(child: CircularProgressIndicator()),
+            Center(
+              child: CircularProgressIndicator(color: UpriseColors.primaryDark),
+            ),
           );
         }
         final docs = snapshot.data?.docs ?? [];
@@ -3240,7 +3275,9 @@ class _DashboardHomeState extends State<DashboardHome> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _tableCardSimple(
-            const Center(child: CircularProgressIndicator()),
+            Center(
+              child: CircularProgressIndicator(color: UpriseColors.primaryDark),
+            ),
           );
         }
         final items = snapshot.data?.items ?? [];

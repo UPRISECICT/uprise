@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -35,16 +34,21 @@ class _AdminLoginState extends State<AdminLogin>
   final AuthService _auth = AuthService();
 
   // ── Palette ──────────────────────────────────────────────────────────────
-  static const Color _rust = Color(0xFFB6430E);
-  static const Color _rustDeep = Color(0xFF7A2B08);
-  static const Color _accent = Color(0xFFF97316);
-  static const Color _accentDeep = Color(0xFFEA580C);
+  // CICT professional scheme: gray is the structural primary (backgrounds,
+  // icons, borders), blue carries interactive/actionable elements (links,
+  // focus states, the sign-in CTA), and orange is reserved as a single
+  // accent spark (wordmark, bullet) rather than spread across the page.
+  // Both primary and the CTA gradient were deepened a step for a richer,
+  // more premium blend instead of sitting at the same tonal weight.
+  static const Color _primary = Color(0xFF1E293B);
+  static const Color _blue = Color(0xFF2563EB);
+  static const Color _orange = Color(0xFFF97316);
   static const Color _navy = Color(0xFF0F172A);
-  static const Color _slateDark = Color(0xFF1E1B16);
+  static const Color _slateDark = Color(0xFF111827);
   static const Color _slateMid = Color(0xFF6B7280);
   static const Color _slateSoft = Color(0xFFAEB4C4);
-  static const Color _fieldFill = Color(0xFFFAF6F2);
-  static const Color _fieldBorder = Color(0xFFEDE4DC);
+  static const Color _fieldFill = Color(0xFFF8FAFC);
+  static const Color _fieldBorder = Color(0xFFE2E8F0);
 
   @override
   void initState() {
@@ -186,602 +190,605 @@ class _AdminLoginState extends State<AdminLogin>
   }
 
   // ── Build ──────────────────────────────────────────────────────────────────
+  // Split-card layout: a single floating white card holding the sign-in form
+  // on one side and an illustrated showcase panel on the other, instead of
+  // the previous full-bleed photo hero. Matches the structure of the
+  // reference (plain page background, one rounded card, form + visual
+  // panel side by side) while keeping the app's own gray/blue/orange scheme.
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _navy,
-      body: LayoutBuilder(
-        builder: (_, c) {
-          return Stack(
-            fit: StackFit.expand,
-            children: [
-              // Full-bleed campus photo
-              Image.asset(
-                'assets/images/bg_pattern.png',
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [_rustDeep, _navy],
-                    ),
-                  ),
-                ),
-              ),
-              // Vignette overlay — darker at the edges (for text/card contrast),
-              // lighter in the middle so the building photo stays visible instead
-              // of being fully washed out by a flat diagonal tint.
-              Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    colors: [
-                      Color(0xE07A2B08),
-                      Color(0x996B2A08),
-                      Color(0x99B6430E),
-                      Color(0xD2551F07),
-                    ],
-                    stops: [0.0, 0.38, 0.62, 1.0],
-                  ),
-                ),
-              ),
-              Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Color(0x4D0F172A),
-                      Colors.transparent,
-                      Color(0x660F172A),
-                    ],
-                    stops: [0.0, 0.4, 1.0],
-                  ),
-                ),
-              ),
-              SafeArea(
-                child: c.maxWidth > 900
-                    ? _buildWideHero()
-                    : _buildCompactHero(),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  // ── Wide: branding on the photo, form card floating on the right ──────────
-
-  Widget _buildWideHero() {
-    return Center(
-      child: ConstrainedBox(
-        // Caps the content width on ultra-wide screens so branding and the
-        // card sit close enough together instead of stretching apart with a
-        // dead gap of photo between them.
-        constraints: const BoxConstraints(maxWidth: 1240),
-        child: FadeTransition(
-          opacity: _fadeIn,
-          child: SlideTransition(
-            position: _slideUp,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 56, vertical: 48),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(flex: 5, child: _buildHeroBranding()),
-                  const SizedBox(width: 56),
-                  SizedBox(width: 420, child: _buildFormCard()),
-                ],
-              ),
-            ),
+      backgroundColor: const Color(0xFFEEF1F6),
+      body: Stack(
+        children: [
+          // Soft, oversized glows behind the card for a little depth on the
+          // plain page background instead of it being completely flat.
+          Positioned(
+            top: -160,
+            left: -160,
+            child: _softGlow(380, _primary.withAlpha(20)),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeroBranding() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 152,
-          height: 152,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withAlpha(70),
-                blurRadius: 24,
-                offset: const Offset(0, 10),
-              ),
-            ],
+          Positioned(
+            bottom: -180,
+            right: -140,
+            child: _softGlow(420, _orange.withAlpha(18)),
           ),
-          padding: const EdgeInsets.all(12),
-          child: Image.asset(
-            'assets/images/logo.png',
-            fit: BoxFit.contain,
-            filterQuality: FilterQuality.high,
-            errorBuilder: (_, __, ___) =>
-                const Icon(Icons.shield_outlined, size: 64, color: _rust),
-          ),
-        ),
-        const SizedBox(height: 26),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'UP',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 56,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-                letterSpacing: 1.5,
-                height: 1,
-              ),
-            ),
-            Text(
-              'RISE',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 56,
-                fontWeight: FontWeight.w800,
-                color: const Color(0xFFFFC79A),
-                letterSpacing: 1.5,
-                height: 1,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-          decoration: BoxDecoration(
-            color: Colors.white.withAlpha(40),
-            borderRadius: BorderRadius.circular(100),
-          ),
-          child: Text(
-            'ADMIN PORTAL',
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 10.5,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-              letterSpacing: 3,
-            ),
-          ),
-        ),
-        const SizedBox(height: 30),
-        Text(
-          'Manage students, organizations,\nand campus events from one\nunified dashboard.',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 17,
-            fontWeight: FontWeight.w400,
-            color: Colors.white.withAlpha(235),
-            height: 1.7,
-            shadows: [
-              Shadow(color: Colors.black.withAlpha(90), blurRadius: 12),
-            ],
-          ),
-        ),
-        const SizedBox(height: 40),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Container(
-                width: 6,
-                height: 6,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _accent,
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              'College of Information and\nCommunications Technology',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 12,
-                color: Colors.white.withAlpha(220),
-                height: 1.6,
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  // ── Narrow: photo backdrop, everything in one centered card ────────────────
-
-  Widget _buildCompactHero() {
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
-        child: FadeTransition(
-          opacity: _fadeIn,
-          child: SlideTransition(
-            position: _slideUp,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 120,
-                    height: 120,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withAlpha(70),
-                          blurRadius: 20,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    padding: const EdgeInsets.all(10),
-                    child: Image.asset(
-                      'assets/images/logo.png',
-                      fit: BoxFit.contain,
-                      filterQuality: FilterQuality.high,
-                      errorBuilder: (_, __, ___) => const Icon(
-                        Icons.shield_outlined,
-                        size: 52,
-                        color: _rust,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        'UP',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 32,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          letterSpacing: 1,
-                          height: 1,
-                        ),
-                      ),
-                      Text(
-                        'RISE',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 32,
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0xFFFFC79A),
-                          letterSpacing: 1,
-                          height: 1,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'ADMIN PORTAL',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white.withAlpha(215),
-                      letterSpacing: 3,
-                    ),
-                  ),
-                  const SizedBox(height: 22),
-                  _buildFormCard(),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ── Shared form card ────────────────────────────────────────────────────────
-
-  Widget _buildFormCard() {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: BackdropFilter(
-        // Frosted-glass effect: blurs the campus photo behind the card so
-        // the panel feels like part of the scene rather than a flat sticker
-        // pasted on top of it.
-        filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white.withAlpha(232),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.white.withAlpha(90), width: 1),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withAlpha(120),
-                blurRadius: 50,
-                offset: const Offset(0, 20),
-              ),
-            ],
-          ),
-          padding: const EdgeInsets.fromLTRB(32, 34, 32, 30),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Welcome back',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: _slateDark,
-                  letterSpacing: -0.3,
-                ),
-              ),
-              const SizedBox(height: 5),
-              Text(
-                'Sign in to access the admin dashboard.',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 12.5,
-                  color: _slateMid,
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildField(
-                      controller: _emailController,
-                      label: 'Email Address *',
-                      hint: 'admin@uprise.org',
-                      icon: Icons.mail_outline_rounded,
-                      type: TextInputType.emailAddress,
-                      validator: (v) {
-                        final value = v?.trim() ?? '';
-                        if (value.isEmpty)
-                          return 'Please enter your email address';
-                        if (!RegExp(
-                          r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
-                        ).hasMatch(value)) {
-                          return 'Please enter a valid email address';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 13),
-
-                    _buildField(
-                      controller: _passwordController,
-                      label: 'Password *',
-                      hint: '••••••••',
-                      icon: Icons.lock_outline_rounded,
-                      obscure: _obscurePassword,
-                      suffix: IconButton(
-                        icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility_off_outlined
-                              : Icons.visibility_outlined,
-                          color: _slateSoft,
-                          size: 18,
-                        ),
-                        onPressed: () => setState(
-                          () => _obscurePassword = !_obscurePassword,
-                        ),
-                      ),
-                      onSubmit: (_) => _login(),
-                      validator: (v) => (v == null || v.trim().isEmpty)
-                          ? 'Please enter your password'
-                          : null,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 13),
-
-              Row(
-                children: [
-                  MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    child: GestureDetector(
-                      onTap: () {
-                        setState(() => _rememberMe = !_rememberMe);
-                        if (!_rememberMe) _saveEmail('');
-                      },
-                      child: Row(
-                        children: [
-                          AnimatedContainer(
-                            duration: const Duration(milliseconds: 160),
-                            width: 17,
-                            height: 17,
-                            decoration: BoxDecoration(
-                              color: _rememberMe ? _rust : Colors.white,
-                              borderRadius: BorderRadius.circular(5),
-                              border: Border.all(
-                                color: _rememberMe
-                                    ? _rust
-                                    : const Color(0xFFC7CDD6),
-                                width: 1.5,
-                              ),
-                            ),
-                            child: _rememberMe
-                                ? const Icon(
-                                    Icons.check,
-                                    size: 11,
-                                    color: Colors.white,
-                                  )
-                                : null,
-                          ),
-                          const SizedBox(width: 7),
-                          Text(
-                            'Remember me',
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 12,
-                              color: _slateMid,
-                            ),
+          Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
+              child: FadeTransition(
+                opacity: _fadeIn,
+                child: SlideTransition(
+                  position: _slideUp,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1040),
+                    child: Container(
+                      clipBehavior: Clip.antiAlias,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(28),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withAlpha(35),
+                            blurRadius: 60,
+                            offset: const Offset(0, 24),
                           ),
                         ],
                       ),
-                    ),
-                  ),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: _openForgotPassword,
-                    style: TextButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    child: Text(
-                      'Forgot password?',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 12,
-                        color: _rust,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-
-              AnimatedOpacity(
-                opacity: _isLoading ? 0.7 : 1.0,
-                duration: const Duration(milliseconds: 200),
-                child: Container(
-                  width: double.infinity,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [_accentDeep, _accent],
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: _accent.withAlpha(80),
-                        blurRadius: 16,
-                        offset: const Offset(0, 7),
-                      ),
-                    ],
-                  ),
-                  child: TextButton(
-                    onPressed: _isLoading ? null : _login,
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      disabledForegroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: _isLoading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.5,
-                              color: Colors.white,
+                      child: LayoutBuilder(
+                        builder: (_, c) {
+                          final wide = c.maxWidth > 760;
+                          if (!wide) return _buildFormSide(compact: true);
+                          return IntrinsicHeight(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Expanded(
+                                  flex: 5,
+                                  child: _buildFormSide(compact: false),
+                                ),
+                                Expanded(flex: 5, child: _buildShowcaseSide()),
+                              ],
                             ),
-                          )
-                        : Text(
-                            'Sign In to Dashboard',
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.1,
-                            ),
-                          ),
+                          );
+                        },
+                      ),
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(height: 18),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-              Row(
-                children: [
-                  Expanded(
-                    child: Divider(
-                      color: const Color(0xFFF1EAE3),
-                      thickness: 1,
-                    ),
+  // A soft radial glow that fades to nothing at the edge — reads as subtle
+  // depth rather than a flat, hard-edged "sticker" circle.
+  Widget _softGlow(double size, Color color) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(colors: [color, color.withAlpha(0)]),
+      ),
+    );
+  }
+
+  // ── Left: the sign-in form ───────────────────────────────────────────────
+
+  Widget _buildFormSide({required bool compact}) {
+    return Padding(
+      padding: EdgeInsets.all(compact ? 32 : 48),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: _fieldBorder),
+                ),
+                padding: const EdgeInsets.all(4),
+                child: Image.asset(
+                  'assets/images/logo.png',
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
+                  errorBuilder: (_, __, ___) => const Icon(
+                    Icons.shield_outlined,
+                    size: 18,
+                    color: _primary,
                   ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Text(
-                      'or',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 11.5,
-                        color: _slateSoft,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Divider(
-                      color: const Color(0xFFF1EAE3),
-                      thickness: 1,
-                    ),
-                  ),
-                ],
+                ),
               ),
-              const SizedBox(height: 16),
-
-              Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      "Don't have an admin account?",
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 12,
-                        color: _slateSoft,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Contact System Administrator',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 12,
-                        color: _slateDark,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextButton.icon(
-                      onPressed: () => Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(builder: (_) => const LandingPage()),
-                      ),
-                      icon: const Icon(
-                        Icons.arrow_back_ios_new_rounded,
-                        size: 10.5,
-                        color: _rust,
-                      ),
-                      label: Text(
-                        'Back to Portal Selection',
-                        style: GoogleFonts.beVietnamPro(
-                          color: _rust,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 12,
-                        ),
-                      ),
-                      style: TextButton.styleFrom(
-                        padding: EdgeInsets.zero,
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                    ),
-                  ],
+              const SizedBox(width: 10),
+              Text(
+                'UPRISE',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w800,
+                  color: _slateDark,
+                  letterSpacing: 1.4,
                 ),
               ),
             ],
           ),
+          SizedBox(height: compact ? 36 : 56),
+          Text(
+            'Welcome back',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 26,
+              fontWeight: FontWeight.w800,
+              color: _slateDark,
+              letterSpacing: -0.4,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Sign in to access the admin dashboard.',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 13,
+              color: _slateMid,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 28),
+
+          Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildField(
+                  controller: _emailController,
+                  label: 'Email Address *',
+                  hint: 'admin@uprise.org',
+                  icon: Icons.mail_outline_rounded,
+                  type: TextInputType.emailAddress,
+                  validator: (v) {
+                    final value = v?.trim() ?? '';
+                    if (value.isEmpty) return 'Please enter your email address';
+                    if (!RegExp(
+                      r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                    ).hasMatch(value)) {
+                      return 'Please enter a valid email address';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 13),
+
+                _buildField(
+                  controller: _passwordController,
+                  label: 'Password *',
+                  hint: '••••••••',
+                  icon: Icons.lock_outline_rounded,
+                  obscure: _obscurePassword,
+                  suffix: IconButton(
+                    icon: Icon(
+                      _obscurePassword
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                      color: _slateSoft,
+                      size: 18,
+                    ),
+                    onPressed: () =>
+                        setState(() => _obscurePassword = !_obscurePassword),
+                  ),
+                  onSubmit: (_) => _login(),
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'Please enter your password'
+                      : null,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 13),
+
+          Row(
+            children: [
+              MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() => _rememberMe = !_rememberMe);
+                    if (!_rememberMe) _saveEmail('');
+                  },
+                  child: Row(
+                    children: [
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 160),
+                        width: 17,
+                        height: 17,
+                        decoration: BoxDecoration(
+                          color: _rememberMe ? _blue : Colors.white,
+                          borderRadius: BorderRadius.circular(5),
+                          border: Border.all(
+                            color: _rememberMe
+                                ? _blue
+                                : const Color(0xFFC7CDD6),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: _rememberMe
+                            ? const Icon(
+                                Icons.check,
+                                size: 11,
+                                color: Colors.white,
+                              )
+                            : null,
+                      ),
+                      const SizedBox(width: 7),
+                      Text(
+                        'Remember me',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 12,
+                          color: _slateMid,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const Spacer(),
+              TextButton(
+                onPressed: _openForgotPassword,
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(
+                  'Forgot password?',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 12,
+                    color: _blue,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          AnimatedOpacity(
+            opacity: _isLoading ? 0.7 : 1.0,
+            duration: const Duration(milliseconds: 200),
+            child: Container(
+              width: double.infinity,
+              height: 46,
+              decoration: BoxDecoration(
+                // Flat, deep gray instead of a bright blue gradient — a
+                // more restrained, enterprise-tool primary action rather
+                // than a loud consumer-SaaS button.
+                color: _primary,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: _primary.withAlpha(70),
+                    blurRadius: 16,
+                    offset: const Offset(0, 7),
+                  ),
+                ],
+              ),
+              child: TextButton(
+                onPressed: _isLoading ? null : _login,
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  disabledForegroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: _isLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Text(
+                        'Sign In to Dashboard',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.1,
+                        ),
+                      ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+
+          Row(
+            children: [
+              Expanded(
+                child: Divider(color: const Color(0xFFE2E8F0), thickness: 1),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Text(
+                  'or',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 11.5,
+                    color: _slateSoft,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Divider(color: const Color(0xFFE2E8F0), thickness: 1),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  "Don't have an admin account?",
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 12,
+                    color: _slateSoft,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Contact System Administrator',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 12,
+                    color: _slateDark,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextButton.icon(
+                  onPressed: () => Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (_) => const LandingPage()),
+                  ),
+                  icon: const Icon(
+                    Icons.arrow_back_ios_new_rounded,
+                    size: 10.5,
+                    color: _blue,
+                  ),
+                  label: Text(
+                    'Back to Portal Selection',
+                    style: GoogleFonts.beVietnamPro(
+                      color: _blue,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+              ], // Center's inner Column children
+            ), // Center's inner Column
+          ), // Center
+        ], // form-side content column children
+      ), // form-side content column
+    ); // Padding
+  }
+
+  // ── Right: illustrated showcase panel ───────────────────────────────────
+
+  Widget _buildShowcaseSide() {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [_primary, _navy],
         ),
+      ),
+      child: Stack(
+        clipBehavior: Clip.hardEdge,
+        children: [
+          // Two restrained glows — no hard shapes, no scattered icons.
+          // Understated depth instead of a busy illustration.
+          Positioned(
+            top: -60,
+            right: -60,
+            child: _softGlow(220, _orange.withAlpha(50)),
+          ),
+          Positioned(
+            bottom: -80,
+            left: -80,
+            child: _softGlow(240, Colors.white.withAlpha(12)),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(40),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildMockDashboard(),
+                const SizedBox(height: 28),
+                Text(
+                  'CICT Organization Management',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Oversee student organizations, event approvals,\nand academic reports for the College of\nInformation and Communications Technology.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 12.5,
+                    color: Colors.white.withAlpha(200),
+                    height: 1.6,
+                  ),
+                ),
+                const SizedBox(height: 22),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _pageDot(active: true),
+                    const SizedBox(width: 6),
+                    _pageDot(active: false),
+                    const SizedBox(width: 6),
+                    _pageDot(active: false),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _pageDot({required bool active}) {
+    return Container(
+      width: active ? 18 : 6,
+      height: 6,
+      decoration: BoxDecoration(
+        color: active ? _orange : Colors.white.withAlpha(60),
+        borderRadius: BorderRadius.circular(3),
+      ),
+    );
+  }
+
+  // A small stylized "dashboard preview" mockup built from plain widgets
+  // (no real screenshot asset exists) — echoes the reference's floating
+  // app-screenshot card using our own stat-card/table conventions.
+  Widget _buildMockDashboard() {
+    return Container(
+      width: 260,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(90),
+            blurRadius: 30,
+            offset: const Offset(0, 16),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              _mockDot(const Color(0xFFEF4444)),
+              const SizedBox(width: 4),
+              _mockDot(const Color(0xFFF59E0B)),
+              const SizedBox(width: 4),
+              _mockDot(const Color(0xFF10B981)),
+              const Spacer(),
+              Text(
+                'Dashboard',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 9,
+                  color: _slateSoft,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(child: _mockStat(_primary)),
+              const SizedBox(width: 6),
+              Expanded(child: _mockStat(_orange)),
+              const SizedBox(width: 6),
+              Expanded(child: _mockStat(_blue)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          for (final w in [1.0, 0.8, 0.9])
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                children: [
+                  Container(
+                    width: 20,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      color: _fieldFill,
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FractionallySizedBox(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: w,
+                      child: Container(
+                        height: 7,
+                        decoration: BoxDecoration(
+                          color: _fieldFill,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _mockDot(Color c) {
+    return Container(
+      width: 6,
+      height: 6,
+      decoration: BoxDecoration(color: c, shape: BoxShape.circle),
+    );
+  }
+
+  Widget _mockStat(Color c) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
+      decoration: BoxDecoration(
+        color: c.withAlpha(20),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 16,
+            height: 4,
+            decoration: BoxDecoration(
+              color: c,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Container(
+            width: 24,
+            height: 6,
+            decoration: BoxDecoration(
+              color: c.withAlpha(150),
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -809,10 +816,10 @@ class _AdminLoginState extends State<AdminLogin>
         labelStyle: GoogleFonts.beVietnamPro(color: _slateSoft, fontSize: 12.5),
         hintText: hint,
         hintStyle: GoogleFonts.beVietnamPro(
-          color: const Color(0xFFD8D2C8),
+          color: const Color(0xFFCBD5E1),
           fontSize: 12.5,
         ),
-        prefixIcon: Icon(icon, color: _rust, size: 18),
+        prefixIcon: Icon(icon, color: _primary, size: 18),
         suffixIcon: suffix,
         filled: true,
         fillColor: _fieldFill,
@@ -826,7 +833,7 @@ class _AdminLoginState extends State<AdminLogin>
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: _rust, width: 1.6),
+          borderSide: const BorderSide(color: _blue, width: 1.6),
         ),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 15,

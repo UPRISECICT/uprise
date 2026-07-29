@@ -5,8 +5,9 @@ import 'package:uprise/widgets/admin_export_button.dart';
 import 'package:intl/intl.dart';
 import 'export_util.dart';
 import 'export_pdf.dart';
-import '../../../theme/app_theme.dart';
+import '../../../theme/admin_theme.dart';
 import '../../../widgets/anchored_dropdown.dart';
+import '../../../widgets/admin_stat_cards_row.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens (mirrors student_accounts.dart)
@@ -325,12 +326,12 @@ class _ActivityLogsState extends State<ActivityLogs> {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: UpriseColors.primaryDark.withAlpha(26),
+              color: AdminColors.primaryDark.withAlpha(26),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
               Icons.history_rounded,
-              color: UpriseColors.primaryDark,
+              color: AdminColors.primaryDark,
               size: 22,
             ),
           ),
@@ -346,7 +347,7 @@ class _ActivityLogsState extends State<ActivityLogs> {
                       style: GoogleFonts.beVietnamPro(
                         fontSize: 22,
                         fontWeight: FontWeight.w700,
-                        color: UpriseColors.accent,
+                        color: AdminColors.accent,
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -438,7 +439,7 @@ class _ActivityLogsState extends State<ActivityLogs> {
             label: 'Logs (Last 24 h)',
             value: '$total24h',
             icon: Icons.receipt_long_rounded,
-            color: UpriseColors.primaryDark,
+            color: AdminColors.primaryDark,
             subtitle: 'Recent activity',
             onTap: () => setState(() {
               _dateRange = 'Today';
@@ -482,24 +483,7 @@ class _ActivityLogsState extends State<ActivityLogs> {
 
         return Padding(
           padding: const EdgeInsets.fromLTRB(28, 20, 28, 0),
-          child: isMobile
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (var card in cards) ...[
-                      card,
-                      const SizedBox(height: 14),
-                    ],
-                  ],
-                )
-              : Row(
-                  children: [
-                    for (var card in cards) ...[
-                      Expanded(child: card),
-                      const SizedBox(width: 14),
-                    ],
-                  ],
-                ),
+          child: StatCardsRow(cards: cards, isMobile: isMobile),
         );
       },
     );
@@ -539,7 +523,7 @@ class _ActivityLogsState extends State<ActivityLogs> {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide(color: UpriseColors.primaryDark, width: 1.5),
+            borderSide: BorderSide(color: AdminColors.primaryDark, width: 1.5),
           ),
         ),
         onChanged: (_) => setState(() => _currentPage = 1),
@@ -797,7 +781,7 @@ class _ActivityLogsState extends State<ActivityLogs> {
                       style: GoogleFonts.beVietnamPro(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: UpriseColors.primaryDark,
+                        color: AdminColors.primaryDark,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -846,7 +830,7 @@ class _ActivityLogsState extends State<ActivityLogs> {
                     vertical: 3,
                   ),
                   decoration: BoxDecoration(
-                    color: UpriseColors.primaryDark.withAlpha(18),
+                    color: AdminColors.primaryDark.withAlpha(18),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
@@ -854,7 +838,7 @@ class _ActivityLogsState extends State<ActivityLogs> {
                     style: GoogleFonts.beVietnamPro(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
-                      color: UpriseColors.primaryDark,
+                      color: AdminColors.primaryDark,
                     ),
                     maxLines: 1,
                     softWrap: false,
@@ -1049,8 +1033,8 @@ class _ActivityLogsState extends State<ActivityLogs> {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      UpriseColors.primaryDark,
-                      UpriseColors.primaryDark.withAlpha(225),
+                      AdminColors.primaryDark,
+                      AdminColors.primaryDark.withAlpha(225),
                     ],
                   ),
                   borderRadius: const BorderRadius.vertical(
@@ -1225,11 +1209,7 @@ class _ActivityLogsState extends State<ActivityLogs> {
       children: [
         Row(
           children: [
-            Icon(
-              icon,
-              size: 13,
-              color: UpriseColors.primaryDark.withAlpha(150),
-            ),
+            Icon(icon, size: 13, color: AdminColors.primaryDark.withAlpha(150)),
             const SizedBox(width: 5),
             Text(
               label,
@@ -1326,7 +1306,7 @@ class _StatCard extends StatelessWidget {
                 Text(
                   value,
                   style: GoogleFonts.beVietnamPro(
-                    fontSize: 26,
+                    fontSize: 28,
                     fontWeight: FontWeight.w700,
                     color: const Color(0xFF1A202C),
                   ),
@@ -1522,7 +1502,7 @@ class _ExportLogsButton extends StatelessWidget {
       messenger.showSnackBar(
         SnackBar(
           content: Text('Export failed: $e'),
-          backgroundColor: UpriseColors.error,
+          backgroundColor: AdminColors.error,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
@@ -1548,7 +1528,7 @@ class _UserAvatar extends StatelessWidget {
       width: 32,
       height: 32,
       decoration: BoxDecoration(
-        color: UpriseColors.primaryDark.withAlpha(26),
+        color: AdminColors.primaryDark.withAlpha(26),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Center(
@@ -1557,7 +1537,7 @@ class _UserAvatar extends StatelessWidget {
           style: GoogleFonts.beVietnamPro(
             fontSize: 12,
             fontWeight: FontWeight.w700,
-            color: UpriseColors.primaryDark,
+            color: AdminColors.primaryDark,
           ),
         ),
       ),
@@ -1617,7 +1597,7 @@ class _PageNumButton extends StatelessWidget {
           height: 28,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: isActive ? UpriseColors.primaryDark : Colors.transparent,
+            color: isActive ? AdminColors.primaryDark : Colors.transparent,
             borderRadius: BorderRadius.circular(6),
           ),
           child: Text(

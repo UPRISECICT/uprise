@@ -16,9 +16,10 @@ import 'package:image_picker/image_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:uprise/widgets/admin_export_button.dart';
 import 'package:intl/intl.dart';
-import '../../../theme/app_theme.dart';
+import '../../../theme/admin_theme.dart';
 import '../../../utils/file_validation.dart';
 import '../../../widgets/anchored_dropdown.dart';
+import '../../../widgets/admin_stat_cards_row.dart';
 
 // ============ GLOBAL CONTEXT FOR SNACKBAR ============
 final GlobalKey<ScaffoldMessengerState> globalMessengerKey =
@@ -186,7 +187,7 @@ class _DS {
   }) {
     final labelTextStyle = GoogleFonts.beVietnamPro(
       fontSize: 13,
-      color: UpriseColors.darkGray,
+      color: AdminColors.darkGray,
     );
     return InputDecoration(
       label: required
@@ -197,7 +198,7 @@ class _DS {
                 children: [
                   TextSpan(
                     text: ' *',
-                    style: labelTextStyle.copyWith(color: UpriseColors.error),
+                    style: labelTextStyle.copyWith(color: AdminColors.error),
                   ),
                 ],
               ),
@@ -206,19 +207,19 @@ class _DS {
       labelText: required ? null : label,
       hintText: hint,
       prefixIcon: icon != null
-          ? Icon(icon, size: 18, color: UpriseColors.darkGray)
+          ? Icon(icon, size: 18, color: AdminColors.darkGray)
           : null,
       labelStyle: labelTextStyle,
       hintStyle: GoogleFonts.beVietnamPro(
         fontSize: 13,
-        color: UpriseColors.mediumGray,
+        color: AdminColors.mediumGray,
       ),
       filled: true,
       fillColor: const Color(0xFFF8F9FB),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(radiusSm),
-        borderSide: BorderSide(color: UpriseColors.mediumGray, width: 1),
+        borderSide: BorderSide(color: AdminColors.mediumGray, width: 1),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(radiusSm),
@@ -226,11 +227,11 @@ class _DS {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(radiusSm),
-        borderSide: BorderSide(color: UpriseColors.primaryDark, width: 1.5),
+        borderSide: BorderSide(color: AdminColors.primaryDark, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(radiusSm),
-        borderSide: BorderSide(color: UpriseColors.error, width: 1),
+        borderSide: BorderSide(color: AdminColors.error, width: 1),
       ),
     );
   }
@@ -243,7 +244,7 @@ Widget _sectionLabel(String text, {IconData? icon}) {
     child: Row(
       children: [
         if (icon != null) ...[
-          Icon(icon, size: 16, color: UpriseColors.primaryDark),
+          Icon(icon, size: 16, color: AdminColors.primaryDark),
           const SizedBox(width: 8),
         ],
         Text(
@@ -251,12 +252,12 @@ Widget _sectionLabel(String text, {IconData? icon}) {
           style: GoogleFonts.beVietnamPro(
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: UpriseColors.primaryDark,
+            color: AdminColors.primaryDark,
             letterSpacing: 0.3,
           ),
         ),
         const SizedBox(width: 12),
-        Expanded(child: Divider(color: UpriseColors.mediumGray, thickness: 1)),
+        Expanded(child: Divider(color: AdminColors.mediumGray, thickness: 1)),
       ],
     ),
   );
@@ -339,7 +340,7 @@ Widget _typeBadge(String type) {
   return Container(
     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
     decoration: BoxDecoration(
-      color: UpriseColors.primaryDark.withAlpha(18),
+      color: AdminColors.primaryDark.withAlpha(18),
       borderRadius: BorderRadius.circular(6),
     ),
     child: Text(
@@ -350,7 +351,7 @@ Widget _typeBadge(String type) {
       style: GoogleFonts.beVietnamPro(
         fontSize: 12,
         fontWeight: FontWeight.w600,
-        color: UpriseColors.primaryDark,
+        color: AdminColors.primaryDark,
       ),
     ),
   );
@@ -459,7 +460,7 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
             label: 'Total Organizations',
             value: '$total',
             icon: Icons.business_center_rounded,
-            color: UpriseColors.primaryDark,
+            color: AdminColors.primaryDark,
             onTap: () => setState(() {
               _statusFilter = 'All';
               _currentPage = 1;
@@ -499,24 +500,7 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
 
         return Padding(
           padding: const EdgeInsets.fromLTRB(28, 24, 28, 0),
-          child: isMobile
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (var card in cards) ...[
-                      card,
-                      const SizedBox(height: 14),
-                    ],
-                  ],
-                )
-              : Row(
-                  children: [
-                    for (var card in cards) ...[
-                      Expanded(child: card),
-                      const SizedBox(width: 14),
-                    ],
-                  ],
-                ),
+          child: StatCardsRow(cards: cards, isMobile: isMobile),
         );
       },
     );
@@ -555,7 +539,7 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide(color: UpriseColors.primaryDark, width: 1.5),
+            borderSide: BorderSide(color: AdminColors.primaryDark, width: 1.5),
           ),
         ),
         onChanged: (_) => setState(() => _currentPage = 1),
@@ -802,7 +786,7 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
             child: Icon(
               Icons.corporate_fare_rounded,
               size: 40,
-              color: UpriseColors.mediumGray,
+              color: AdminColors.mediumGray,
             ),
           ),
           const SizedBox(height: 16),
@@ -819,7 +803,7 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
             'Try adjusting your filters or create a new organization.',
             style: GoogleFonts.beVietnamPro(
               fontSize: 13,
-              color: UpriseColors.darkGray,
+              color: AdminColors.darkGray,
             ),
           ),
         ],
@@ -935,7 +919,7 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
                               org.shortName,
                               style: GoogleFonts.beVietnamPro(
                                 fontSize: 11,
-                                color: UpriseColors.darkGray,
+                                color: AdminColors.darkGray,
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -968,7 +952,7 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
                         adviserEmailSummary,
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 11,
-                          color: UpriseColors.darkGray,
+                          color: AdminColors.darkGray,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -998,7 +982,7 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
                   org.createdAt != null ? _formatDate(org.createdAt!) : '—',
                   style: GoogleFonts.beVietnamPro(
                     fontSize: 12,
-                    color: UpriseColors.darkGray,
+                    color: AdminColors.darkGray,
                   ),
                 ),
               ),
@@ -1022,7 +1006,7 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
                       icon: Icons.edit_outlined,
                       tooltip: 'Edit',
                       onTap: () => _showEditOrganizationDialog(org),
-                      color: UpriseColors.primaryDark,
+                      color: AdminColors.primaryDark,
                     ),
                     const SizedBox(width: 6),
                     _ActionIconButton(
@@ -1092,7 +1076,7 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
                           org.shortName,
                           style: GoogleFonts.beVietnamPro(
                             fontSize: 12,
-                            color: UpriseColors.darkGray,
+                            color: AdminColors.darkGray,
                           ),
                         ),
                       const SizedBox(height: 8),
@@ -1132,7 +1116,7 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
                 adviserEmailSummary,
                 style: GoogleFonts.beVietnamPro(
                   fontSize: 12,
-                  color: UpriseColors.darkGray,
+                  color: AdminColors.darkGray,
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
@@ -1148,7 +1132,7 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
                         : 'Created date unavailable',
                     style: GoogleFonts.beVietnamPro(
                       fontSize: 12,
-                      color: UpriseColors.darkGray,
+                      color: AdminColors.darkGray,
                     ),
                   ),
                 ),
@@ -1165,7 +1149,7 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
                       icon: Icons.edit_outlined,
                       tooltip: 'Edit',
                       onTap: () => _showEditOrganizationDialog(org),
-                      color: UpriseColors.primaryDark,
+                      color: AdminColors.primaryDark,
                     ),
                     const SizedBox(width: 6),
                     _ActionIconButton(
@@ -1211,7 +1195,7 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
             'Showing ${total == 0 ? 0 : start + 1}–$end of $total organizations',
             style: GoogleFonts.beVietnamPro(
               fontSize: 12,
-              color: UpriseColors.darkGray,
+              color: AdminColors.darkGray,
             ),
           ),
           Row(
@@ -1235,7 +1219,7 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
                   child: Text(
                     '…',
                     style: GoogleFonts.beVietnamPro(
-                      color: UpriseColors.darkGray,
+                      color: AdminColors.darkGray,
                       fontSize: 12,
                     ),
                   ),
@@ -1311,7 +1295,7 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
         confirmLabel: isArchived ? 'Restore' : 'Archive',
         confirmColor: isArchived
             ? const Color(0xFF059669)
-            : UpriseColors.primaryDark,
+            : AdminColors.primaryDark,
         icon: isArchived ? Icons.restore_rounded : Icons.archive_rounded,
         onConfirm: () async {
           await FirebaseFirestore.instance
@@ -1337,7 +1321,7 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
               ),
               backgroundColor: isArchived
                   ? const Color(0xFF059669)
-                  : UpriseColors.primaryDark,
+                  : AdminColors.primaryDark,
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -1422,7 +1406,7 @@ class _StatCard extends StatelessWidget {
             cursor: SystemMouseCursors.click,
             child: GestureDetector(onTap: onTap, child: card),
           );
-    return Expanded(child: wrapped);
+    return wrapped;
   }
 }
 
@@ -1619,7 +1603,7 @@ class _ExportButton extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Export failed: $e'),
-          backgroundColor: UpriseColors.error,
+          backgroundColor: AdminColors.error,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
@@ -1636,7 +1620,7 @@ class _ExportButton extends StatelessWidget {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: const Text('No data to export.'),
-              backgroundColor: UpriseColors.error,
+              backgroundColor: AdminColors.error,
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -1681,7 +1665,7 @@ class _PrimaryButton extends StatelessWidget {
           ),
         ),
         style: ElevatedButton.styleFrom(
-          backgroundColor: UpriseColors.primaryDark,
+          backgroundColor: AdminColors.primaryDark,
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 0),
           minimumSize: Size.zero,
@@ -1784,7 +1768,7 @@ class _OrgAvatar extends StatelessWidget {
         style: GoogleFonts.beVietnamPro(
           fontSize: 13,
           fontWeight: FontWeight.w700,
-          color: UpriseColors.primaryDark,
+          color: AdminColors.primaryDark,
         ),
       ),
     );
@@ -1878,7 +1862,7 @@ class _PageNumButton extends StatelessWidget {
           height: 28,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: isActive ? UpriseColors.primaryDark : Colors.transparent,
+            color: isActive ? AdminColors.primaryDark : Colors.transparent,
             borderRadius: BorderRadius.circular(6),
           ),
           child: Text(
@@ -2049,8 +2033,8 @@ class _ViewOrganizationDialog extends StatelessWidget {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    UpriseColors.primaryDark,
-                    UpriseColors.primaryDark.withAlpha(225),
+                    AdminColors.primaryDark,
+                    AdminColors.primaryDark.withAlpha(225),
                   ],
                 ),
                 borderRadius: const BorderRadius.vertical(
@@ -2151,7 +2135,7 @@ class _ViewOrganizationDialog extends StatelessWidget {
                                   style: GoogleFonts.beVietnamPro(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w600,
-                                    color: UpriseColors.primaryDark,
+                                    color: AdminColors.primaryDark,
                                   ),
                                 ),
                               ],
@@ -2193,7 +2177,7 @@ class _ViewOrganizationDialog extends StatelessWidget {
                           : 'No description added yet.',
                       style: GoogleFonts.beVietnamPro(
                         fontSize: 13,
-                        color: UpriseColors.darkGray,
+                        color: AdminColors.darkGray,
                         height: 1.6,
                       ),
                     ),
@@ -2218,7 +2202,7 @@ class _ViewOrganizationDialog extends StatelessWidget {
                         'No adviser information available.',
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 13,
-                          color: UpriseColors.darkGray,
+                          color: AdminColors.darkGray,
                         ),
                       )
                     else
@@ -2268,7 +2252,7 @@ class _ViewOrganizationDialog extends StatelessWidget {
                                         adviser.title,
                                         style: GoogleFonts.beVietnamPro(
                                           fontSize: 12,
-                                          color: UpriseColors.darkGray,
+                                          color: AdminColors.darkGray,
                                         ),
                                       ),
                                       const SizedBox(height: 8),
@@ -2350,7 +2334,7 @@ class _ViewOrganizationDialog extends StatelessWidget {
                       ),
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: UpriseColors.primaryDark,
+                      backgroundColor: AdminColors.primaryDark,
                       foregroundColor: Colors.white,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
@@ -2408,7 +2392,7 @@ class _ViewOrganizationDialog extends StatelessWidget {
         style: GoogleFonts.beVietnamPro(
           fontSize: 32,
           fontWeight: FontWeight.w700,
-          color: UpriseColors.primaryDark,
+          color: AdminColors.primaryDark,
         ),
       ),
     );
@@ -2419,7 +2403,7 @@ class _ViewOrganizationDialog extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 6),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: UpriseColors.primaryDark.withAlpha(150)),
+          Icon(icon, size: 16, color: AdminColors.primaryDark.withAlpha(150)),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -2482,7 +2466,7 @@ Widget _infoPill(String label, String value) {
       label.isNotEmpty ? '$label: $value' : value,
       style: GoogleFonts.beVietnamPro(
         fontSize: 12,
-        color: UpriseColors.darkGray,
+        color: AdminColors.darkGray,
       ),
     ),
   );
@@ -2505,13 +2489,63 @@ Widget _readOnlyDetail(String label, String value) {
           value.isNotEmpty ? value : '—',
           style: GoogleFonts.beVietnamPro(
             fontSize: 12,
-            color: UpriseColors.darkGray,
+            color: AdminColors.darkGray,
             height: 1.5,
           ),
         ),
       ),
     ],
   );
+}
+
+// ============ SHARED FORM VALIDATORS ============
+// Previously these fields only checked for non-empty, so garbage input like
+// "asdasd" saved straight to Firestore as an org/adviser name or email.
+final RegExp _emailFormatPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+final RegExp _personNamePattern = RegExp(
+  r"^[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'.-]*(?: [A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'.-]*)+$",
+);
+final RegExp _orgShortNamePattern = RegExp(r'^[A-Za-z0-9]{2,12}$');
+
+String? _validateEmailFormat(String? v, {required bool required}) {
+  final value = (v ?? '').trim();
+  if (value.isEmpty) return required ? 'Required' : null;
+  if (!_emailFormatPattern.hasMatch(value)) return 'Enter a valid email';
+  return null;
+}
+
+String? _validatePersonName(String? v, {required bool required}) {
+  final value = (v ?? '').trim();
+  if (value.isEmpty) return required ? 'Required' : null;
+  if (!_personNamePattern.hasMatch(value)) {
+    return 'Enter a full name (first and last)';
+  }
+  return null;
+}
+
+String? _validateOrgName(String? v) {
+  final value = (v ?? '').trim();
+  if (value.isEmpty) return 'Required';
+  if (value.length < 3 || !RegExp(r'[A-Za-z]').hasMatch(value)) {
+    return 'Enter a valid organization name';
+  }
+  return null;
+}
+
+String? _validateOrgShortName(String? v) {
+  final value = (v ?? '').trim();
+  if (value.isEmpty) return 'Required';
+  if (!_orgShortNamePattern.hasMatch(value)) {
+    return '2-12 letters/numbers, no spaces';
+  }
+  return null;
+}
+
+String? _validateOrgDescription(String? v) {
+  final value = (v ?? '').trim();
+  if (value.isEmpty) return 'Required';
+  if (value.length < 10) return 'Please provide a bit more detail';
+  return null;
 }
 
 // ============ ADVISER FORM WIDGET ============
@@ -2623,7 +2657,7 @@ class _AdviserFormState extends State<_AdviserForm> {
                 style: GoogleFonts.beVietnamPro(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: UpriseColors.primaryDark,
+                  color: AdminColors.primaryDark,
                 ),
               ),
               if (widget.canRemove)
@@ -2635,7 +2669,7 @@ class _AdviserFormState extends State<_AdviserForm> {
                     child: Icon(
                       Icons.remove_circle_outline_rounded,
                       size: 18,
-                      color: UpriseColors.error,
+                      color: AdminColors.error,
                     ),
                   ),
                 ),
@@ -2654,9 +2688,7 @@ class _AdviserFormState extends State<_AdviserForm> {
             onChanged: (v) =>
                 widget.onChanged(widget.adviser.copyWith(name: v)),
             validator: (v) =>
-                widget.index == 0 && (v == null || v.trim().isEmpty)
-                ? 'Required'
-                : null,
+                _validatePersonName(v, required: widget.index == 0),
           ),
           const SizedBox(height: 10),
           Row(
@@ -2672,15 +2704,15 @@ class _AdviserFormState extends State<_AdviserForm> {
                     prefixIcon: Icon(
                       Icons.work_outline,
                       size: 18,
-                      color: UpriseColors.darkGray,
+                      color: AdminColors.darkGray,
                     ),
                     labelStyle: GoogleFonts.beVietnamPro(
                       fontSize: 13,
-                      color: UpriseColors.darkGray,
+                      color: AdminColors.darkGray,
                     ),
                     hintStyle: GoogleFonts.beVietnamPro(
                       fontSize: 13,
-                      color: UpriseColors.mediumGray,
+                      color: AdminColors.mediumGray,
                     ),
                     filled: true,
                     fillColor: const Color(0xFFF8F9FB),
@@ -2691,7 +2723,7 @@ class _AdviserFormState extends State<_AdviserForm> {
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(_DS.radiusSm),
                       borderSide: BorderSide(
-                        color: UpriseColors.mediumGray,
+                        color: AdminColors.mediumGray,
                         width: 1,
                       ),
                     ),
@@ -2705,7 +2737,7 @@ class _AdviserFormState extends State<_AdviserForm> {
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(_DS.radiusSm),
                       borderSide: BorderSide(
-                        color: UpriseColors.primaryDark,
+                        color: AdminColors.primaryDark,
                         width: 1.5,
                       ),
                     ),
@@ -2724,8 +2756,8 @@ class _AdviserFormState extends State<_AdviserForm> {
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 13,
                           color: isStaleInvalid
-                              ? UpriseColors.error
-                              : UpriseColors.darkGray,
+                              ? AdminColors.error
+                              : AdminColors.darkGray,
                           fontStyle: isStaleInvalid
                               ? FontStyle.italic
                               : FontStyle.normal,
@@ -2768,18 +2800,10 @@ class _AdviserFormState extends State<_AdviserForm> {
                         keyboardType: TextInputType.emailAddress,
                         onChanged: (v) =>
                             widget.onChanged(widget.adviser.copyWith(email: v)),
-                        validator: (v) {
-                          if (widget.index == 0) {
-                            if (v == null || v.trim().isEmpty)
-                              return 'Required';
-                            if (!v.contains('@') || !v.contains('.'))
-                              return 'Enter a valid email';
-                          } else if (v != null && v.trim().isNotEmpty) {
-                            if (!v.contains('@') || !v.contains('.'))
-                              return 'Enter a valid email';
-                          }
-                          return null;
-                        },
+                        validator: (v) => _validateEmailFormat(
+                          v,
+                          required: widget.index == 0,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -2818,17 +2842,8 @@ class _AdviserFormState extends State<_AdviserForm> {
                     keyboardType: TextInputType.emailAddress,
                     onChanged: (v) =>
                         widget.onChanged(widget.adviser.copyWith(email: v)),
-                    validator: (v) {
-                      if (widget.index == 0) {
-                        if (v == null || v.trim().isEmpty) return 'Required';
-                        if (!v.contains('@') || !v.contains('.'))
-                          return 'Enter a valid email';
-                      } else if (v != null && v.trim().isNotEmpty) {
-                        if (!v.contains('@') || !v.contains('.'))
-                          return 'Enter a valid email';
-                      }
-                      return null;
-                    },
+                    validator: (v) =>
+                        _validateEmailFormat(v, required: widget.index == 0),
                   ),
                   const SizedBox(height: 10),
                   TextFormField(
@@ -2932,8 +2947,8 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            UpriseColors.primaryDark,
-            UpriseColors.primaryDark.withAlpha(225),
+            AdminColors.primaryDark,
+            AdminColors.primaryDark.withAlpha(225),
           ],
         ),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
@@ -2995,7 +3010,7 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
                   height: 26,
                   decoration: BoxDecoration(
                     color: isActive || isDone
-                        ? UpriseColors.primaryDark
+                        ? AdminColors.primaryDark
                         : const Color(0xFFE2E6EA),
                     borderRadius: BorderRadius.circular(13),
                   ),
@@ -3025,7 +3040,7 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
                     fontSize: 12,
                     fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
                     color: isActive
-                        ? UpriseColors.primaryDark
+                        ? AdminColors.primaryDark
                         : const Color(0xFF9AA5B4),
                   ),
                 ),
@@ -3034,7 +3049,7 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
                   Expanded(
                     child: Divider(
                       color: isDone
-                          ? UpriseColors.primaryDark
+                          ? AdminColors.primaryDark
                           : const Color(0xFFE2E6EA),
                       thickness: 1.5,
                     ),
@@ -3081,14 +3096,14 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
                           Icon(
                             Icons.add_photo_alternate_rounded,
                             size: 32,
-                            color: UpriseColors.darkGray,
+                            color: AdminColors.darkGray,
                           ),
                           const SizedBox(height: 6),
                           Text(
                             'Upload Logo',
                             style: GoogleFonts.beVietnamPro(
                               fontSize: 11,
-                              color: UpriseColors.darkGray,
+                              color: AdminColors.darkGray,
                             ),
                           ),
                         ],
@@ -3120,7 +3135,7 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
               required: true,
             ),
             style: GoogleFonts.beVietnamPro(fontSize: 13),
-            validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+            validator: _validateOrgName,
           ),
           Row(
             children: [
@@ -3133,8 +3148,7 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
                     required: true,
                   ),
                   style: GoogleFonts.beVietnamPro(fontSize: 13),
-                  validator: (v) =>
-                      v == null || v.trim().isEmpty ? 'Required' : null,
+                  validator: _validateOrgShortName,
                 ),
               ),
               const SizedBox(width: 12),
@@ -3177,12 +3191,7 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
             ),
             style: GoogleFonts.beVietnamPro(fontSize: 13),
             keyboardType: TextInputType.emailAddress,
-            validator: (v) {
-              if (v == null || v.trim().isEmpty) return 'Required';
-              if (!v.contains('@') || !v.contains('.'))
-                return 'Enter a valid email';
-              return null;
-            },
+            validator: (v) => _validateEmailFormat(v, required: true),
           ),
           TextFormField(
             controller: _descCtrl,
@@ -3194,7 +3203,7 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
               required: true,
             ),
             style: GoogleFonts.beVietnamPro(fontSize: 13),
-            validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+            validator: _validateOrgDescription,
           ),
         ]),
       ],
@@ -3211,7 +3220,7 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
           'You may add up to 3 faculty advisers for this organization.',
           style: GoogleFonts.beVietnamPro(
             fontSize: 12,
-            color: UpriseColors.darkGray,
+            color: AdminColors.darkGray,
           ),
         ),
         const SizedBox(height: 16),
@@ -3247,7 +3256,7 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
               style: GoogleFonts.beVietnamPro(fontSize: 13),
             ),
             style: TextButton.styleFrom(
-              foregroundColor: UpriseColors.primaryDark,
+              foregroundColor: AdminColors.primaryDark,
             ),
           ),
       ],
@@ -3334,7 +3343,7 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
               ),
             ),
             style: ElevatedButton.styleFrom(
-              backgroundColor: UpriseColors.primaryDark,
+              backgroundColor: AdminColors.primaryDark,
               foregroundColor: Colors.white,
               elevation: 0,
               shape: RoundedRectangleBorder(
@@ -3360,7 +3369,7 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
   void _showFileError(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: UpriseColors.error),
+      SnackBar(content: Text(message), backgroundColor: AdminColors.error),
     );
   }
 
@@ -3739,7 +3748,7 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(msg),
-          backgroundColor: UpriseColors.error,
+          backgroundColor: AdminColors.error,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
@@ -3819,8 +3828,8 @@ class _EditOrganizationDialogState extends State<_EditOrganizationDialog> {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    UpriseColors.primaryDark,
-                    UpriseColors.primaryDark.withAlpha(225),
+                    AdminColors.primaryDark,
+                    AdminColors.primaryDark.withAlpha(225),
                   ],
                 ),
                 borderRadius: const BorderRadius.vertical(
@@ -3896,8 +3905,7 @@ class _EditOrganizationDialogState extends State<_EditOrganizationDialog> {
                             required: true,
                           ),
                           style: GoogleFonts.beVietnamPro(fontSize: 13),
-                          validator: (v) =>
-                              v == null || v.trim().isEmpty ? 'Required' : null,
+                          validator: _validateOrgName,
                         ),
                         Row(
                           children: [
@@ -3909,9 +3917,7 @@ class _EditOrganizationDialogState extends State<_EditOrganizationDialog> {
                                   required: true,
                                 ),
                                 style: GoogleFonts.beVietnamPro(fontSize: 13),
-                                validator: (v) => v == null || v.trim().isEmpty
-                                    ? 'Required'
-                                    : null,
+                                validator: _validateOrgShortName,
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -3959,15 +3965,8 @@ class _EditOrganizationDialogState extends State<_EditOrganizationDialog> {
                                 ),
                                 style: GoogleFonts.beVietnamPro(fontSize: 13),
                                 keyboardType: TextInputType.emailAddress,
-                                validator: (v) {
-                                  if (v == null || v.trim().isEmpty) {
-                                    return 'Required';
-                                  }
-                                  if (!v.contains('@') || !v.contains('.')) {
-                                    return 'Enter a valid email';
-                                  }
-                                  return null;
-                                },
+                                validator: (v) =>
+                                    _validateEmailFormat(v, required: true),
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -4006,8 +4005,7 @@ class _EditOrganizationDialogState extends State<_EditOrganizationDialog> {
                             required: true,
                           ),
                           style: GoogleFonts.beVietnamPro(fontSize: 13),
-                          validator: (v) =>
-                              v == null || v.trim().isEmpty ? 'Required' : null,
+                          validator: _validateOrgDescription,
                         ),
                       ]),
                       const SizedBox(height: 24),
@@ -4018,7 +4016,7 @@ class _EditOrganizationDialogState extends State<_EditOrganizationDialog> {
                         'You may add up to 3 faculty advisers for this organization.',
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 12,
-                          color: UpriseColors.darkGray,
+                          color: AdminColors.darkGray,
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -4057,7 +4055,7 @@ class _EditOrganizationDialogState extends State<_EditOrganizationDialog> {
                             style: GoogleFonts.beVietnamPro(fontSize: 13),
                           ),
                           style: TextButton.styleFrom(
-                            foregroundColor: UpriseColors.primaryDark,
+                            foregroundColor: AdminColors.primaryDark,
                           ),
                         ),
                     ],
@@ -4118,7 +4116,7 @@ class _EditOrganizationDialogState extends State<_EditOrganizationDialog> {
                       ),
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: UpriseColors.primaryDark,
+                      backgroundColor: AdminColors.primaryDark,
                       foregroundColor: Colors.white,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
@@ -4216,7 +4214,7 @@ class _EditOrganizationDialogState extends State<_EditOrganizationDialog> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error: $e'),
-            backgroundColor: UpriseColors.error,
+            backgroundColor: AdminColors.error,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
@@ -4268,14 +4266,14 @@ class _OrganizationDetailPageState extends State<_OrganizationDetailPage> {
                       Icon(
                         Icons.arrow_back_rounded,
                         size: 16,
-                        color: UpriseColors.darkGray,
+                        color: AdminColors.darkGray,
                       ),
                       const SizedBox(width: 6),
                       Text(
                         'Organizations',
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 13,
-                          color: UpriseColors.darkGray,
+                          color: AdminColors.darkGray,
                         ),
                       ),
                     ],
@@ -4287,7 +4285,7 @@ class _OrganizationDetailPageState extends State<_OrganizationDetailPage> {
                 child: Icon(
                   Icons.chevron_right_rounded,
                   size: 16,
-                  color: UpriseColors.mediumGray,
+                  color: AdminColors.mediumGray,
                 ),
               ),
               Text(
@@ -4351,7 +4349,7 @@ class _OrganizationDetailPageState extends State<_OrganizationDetailPage> {
                           style: GoogleFonts.beVietnamPro(
                             fontSize: 15,
                             fontWeight: FontWeight.w600,
-                            color: UpriseColors.primaryDark,
+                            color: AdminColors.primaryDark,
                           ),
                         ),
                       const SizedBox(height: 4),
@@ -4359,7 +4357,7 @@ class _OrganizationDetailPageState extends State<_OrganizationDetailPage> {
                         org.type,
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 13,
-                          color: UpriseColors.darkGray,
+                          color: AdminColors.darkGray,
                         ),
                       ),
                       if (org.orgEmail.isNotEmpty) ...[
@@ -4369,14 +4367,14 @@ class _OrganizationDetailPageState extends State<_OrganizationDetailPage> {
                             Icon(
                               Icons.email_outlined,
                               size: 14,
-                              color: UpriseColors.darkGray,
+                              color: AdminColors.darkGray,
                             ),
                             const SizedBox(width: 6),
                             Text(
                               org.orgEmail,
                               style: GoogleFonts.beVietnamPro(
                                 fontSize: 13,
-                                color: UpriseColors.primaryDark,
+                                color: AdminColors.primaryDark,
                               ),
                             ),
                           ],
@@ -4389,14 +4387,14 @@ class _OrganizationDetailPageState extends State<_OrganizationDetailPage> {
                             Icon(
                               Icons.calendar_today_rounded,
                               size: 13,
-                              color: UpriseColors.darkGray,
+                              color: AdminColors.darkGray,
                             ),
                             const SizedBox(width: 6),
                             Text(
                               'Created ${DateFormat('MMMM d, yyyy').format(org.createdAt!)}',
                               style: GoogleFonts.beVietnamPro(
                                 fontSize: 12,
-                                color: UpriseColors.darkGray,
+                                color: AdminColors.darkGray,
                               ),
                             ),
                           ],
@@ -4424,7 +4422,7 @@ class _OrganizationDetailPageState extends State<_OrganizationDetailPage> {
                         : 'No description provided.',
                     style: GoogleFonts.beVietnamPro(
                       fontSize: 13,
-                      color: UpriseColors.darkGray,
+                      color: AdminColors.darkGray,
                       height: 1.6,
                     ),
                   ),
@@ -4441,7 +4439,7 @@ class _OrganizationDetailPageState extends State<_OrganizationDetailPage> {
                           'No adviser assigned.',
                           style: GoogleFonts.beVietnamPro(
                             fontSize: 13,
-                            color: UpriseColors.darkGray,
+                            color: AdminColors.darkGray,
                           ),
                         )
                       : Column(
@@ -4527,7 +4525,7 @@ class _OrganizationDetailPageState extends State<_OrganizationDetailPage> {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: UpriseColors.primaryDark.withOpacity(0.08),
+                color: AdminColors.primaryDark.withOpacity(0.08),
                 borderRadius: BorderRadius.circular(9),
               ),
               child: Center(
@@ -4536,7 +4534,7 @@ class _OrganizationDetailPageState extends State<_OrganizationDetailPage> {
                   style: GoogleFonts.beVietnamPro(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
-                    color: UpriseColors.primaryDark,
+                    color: AdminColors.primaryDark,
                   ),
                 ),
               ),
@@ -4559,7 +4557,7 @@ class _OrganizationDetailPageState extends State<_OrganizationDetailPage> {
                       a.title,
                       style: GoogleFonts.beVietnamPro(
                         fontSize: 11,
-                        color: UpriseColors.darkGray,
+                        color: AdminColors.darkGray,
                       ),
                     ),
                 ],
@@ -4588,7 +4586,7 @@ class _OrganizationDetailPageState extends State<_OrganizationDetailPage> {
         style: GoogleFonts.beVietnamPro(
           fontSize: 24,
           fontWeight: FontWeight.w700,
-          color: UpriseColors.primaryDark,
+          color: AdminColors.primaryDark,
         ),
       ),
     );
@@ -4612,7 +4610,7 @@ class _OrganizationDetailPageState extends State<_OrganizationDetailPage> {
         children: [
           Row(
             children: [
-              Icon(icon, size: 16, color: UpriseColors.primaryDark),
+              Icon(icon, size: 16, color: AdminColors.primaryDark),
               const SizedBox(width: 8),
               Text(
                 title,
@@ -4638,7 +4636,7 @@ class _OrganizationDetailPageState extends State<_OrganizationDetailPage> {
       padding: const EdgeInsets.only(bottom: 4),
       child: Row(
         children: [
-          Icon(icon, size: 13, color: UpriseColors.darkGray),
+          Icon(icon, size: 13, color: AdminColors.darkGray),
           const SizedBox(width: 7),
           Expanded(
             child: Text(

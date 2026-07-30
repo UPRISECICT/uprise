@@ -298,6 +298,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
   final AuthService _auth = AuthService();
   final GlobalKey _bellKey = GlobalKey();
   final GlobalKey _profileKey = GlobalKey();
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  // Below this width the fixed sidebar doesn't have room to sit next to the
+  // content anymore — it collapses into a Drawer opened from a hamburger
+  // button instead of squeezing both into a too-narrow viewport.
+  static const double _sidebarBreakpoint = 900;
   int _unreadNotifications = 0;
   List<Map<String, dynamic>> _notifications = [];
   String _adminName = 'Admin User';
@@ -502,6 +507,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
       _selectedIndex = index;
       _visitedIndices.add(_screenIndexFor(index));
     });
+    // On narrow layouts the sidebar lives in a Drawer — close it after
+    // picking a destination instead of leaving it open over the new page.
+    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+      _scaffoldKey.currentState?.closeDrawer();
+    }
   }
 
   int _screenIndexFor(int selectedIndex) {
@@ -843,32 +853,41 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   @override
   Widget build(BuildContext context) {
+    final isNarrow = MediaQuery.of(context).size.width < _sidebarBreakpoint;
+
+    final content = Expanded(
+      // IndexedStack keeps every screen's state alive instead of
+      // tearing it down and re-fetching Firestore data from
+      // scratch on every tab switch — that re-fetch was the
+      // cause of the lag on every click.
+      child: IndexedStack(
+        index: _screenIndexFor(_selectedIndex),
+        children: List.generate(
+          _screens.length,
+          (i) => _visitedIndices.contains(i)
+              ? _screens[i]
+              : const SizedBox.shrink(),
+        ),
+      ),
+    );
+
+    if (isNarrow) {
+      return Scaffold(
+        key: _scaffoldKey,
+        backgroundColor: const Color(0xFFF8F9FB),
+        drawer: Drawer(width: 256, child: _buildSidebar()),
+        body: Column(children: [_buildTopBar(isNarrow: true), content]),
+      );
+    }
+
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: const Color(0xFFF8F9FB),
       body: Row(
         children: [
           _buildSidebar(),
           Expanded(
-            child: Column(
-              children: [
-                _buildTopBar(),
-                Expanded(
-                  // IndexedStack keeps every screen's state alive instead of
-                  // tearing it down and re-fetching Firestore data from
-                  // scratch on every tab switch — that re-fetch was the
-                  // cause of the lag on every click.
-                  child: IndexedStack(
-                    index: _screenIndexFor(_selectedIndex),
-                    children: List.generate(
-                      _screens.length,
-                      (i) => _visitedIndices.contains(i)
-                          ? _screens[i]
-                          : const SizedBox.shrink(),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            child: Column(children: [_buildTopBar(isNarrow: false), content]),
           ),
         ],
       ),
@@ -997,10 +1016,18 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   // ── Top bar ────────────────────────────────────────────────────────────────
-  Widget _buildTopBar() {
+  Widget _buildTopBar({required bool isNarrow}) {
     return Container(
+      // Explicit instead of relying on the child Row's mainAxisSize.max to
+      // infer full width — belt-and-suspenders so this can never end up
+      // narrower than its Column sibling (the page content) again.
+      width: double.infinity,
       height: 68,
-      padding: const EdgeInsets.symmetric(horizontal: 28),
+      // Matches DashboardHome's own SingleChildScrollView padding
+      // (EdgeInsets.fromLTRB(28, 24, 28, 32)) exactly, so the top bar's
+      // right edge lines up with the cards/banner/chart below it instead
+      // of using an unrelated, slightly-off value of its own.
+      padding: EdgeInsets.symmetric(horizontal: isNarrow ? 12 : 28),
       decoration: BoxDecoration(
         color: Colors.white,
         border: const Border(
@@ -1016,8 +1043,19 @@ class _AdminDashboardState extends State<AdminDashboard> {
       ),
       child: Row(
         children: [
+          if (isNarrow) ...[
+            IconButton(
+              onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+              icon: const Icon(Icons.menu_rounded),
+              color: UpriseColors.charcoal,
+              tooltip: 'Menu',
+            ),
+            const SizedBox(width: 4),
+          ],
+
           // Page title with accent bar
           Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Container(
                 width: 3,
@@ -1034,6 +1072,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 children: [
                   Text(
                     _getCurrentTitle(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.beVietnamPro(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
@@ -1043,6 +1083,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   ),
                   Text(
                     'CICT Organization Management',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.beVietnamPro(
                       fontSize: 10.5,
                       color: const Color(0xFF9AA5B4),

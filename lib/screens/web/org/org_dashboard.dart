@@ -1,4 +1,4 @@
-﻿// lib/screens/web/org/org_dashboard.dart
+// lib/screens/web/org/org_dashboard.dart
 //
 // Redesigned to match AdminDashboard pattern exactly:
 //  - Gradient welcome header card with icon
@@ -33,6 +33,8 @@ import 'org_reports.dart';
 import 'org_finance.dart';
 import 'org_merchandise.dart';
 import 'org_settings.dart';
+import 'export_pdf.dart';
+import 'export_util.dart';
 import '../../../services/notification_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -85,10 +87,7 @@ class OrgColors {
 class _CountdownCard extends StatefulWidget {
   final DateTime eventDate;
   final String eventLabel;
-  const _CountdownCard({
-    required this.eventDate,
-    required this.eventLabel,
-  });
+  const _CountdownCard({required this.eventDate, required this.eventLabel});
 
   @override
   State<_CountdownCard> createState() => _CountdownCardState();
@@ -109,7 +108,10 @@ class _CountdownCardState extends State<_CountdownCard> {
   void initState() {
     super.initState();
     _updateRemaining();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _updateRemaining());
+    _timer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => _updateRemaining(),
+    );
   }
 
   @override
@@ -118,7 +120,10 @@ class _CountdownCardState extends State<_CountdownCard> {
     if (oldWidget.eventDate != widget.eventDate) {
       _updateRemaining();
       _timer?.cancel();
-      _timer = Timer.periodic(const Duration(seconds: 1), (_) => _updateRemaining());
+      _timer = Timer.periodic(
+        const Duration(seconds: 1),
+        (_) => _updateRemaining(),
+      );
     }
   }
 
@@ -281,10 +286,10 @@ const List<Map<String, dynamic>> _navItems = [
   {'label': 'Certificates', 'icon': Icons.verified_outlined},
   {'label': 'Event Analytics', 'icon': Icons.bar_chart_outlined},
   {'label': 'Announcements', 'icon': Icons.campaign_outlined},
-  {'label': 'Broadcast Code', 'icon': Icons.wifi_tethering_outlined},
+  {'label': 'Messages', 'icon': Icons.chat_bubble_outline_rounded},
   {'label': 'Org Profile', 'icon': Icons.people_outline},
   {'label': 'Letter Request', 'icon': Icons.mail_outline},
-  {'label': 'Compliance Reports', 'icon': Icons.summarize_outlined},
+  {'label': 'Report Submissions', 'icon': Icons.summarize_outlined},
   {'label': 'Finance', 'icon': Icons.account_balance_wallet_outlined},
   {'label': 'Merchandise', 'icon': Icons.shopping_bag_outlined},
 ];
@@ -350,7 +355,8 @@ class _SidebarNavState extends State<_SidebarNav> {
 
   String? _groupContaining(int index) {
     for (final entry in _navGroups.entries) {
-      if ((entry.value['children'] as List<int>).contains(index)) return entry.key;
+      if ((entry.value['children'] as List<int>).contains(index))
+        return entry.key;
     }
     return null;
   }
@@ -365,10 +371,9 @@ class _SidebarNavState extends State<_SidebarNav> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           margin: const EdgeInsets.symmetric(vertical: 2),
-          padding: EdgeInsets.symmetric(vertical: 10).copyWith(
-            left: indent,
-            right: 14,
-          ),
+          padding: EdgeInsets.symmetric(
+            vertical: 10,
+          ).copyWith(left: indent, right: 14),
           decoration: BoxDecoration(
             color: isSelected
                 ? OrgColors.accent.withAlpha(46)
@@ -382,7 +387,9 @@ class _SidebarNavState extends State<_SidebarNav> {
             children: [
               Icon(
                 item['icon'] as IconData,
-                color: isSelected ? OrgColors.accent : Colors.white.withAlpha(166),
+                color: isSelected
+                    ? OrgColors.accent
+                    : Colors.white.withAlpha(166),
                 size: 17,
               ),
               const SizedBox(width: 12),
@@ -391,7 +398,9 @@ class _SidebarNavState extends State<_SidebarNav> {
                   item['label'] as String,
                   overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.beVietnamPro(
-                    color: isSelected ? Colors.white : Colors.white.withAlpha(191),
+                    color: isSelected
+                        ? Colors.white
+                        : Colors.white.withAlpha(191),
                     fontSize: 13,
                     fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
                   ),
@@ -413,7 +422,12 @@ class _SidebarNavState extends State<_SidebarNav> {
     );
   }
 
-  Widget _groupHeaderTile(String groupKey, String label, IconData icon, bool expanded) {
+  Widget _groupHeaderTile(
+    String groupKey,
+    String label,
+    IconData icon,
+    bool expanded,
+  ) {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
@@ -444,7 +458,9 @@ class _SidebarNavState extends State<_SidebarNav> {
                 ),
               ),
               Icon(
-                expanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,
+                expanded
+                    ? Icons.keyboard_arrow_down
+                    : Icons.keyboard_arrow_right,
                 color: Colors.white.withAlpha(166),
                 size: 18,
               ),
@@ -469,7 +485,8 @@ class _SidebarNavState extends State<_SidebarNav> {
             _openGroups.contains(entry.key),
           ),
           if (_openGroups.contains(entry.key))
-            for (final i in entry.value['children'] as List<int>) _navTile(i, indent: 30),
+            for (final i in entry.value['children'] as List<int>)
+              _navTile(i, indent: 30),
         ],
         for (final i in _standaloneBottom) _navTile(i),
       ],
@@ -716,18 +733,24 @@ class _OrgDashboardState extends State<OrgDashboard> {
       final daysUntil = eventDate.difference(now);
       if (daysUntil > _eventNearWindow || daysUntil.isNegative) continue;
 
-      if (!_cooldownElapsed(data['lastPublishReminderAt'] as Timestamp?)) continue;
+      if (!_cooldownElapsed(data['lastPublishReminderAt'] as Timestamp?))
+        continue;
 
       final title = (data['title'] ?? 'Your event').toString();
-      final daysLabel = daysUntil.inDays <= 0 ? 'today' : 'in ${daysUntil.inDays} day${daysUntil.inDays == 1 ? '' : 's'}';
+      final daysLabel = daysUntil.inDays <= 0
+          ? 'today'
+          : 'in ${daysUntil.inDays} day${daysUntil.inDays == 1 ? '' : 's'}';
       await NotificationService.sendToOrgMembers(
         orgId: _orgId,
         title: 'Event not yet published',
-        body: '"$title" is happening $daysLabel and still hasn\'t been published to students. Publish it from Event Proposals.',
+        body:
+            '"$title" is happening $daysLabel and still hasn\'t been published to students. Publish it from Event Proposals.',
         type: 'publish_reminder',
         data: {'proposalId': doc.id},
       );
-      await doc.reference.update({'lastPublishReminderAt': FieldValue.serverTimestamp()});
+      await doc.reference.update({
+        'lastPublishReminderAt': FieldValue.serverTimestamp(),
+      });
     }
   }
 
@@ -757,14 +780,18 @@ class _OrgDashboardState extends State<OrgDashboard> {
     }
     if (finishedEvents.isEmpty) return;
 
-    final orgDoc = await FirebaseFirestore.instance.collection('organizations').doc(_orgId).get();
+    final orgDoc = await FirebaseFirestore.instance
+        .collection('organizations')
+        .doc(_orgId)
+        .get();
     final orgData = orgDoc.data() ?? {};
 
     // One cooldown per org+type throttles how often we re-notify; it
     // doesn't change which event the notification is about — the first
     // finished event still missing a report (in date order) is reported.
     Future<void> checkOne(String key, String label) async {
-      final lastSentField = 'last${key[0].toUpperCase()}${key.substring(1)}DeadlineReminderAt';
+      final lastSentField =
+          'last${key[0].toUpperCase()}${key.substring(1)}DeadlineReminderAt';
       if (!_cooldownElapsed(orgData[lastSentField] as Timestamp?)) return;
 
       for (final ev in finishedEvents) {
@@ -773,7 +800,8 @@ class _OrgDashboardState extends State<OrgDashboard> {
             .collection('report_deadline_overrides')
             .doc('${_orgId}_${eventId}_$key')
             .get();
-        final deadline = (overrideDoc.data()?['deadline'] as Timestamp?)?.toDate() ??
+        final deadline =
+            (overrideDoc.data()?['deadline'] as Timestamp?)?.toDate() ??
             (ev['date'] as DateTime).add(const Duration(days: 7));
 
         final daysUntil = deadline.difference(now);
@@ -788,16 +816,20 @@ class _OrgDashboardState extends State<OrgDashboard> {
             .get();
         if (reportSnap.docs.isNotEmpty) continue;
 
-        final daysLabel = daysUntil.inDays <= 0 ? 'today' : 'in ${daysUntil.inDays} day${daysUntil.inDays == 1 ? '' : 's'}';
+        final daysLabel = daysUntil.inDays <= 0
+            ? 'today'
+            : 'in ${daysUntil.inDays} day${daysUntil.inDays == 1 ? '' : 's'}';
         await NotificationService.sendToOrgMembers(
           orgId: _orgId,
           title: '$label report deadline approaching',
-          body: 'The $label report deadline for "${ev['title']}" is $daysLabel. Submit it from Reports if you haven\'t already.',
+          body:
+              'The $label report deadline for "${ev['title']}" is $daysLabel. Submit it from Reports if you haven\'t already.',
           type: 'deadline_reminder',
         );
-        await FirebaseFirestore.instance.collection('organizations').doc(_orgId).update({
-          lastSentField: FieldValue.serverTimestamp(),
-        });
+        await FirebaseFirestore.instance
+            .collection('organizations')
+            .doc(_orgId)
+            .update({lastSentField: FieldValue.serverTimestamp()});
         return;
       }
     }
@@ -816,14 +848,16 @@ class _OrgDashboardState extends State<OrgDashboard> {
           .get();
       if (mounted) {
         final all = snap.docs
-            .map((d) => {
-                  'id': d.id,
-                  'title': d.data()['title'] ?? 'New Notification',
-                  'message': d.data()['body'] ?? d.data()['message'] ?? '',
-                  'isRead': d.data()['isRead'] ?? false,
-                  'timestamp': d.data()['createdAt'],
-                  'type': d.data()['type'],
-                })
+            .map(
+              (d) => {
+                'id': d.id,
+                'title': d.data()['title'] ?? 'New Notification',
+                'message': d.data()['body'] ?? d.data()['message'] ?? '',
+                'isRead': d.data()['isRead'] ?? false,
+                'timestamp': d.data()['createdAt'],
+                'type': d.data()['type'],
+              },
+            )
             .toList();
         all.sort((a, b) {
           final ta = a['timestamp'];
@@ -850,8 +884,10 @@ class _OrgDashboardState extends State<OrgDashboard> {
       final bellTopLeft = bellBox.localToGlobal(Offset.zero);
       final bellSize = bellBox.size;
       top = bellTopLeft.dy + bellSize.height + 12;
-      right = (screenSize.width - (bellTopLeft.dx + bellSize.width) - 6)
-          .clamp(8.0, screenSize.width - 360);
+      right = (screenSize.width - (bellTopLeft.dx + bellSize.width) - 6).clamp(
+        8.0,
+        screenSize.width - 360,
+      );
     }
     final maxHeight = (screenSize.height - top - 24).clamp(200.0, 480.0);
     showGeneralDialog(
@@ -873,7 +909,11 @@ class _OrgDashboardState extends State<OrgDashboard> {
                 side: const BorderSide(color: OrgColors.border, width: 0.5),
               ),
               child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: 360, minWidth: 360, maxHeight: maxHeight),
+                constraints: BoxConstraints(
+                  maxWidth: 360,
+                  minWidth: 360,
+                  maxHeight: maxHeight,
+                ),
                 child: _OrgNotificationPanel(
                   notifications: List.from(_notifications),
                   onMarkRead: _markNotificationAsRead,
@@ -899,11 +939,11 @@ class _OrgDashboardState extends State<OrgDashboard> {
         setState(() {
           final idx = _notifications.indexWhere((n) => n['id'] == id);
           if (idx != -1) {
-            _notifications[idx] =
-                Map<String, dynamic>.from(_notifications[idx])
-                  ..['isRead'] = true;
-            _unreadNotifications =
-                _notifications.where((n) => n['isRead'] == false).length;
+            _notifications[idx] = Map<String, dynamic>.from(_notifications[idx])
+              ..['isRead'] = true;
+            _unreadNotifications = _notifications
+                .where((n) => n['isRead'] == false)
+                .length;
           }
         });
       }
@@ -911,8 +951,7 @@ class _OrgDashboardState extends State<OrgDashboard> {
   }
 
   Future<void> _markAllNotificationsAsRead() async {
-    final unread =
-        _notifications.where((n) => n['isRead'] == false).toList();
+    final unread = _notifications.where((n) => n['isRead'] == false).toList();
     if (unread.isEmpty) return;
     try {
       final batch = FirebaseFirestore.instance.batch();
@@ -944,6 +983,7 @@ class _OrgDashboardState extends State<OrgDashboard> {
     'publish_reminder': 1,
     'letter_status': 9, // OrgLetterRequestScreen
     'deadline_reminder': 10, // OrgReportsScreen
+    'private_message': 7, // OrgBroadcastScreen (Messages)
   };
 
   void _handleNotificationTap(Map<String, dynamic> n) {
@@ -1006,15 +1046,10 @@ class _OrgDashboardState extends State<OrgDashboard> {
                     }),
                     const Divider(height: 1, color: OrgColors.border),
                     const SizedBox(height: 4),
-                    _profileMenuItem(
-                      Icons.logout_rounded,
-                      'Sign Out',
-                      () {
-                        Navigator.of(ctx).pop();
-                        _confirmLogout();
-                      },
-                      color: OrgColors.error,
-                    ),
+                    _profileMenuItem(Icons.logout_rounded, 'Sign Out', () {
+                      Navigator.of(ctx).pop();
+                      _confirmLogout();
+                    }, color: OrgColors.error),
                     const SizedBox(height: 6),
                   ],
                 ),
@@ -1353,7 +1388,9 @@ class _OrgDashboardState extends State<OrgDashboard> {
                               index: _selectedIndex == -1 ? 13 : _selectedIndex,
                               children: List.generate(
                                 _screens.length,
-                                (i) => _visitedIndices.contains(i) ? _screens[i] : const SizedBox.shrink(),
+                                (i) => _visitedIndices.contains(i)
+                                    ? _screens[i]
+                                    : const SizedBox.shrink(),
                               ),
                             ),
                     ),
@@ -1511,7 +1548,11 @@ class _OrgDashboardState extends State<OrgDashboard> {
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: OrgColors.border),
                 ),
-                child: const Icon(Icons.menu_rounded, color: OrgColors.darkGray, size: 18),
+                child: const Icon(
+                  Icons.menu_rounded,
+                  color: OrgColors.darkGray,
+                  size: 18,
+                ),
               ),
             ),
           Row(
@@ -1562,7 +1603,11 @@ class _OrgDashboardState extends State<OrgDashboard> {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.access_time_rounded, size: 12, color: OrgColors.primaryDark),
+                  const Icon(
+                    Icons.access_time_rounded,
+                    size: 12,
+                    color: OrgColors.primaryDark,
+                  ),
                   const SizedBox(width: 6),
                   Text(
                     _currentDateTime,
@@ -1602,54 +1647,58 @@ class _OrgDashboardState extends State<OrgDashboard> {
             child: KeyedSubtree(
               key: _bellKey,
               child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: _unreadNotifications > 0
-                        ? OrgColors.primaryDark.withAlpha(12)
-                        : OrgColors.lightGray,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
                       color: _unreadNotifications > 0
-                          ? OrgColors.primaryDark.withAlpha(60)
-                          : OrgColors.border,
+                          ? OrgColors.primaryDark.withAlpha(12)
+                          : OrgColors.lightGray,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: _unreadNotifications > 0
+                            ? OrgColors.primaryDark.withAlpha(60)
+                            : OrgColors.border,
+                      ),
+                    ),
+                    child: Icon(
+                      _unreadNotifications > 0
+                          ? Icons.notifications_rounded
+                          : Icons.notifications_none_rounded,
+                      color: _unreadNotifications > 0
+                          ? OrgColors.primaryDark
+                          : OrgColors.darkGray,
+                      size: 18,
                     ),
                   ),
-                  child: Icon(
-                    _unreadNotifications > 0
-                        ? Icons.notifications_rounded
-                        : Icons.notifications_none_rounded,
-                    color: _unreadNotifications > 0 ? OrgColors.primaryDark : OrgColors.darkGray,
-                    size: 18,
-                  ),
-                ),
-                if (_unreadNotifications > 0)
-                  Positioned(
-                    right: -3,
-                    top: -3,
-                    child: Container(
-                      width: 18,
-                      height: 18,
-                      alignment: Alignment.center,
-                      decoration: const BoxDecoration(
-                        color: OrgColors.error,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Text(
-                        _unreadNotifications > 9 ? '9+' : '$_unreadNotifications',
-                        style: GoogleFonts.beVietnamPro(
-                          color: Colors.white,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w700,
+                  if (_unreadNotifications > 0)
+                    Positioned(
+                      right: -3,
+                      top: -3,
+                      child: Container(
+                        width: 18,
+                        height: 18,
+                        alignment: Alignment.center,
+                        decoration: const BoxDecoration(
+                          color: OrgColors.error,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          _unreadNotifications > 9
+                              ? '9+'
+                              : '$_unreadNotifications',
+                          style: GoogleFonts.beVietnamPro(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-              ],
-            ),
+                ],
+              ),
             ),
           ),
           const SizedBox(width: 10),
@@ -1661,73 +1710,83 @@ class _OrgDashboardState extends State<OrgDashboard> {
             MouseRegion(
               cursor: SystemMouseCursors.click,
               child: GestureDetector(
-              key: _profileKey,
-              onTap: _showProfileMenu,
-              child: Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: OrgColors.primaryDark.withAlpha(25),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: OrgColors.primaryDark.withAlpha(50)),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: _orgLogoUrl != null
-                      ? Image.network(
-                          _orgLogoUrl!,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Center(
-                            child: Text(
-                              _orgShortName.isNotEmpty ? _orgShortName[0].toUpperCase() : 'O',
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: OrgColors.primaryDark,
+                key: _profileKey,
+                onTap: _showProfileMenu,
+                child: Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: OrgColors.primaryDark.withAlpha(25),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: OrgColors.primaryDark.withAlpha(50),
+                        ),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: _orgLogoUrl != null
+                          ? Image.network(
+                              _orgLogoUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Center(
+                                child: Text(
+                                  _orgShortName.isNotEmpty
+                                      ? _orgShortName[0].toUpperCase()
+                                      : 'O',
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: OrgColors.primaryDark,
+                                  ),
+                                ),
+                              ),
+                            )
+                          : Center(
+                              child: Text(
+                                _orgShortName.isNotEmpty
+                                    ? _orgShortName[0].toUpperCase()
+                                    : 'O',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: OrgColors.primaryDark,
+                                ),
                               ),
                             ),
-                          ),
-                        )
-                      : Center(
-                          child: Text(
-                            _orgShortName.isNotEmpty ? _orgShortName[0].toUpperCase() : 'O',
+                    ),
+                    if (screenWidth >= 600) ...[
+                      const SizedBox(width: 10),
+                      Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _orgShortName,
                             style: GoogleFonts.beVietnamPro(
-                              fontSize: 14,
                               fontWeight: FontWeight.w700,
-                              color: OrgColors.primaryDark,
+                              fontSize: 13,
+                              color: OrgColors.charcoal,
                             ),
                           ),
-                        ),
-                ),
-                if (screenWidth >= 600) ...[
-                  const SizedBox(width: 10),
-                  Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _orgShortName,
-                        style: GoogleFonts.beVietnamPro(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13,
-                          color: OrgColors.charcoal,
-                        ),
+                          Text(
+                            'Organization',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 10,
+                              color: OrgColors.textFaint,
+                            ),
+                          ),
+                        ],
                       ),
-                      Text(
-                        'Organization',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 10,
-                          color: OrgColors.textFaint,
-                        ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.keyboard_arrow_down,
+                        size: 18,
+                        color: OrgColors.textFaint,
                       ),
                     ],
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(Icons.keyboard_arrow_down, size: 18, color: OrgColors.textFaint),
-                ],
-              ],
-              ),
+                  ],
+                ),
               ),
             )
           else
@@ -1781,6 +1840,10 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
   String _eventLabel = '';
   bool _eventLoaded = false;
 
+  // Which stat card (if any) is driving the dynamic panel below — mirrors
+  // AdminDashboard's stat-card-click-to-drill-down pattern.
+  int? _selectedCard;
+
   // Existing streams
   late final Stream<QuerySnapshot> _approvedEventsStream;
   late final Stream<QuerySnapshot> _pendingProposalsStream;
@@ -1794,7 +1857,20 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
   }
 
   String _monthLabel(int index) {
-    const m = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+    const m = [
+      'JAN',
+      'FEB',
+      'MAR',
+      'APR',
+      'MAY',
+      'JUN',
+      'JUL',
+      'AUG',
+      'SEP',
+      'OCT',
+      'NOV',
+      'DEC',
+    ];
     return m[index];
   }
 
@@ -1815,7 +1891,6 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
         .where('orgId', isEqualTo: widget.orgId)
         .where('status', isEqualTo: 'pending')
         .snapshots();
-
 
     _upcomingEventsStream = FirebaseFirestore.instance
         .collection('event_proposals')
@@ -1841,8 +1916,13 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
   Future<void> _loadEventDate() async {
     try {
       final now = DateTime.now();
+      // Standardized on event_proposals for "approved" counts across the
+      // dashboards — this used to read the `events` collection (only
+      // populated once the org separately "publishes" an approved
+      // proposal), which could disagree with the Active Events stat card
+      // right above this countdown on the same screen.
       final snap = await FirebaseFirestore.instance
-          .collection('events')
+          .collection('event_proposals')
           .where('orgId', isEqualTo: widget.orgId)
           .where('status', isEqualTo: 'approved')
           .get();
@@ -1924,14 +2004,11 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
           const SizedBox(height: 20),
           _buildStatCards(isMobile, isTablet),
           const SizedBox(height: 20),
-          _buildChartCard(),
+          _selectedCard == null ? _buildChartCard() : _buildDynamicPanel(),
           const SizedBox(height: 20),
           // Countdown card – now stateful, doesn't cause parent rebuild
           if (_eventLoaded && _eventDate != null)
-            _CountdownCard(
-              eventDate: _eventDate!,
-              eventLabel: _eventLabel,
-            ),
+            _CountdownCard(eventDate: _eventDate!, eventLabel: _eventLabel),
           const SizedBox(height: 20),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2067,7 +2144,9 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                           decoration: BoxDecoration(
                             color: Colors.white.withAlpha(20),
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: Colors.white.withAlpha(35)),
+                            border: Border.all(
+                              color: Colors.white.withAlpha(35),
+                            ),
                           ),
                           child: const Icon(
                             Icons.business_rounded,
@@ -2113,7 +2192,9 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                           decoration: BoxDecoration(
                             color: Colors.white.withAlpha(20),
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: Colors.white.withAlpha(35)),
+                            border: Border.all(
+                              color: Colors.white.withAlpha(35),
+                            ),
                           ),
                           child: const Icon(
                             Icons.business_rounded,
@@ -2133,6 +2214,7 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
   // ── Stat cards ────────────────────────────────────────────────────
   Widget _buildStatCards(bool isMobile, bool isTablet) {
     Widget streamCard({
+      required int cardIndex,
       required String label,
       required IconData icon,
       required Color color,
@@ -2143,12 +2225,16 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
         builder: (_, snap) {
           final loading = snap.connectionState == ConnectionState.waiting;
           final count = snap.hasData ? snap.data!.docs.length : 0;
+          final isSelected = _selectedCard == cardIndex;
           return _StatCardWidget(
             label: label,
             icon: icon,
             color: color,
             count: count,
             loading: loading,
+            isSelected: isSelected,
+            onTap: () =>
+                setState(() => _selectedCard = isSelected ? null : cardIndex),
           );
         },
       );
@@ -2156,24 +2242,32 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
 
     final cardWidgets = [
       streamCard(
+        cardIndex: 0,
         label: 'Active Events',
         icon: Icons.event_rounded,
         color: OrgColors.info,
         stream: _approvedEventsStream,
       ),
       streamCard(
+        cardIndex: 1,
         label: 'Pending Proposals',
         icon: Icons.pending_actions_rounded,
         color: OrgColors.warning,
         stream: _pendingProposalsStream,
       ),
       streamCard(
+        cardIndex: 2,
         label: 'Upcoming Events',
         icon: Icons.upcoming_rounded,
         color: OrgColors.primaryDark,
         stream: _upcomingEventsStream,
       ),
-      _MerchSalesStatCard(orgId: widget.orgId),
+      _MerchSalesStatCard(
+        orgId: widget.orgId,
+        isSelected: _selectedCard == 3,
+        onTap: () =>
+            setState(() => _selectedCard = _selectedCard == 3 ? null : 3),
+      ),
     ];
 
     if (isMobile) {
@@ -2277,7 +2371,9 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                       color: OrgColors.textFaint,
                     ),
                     items: _yearOptions
-                        .map((y) => DropdownMenuItem(value: y, child: Text('$y')))
+                        .map(
+                          (y) => DropdownMenuItem(value: y, child: Text('$y')),
+                        )
                         .toList(),
                     onChanged: (v) {
                       if (v != null) {
@@ -2398,7 +2494,9 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                       final d = doc.data() as Map<String, dynamic>;
                       return _EventRow(
                         date: d['date'] is Timestamp
-                            ? (d['date'] as Timestamp).toDate().toIso8601String()
+                            ? (d['date'] as Timestamp)
+                                  .toDate()
+                                  .toIso8601String()
                             : d['date'],
                         title: d['title'] ?? 'Untitled',
                         location: d['location'] ?? 'TBA',
@@ -2550,27 +2648,28 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                   )
                 else ...[
                   ...((snap.data!.docs.map((doc) {
-                    final d = doc.data() as Map<String, dynamic>;
-                    return {
-                      'title': d['title'] ?? 'Untitled',
-                      'status': d['status'] ?? 'pending',
-                      'submittedAt': d['submittedAt'] as Timestamp?,
-                    };
-                  }).toList()
-                    ..sort((a, b) {
-                      final ta = a['submittedAt'] as Timestamp?;
-                      final tb = b['submittedAt'] as Timestamp?;
-                      if (ta == null && tb == null) return 0;
-                      if (ta == null) return 1;
-                      if (tb == null) return -1;
-                      return tb.compareTo(ta);
-                    }))
-                    .take(5)
-                    .map((proposal) => _ProposalRow(
+                        final d = doc.data() as Map<String, dynamic>;
+                        return {
+                          'title': d['title'] ?? 'Untitled',
+                          'status': d['status'] ?? 'pending',
+                          'submittedAt': d['submittedAt'] as Timestamp?,
+                        };
+                      }).toList()..sort((a, b) {
+                        final ta = a['submittedAt'] as Timestamp?;
+                        final tb = b['submittedAt'] as Timestamp?;
+                        if (ta == null && tb == null) return 0;
+                        if (ta == null) return 1;
+                        if (tb == null) return -1;
+                        return tb.compareTo(ta);
+                      }))
+                      .take(5)
+                      .map(
+                        (proposal) => _ProposalRow(
                           title: proposal['title'] as String,
                           status: proposal['status'] as String,
                           submittedAt: proposal['submittedAt'] as Timestamp?,
-                        ))),
+                        ),
+                      )),
                 ],
               ],
             );
@@ -2704,6 +2803,747 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
       ),
     );
   }
+
+  // ── Dynamic panel — swaps in for the chart card when a stat card is
+  // selected, matching AdminDashboard's drill-down pattern exactly. ────────
+  Widget _buildDynamicPanel() {
+    switch (_selectedCard) {
+      case 0:
+        return _buildActiveEventsPanel();
+      case 1:
+        return _buildPendingProposalsPanel();
+      case 2:
+        return _buildUpcomingEventsTablePanel();
+      case 3:
+        return _buildMerchSalesPanel();
+      default:
+        return _buildChartCard();
+    }
+  }
+
+  String _fmtDate(DateTime? d) =>
+      d != null ? DateFormat('MMM d, yyyy').format(d) : 'TBA';
+
+  Widget _buildActiveEventsPanel() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _approvedEventsStream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return _tableCardSimple(
+            const Center(
+              child: CircularProgressIndicator(color: OrgColors.primaryDark),
+            ),
+          );
+        }
+        final docs = snapshot.data?.docs ?? [];
+        if (docs.isEmpty) {
+          return _tableCardSimple(
+            _emptyPlaceholder(Icons.event_outlined, 'No active events'),
+          );
+        }
+
+        final rows =
+            docs.map((doc) {
+              final d = doc.data() as Map<String, dynamic>;
+              return {
+                'title': (d['title'] as String?) ?? 'Untitled',
+                'category': (d['category'] as String?) ?? '—',
+                'location': (d['location'] as String?) ?? 'TBA',
+                'audience': (d['audience'] as String?) ?? '—',
+                'description':
+                    (d['description'] as String?) ?? 'No description provided.',
+                'time': (d['time'] ?? '').toString(),
+                'endTime': (d['endTime'] ?? '').toString(),
+                'date': (d['date'] as Timestamp?)?.toDate(),
+              };
+            }).toList()..sort((a, b) {
+              final da = a['date'] as DateTime?;
+              final db = b['date'] as DateTime?;
+              if (da == null || db == null) return 0;
+              return da.compareTo(db);
+            });
+
+        return _tableCard(
+          header: _panelHeader(
+            title: 'Active Events',
+            subtitle: 'Approved events, ${rows.length} total.',
+            onBack: () => setState(() => _selectedCard = null),
+            onExport: () => _exportTable(
+              title: 'Active Events',
+              headers: const ['Title', 'Category', 'Date', 'Location'],
+              rows: [
+                for (final r in rows)
+                  [
+                    r['title'] as String,
+                    r['category'] as String,
+                    _fmtDate(r['date'] as DateTime?),
+                    r['location'] as String,
+                  ],
+              ],
+              fileNamePrefix: 'active_events',
+            ),
+          ),
+          table: Column(
+            children: [
+              _customTableHeader(const [
+                MapEntry('Title', 3),
+                MapEntry('Category', 2),
+                MapEntry('Date', 2),
+                MapEntry('Location', 2),
+              ]),
+              for (var i = 0; i < rows.length; i++)
+                _customTableRow(
+                  flexes: const [3, 2, 2, 2],
+                  isLast: i == rows.length - 1,
+                  onTap: () => _showDetailDialog(
+                    title: rows[i]['title'] as String,
+                    fields: [
+                      MapEntry('Category', rows[i]['category'] as String),
+                      MapEntry('Date', _fmtDate(rows[i]['date'] as DateTime?)),
+                      MapEntry(
+                        'Time',
+                        '${rows[i]['time']} - ${rows[i]['endTime']}',
+                      ),
+                      MapEntry('Location', rows[i]['location'] as String),
+                      MapEntry('Audience', rows[i]['audience'] as String),
+                      MapEntry('Description', rows[i]['description'] as String),
+                    ],
+                  ),
+                  cells: [
+                    _cellText(rows[i]['title'] as String, bold: true),
+                    _cellText(rows[i]['category'] as String),
+                    _cellText(_fmtDate(rows[i]['date'] as DateTime?)),
+                    _cellText(rows[i]['location'] as String),
+                  ],
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPendingProposalsPanel() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _pendingProposalsStream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return _tableCardSimple(
+            const Center(
+              child: CircularProgressIndicator(color: OrgColors.primaryDark),
+            ),
+          );
+        }
+        final docs = snapshot.data?.docs ?? [];
+        if (docs.isEmpty) {
+          return _tableCardSimple(
+            _emptyPlaceholder(
+              Icons.pending_actions_outlined,
+              'No pending proposals',
+            ),
+          );
+        }
+
+        final rows =
+            docs.map((doc) {
+              final d = doc.data() as Map<String, dynamic>;
+              return {
+                'title': (d['title'] as String?) ?? 'Untitled',
+                'category': (d['category'] as String?) ?? '—',
+                'description':
+                    (d['description'] as String?) ?? 'No description provided.',
+                'eventDate': (d['date'] as Timestamp?)?.toDate(),
+                'submittedAt': (d['submittedAt'] as Timestamp?)?.toDate(),
+              };
+            }).toList()..sort((a, b) {
+              final sa = a['submittedAt'] as DateTime?;
+              final sb = b['submittedAt'] as DateTime?;
+              if (sa == null && sb == null) return 0;
+              if (sa == null) return 1;
+              if (sb == null) return -1;
+              return sb.compareTo(sa);
+            });
+
+        return _tableCard(
+          header: _panelHeader(
+            title: 'Pending Proposals',
+            subtitle: 'Awaiting admin review, ${rows.length} total.',
+            onBack: () => setState(() => _selectedCard = null),
+            onExport: () => _exportTable(
+              title: 'Pending Proposals',
+              headers: const ['Title', 'Category', 'Event Date', 'Submitted'],
+              rows: [
+                for (final r in rows)
+                  [
+                    r['title'] as String,
+                    r['category'] as String,
+                    _fmtDate(r['eventDate'] as DateTime?),
+                    _fmtDate(r['submittedAt'] as DateTime?),
+                  ],
+              ],
+              fileNamePrefix: 'pending_proposals',
+            ),
+          ),
+          table: Column(
+            children: [
+              _customTableHeader(const [
+                MapEntry('Title', 3),
+                MapEntry('Category', 2),
+                MapEntry('Event Date', 2),
+                MapEntry('Submitted', 2),
+              ]),
+              for (var i = 0; i < rows.length; i++)
+                _customTableRow(
+                  flexes: const [3, 2, 2, 2],
+                  isLast: i == rows.length - 1,
+                  onTap: () => _showDetailDialog(
+                    title: rows[i]['title'] as String,
+                    fields: [
+                      MapEntry('Category', rows[i]['category'] as String),
+                      MapEntry(
+                        'Event Date',
+                        _fmtDate(rows[i]['eventDate'] as DateTime?),
+                      ),
+                      MapEntry(
+                        'Submitted',
+                        _fmtDate(rows[i]['submittedAt'] as DateTime?),
+                      ),
+                      MapEntry('Description', rows[i]['description'] as String),
+                    ],
+                  ),
+                  cells: [
+                    _cellText(rows[i]['title'] as String, bold: true),
+                    _cellText(rows[i]['category'] as String),
+                    _cellText(_fmtDate(rows[i]['eventDate'] as DateTime?)),
+                    _cellText(_fmtDate(rows[i]['submittedAt'] as DateTime?)),
+                  ],
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildUpcomingEventsTablePanel() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _upcomingEventsStream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return _tableCardSimple(
+            const Center(
+              child: CircularProgressIndicator(color: OrgColors.primaryDark),
+            ),
+          );
+        }
+        final docs = snapshot.data?.docs ?? [];
+        if (docs.isEmpty) {
+          return _tableCardSimple(
+            _emptyPlaceholder(Icons.upcoming_outlined, 'No upcoming events'),
+          );
+        }
+
+        final rows = docs.map((doc) {
+          final d = doc.data() as Map<String, dynamic>;
+          return {
+            'title': (d['title'] as String?) ?? 'Untitled',
+            'location': (d['location'] as String?) ?? 'TBA',
+            'time': (d['time'] ?? '').toString(),
+            'endTime': (d['endTime'] ?? '').toString(),
+            'audience': (d['audience'] as String?) ?? '—',
+            'date': (d['date'] as Timestamp?)?.toDate(),
+          };
+        }).toList();
+
+        return _tableCard(
+          header: _panelHeader(
+            title: 'Upcoming Events',
+            subtitle: 'Approved events still ahead, ${rows.length} total.',
+            onBack: () => setState(() => _selectedCard = null),
+            onExport: () => _exportTable(
+              title: 'Upcoming Events',
+              headers: const ['Title', 'Date', 'Time', 'Location'],
+              rows: [
+                for (final r in rows)
+                  [
+                    r['title'] as String,
+                    _fmtDate(r['date'] as DateTime?),
+                    '${r['time']} - ${r['endTime']}',
+                    r['location'] as String,
+                  ],
+              ],
+              fileNamePrefix: 'upcoming_events',
+            ),
+          ),
+          table: Column(
+            children: [
+              _customTableHeader(const [
+                MapEntry('Title', 3),
+                MapEntry('Date', 2),
+                MapEntry('Time', 2),
+                MapEntry('Location', 2),
+              ]),
+              for (var i = 0; i < rows.length; i++)
+                _customTableRow(
+                  flexes: const [3, 2, 2, 2],
+                  isLast: i == rows.length - 1,
+                  onTap: () => _showDetailDialog(
+                    title: rows[i]['title'] as String,
+                    fields: [
+                      MapEntry('Date', _fmtDate(rows[i]['date'] as DateTime?)),
+                      MapEntry(
+                        'Time',
+                        '${rows[i]['time']} - ${rows[i]['endTime']}',
+                      ),
+                      MapEntry('Location', rows[i]['location'] as String),
+                      MapEntry('Audience', rows[i]['audience'] as String),
+                    ],
+                  ),
+                  cells: [
+                    _cellText(rows[i]['title'] as String, bold: true),
+                    _cellText(_fmtDate(rows[i]['date'] as DateTime?)),
+                    _cellText('${rows[i]['time']}'),
+                    _cellText(rows[i]['location'] as String),
+                  ],
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // Was "Merch Sales" (Price/Sold/Revenue columns) — merch has no checkout
+  // anymore, so those figures are permanently frozen/meaningless. This now
+  // shows the catalog itself: what's listed and how much stock is left.
+  Widget _buildMerchSalesPanel() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('products')
+          .where('orgId', isEqualTo: widget.orgId)
+          .where('isArchived', isEqualTo: false)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return _tableCardSimple(
+            const Center(
+              child: CircularProgressIndicator(color: OrgColors.primaryDark),
+            ),
+          );
+        }
+        final docs = snapshot.data?.docs ?? [];
+        if (docs.isEmpty) {
+          return _tableCardSimple(
+            _emptyPlaceholder(
+              Icons.shopping_bag_outlined,
+              'No merchandise listed yet',
+            ),
+          );
+        }
+
+        String money(double v) =>
+            NumberFormat.currency(symbol: '₱', decimalDigits: 0).format(v);
+
+        final rows =
+            docs.map((doc) {
+              final d = doc.data() as Map<String, dynamic>;
+              return {
+                'name': (d['name'] as String?) ?? 'Untitled',
+                'category': (d['category'] as String?) ?? '—',
+                'price': ((d['price'] ?? 0) as num).toDouble(),
+                'stock': ((d['stock'] ?? 0) as num).toInt(),
+              };
+            }).toList()..sort(
+              (a, b) => (a['name'] as String).compareTo(b['name'] as String),
+            );
+
+        return _tableCard(
+          header: _panelHeader(
+            title: 'Merchandise',
+            subtitle: 'All listed products, ${rows.length} total.',
+            onBack: () => setState(() => _selectedCard = null),
+            onExport: () => _exportTable(
+              title: 'Merchandise',
+              headers: const ['Product', 'Category', 'Price', 'Stock'],
+              rows: [
+                for (final r in rows)
+                  [
+                    r['name'] as String,
+                    r['category'] as String,
+                    money(r['price'] as double),
+                    '${r['stock']}',
+                  ],
+              ],
+              fileNamePrefix: 'merchandise',
+            ),
+          ),
+          table: Column(
+            children: [
+              _customTableHeader(const [
+                MapEntry('Product', 3),
+                MapEntry('Category', 2),
+                MapEntry('Price', 2),
+                MapEntry('Stock', 2),
+              ]),
+              for (var i = 0; i < rows.length; i++)
+                _customTableRow(
+                  flexes: const [3, 2, 2, 2],
+                  isLast: i == rows.length - 1,
+                  onTap: () => _showDetailDialog(
+                    title: rows[i]['name'] as String,
+                    fields: [
+                      MapEntry('Category', rows[i]['category'] as String),
+                      MapEntry('Price', money(rows[i]['price'] as double)),
+                      MapEntry('In Stock', '${rows[i]['stock']}'),
+                    ],
+                  ),
+                  cells: [
+                    _cellText(rows[i]['name'] as String, bold: true),
+                    _cellText(rows[i]['category'] as String),
+                    _cellText(money(rows[i]['price'] as double)),
+                    _cellText('${rows[i]['stock']}'),
+                  ],
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ── Shared panel chrome — header, table shell, custom row/header,
+  // detail dialog. Mirrors AdminDashboard's equivalents exactly. ──────────
+  Widget _panelHeader({
+    required String title,
+    required String subtitle,
+    VoidCallback? onExport,
+    VoidCallback? onBack,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (onBack != null) ...[
+          MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              onTap: onBack,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.arrow_back_rounded,
+                    size: 14,
+                    color: OrgColors.darkGray,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Back to Overview',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: OrgColors.darkGray,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: OrgColors.accent,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 12,
+                      color: OrgColors.textFaint,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (onExport != null) ...[
+              const SizedBox(width: 12),
+              MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: OutlinedButton.icon(
+                  onPressed: onExport,
+                  icon: const Icon(Icons.file_download_outlined, size: 16),
+                  label: Text(
+                    'Export',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: OrgColors.primaryDark,
+                    side: const BorderSide(color: OrgColors.borderSoft),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _customTableHeader(List<MapEntry<String, int>> columns) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+      decoration: const BoxDecoration(
+        color: Color(0xFFFFF7ED),
+        border: Border(bottom: BorderSide(color: Color(0xFFFB923C))),
+      ),
+      child: Row(
+        children: [
+          for (final c in columns)
+            Expanded(
+              flex: c.value,
+              child: Text(
+                c.key,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: OrgColors.darkGray,
+                  letterSpacing: 0.7,
+                ),
+              ),
+            ),
+          const SizedBox(width: 32),
+        ],
+      ),
+    );
+  }
+
+  Widget _customTableRow({
+    required List<Widget> cells,
+    required List<int> flexes,
+    required VoidCallback onTap,
+    bool isLast = false,
+  }) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: InkWell(
+        hoverColor: const Color(0xFFF8F9FB),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          decoration: BoxDecoration(
+            border: isLast
+                ? null
+                : const Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+          ),
+          child: Row(
+            children: [
+              for (var i = 0; i < cells.length; i++)
+                Expanded(flex: flexes[i], child: cells[i]),
+              const SizedBox(width: 8),
+              const Icon(
+                Icons.chevron_right_rounded,
+                size: 20,
+                color: Color(0xFFCBD5E1),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _cellText(String text, {bool bold = false, Color? color}) {
+    return Text(
+      text,
+      overflow: TextOverflow.ellipsis,
+      style: GoogleFonts.beVietnamPro(
+        fontSize: 13,
+        fontWeight: bold ? FontWeight.w600 : FontWeight.w400,
+        color: color ?? OrgColors.charcoal,
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 110,
+            child: Text(
+              label,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: OrgColors.textFaint,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                color: OrgColors.charcoal,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDetailDialog({
+    required String title,
+    required List<MapEntry<String, String>> fields,
+  }) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(_DS.radiusLg),
+        ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: OrgColors.charcoal,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                for (final f in fields) _detailRow(f.key, f.value),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: OrgColors.primaryDark,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(_DS.radiusSm),
+                        ),
+                      ),
+                      child: const Text(
+                        'Close',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _tableCardSimple(Widget child) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(24),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(_DS.radiusLg),
+      border: Border.all(color: OrgColors.border),
+      boxShadow: _DS.cardShadow,
+    ),
+    child: child,
+  );
+
+  Widget _tableCard({required Widget header, required Widget table}) =>
+      Container(
+        width: double.infinity,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(_DS.radiusLg),
+          border: Border.all(color: OrgColors.border),
+          boxShadow: _DS.cardShadow,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(padding: const EdgeInsets.all(20), child: header),
+            table,
+          ],
+        ),
+      );
+
+  Future<void> _exportTable({
+    required String title,
+    required List<String> headers,
+    required List<List<String>> rows,
+    required String fileNamePrefix,
+  }) async {
+    try {
+      final bytes = await OrgExportPdf.generateTablePdf(
+        title: title,
+        headers: headers,
+        rows: rows,
+      );
+      final fileName =
+          '${fileNamePrefix}_${DateFormat('yyyy-MM-dd').format(DateTime.now())}.pdf';
+      await OrgExportUtil.saveBytes(
+        bytes,
+        fileName,
+        mimeType: 'application/pdf',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Exported $fileName'),
+            backgroundColor: OrgColors.success,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Export failed: $e'),
+            backgroundColor: OrgColors.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
 }
 
 // ── Stat card widget ────────────────────────────────────────────────────────
@@ -2713,6 +3553,8 @@ class _StatCardWidget extends StatelessWidget {
   final Color color;
   final int count;
   final bool loading;
+  final bool isSelected;
+  final VoidCallback? onTap;
 
   const _StatCardWidget({
     required this.label,
@@ -2720,105 +3562,35 @@ class _StatCardWidget extends StatelessWidget {
     required this.color,
     required this.count,
     required this.loading,
+    this.isSelected = false,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: OrgColors.white,
-        borderRadius: BorderRadius.circular(_DS.radiusMd),
-        border: Border.all(color: OrgColors.border),
-        boxShadow: _DS.cardShadow,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: color.withAlpha(26),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, color: color, size: 20),
-              ),
-              if (loading)
-                SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: color,
-                  ),
-                )
-              else
-                Text(
-                  '$count',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w800,
-                    color: OrgColors.charcoal,
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            label,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 11,
-              color: OrgColors.darkGray,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Merch sales card (FutureBuilder) ────────────────────────────────────────
-class _MerchSalesStatCard extends StatelessWidget {
-  final String orgId;
-  const _MerchSalesStatCard({required this.orgId});
-
-  Future<String> _sales() async {
-    try {
-      final snap = await FirebaseFirestore.instance
-          .collection('products')
-          .where('orgId', isEqualTo: orgId)
-          .get();
-      double sum = 0;
-      for (final d in snap.docs) {
-        final data = d.data();
-        sum +=
-            ((data['price'] as num?)?.toDouble() ?? 0) *
-            ((data['sold'] as num?)?.toDouble() ?? 0);
-      }
-      return '\u20B1${sum.toStringAsFixed(0)}';
-    } catch (_) {
-      return '\u20B10';
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<String>(
-      future: _sales(),
-      builder: (_, snap) {
-        final loading = snap.connectionState == ConnectionState.waiting;
-        return Container(
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
             color: OrgColors.white,
             borderRadius: BorderRadius.circular(_DS.radiusMd),
-            border: Border.all(color: OrgColors.border),
-            boxShadow: _DS.cardShadow,
+            border: Border.all(
+              color: isSelected ? color : OrgColors.border,
+              width: isSelected ? 2 : 1,
+            ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: color.withAlpha(46),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : _DS.cardShadow,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2827,32 +3599,28 @@ class _MerchSalesStatCard extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Container(
-                    width: 40,
-                    height: 40,
+                    width: 44,
+                    height: 44,
                     decoration: BoxDecoration(
-                      color: OrgColors.primaryDark.withAlpha(26),
-                      borderRadius: BorderRadius.circular(10),
+                      color: color.withAlpha(26),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(
-                      Icons.shopping_cart_rounded,
-                      color: OrgColors.primaryDark,
-                      size: 20,
-                    ),
+                    child: Icon(icon, color: color, size: 20),
                   ),
                   if (loading)
-                    const SizedBox(
+                    SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: OrgColors.primaryDark,
+                        color: color,
                       ),
                     )
                   else
                     Text(
-                      snap.data ?? '\u20B10',
+                      '$count',
                       style: GoogleFonts.beVietnamPro(
-                        fontSize: 20,
+                        fontSize: 28,
                         fontWeight: FontWeight.w800,
                         color: OrgColors.charcoal,
                       ),
@@ -2861,7 +3629,7 @@ class _MerchSalesStatCard extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                'Merch Sales',
+                label,
                 style: GoogleFonts.beVietnamPro(
                   fontSize: 11,
                   color: OrgColors.darkGray,
@@ -2869,6 +3637,113 @@ class _MerchSalesStatCard extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Merch sales card (FutureBuilder) ────────────────────────────────────────
+// Was "Merch Sales" (summed price*sold) \u2014 merch has no checkout anymore, so
+// sold/revenue are permanently frozen at 0 and meaningless. This now counts
+// the org's active catalog listings instead.
+class _MerchSalesStatCard extends StatelessWidget {
+  final String orgId;
+  final bool isSelected;
+  final VoidCallback? onTap;
+  const _MerchSalesStatCard({
+    required this.orgId,
+    this.isSelected = false,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('products')
+          .where('orgId', isEqualTo: orgId)
+          .where('isArchived', isEqualTo: false)
+          .snapshots(),
+      builder: (_, snap) {
+        final loading = snap.connectionState == ConnectionState.waiting;
+        final count = snap.data?.docs.length ?? 0;
+        return MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: onTap,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: OrgColors.white,
+                borderRadius: BorderRadius.circular(_DS.radiusMd),
+                border: Border.all(
+                  color: isSelected ? OrgColors.primaryDark : OrgColors.border,
+                  width: isSelected ? 2 : 1,
+                ),
+                boxShadow: isSelected
+                    ? [
+                        BoxShadow(
+                          color: OrgColors.primaryDark.withAlpha(46),
+                          blurRadius: 16,
+                          offset: const Offset(0, 4),
+                        ),
+                      ]
+                    : _DS.cardShadow,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: OrgColors.primaryDark.withAlpha(26),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.shopping_bag_rounded,
+                          color: OrgColors.primaryDark,
+                          size: 20,
+                        ),
+                      ),
+                      if (loading)
+                        const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: OrgColors.primaryDark,
+                          ),
+                        )
+                      else
+                        Text(
+                          '$count',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w800,
+                            color: OrgColors.charcoal,
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Merchandise Items',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11,
+                      color: OrgColors.darkGray,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         );
       },
@@ -2909,8 +3784,12 @@ class _ActivityBarChart extends StatelessWidget {
         ),
         borderData: FlBorderData(show: false),
         titlesData: FlTitlesData(
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
           leftTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
@@ -2918,7 +3797,10 @@ class _ActivityBarChart extends StatelessWidget {
               interval: maxY / 4,
               getTitlesWidget: (v, _) => Text(
                 '${v.toInt()}',
-                style: GoogleFonts.beVietnamPro(fontSize: 10, color: OrgColors.textFaint),
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 10,
+                  color: OrgColors.textFaint,
+                ),
               ),
             ),
           ),
@@ -2934,8 +3816,12 @@ class _ActivityBarChart extends StatelessWidget {
                     label,
                     style: GoogleFonts.beVietnamPro(
                       fontSize: 10,
-                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                      color: isSelected ? OrgColors.primaryDark : OrgColors.textFaint,
+                      fontWeight: isSelected
+                          ? FontWeight.w700
+                          : FontWeight.w500,
+                      color: isSelected
+                          ? OrgColors.primaryDark
+                          : OrgColors.textFaint,
                     ),
                   ),
                 );
@@ -2948,11 +3834,18 @@ class _ActivityBarChart extends StatelessWidget {
             getTooltipColor: (_) => OrgColors.charcoal,
             getTooltipItem: (group, _, rod, __) => BarTooltipItem(
               '${monthLabel(group.x)}\n',
-              GoogleFonts.beVietnamPro(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 11),
+              GoogleFonts.beVietnamPro(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 11,
+              ),
               children: [
                 TextSpan(
                   text: '${rod.toY.toInt()} proposal(s)',
-                  style: GoogleFonts.beVietnamPro(color: Colors.white70, fontSize: 11),
+                  style: GoogleFonts.beVietnamPro(
+                    color: Colors.white70,
+                    fontSize: 11,
+                  ),
                 ),
               ],
             ),
@@ -2960,14 +3853,19 @@ class _ActivityBarChart extends StatelessWidget {
         ),
         barGroups: List.generate(data.length, (i) {
           final isSelected = monthLabel(i) == selectedMonth;
-          return BarChartGroupData(x: i, barRods: [
-            BarChartRodData(
-              toY: data[i].toDouble(),
-              color: isSelected ? OrgColors.primaryDark : OrgColors.primaryDark.withAlpha(110),
-              width: 35,
-              borderRadius: BorderRadius.circular(4),
-            ),
-          ]);
+          return BarChartGroupData(
+            x: i,
+            barRods: [
+              BarChartRodData(
+                toY: data[i].toDouble(),
+                color: isSelected
+                    ? OrgColors.primaryDark
+                    : OrgColors.primaryDark.withAlpha(110),
+                width: 35,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ],
+          );
         }),
       ),
     );
@@ -3318,7 +4216,8 @@ class _OrgNotificationPanelState extends State<_OrgNotificationPanel> {
     setState(() {
       final idx = _notifs.indexWhere((n) => n['id'] == id);
       if (idx != -1) {
-        _notifs[idx] = Map<String, dynamic>.from(_notifs[idx])..['isRead'] = true;
+        _notifs[idx] = Map<String, dynamic>.from(_notifs[idx])
+          ..['isRead'] = true;
       }
     });
     await widget.onMarkRead(id);
@@ -3339,7 +4238,8 @@ class _OrgNotificationPanelState extends State<_OrgNotificationPanel> {
   // top bar, so a hardcoded top-right padding landed the panel well to
   // the side of the bell instead of right under it.
   void _openAllNotifications() {
-    final bellBox = widget.bellKey.currentContext?.findRenderObject() as RenderBox?;
+    final bellBox =
+        widget.bellKey.currentContext?.findRenderObject() as RenderBox?;
     final screenWidth = MediaQuery.of(context).size.width;
     double top = 76;
     double right = 28;
@@ -3347,7 +4247,10 @@ class _OrgNotificationPanelState extends State<_OrgNotificationPanel> {
       final bellTopLeft = bellBox.localToGlobal(Offset.zero);
       final bellSize = bellBox.size;
       top = bellTopLeft.dy + bellSize.height + 12;
-      right = (screenWidth - (bellTopLeft.dx + bellSize.width) - 6).clamp(8.0, screenWidth - 360);
+      right = (screenWidth - (bellTopLeft.dx + bellSize.width) - 6).clamp(
+        8.0,
+        screenWidth - 360,
+      );
     }
     Navigator.of(context).pop();
     showGeneralDialog(
@@ -3380,7 +4283,9 @@ class _OrgNotificationPanelState extends State<_OrgNotificationPanel> {
                     Container(
                       padding: const EdgeInsets.fromLTRB(18, 16, 12, 14),
                       decoration: const BoxDecoration(
-                        border: Border(bottom: BorderSide(color: OrgColors.border)),
+                        border: Border(
+                          bottom: BorderSide(color: OrgColors.border),
+                        ),
                       ),
                       child: Row(
                         children: [
@@ -3406,7 +4311,10 @@ class _OrgNotificationPanelState extends State<_OrgNotificationPanel> {
                               padding: const EdgeInsets.all(32),
                               child: Text(
                                 'No notifications yet',
-                                style: GoogleFonts.beVietnamPro(fontSize: 13, color: OrgColors.textFaint),
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 13,
+                                  color: OrgColors.textFaint,
+                                ),
                               ),
                             )
                           : SingleChildScrollView(
@@ -3505,7 +4413,9 @@ class _OrgNotificationPanelState extends State<_OrgNotificationPanel> {
                           height: 6,
                           margin: const EdgeInsets.only(right: 6, top: 4),
                           decoration: BoxDecoration(
-                            color: isRead ? OrgColors.border : OrgColors.primaryDark,
+                            color: isRead
+                                ? OrgColors.border
+                                : OrgColors.primaryDark,
                             shape: BoxShape.circle,
                           ),
                         ),
@@ -3514,8 +4424,9 @@ class _OrgNotificationPanelState extends State<_OrgNotificationPanel> {
                             n['title']?.toString() ?? 'Notification',
                             style: GoogleFonts.beVietnamPro(
                               fontSize: 13,
-                              fontWeight:
-                                  isRead ? FontWeight.w600 : FontWeight.w700,
+                              fontWeight: isRead
+                                  ? FontWeight.w600
+                                  : FontWeight.w700,
                               color: isRead
                                   ? OrgColors.darkGray
                                   : OrgColors.charcoal,
@@ -3566,19 +4477,21 @@ class _OrgNotificationPanelState extends State<_OrgNotificationPanel> {
     for (final groupKey in groupOrder) {
       final items = groups[groupKey];
       if (items == null || items.isEmpty) continue;
-      widgets.add(Container(
-        width: double.infinity,
-        color: OrgColors.lightGray,
-        padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
-        child: Text(
-          groupKey,
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: OrgColors.darkGray,
+      widgets.add(
+        Container(
+          width: double.infinity,
+          color: OrgColors.lightGray,
+          padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
+          child: Text(
+            groupKey,
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: OrgColors.darkGray,
+            ),
           ),
         ),
-      ));
+      );
       for (final n in items) {
         widgets.add(_buildNotifItem(n));
       }
@@ -3620,19 +4533,25 @@ class _OrgNotificationPanelState extends State<_OrgNotificationPanel> {
                     borderRadius: BorderRadius.circular(6),
                     child: Padding(
                       padding: const EdgeInsets.all(4),
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        const Icon(Icons.done_all_rounded,
-                            size: 15, color: OrgColors.primaryDark),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Mark all as read',
-                          style: GoogleFonts.beVietnamPro(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.done_all_rounded,
+                            size: 15,
                             color: OrgColors.primaryDark,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
                           ),
-                        ),
-                      ]),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Mark all as read',
+                            style: GoogleFonts.beVietnamPro(
+                              color: OrgColors.primaryDark,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
               ],
@@ -3700,7 +4619,9 @@ class _OrgNotificationPanelState extends State<_OrgNotificationPanel> {
                 decoration: const BoxDecoration(
                   color: Colors.white,
                   border: Border(top: BorderSide(color: OrgColors.border)),
-                  borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
+                  borderRadius: BorderRadius.vertical(
+                    bottom: Radius.circular(16),
+                  ),
                 ),
                 child: Text(
                   'View all notifications',

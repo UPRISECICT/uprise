@@ -39,13 +39,16 @@ class _DS {
           : null,
       suffixIcon: suffix,
       labelStyle: GoogleFonts.beVietnamPro(
-          fontSize: 13, color: const Color(0xFF64748B)),
+        fontSize: 13,
+        color: const Color(0xFF64748B),
+      ),
       hintStyle: GoogleFonts.beVietnamPro(
-          fontSize: 13, color: const Color(0xFF9AA5B4)),
+        fontSize: 13,
+        color: const Color(0xFF9AA5B4),
+      ),
       filled: true,
       fillColor: const Color(0xFFF8F9FB),
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(_DS.radiusSm),
         borderSide: const BorderSide(color: Color(0xFFE2E6EA), width: 1),
@@ -56,8 +59,7 @@ class _DS {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(_DS.radiusSm),
-        borderSide:
-            BorderSide(color: UpriseColors.primaryDark, width: 1.5),
+        borderSide: BorderSide(color: UpriseColors.primaryDark, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(_DS.radiusSm),
@@ -140,9 +142,13 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen>
               labelColor: Colors.white,
               unselectedLabelColor: const Color(0xFF64748B),
               labelStyle: GoogleFonts.beVietnamPro(
-                  fontSize: 13, fontWeight: FontWeight.w600),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
               unselectedLabelStyle: GoogleFonts.beVietnamPro(
-                  fontSize: 13, fontWeight: FontWeight.w500),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
               tabs: const [
                 Tab(height: 38, text: 'Profile'),
                 Tab(height: 38, text: 'Security'),
@@ -157,7 +163,12 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen>
           child: TabBarView(
             controller: _tabController,
             children: [
-              _ProfileTab(orgId: widget.orgId, orgName: widget.orgName, orgShortName: widget.orgShortName, orgEmail: widget.orgEmail),
+              _ProfileTab(
+                orgId: widget.orgId,
+                orgName: widget.orgName,
+                orgShortName: widget.orgShortName,
+                orgEmail: widget.orgEmail,
+              ),
               _SecurityTab(orgId: widget.orgId),
             ],
           ),
@@ -173,7 +184,12 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen>
 class _ProfileTab extends StatelessWidget {
   final String orgId;
   final String orgName, orgShortName, orgEmail;
-  const _ProfileTab({required this.orgId, required this.orgName, required this.orgShortName, required this.orgEmail});
+  const _ProfileTab({
+    required this.orgId,
+    required this.orgName,
+    required this.orgShortName,
+    required this.orgEmail,
+  });
 
   Widget _infoRow(String label, String value) {
     return Padding(
@@ -181,12 +197,22 @@ class _ProfileTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label,
-              style: GoogleFonts.beVietnamPro(
-                  fontSize: 11, fontWeight: FontWeight.w600, color: const Color(0xFF9AA5B4))),
+          Text(
+            label,
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF9AA5B4),
+            ),
+          ),
           const SizedBox(height: 4),
-          Text(value.isNotEmpty ? value : '—',
-              style: GoogleFonts.beVietnamPro(fontSize: 14, color: const Color(0xFF1A202C))),
+          Text(
+            value.isNotEmpty ? value : '—',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 14,
+              color: const Color(0xFF1A202C),
+            ),
+          ),
         ],
       ),
     );
@@ -212,12 +238,22 @@ class _ProfileTab extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Organization Information',
-                    style: GoogleFonts.beVietnamPro(
-                        fontSize: 18, fontWeight: FontWeight.w600, color: const Color(0xFF1A202C))),
+                Text(
+                  'Organization Information',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF1A202C),
+                  ),
+                ),
                 const SizedBox(height: 4),
-                Text('To update your logo, cover photo, or description, use the Profile page.',
-                    style: GoogleFonts.beVietnamPro(fontSize: 12, color: const Color(0xFF64748B))),
+                Text(
+                  'To update your logo, cover photo, or description, use the Profile page.',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 12,
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
                 const SizedBox(height: 20),
                 _infoRow('Organization Name', orgName),
                 _infoRow('Short Name', orgShortName),
@@ -280,15 +316,44 @@ class _GcashSettingsCardState extends State<_GcashSettingsCard> {
   }
 
   Future<void> _save() async {
+    final number = _numberCtrl.text.trim();
+    final name = _nameCtrl.text.trim();
+    if (number.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a GCash number.'),
+          backgroundColor: UpriseColors.error,
+        ),
+      );
+      return;
+    }
+    if (!RegExp(r'^09\d{9}$').hasMatch(number)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Enter a valid 11-digit GCash number (e.g., 09171234567).',
+          ),
+          backgroundColor: UpriseColors.error,
+        ),
+      );
+      return;
+    }
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter the GCash account name.'),
+          backgroundColor: UpriseColors.error,
+        ),
+      );
+      return;
+    }
+
     setState(() => _saving = true);
     try {
       await FirebaseFirestore.instance
           .collection('organizations')
           .doc(widget.orgId)
-          .update({
-        'gcashNumber': _numberCtrl.text.trim(),
-        'gcashName': _nameCtrl.text.trim(),
-      });
+          .update({'gcashNumber': number, 'gcashName': name});
       await activity_log.ActivityLogger.log(
         action: 'update_gcash_settings',
         module: 'settings',
@@ -297,14 +362,18 @@ class _GcashSettingsCardState extends State<_GcashSettingsCard> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text('GCash details saved'),
-              backgroundColor: UpriseColors.success),
+            content: Text('GCash details saved'),
+            backgroundColor: UpriseColors.success,
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: UpriseColors.error),
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: UpriseColors.error,
+          ),
         );
       }
     } finally {
@@ -326,30 +395,47 @@ class _GcashSettingsCardState extends State<_GcashSettingsCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('GCash Payment Details',
-              style: GoogleFonts.beVietnamPro(
-                  fontSize: 18, fontWeight: FontWeight.w600, color: const Color(0xFF1A202C))),
+          Text(
+            'GCash Payment Details',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF1A202C),
+            ),
+          ),
           const SizedBox(height: 4),
           Text(
             'Shown to students at merchandise checkout so they know where to send GCash payments. You confirm each payment manually in Merchandise > Orders.',
-            style: GoogleFonts.beVietnamPro(fontSize: 12, color: const Color(0xFF64748B)),
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 12,
+              color: const Color(0xFF64748B),
+            ),
           ),
           const SizedBox(height: 20),
           if (_loading)
             const Center(
-                child: Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
-              child: CircularProgressIndicator(),
-            ))
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: CircularProgressIndicator(),
+              ),
+            )
           else ...[
             TextFormField(
               controller: _numberCtrl,
-              decoration: _DS.inputDecoration('GCash Number', hint: 'e.g. 0917xxxxxxx', icon: Icons.phone_iphone_rounded),
+              decoration: _DS.inputDecoration(
+                'GCash Number',
+                hint: 'e.g. 0917xxxxxxx',
+                icon: Icons.phone_iphone_rounded,
+              ),
             ),
             const SizedBox(height: 14),
             TextFormField(
               controller: _nameCtrl,
-              decoration: _DS.inputDecoration('GCash Account Name', hint: 'e.g. Juan Dela Cruz', icon: Icons.person_outline_rounded),
+              decoration: _DS.inputDecoration(
+                'GCash Account Name',
+                hint: 'e.g. Juan Dela Cruz',
+                icon: Icons.person_outline_rounded,
+              ),
             ),
             const SizedBox(height: 18),
             Align(
@@ -359,16 +445,29 @@ class _GcashSettingsCardState extends State<_GcashSettingsCard> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: UpriseColors.primaryDark,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 13,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
                 child: _saving
                     ? const SizedBox(
                         width: 16,
                         height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
                       )
-                    : Text('Save', style: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w600)),
+                    : Text(
+                        'Save',
+                        style: GoogleFonts.beVietnamPro(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
               ),
             ),
           ],
@@ -428,8 +527,9 @@ class _SecurityTabState extends State<_SecurityTab> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text('Password updated successfully'),
-              backgroundColor: UpriseColors.success),
+            content: Text('Password updated successfully'),
+            backgroundColor: UpriseColors.success,
+          ),
         );
         _currentPasswordCtrl.clear();
         _newPasswordCtrl.clear();
@@ -439,8 +539,9 @@ class _SecurityTabState extends State<_SecurityTab> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Error: ${e.toString()}'),
-              backgroundColor: UpriseColors.error),
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: UpriseColors.error,
+          ),
         );
       }
     } finally {
@@ -469,16 +570,22 @@ class _SecurityTabState extends State<_SecurityTab> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Password & Security',
-                    style: GoogleFonts.beVietnamPro(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFF1A202C))),
+                Text(
+                  'Password & Security',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF1A202C),
+                  ),
+                ),
                 const SizedBox(height: 4),
                 Text(
-                    'Update your password regularly to keep your account secure.',
-                    style: GoogleFonts.beVietnamPro(
-                        fontSize: 12, color: const Color(0xFF64748B))),
+                  'Update your password regularly to keep your account secure.',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 12,
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
                 const SizedBox(height: 20),
                 Form(
                   key: _formKey,
@@ -498,7 +605,8 @@ class _SecurityTabState extends State<_SecurityTab> {
                               color: const Color(0xFF64748B),
                             ),
                             onPressed: () => setState(
-                                () => _obscureCurrent = !_obscureCurrent),
+                              () => _obscureCurrent = !_obscureCurrent,
+                            ),
                           ),
                         ),
                         validator: (v) =>
@@ -545,7 +653,8 @@ class _SecurityTabState extends State<_SecurityTab> {
                               color: const Color(0xFF64748B),
                             ),
                             onPressed: () => setState(
-                                () => _obscureConfirm = !_obscureConfirm),
+                              () => _obscureConfirm = !_obscureConfirm,
+                            ),
                           ),
                         ),
                         validator: (v) => v != _newPasswordCtrl.text
@@ -562,16 +671,24 @@ class _SecurityTabState extends State<_SecurityTab> {
                                   width: 16,
                                   height: 16,
                                   child: CircularProgressIndicator(
-                                      strokeWidth: 2, color: Colors.white))
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
                               : const Icon(Icons.lock_outline, size: 16),
-                          label: Text('Update Password',
-                              style: GoogleFonts.beVietnamPro(
-                                  fontSize: 13, fontWeight: FontWeight.w600)),
+                          label: Text(
+                            'Update Password',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: UpriseColors.primaryDark,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8)),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
                           ),
                         ),
                       ),
@@ -595,11 +712,14 @@ class _SecurityTabState extends State<_SecurityTab> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Recent Security Activity',
-                    style: GoogleFonts.beVietnamPro(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFF1A202C))),
+                Text(
+                  'Recent Security Activity',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF1A202C),
+                  ),
+                ),
                 const SizedBox(height: 16),
                 StreamBuilder<QuerySnapshot>(
                   // Filtered by orgId (matches the existing orgId+timestamp
@@ -617,31 +737,40 @@ class _SecurityTabState extends State<_SecurityTab> {
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 24),
                         child: Center(
-                          child: Text('Could not load security activity',
-                              style: GoogleFonts.beVietnamPro(
-                                  color: UpriseColors.error, fontSize: 13)),
+                          child: Text(
+                            'Could not load security activity',
+                            style: GoogleFonts.beVietnamPro(
+                              color: UpriseColors.error,
+                              fontSize: 13,
+                            ),
+                          ),
                         ),
                       );
                     }
                     if (!snap.hasData) {
-                      return const Center(
-                          child: CircularProgressIndicator());
+                      return const Center(child: CircularProgressIndicator());
                     }
                     final currentEmail =
                         FirebaseAuth.instance.currentUser?.email ?? '';
-                    final docs = snap.data!.docs.where((d) {
-                      final data = d.data() as Map<String, dynamic>;
-                      return data['user'] == currentEmail &&
-                          data['severity'] == 'security';
-                    }).take(10).toList();
+                    final docs = snap.data!.docs
+                        .where((d) {
+                          final data = d.data() as Map<String, dynamic>;
+                          return data['user'] == currentEmail &&
+                              data['severity'] == 'security';
+                        })
+                        .take(10)
+                        .toList();
                     if (docs.isEmpty) {
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 24),
                         child: Center(
-                          child: Text('No security activity recorded',
-                              style: GoogleFonts.beVietnamPro(
-                                  color: const Color(0xFF64748B),
-                                  fontSize: 13)),
+                          child: Text(
+                            'No security activity recorded',
+                            style: GoogleFonts.beVietnamPro(
+                              color: const Color(0xFF64748B),
+                              fontSize: 13,
+                            ),
+                          ),
                         ),
                       );
                     }
@@ -649,29 +778,39 @@ class _SecurityTabState extends State<_SecurityTab> {
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       itemCount: docs.length,
-                      separatorBuilder: (_, __) =>
-                          const Divider(height: 1),
+                      separatorBuilder: (_, __) => const Divider(height: 1),
                       itemBuilder: (context, i) {
                         final data = docs[i].data() as Map<String, dynamic>;
                         final action = data['action'] ?? 'Unknown action';
-                        final timestamp = (data['timestamp'] as Timestamp?)
-                                ?.toDate() ??
+                        final timestamp =
+                            (data['timestamp'] as Timestamp?)?.toDate() ??
                             DateTime.now();
-                        final details = data['details'] as Map<String, dynamic>?;
+                        final details =
+                            data['details'] as Map<String, dynamic>?;
                         final location =
                             details?['location'] ?? 'Unknown location';
                         return ListTile(
-                          leading: const Icon(Icons.security,
-                              color: UpriseColors.info, size: 20),
-                          title: Text(action,
-                              style: GoogleFonts.beVietnamPro(
-                                  fontWeight: FontWeight.w500, fontSize: 13)),
+                          leading: const Icon(
+                            Icons.security,
+                            color: UpriseColors.info,
+                            size: 20,
+                          ),
+                          title: Text(
+                            action,
+                            style: GoogleFonts.beVietnamPro(
+                              fontWeight: FontWeight.w500,
+                              fontSize: 13,
+                            ),
+                          ),
                           subtitle: Text(
                             '$location • ${DateFormat('MMM dd, yyyy h:mm a').format(timestamp)}',
                             style: GoogleFonts.beVietnamPro(fontSize: 11),
                           ),
-                          trailing: const Icon(Icons.devices,
-                              size: 16, color: Color(0xFF64748B)),
+                          trailing: const Icon(
+                            Icons.devices,
+                            size: 16,
+                            color: Color(0xFF64748B),
+                          ),
                         );
                       },
                     );

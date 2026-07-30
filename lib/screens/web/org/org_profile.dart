@@ -1,4 +1,4 @@
-﻿// lib/screens/web/org/org_profile.dart
+// lib/screens/web/org/org_profile.dart
 // Redesigned: Professional, matches StudentAccounts / OrgAnnouncements design language
 // All Firestore parameters and logic fully preserved
 // UPDATED: Added Members section (batch import, manual add, list, archive/resend)
@@ -20,6 +20,18 @@ import 'package:csv/csv.dart';
 import 'package:cross_file/cross_file.dart';
 import 'package:http/http.dart' as http;
 import '../../../services/activity_logger.dart' as activity_log;
+
+final RegExp _emailPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+
+// Drives which tier of the org chart (_HierarchyTree) an officer lands in.
+const Map<String, int> _standardPositionRanks = {
+  'President': 0,
+  'Vice President': 1,
+  'Secretary': 2,
+  'Treasurer': 2,
+  'Business Manager': 3,
+  'Board Member': 3,
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Image helpers (preserved exactly)
@@ -393,6 +405,30 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
     _orgShortName = widget.orgShortName;
     _orgEmail = widget.orgEmail;
     _loadOrgData();
+    _backfillOfficerRanks();
+  }
+
+  // One-time self-heal for officers saved before positionRank was derived
+  // from the selected position — those all landed on rank 0, collapsing the
+  // org chart into a single tier instead of a real hierarchy. Only touches
+  // officers whose position is one of the standard ones we have a rank for;
+  // custom titles are left alone since there's nothing to correct them to.
+  Future<void> _backfillOfficerRanks() async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('organizations')
+          .doc(widget.orgId)
+          .collection('officers')
+          .get();
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final position = data['position'] as String? ?? '';
+        final expectedRank = _standardPositionRanks[position];
+        if (expectedRank != null && data['positionRank'] != expectedRank) {
+          await doc.reference.update({'positionRank': expectedRank});
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadOrgData() async {
@@ -3740,6 +3776,8 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
       setState(
         () => _logoUrl = 'data:$mime;base64,${base64Encode(file.bytes!)}',
       );
+    } catch (e) {
+      if (mounted) _snack('Failed to load image: $e', isError: true);
     } finally {
       if (mounted) setState(() => _isUploadingLogo = false);
     }
@@ -3759,6 +3797,8 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
       setState(
         () => _coverPhotoUrl = 'data:$mime;base64,${base64Encode(file.bytes!)}',
       );
+    } catch (e) {
+      if (mounted) _snack('Failed to load image: $e', isError: true);
     } finally {
       if (mounted) setState(() => _isUploadingCover = false);
     }
@@ -3779,12 +3819,33 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
         () =>
             _adviserPhotoUrl = 'data:$mime;base64,${base64Encode(file.bytes!)}',
       );
+    } catch (e) {
+      if (mounted) _snack('Failed to load image: $e', isError: true);
     } finally {
       if (mounted) setState(() => _isUploadingPhoto = false);
     }
   }
 
   Future<void> _save() async {
+    final emailFields = <String, String>{
+      'Primary adviser': _a1EmailCtrl.text.trim(),
+      if (_hasSecondAdviser) 'Second adviser': _a2EmailCtrl.text.trim(),
+      if (_hasThirdAdviser) 'Third adviser': _a3EmailCtrl.text.trim(),
+    };
+    for (final entry in emailFields.entries) {
+      if (entry.value.isNotEmpty && !_emailPattern.hasMatch(entry.value)) {
+        _snack(
+          '${entry.key} email is not a valid email address.',
+          isError: true,
+        );
+        return;
+      }
+    }
+    if (_a1NameCtrl.text.trim().isEmpty) {
+      _snack('Primary adviser name is required.', isError: true);
+      return;
+    }
+
     setState(() => _isSaving = true);
 
     final advisers = <AdviserInfo>[
@@ -4664,6 +4725,8 @@ class _OfficerModalState extends State<_OfficerModal> {
       setState(
         () => _photoUrl = 'data:$mime;base64,${base64Encode(file.bytes!)}',
       );
+    } catch (e) {
+      if (mounted) _snack('Failed to load image: $e', isError: true);
     } finally {
       if (mounted) setState(() => _isUploadingPhoto = false);
     }
@@ -4673,9 +4736,20 @@ class _OfficerModalState extends State<_OfficerModal> {
       ? _customPosCtrl.text.trim()
       : (_selectedPosition ?? '');
 
+  // This used to always default to 0 for new officers regardless of the
+  // position picked, so every newly added officer piled into the top tier
+  // and the chart rendered as a single flat row instead of a hierarchy.
+  int get _resolvedPositionRank =>
+      _useCustomPosition ? 3 : (_standardPositionRanks[_selectedPosition] ?? 3);
+
   Future<void> _save() async {
     if (_nameCtrl.text.trim().isEmpty || _resolvedPosition.isEmpty) {
       _snack('Name and position are required', isError: true);
+      return;
+    }
+    final email = _emailCtrl.text.trim();
+    if (email.isNotEmpty && !_emailPattern.hasMatch(email)) {
+      _snack('Enter a valid email address', isError: true);
       return;
     }
     setState(() => _isSaving = true);
@@ -4684,7 +4758,7 @@ class _OfficerModalState extends State<_OfficerModal> {
       'position': _resolvedPosition,
       'email': _emailCtrl.text.trim(),
       'phone': _phoneCtrl.text.trim(),
-      'positionRank': widget.existingOfficer?.positionRank ?? 0,
+      'positionRank': _resolvedPositionRank,
       'isCaptain': widget.existingOfficer?.isCaptain ?? false,
       'photoUrl': _photoUrl ?? '',
     };

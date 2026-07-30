@@ -26,95 +26,95 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen> {
   }
 
   Future<void> _loadEvents() async {
-  setState(() => _isLoading = true);
-  
-  try {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      setState(() => _isLoading = false);
-      return;
-    }
+    setState(() => _isLoading = true);
 
-    // 👇 KUNIN ANG STUDENT DOCUMENT PARA MAKUHA ANG STUDENT ID
-    final studentDoc = await FirebaseFirestore.instance
-        .collection('students')
-        .doc(user.uid)
-        .get();
-    
-    String studentId = user.uid;
-    if (studentDoc.exists) {
-      final data = studentDoc.data() as Map<String, dynamic>;
-      studentId = data['studentId']?.toString() ?? user.uid;
-      print('✅ Using studentId: $studentId');
-    } else {
-      print('⚠️ No student document found, using UID: $studentId');
-    }
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
 
-    // 👇 GAMITIN ANG STUDENT ID SA PAGHAHANAP NG ATTENDANCE
-    final attendanceSnap = await FirebaseFirestore.instance
-        .collectionGroup('attendances')
-        .where('studentId', isEqualTo: studentId)
-        .get();
+      // 👇 KUNIN ANG STUDENT DOCUMENT PARA MAKUHA ANG STUDENT ID
+      final studentDoc = await FirebaseFirestore.instance
+          .collection('students')
+          .doc(user.uid)
+          .get();
 
-    print('📋 Attendance records found: ${attendanceSnap.docs.length}');
+      String studentId = user.uid;
+      if (studentDoc.exists) {
+        final data = studentDoc.data() as Map<String, dynamic>;
+        studentId = data['studentId']?.toString() ?? user.uid;
+        print('✅ Using studentId: $studentId');
+      } else {
+        print('⚠️ No student document found, using UID: $studentId');
+      }
 
-    // Get existing feedback
-    final feedbackSnap = await FirebaseFirestore.instance
-        .collection('event_feedback')
-        .where('userId', isEqualTo: user.uid)
-        .get();
+      // 👇 GAMITIN ANG STUDENT ID SA PAGHAHANAP NG ATTENDANCE
+      final attendanceSnap = await FirebaseFirestore.instance
+          .collectionGroup('attendances')
+          .where('studentId', isEqualTo: studentId)
+          .get();
 
-    final ratedEventIds = feedbackSnap.docs
-        .map((doc) => doc.data()['eventId']?.toString())
-        .whereType<String>()
-        .toSet();
+      print('📋 Attendance records found: ${attendanceSnap.docs.length}');
 
-    // Build the list of events
-    final List<Map<String, dynamic>> events = [];
-    
-    for (final doc in attendanceSnap.docs) {
-      final status = doc.data()['status']?.toString() ?? '';
-      if (status != 'present' && status != 'late') continue;
+      // Get existing feedback
+      final feedbackSnap = await FirebaseFirestore.instance
+          .collection('event_feedback')
+          .where('userId', isEqualTo: user.uid)
+          .get();
 
-      final eventRef = doc.reference.parent.parent;
-      if (eventRef == null) continue;
+      final ratedEventIds = feedbackSnap.docs
+          .map((doc) => doc.data()['eventId']?.toString())
+          .whereType<String>()
+          .toSet();
 
-      final eventDoc = await eventRef.get();
-      if (!eventDoc.exists) continue;
+      // Build the list of events
+      final List<Map<String, dynamic>> events = [];
 
-      final eventData = eventDoc.data() as Map<String, dynamic>;
-      
-      events.add({
-        'eventId': eventRef.id,
-        'eventName': eventData['title'] ?? 'Event',
-        'organization': eventData['orgName'] ?? '',
-        'orgId': eventData['orgId'] ?? '',
-        'rated': ratedEventIds.contains(eventRef.id),
+      for (final doc in attendanceSnap.docs) {
+        final status = doc.data()['status']?.toString() ?? '';
+        if (status != 'present' && status != 'late') continue;
+
+        final eventRef = doc.reference.parent.parent;
+        if (eventRef == null) continue;
+
+        final eventDoc = await eventRef.get();
+        if (!eventDoc.exists) continue;
+
+        final eventData = eventDoc.data() as Map<String, dynamic>;
+
+        events.add({
+          'eventId': eventRef.id,
+          'eventName': eventData['title'] ?? 'Event',
+          'organization': eventData['orgName'] ?? '',
+          'orgId': eventData['orgId'] ?? '',
+          'rated': ratedEventIds.contains(eventRef.id),
+        });
+      }
+
+      // Sort: unrated events first
+      events.sort((a, b) {
+        if (a['rated'] == true && b['rated'] == false) return 1;
+        if (a['rated'] == false && b['rated'] == true) return -1;
+        return 0;
       });
+
+      setState(() {
+        _events = events;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading events: $e');
+      setState(() => _isLoading = false);
     }
-
-    // Sort: unrated events first
-    events.sort((a, b) {
-      if (a['rated'] == true && b['rated'] == false) return 1;
-      if (a['rated'] == false && b['rated'] == true) return -1;
-      return 0;
-    });
-
-    setState(() {
-      _events = events;
-      _isLoading = false;
-    });
-    
-  } catch (e) {
-    print('Error loading events: $e');
-    setState(() => _isLoading = false);
   }
-}
 
   Future<void> _submitFeedback({
     required Map<String, dynamic> event,
     required int rating,
     required String comment,
+    required bool isAnonymous,
   }) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -128,6 +128,7 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen> {
         'rating': rating,
         'comment': comment.trim(),
         'userId': user.uid,
+        'isAnonymous': isAnonymous,
         'submittedAt': FieldValue.serverTimestamp(),
       });
 
@@ -142,7 +143,7 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen> {
 
       // Refresh the list
       await _loadEvents();
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -154,10 +155,7 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -167,6 +165,7 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen> {
     int selectedRating = 0;
     final commentController = TextEditingController();
     bool isSubmitting = false;
+    bool isAnonymous = false;
 
     showModalBottomSheet(
       context: context,
@@ -201,7 +200,7 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen> {
                       ),
                     ),
                   ),
-                  
+
                   // Title
                   Text(
                     'Rate this Event',
@@ -214,13 +213,10 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen> {
                   const SizedBox(height: 4),
                   Text(
                     event['eventName'] ?? 'Event',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey.shade600,
-                    ),
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
                   ),
                   const SizedBox(height: 20),
-                  
+
                   // Stars
                   Center(
                     child: Row(
@@ -245,7 +241,7 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  
+
                   // Comment field
                   TextField(
                     controller: commentController,
@@ -258,8 +254,40 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen> {
                       contentPadding: const EdgeInsets.all(14),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  
+                  const SizedBox(height: 8),
+
+                  // Anonymous toggle
+                  InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () => setSheetState(() {
+                      isAnonymous = !isAnonymous;
+                    }),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Row(
+                        children: [
+                          Checkbox(
+                            value: isAnonymous,
+                            activeColor: AppColors.primaryDark,
+                            onChanged: (v) => setSheetState(() {
+                              isAnonymous = v ?? false;
+                            }),
+                          ),
+                          Expanded(
+                            child: Text(
+                              'Submit anonymously (your name won\'t be shown to the organization)',
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
                   // Submit button
                   SizedBox(
                     width: double.infinity,
@@ -276,12 +304,13 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen> {
                                 );
                                 return;
                               }
-                              
+
                               setSheetState(() => isSubmitting = true);
                               await _submitFeedback(
                                 event: event,
                                 rating: selectedRating,
                                 comment: commentController.text,
+                                isAnonymous: isAnonymous,
                               );
                               if (ctx.mounted) Navigator.pop(ctx);
                             },
@@ -326,120 +355,115 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen> {
         elevation: 0,
         foregroundColor: Colors.black87,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadEvents,
-          ),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadEvents),
         ],
       ),
       body: _isLoading
           ? const Center(
-              child: CircularProgressIndicator(
-                color: AppColors.primaryDark,
-              ),
+              child: CircularProgressIndicator(color: AppColors.primaryDark),
             )
           : _events.isEmpty
-              ? _buildEmptyState()
-              : RefreshIndicator(
-                  onRefresh: _loadEvents,
-                  color: AppColors.primaryDark,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _events.length,
-                    itemBuilder: (context, index) {
-                      final event = _events[index];
-                      final isRated = event['rated'] == true;
+          ? _buildEmptyState()
+          : RefreshIndicator(
+              onRefresh: _loadEvents,
+              color: AppColors.primaryDark,
+              child: ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: _events.length,
+                itemBuilder: (context, index) {
+                  final event = _events[index];
+                  final isRated = event['rated'] == true;
 
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: const Color(0xFFE8ECF0)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.04),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFE8ECF0)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.04),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
                         ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    event['eventName'] ?? 'Event',
-                                    style: const TextStyle(
-                                      fontSize: 14.5,
-                                      fontWeight: FontWeight.w700,
-                                      color: Colors.black87,
-                                    ),
-                                  ),
-                                  if (event['organization'] != null &&
-                                      event['organization'].isNotEmpty)
-                                    Text(
-                                      event['organization'],
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey.shade600,
-                                      ),
-                                    ),
-                                ],
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                event['eventName'] ?? 'Event',
+                                style: const TextStyle(
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.black87,
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            if (isRated)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFECFDF5),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Text(
-                                  '✅ Done',
+                              if (event['organization'] != null &&
+                                  event['organization'].isNotEmpty)
+                                Text(
+                                  event['organization'],
                                   style: TextStyle(
                                     fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF059669),
+                                    color: Colors.grey.shade600,
                                   ),
                                 ),
-                              )
-                            else
-                              ElevatedButton(
-                                onPressed: () => _showFeedbackDialog(event),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppColors.primaryDark,
-                                  foregroundColor: Colors.white,
-                                  elevation: 0,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 14,
-                                    vertical: 10,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                ),
-                                child: const Text(
-                                  'Evaluate',
-                                  style: TextStyle(
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                          ],
+                            ],
+                          ),
                         ),
-                      );
-                    },
-                  ),
-                ),
+                        const SizedBox(width: 12),
+                        if (isRated)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFECFDF5),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text(
+                              '✅ Done',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF059669),
+                              ),
+                            ),
+                          )
+                        else
+                          ElevatedButton(
+                            onPressed: () => _showFeedbackDialog(event),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primaryDark,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 10,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            child: const Text(
+                              'Evaluate',
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
     );
   }
 
@@ -448,11 +472,7 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.feedback_outlined,
-            size: 80,
-            color: Colors.grey.shade400,
-          ),
+          Icon(Icons.feedback_outlined, size: 80, color: Colors.grey.shade400),
           const SizedBox(height: 16),
           Text(
             'No events to evaluate',
@@ -468,10 +488,7 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen> {
             child: Text(
               'Once you attend an event, it will appear here for feedback.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.grey.shade500,
-              ),
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
             ),
           ),
         ],

@@ -1,75 +1,36 @@
 // lib/screens/student/student_broadcast_screen.dart
+// Private messaging thread between this student and their org — replaces the
+// old org-wide broadcast/announcement channel. Each student has exactly one
+// org, so there's a single persistent thread (no inbox needed here). Mirrors
+// lib/screens/web/org/org_broadcast.dart, which renders the org side of the
+// same `conversations` collection.
+
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:intl/intl.dart';
+import 'package:image_picker/image_picker.dart';
+import '../../services/notification_service.dart';
+import '../../utils/profanity_filter.dart';
 import '../../widgets/student/app_colors.dart';
 
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Design Tokens
-// ─────────────────────────────────────────────────────────────────────────────
-class _C {
-  static const Color white = Color(0xFFFFFFFF);
-  static const Color surface = Color(0xFFF5F7FA);
-  static const Color pageBg = Color(0xFFF0F2F5);
-  static const Color feedBg = Color(0xFFE8ECF0);
-  static const Color border = Color(0xFFE8ECF0);
-  static const Color borderSoft = Color(0xFFE2E6EA);
-  static const Color charcoal = Color(0xFF1A202C);
-  static const Color textMid = Color(0xFF374151);
-  static const Color darkGray = Color(0xFF64748B);
-  static const Color textFaint = Color(0xFF9AA5B4);
+ImageProvider _imageProviderFromBase64(String data) {
+  final base64Part = data.contains(',') ? data.split(',').last : data;
+  return MemoryImage(base64Decode(base64Part));
 }
 
-class _DS {
-  static const double radiusSm = 8;
-  static const double radiusMd = 12;
-  static const double radiusLg = 16;
+String _conversationId(String orgId, String studentId) => '${orgId}_$studentId';
 
-  static final List<BoxShadow> cardShadow = [
-    BoxShadow(
-      color: Color.fromRGBO(0, 0, 0, 0.08),
-      blurRadius: 16,
-      offset: Offset(0, 4),
-    ),
-  ];
+String _initials(String name) {
+  final parts = name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty);
+  if (parts.isEmpty) return '?';
+  if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
+  return (parts.first.substring(0, 1) + parts.last.substring(0, 1))
+      .toUpperCase();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Image provider helper
-// ─────────────────────────────────────────────────────────────────────────────
-ImageProvider _imageProviderFromUrl(String url) {
-  if (url.startsWith('data:image')) {
-    final base64Part = url.split(',').last;
-    return MemoryImage(base64Decode(base64Part));
-  }
-  return NetworkImage(url);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Channel theme presets — must match the ids set by the org on
-// lib/screens/web/org/org_broadcast.dart's "Change theme" action.
-// ─────────────────────────────────────────────────────────────────────────────
-const Map<String, List<Color>> _kBroadcastThemeColors = {
-  'orange': [Color(0xFFEA580C), Color(0xFFF97316)],
-  'blue': [Color(0xFF2563EB), Color(0xFF3B82F6)],
-  'green': [Color(0xFF059669), Color(0xFF10B981)],
-  'purple': [Color(0xFF7C3AED), Color(0xFFA78BFA)],
-  'pink': [Color(0xFFDB2777), Color(0xFFF472B6)],
-  'teal': [Color(0xFF0D9488), Color(0xFF2DD4BF)],
-};
-
-List<Color> _broadcastThemeColors(String? id) =>
-    _kBroadcastThemeColors[id] ?? _kBroadcastThemeColors['orange']!;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Main Screen - Student Broadcast
-// ─────────────────────────────────────────────────────────────────────────────
 class StudentBroadcastScreen extends StatefulWidget {
   final String orgId;
   final String orgName;
@@ -85,1328 +46,397 @@ class StudentBroadcastScreen extends StatefulWidget {
 }
 
 class _StudentBroadcastScreenState extends State<StudentBroadcastScreen> {
-  String _searchQuery = '';
-  final TextEditingController _searchController = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
+  final TextEditingController _textCtrl = TextEditingController();
+  final ScrollController _scrollCtrl = ScrollController();
+  late final String _conversationDocId;
+  String _studentName = 'You';
+  bool _sending = false;
+  bool _ready = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    _conversationDocId = _conversationId(widget.orgId, uid);
+    _initConversation(uid);
+  }
+
+  Future<void> _initConversation(String uid) async {
+    try {
+      final studentDoc = await FirebaseFirestore.instance
+          .collection('students')
+          .doc(uid)
+          .get();
+      final studentData = studentDoc.data();
+      _studentName =
+          studentData?['fullName'] ??
+          FirebaseAuth.instance.currentUser?.displayName ??
+          FirebaseAuth.instance.currentUser?.email ??
+          'You';
+
+      final ref = FirebaseFirestore.instance
+          .collection('conversations')
+          .doc(_conversationDocId);
+      final existing = await ref.get();
+      if (!existing.exists) {
+        await ref.set({
+          'orgId': widget.orgId,
+          'orgName': widget.orgName,
+          'studentId': uid,
+          'studentName': _studentName,
+          'lastMessage': '',
+          'lastMessageAt': FieldValue.serverTimestamp(),
+          'lastSenderRole': 'student',
+          'unreadForOrg': false,
+          'unreadForStudent': false,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      } else {
+        await ref.update({'unreadForStudent': false});
+      }
+    } catch (_) {
+      // Non-fatal — thread still renders, just won't have a doc until the
+      // first message is sent.
+    } finally {
+      if (mounted) setState(() => _ready = true);
+    }
+  }
 
   @override
   void dispose() {
-    _searchController.dispose();
-    _scrollController.dispose();
+    _textCtrl.dispose();
+    _scrollCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _sendMessage({String? imageBase64}) async {
+    final rawText = _textCtrl.text.trim();
+    if (rawText.isEmpty && imageBase64 == null) return;
+    final text = ProfanityFilter.filter(rawText);
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    setState(() => _sending = true);
+    _textCtrl.clear();
+
+    final ref = FirebaseFirestore.instance
+        .collection('conversations')
+        .doc(_conversationDocId);
+    try {
+      await ref.set({
+        'orgId': widget.orgId,
+        'orgName': widget.orgName,
+        'studentId': uid,
+        'studentName': _studentName,
+        'createdAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      await ref.collection('messages').add({
+        'senderId': uid,
+        'senderRole': 'student',
+        'senderName': _studentName,
+        'text': text,
+        'imageBase64': imageBase64,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+      await ref.update({
+        'lastMessage': text.isEmpty ? 'Sent an image' : text,
+        'lastMessageAt': FieldValue.serverTimestamp(),
+        'lastSenderRole': 'student',
+        'unreadForOrg': true,
+      });
+      await NotificationService.sendToOrgMembers(
+        orgId: widget.orgId,
+        title: _studentName,
+        body: text.isEmpty ? 'Sent an image' : text,
+        type: 'private_message',
+      );
+      if (_scrollCtrl.hasClients) {
+        _scrollCtrl.animateTo(
+          0,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _pickImage() async {
+    try {
+      final picker = ImagePicker();
+      final file = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1280,
+        imageQuality: 80,
+      );
+      if (file == null) return;
+      final bytes = await file.readAsBytes();
+      final b64 = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+      await _sendMessage(imageBase64: b64);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Couldn\'t attach image: $e')));
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFE8ECF0), // Mas dark na grey background
+      backgroundColor: const Color(0xFFF0F2F5),
       appBar: AppBar(
-        title: Text(
-          widget.orgName,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
         backgroundColor: Colors.white,
-        foregroundColor: _C.charcoal,
+        foregroundColor: Colors.black,
         elevation: 0,
-        centerTitle: true,
-        actions: [
-          IconButton(
-            onPressed: () {
-              showSearch(
-                context: context,
-                delegate: _BroadcastSearchDelegate(
-                  orgId: widget.orgId,
-                  orgName: widget.orgName,
-                ),
-              );
-            },
-            icon: const Icon(Icons.search, color: _C.darkGray),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          _buildChannelHeader(),
-          Expanded(child: _buildFeed()),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildChannelHeader() {
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance.collection('organizations').doc(widget.orgId).snapshots(),
-      builder: (context, orgSnap) {
-        final orgData = orgSnap.data?.data() as Map<String, dynamic>?;
-        final channelName = (orgData?['broadcastChannelName'] as String?)?.trim();
-        final channelPhotoUrl = orgData?['broadcastChannelPhotoUrl'] as String?;
-        final colors = _broadcastThemeColors(orgData?['broadcastThemeId'] as String?);
-        final primary = colors[0];
-        final hasPhoto = channelPhotoUrl != null && channelPhotoUrl.isNotEmpty;
-
-        return Container(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            border: const Border(bottom: BorderSide(color: _C.border)),
-            boxShadow: _DS.cardShadow,
-          ),
-          child: Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(13),
-                child: Container(
-                  width: 46,
-                  height: 46,
-                  color: primary.withOpacity(0.10),
-                  child: hasPhoto
-                      ? Image(
-                          image: _imageProviderFromUrl(channelPhotoUrl),
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Icon(Icons.campaign_rounded, color: primary, size: 24),
-                        )
-                      : Icon(Icons.campaign_rounded, color: primary, size: 24),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(channelName?.isNotEmpty == true ? channelName! : 'Broadcast Channel',
-                        style: GoogleFonts.beVietnamPro(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w800,
-                            color: _C.charcoal)),
-                    const SizedBox(height: 2),
-                    Text(widget.orgName,
-                        style: GoogleFonts.beVietnamPro(
-                            fontSize: 12, color: _C.darkGray)),
-                  ],
-                ),
-              ),
-              // Message count
-              StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('broadcasts')
-                    .where('orgId', isEqualTo: widget.orgId)
-                    .snapshots(),
-                builder: (_, snap) {
-                  final count = snap.data?.docs.length ?? 0;
-                  return Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: primary.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: primary.withOpacity(0.2)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.forum_outlined,
-                            size: 13, color: primary),
-                        const SizedBox(width: 6),
-                        Text('$count',
-                            style: GoogleFonts.beVietnamPro(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: primary)),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildFeed() {
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance.collection('organizations').doc(widget.orgId).snapshots(),
-      builder: (context, orgSnap) {
-        final orgData = orgSnap.data?.data() as Map<String, dynamic>?;
-        final colors = _broadcastThemeColors(orgData?['broadcastThemeId'] as String?);
-        return _buildFeedBody(colors[0], colors[1]);
-      },
-    );
-  }
-
-  Widget _buildFeedBody(Color primary, Color accent) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 20,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('broadcasts')
-            .where('orgId', isEqualTo: widget.orgId)
-            .orderBy('timestamp', descending: false)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return _buildErrorState(snapshot.error.toString());
-          }
-
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(40),
-                  child: CircularProgressIndicator(color: AppColors.primaryDark),
-                ));
-          }
-
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return _buildEmptyState();
-          }
-
-          var broadcasts = snapshot.data!.docs
-              .map((doc) => BroadcastModel.fromFirestore(doc))
-              .toList();
-
-          if (_searchQuery.isNotEmpty) {
-            broadcasts = broadcasts.where((b) =>
-                b.content.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-                b.authorName.toLowerCase().contains(_searchQuery.toLowerCase())
-            ).toList();
-          }
-
-          if (broadcasts.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.search_off,
-                    size: 48,
-                    color: _C.textFaint,
-                  ),
-                  const SizedBox(height: 12),
-                  Text('No results found',
-                      style: GoogleFonts.beVietnamPro(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: _C.charcoal)),
-                  const SizedBox(height: 4),
-                  Text('Try a different search term',
-                      style: GoogleFonts.beVietnamPro(
-                          fontSize: 12, color: _C.darkGray)),
-                ],
-              ),
-            );
-          }
-
-          // Reverse: latest messages at the bottom
-          final reversedBroadcasts = broadcasts.reversed.toList();
-
-          return ListView.builder(
-            reverse: true,
-            controller: _scrollController,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            itemCount: reversedBroadcasts.length,
-            itemBuilder: (context, index) {
-              final broadcast = reversedBroadcasts[index];
-              final originalIndex = broadcasts.length - 1 - index;
-              final showDateSeparator = originalIndex == 0 ||
-                  !_isSameDay(broadcasts[originalIndex - 1].timestamp,
-                      broadcast.timestamp);
-
-              return Column(
-                children: [
-                  if (showDateSeparator)
-                    _DateSeparator(timestamp: broadcast.timestamp),
-                  const SizedBox(height: 8),
-                  _BroadcastCard(
-                    broadcast: broadcast,
-                    orgId: widget.orgId,
-                    primaryColor: primary,
-                    accentColor: accent,
-                  ),
-                ],
-              );
-            },
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              color: AppColors.primaryDark.withOpacity(0.05),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: AppColors.primaryDark.withOpacity(0.1)),
-            ),
-            child: Icon(
-              Icons.campaign_outlined,
-              size: 40,
-              color: AppColors.primaryDark.withOpacity(0.4),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text('No announcements yet',
-              style: GoogleFonts.beVietnamPro(
-                  fontSize: 16,
+        titleSpacing: 0,
+        title: Row(
+          children: [
+            CircleAvatar(
+              radius: 17,
+              backgroundColor: AppColors.primaryDark.withAlpha(28),
+              child: Text(
+                _initials(widget.orgName),
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: _C.charcoal)),
-          const SizedBox(height: 6),
-          Text('Check back later for updates.',
-              style: GoogleFonts.beVietnamPro(
-                  fontSize: 13, color: _C.darkGray)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildErrorState(String error) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: _DS.cardShadow,
-            ),
-            child: Icon(
-              Icons.error_outline_rounded,
-              color: AppColors.primaryDark,
-              size: 28,
-            ),
-          ),
-          const SizedBox(height: 14),
-          Text('Failed to load announcements',
-              style: GoogleFonts.beVietnamPro(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: _C.charcoal)),
-          const SizedBox(height: 6),
-          Text(error,
-              style: GoogleFonts.beVietnamPro(
-                  fontSize: 12, color: _C.darkGray)),
-        ],
-      ),
-    );
-  }
-
-  bool _isSameDay(Timestamp a, Timestamp b) {
-    final da = a.toDate();
-    final db = b.toDate();
-    return da.year == db.year && da.month == db.month && da.day == db.day;
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Broadcast Search Delegate
-// ─────────────────────────────────────────────────────────────────────────────
-class _BroadcastSearchDelegate extends SearchDelegate {
-  final String orgId;
-  final String orgName;
-
-  _BroadcastSearchDelegate({
-    required this.orgId,
-    required this.orgName,
-  });
-
-  @override
-  String get searchFieldLabel => 'Search broadcasts...';
-
-  @override
-  List<Widget> buildActions(BuildContext context) {
-    return [
-      IconButton(
-        icon: const Icon(Icons.clear),
-        onPressed: () {
-          query = '';
-          showSuggestions(context);
-        },
-      ),
-    ];
-  }
-
-  @override
-  Widget buildLeading(BuildContext context) {
-    return IconButton(
-      icon: const Icon(Icons.arrow_back),
-      onPressed: () {
-        close(context, null);
-      },
-    );
-  }
-
-  @override
-  Widget buildResults(BuildContext context) {
-    return _buildSearchResults(context);
-  }
-
-  @override
-  Widget buildSuggestions(BuildContext context) {
-    return _buildSearchResults(context);
-  }
-
-  Widget _buildSearchResults(BuildContext context) {
-    if (query.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.search_rounded,
-              size: 64,
-              color: _C.textFaint,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Search for broadcasts',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: _C.charcoal,
+                  color: AppColors.primaryDark,
+                ),
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(width: 10),
             Text(
-              'Type a keyword to find messages',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 13,
-                color: _C.darkGray,
+              widget.orgName,
+              style: GoogleFonts.poppins(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ],
         ),
-      );
-    }
-
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('broadcasts')
-          .where('orgId', isEqualTo: orgId)
-          .orderBy('timestamp', descending: true)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        var broadcasts = snapshot.data!.docs
-            .map((doc) => BroadcastModel.fromFirestore(doc))
-            .where((b) =>
-                b.content.toLowerCase().contains(query.toLowerCase()) ||
-                b.authorName.toLowerCase().contains(query.toLowerCase()))
-            .toList();
-
-        if (broadcasts.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.search_off,
-                  size: 48,
-                  color: _C.textFaint,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'No results found',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: _C.charcoal,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Try a different keyword',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 12,
-                    color: _C.darkGray,
-                  ),
-                ),
-              ],
-            ),
-          );
-        }
-
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: broadcasts.length,
-          itemBuilder: (context, index) {
-            final broadcast = broadcasts[index];
-            return _BroadcastCard(
-              broadcast: broadcast,
-              orgId: orgId,
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Date Separator
-// ─────────────────────────────────────────────────────────────────────────────
-class _DateSeparator extends StatelessWidget {
-  final Timestamp timestamp;
-  const _DateSeparator({required this.timestamp});
-
-  String _label() {
-    final now = DateTime.now();
-    final date = timestamp.toDate();
-    if (date.year == now.year &&
-        date.month == now.month &&
-        date.day == now.day) {
-      return 'Today';
-    }
-    final yesterday = now.subtract(const Duration(days: 1));
-    if (date.year == yesterday.year &&
-        date.month == yesterday.month &&
-        date.day == yesterday.day) {
-      return 'Yesterday';
-    }
-    return DateFormat('MMMM d, yyyy').format(date);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Row(
-        children: [
-          const Expanded(child: Divider(color: Color(0xFFE8ECF0), thickness: 1)),
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 12),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
-                  blurRadius: 8,
-                ),
-              ],
-            ),
-            child: Text(_label(),
-                style: GoogleFonts.beVietnamPro(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: _C.darkGray)),
-          ),
-          const Expanded(child: Divider(color: Color(0xFFE8ECF0), thickness: 1)),
-        ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Broadcast Card with Replies - IMPROVED WITH BETTER VISIBILITY
-// ─────────────────────────────────────────────────────────────────────────────
-class _BroadcastCard extends StatefulWidget {
-  final BroadcastModel broadcast;
-  final String orgId;
-  final Color primaryColor;
-  final Color accentColor;
-
-  const _BroadcastCard({
-    required this.broadcast,
-    required this.orgId,
-    this.primaryColor = AppColors.primaryDark,
-    this.accentColor = const Color(0xFFFFA726),
-  });
-
-  @override
-  State<_BroadcastCard> createState() => _BroadcastCardState();
-}
-
-class _BroadcastCardState extends State<_BroadcastCard> {
-  late int _likes;
-  bool _isLiked = false;
-  bool _repliesExpanded = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _likes = widget.broadcast.likes;
-    _checkIfLiked();
-  }
-
-  Future<void> _checkIfLiked() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    final doc = await FirebaseFirestore.instance
-        .collection('broadcast_likes')
-        .doc('${widget.broadcast.id}_${user.uid}')
-        .get();
-
-    if (doc.exists) {
-      setState(() => _isLiked = true);
-    }
-  }
-
-  Future<void> _toggleLike() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please login to like'),
-          backgroundColor: AppColors.primaryDark,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(height: 1, color: Colors.grey.shade200),
         ),
-      );
-      return;
-    }
-
-    setState(() {
-      if (_isLiked) {
-        _likes--;
-        _isLiked = false;
-      } else {
-        _likes++;
-        _isLiked = true;
-      }
-    });
-
-    try {
-      final docRef = FirebaseFirestore.instance
-          .collection('broadcast_likes')
-          .doc('${widget.broadcast.id}_${user.uid}');
-
-      if (_isLiked) {
-        await docRef.set({
-          'broadcastId': widget.broadcast.id,
-          'userId': user.uid,
-          'likedAt': FieldValue.serverTimestamp(),
-        });
-        await FirebaseFirestore.instance
-            .collection('broadcasts')
-            .doc(widget.broadcast.id)
-            .update({
-          'likes': FieldValue.increment(1),
-        });
-      } else {
-        await docRef.delete();
-        await FirebaseFirestore.instance
-            .collection('broadcasts')
-            .doc(widget.broadcast.id)
-            .update({
-          'likes': FieldValue.increment(-1),
-        });
-      }
-    } catch (e) {
-      setState(() {
-        if (_isLiked) {
-          _likes--;
-          _isLiked = false;
-        } else {
-          _likes++;
-          _isLiked = true;
-        }
-      });
-    }
-  }
-
-  Future<void> _addReply(String content) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    try {
-      await FirebaseFirestore.instance
-          .collection('broadcasts')
-          .doc(widget.broadcast.id)
-          .collection('replies')
-          .add({
-        'content': content,
-        'authorId': user.uid,
-        'authorName': user.displayName ?? user.email?.split('@').first ?? 'Anonymous',
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-
-      await FirebaseFirestore.instance
-          .collection('broadcasts')
-          .doc(widget.broadcast.id)
-          .update({
-        'replyCount': FieldValue.increment(1),
-      });
-    } catch (e) {
-      throw Exception('Failed to add reply: $e');
-    }
-  }
-
-  void _showReplyDialog() {
-    final replyController = TextEditingController();
-    bool isSubmitting = false;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheetState) {
-          Future<void> submitReply() async {
-            if (replyController.text.trim().isEmpty) return;
-            setSheetState(() => isSubmitting = true);
-            try {
-              await _addReply(replyController.text.trim());
-              if (ctx.mounted) Navigator.pop(ctx);
-              if (mounted) {
-                setState(() {});
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Reply added!'),
-                    backgroundColor: AppColors.primaryDark,
-                  ),
-                );
-              }
-            } catch (e) {
-              setSheetState(() => isSubmitting = false);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Failed to add reply: $e'),
-                  backgroundColor: Colors.red,
-                ),
-              );
-            }
-          }
-
-          return Container(
-            margin: const EdgeInsets.all(16),
-            padding: EdgeInsets.only(
-              left: 20,
-              right: 20,
-              top: 20,
-              bottom: 20 + MediaQuery.of(ctx).viewInsets.bottom,
-            ),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const Text(
-                  'Add Reply',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black87,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: replyController,
-                  maxLines: 4,
-                  decoration: InputDecoration(
-                    hintText: 'Write your reply here...',
-                    filled: true,
-                    fillColor: const Color(0xFFF5F7FA),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.all(16),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          side: const BorderSide(color: _C.border),
-                        ),
-                        child: const Text(
-                          'Cancel',
-                          style: TextStyle(
-                            color: _C.darkGray,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: isSubmitting ? null : submitReply,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primaryDark,
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: isSubmitting
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Text(
-                                'Post Reply',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          );
-        },
       ),
-    );
-  }
-
-  String _timeLabel(Timestamp ts) =>
-      DateFormat('h:mm a').format(ts.toDate());
-
-  @override
-  Widget build(BuildContext context) {
-    final b = widget.broadcast;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 2),
-          ),
-        ],
-        border: Border.all(color: const Color(0xFFF0F2F5)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header: Author and time
-          Row(
-            children: [
-              CircleAvatar(
-                radius: 16,
-                backgroundColor: AppColors.primaryDark.withOpacity(0.1),
-                child: Text(
-                  b.authorName.isNotEmpty ? b.authorName[0].toUpperCase() : '?',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primaryDark,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(b.authorName,
-                        style: GoogleFonts.beVietnamPro(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: _C.charcoal)),
-                    Text(_timeLabel(b.timestamp),
-                        style: GoogleFonts.beVietnamPro(
-                            fontSize: 11, color: _C.textFaint)),
-                  ],
-                ),
-              ),
-              if (b.pinned) ...[
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryDark.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.push_pin_rounded,
-                        size: 12,
-                        color: AppColors.primaryDark,
-                      ),
-                      const SizedBox(width: 4),
-                      Text('Pinned',
-                          style: GoogleFonts.beVietnamPro(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.primaryDark)),
-                    ],
-                  ),
-                ),
-              ],
-            ],
-          ),
-          const SizedBox(height: 12),
-
-          // Message Bubble - IMPROVED WITH BETTER VISIBILITY
-          Container(
-            width: double.infinity,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  widget.primaryColor,
-                  widget.accentColor,
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: widget.primaryColor.withOpacity(0.2),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      body: !_ready
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.primaryDark),
+            )
+          : Column(
               children: [
-                if (b.imageUrl != null && b.imageUrl!.isNotEmpty)
-                  ClipRRect(
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(16),
-                      topRight: Radius.circular(16),
-                    ),
-                    child: Image(
-                      image: _imageProviderFromUrl(b.imageUrl!),
-                      width: double.infinity,
-                      height: 200,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const SizedBox(),
-                    ),
-                  ),
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (b.content.isNotEmpty)
-                        Text(b.content,
-                            style: GoogleFonts.beVietnamPro(
-                                fontSize: 15,
-                                color: Colors.white,
-                                height: 1.6,
-                                fontWeight: FontWeight.w400)),
-                      if (b.attachments.isNotEmpty) ...[
-                        if (b.content.isNotEmpty) const SizedBox(height: 12),
-                        ...b.attachments.map((att) =>
-                            _AttachmentLink(attachment: att)),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Like and Reply buttons - IMPROVED
-          Row(
-            children: [
-              GestureDetector(
-                onTap: _toggleLike,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: _isLiked
-                        ? AppColors.primaryDark.withOpacity(0.1)
-                        : const Color(0xFFF5F7FA),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: _isLiked
-                          ? AppColors.primaryDark
-                          : const Color(0xFFE8ECF0),
-                      width: _isLiked ? 1.5 : 1,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        _isLiked ? Icons.favorite : Icons.favorite_border,
-                        size: 18,
-                        color: _isLiked ? AppColors.primaryDark : _C.darkGray,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '$_likes',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: _isLiked ? AppColors.primaryDark : _C.darkGray,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              GestureDetector(
-                onTap: () => setState(() => _repliesExpanded = !_repliesExpanded),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: _repliesExpanded
-                        ? AppColors.primaryDark.withOpacity(0.1)
-                        : const Color(0xFFF5F7FA),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: _repliesExpanded
-                          ? AppColors.primaryDark
-                          : const Color(0xFFE8ECF0),
-                      width: _repliesExpanded ? 1.5 : 1,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.mode_comment_outlined,
-                        size: 18,
-                        color: _repliesExpanded ? AppColors.primaryDark : _C.darkGray,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '${b.replyCount}',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: _repliesExpanded ? AppColors.primaryDark : _C.darkGray,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          // ── REPLIES SECTION — only shown once the reply button above is tapped ──
-          if (_repliesExpanded) ...[
-            const SizedBox(height: 12),
-            StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('broadcasts')
-                  .doc(b.id)
-                  .collection('replies')
-                  .orderBy('timestamp', descending: false)
-                  .snapshots(),
-              builder: (context, replySnapshot) {
-                final replies = replySnapshot.data?.docs ?? [];
-                final currentUser = FirebaseAuth.instance.currentUser;
-
-                return Container(
-                  padding: const EdgeInsets.only(top: 12),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      top: BorderSide(color: const Color(0xFFF0F2F5), width: 1),
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
+                Expanded(
+                  child: StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('conversations')
+                        .doc(_conversationDocId)
+                        .collection('messages')
+                        .orderBy('timestamp', descending: true)
+                        .snapshots(),
+                    builder: (context, snap) {
+                      if (!snap.hasData) {
+                        return const Center(
+                          child: CircularProgressIndicator(
+                            color: AppColors.primaryDark,
+                          ),
+                        );
+                      }
+                      final docs = snap.data!.docs;
+                      if (docs.isEmpty) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
                             child: Text(
-                              replies.isEmpty ? 'No replies yet' : 'Replies',
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: _C.darkGray,
+                              'Message ${widget.orgName} directly — this is a private conversation.',
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.poppins(
+                                fontSize: 13,
+                                color: Colors.grey.shade600,
                               ),
                             ),
                           ),
-                          GestureDetector(
-                            onTap: _showReplyDialog,
-                            child: Text(
-                              'Add a reply',
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.primaryDark,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                    ...replies.map((replyDoc) {
-                      final replyData = replyDoc.data() as Map<String, dynamic>;
-                      final replyAuthor = replyData['authorName'] ?? 'Anonymous';
-                      final replyContent = replyData['content'] ?? '';
-                      final replyTime = replyData['timestamp'] as Timestamp?;
-                      final isOwnReply = currentUser?.uid == replyData['authorId'];
-
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            CircleAvatar(
-                              radius: 14,
-                              backgroundColor: isOwnReply
-                                  ? AppColors.primaryDark.withOpacity(0.1)
-                                  : const Color(0xFFF5F7FA),
-                              child: Text(
-                                replyAuthor.isNotEmpty ? replyAuthor[0].toUpperCase() : '?',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: isOwnReply ? AppColors.primaryDark : _C.darkGray,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: isOwnReply
-                                      ? AppColors.primaryDark.withOpacity(0.05)
-                                      : const Color(0xFFF5F7FA),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: isOwnReply
-                                        ? AppColors.primaryDark.withOpacity(0.2)
-                                        : const Color(0xFFE8ECF0),
-                                  ),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Text(
-                                          replyAuthor,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
-                                            color: isOwnReply ? AppColors.primaryDark : _C.charcoal,
-                                          ),
-                                        ),
-                                        if (isOwnReply) ...[
-                                          const SizedBox(width: 6),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                                            decoration: BoxDecoration(
-                                              color: AppColors.primaryDark.withOpacity(0.1),
-                                              borderRadius: BorderRadius.circular(4),
-                                            ),
-                                            child: Text(
-                                              'You',
-                                              style: TextStyle(
-                                                fontSize: 8,
-                                                fontWeight: FontWeight.w600,
-                                                color: AppColors.primaryDark,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                        const Spacer(),
-                                        if (replyTime != null)
-                                          Text(
-                                            DateFormat('h:mm a').format(replyTime.toDate()),
-                                            style: const TextStyle(
-                                              fontSize: 10,
-                                              color: _C.textFaint,
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      replyContent,
-                                      style: const TextStyle(
-                                        fontSize: 13,
-                                        color: _C.charcoal,
-                                        height: 1.4,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
+                        );
+                      }
+                      return ListView.builder(
+                        controller: _scrollCtrl,
+                        reverse: true,
+                        padding: const EdgeInsets.all(16),
+                        itemCount: docs.length,
+                        itemBuilder: (context, i) {
+                          final data = docs[i].data() as Map<String, dynamic>;
+                          final isMe = data['senderRole'] == 'student';
+                          final text = (data['text'] ?? '').toString();
+                          final image = data['imageBase64'] as String?;
+                          final ts = (data['timestamp'] as Timestamp?)
+                              ?.toDate();
+                          return _MessageBubble(
+                            isMe: isMe,
+                            text: text,
+                            imageBase64: image,
+                            time: ts != null
+                                ? DateFormat('h:mm a').format(ts)
+                                : '',
+                          );
+                        },
                       );
-                    }).toList(),
-                  ],
+                    },
+                  ),
                 ),
-              );
-            },
-          ),
-          ],
-        ],
-      ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border(
+                      top: BorderSide(color: Colors.grey.shade200),
+                    ),
+                  ),
+                  child: SafeArea(
+                    top: false,
+                    child: Row(
+                      children: [
+                        IconButton(
+                          onPressed: _sending ? null : _pickImage,
+                          icon: Icon(
+                            Icons.image_outlined,
+                            color: Colors.grey.shade600,
+                          ),
+                          tooltip: 'Attach image',
+                        ),
+                        Expanded(
+                          child: TextField(
+                            controller: _textCtrl,
+                            minLines: 1,
+                            maxLines: 4,
+                            textInputAction: TextInputAction.send,
+                            onSubmitted: (_) => _sendMessage(),
+                            style: GoogleFonts.poppins(fontSize: 13.5),
+                            decoration: InputDecoration(
+                              hintText: 'Message ${widget.orgName}…',
+                              hintStyle: GoogleFonts.poppins(
+                                fontSize: 13.5,
+                                color: Colors.grey.shade500,
+                              ),
+                              filled: true,
+                              fillColor: const Color(0xFFF0F2F5),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 10,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(22),
+                                borderSide: BorderSide.none,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          onPressed: _sending ? null : () => _sendMessage(),
+                          style: IconButton.styleFrom(
+                            backgroundColor: AppColors.primaryDark,
+                            disabledBackgroundColor: AppColors.primaryDark
+                                .withAlpha(120),
+                          ),
+                          icon: const Icon(
+                            Icons.send_rounded,
+                            color: Colors.white,
+                            size: 18,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Attachment Link
-// ─────────────────────────────────────────────────────────────────────────────
-class _AttachmentLink extends StatelessWidget {
-  final Attachment attachment;
+class _MessageBubble extends StatelessWidget {
+  final bool isMe;
+  final String text;
+  final String? imageBase64;
+  final String time;
 
-  const _AttachmentLink({required this.attachment});
-
-  Future<void> _open(BuildContext context) async {
-    final uri = Uri.tryParse(attachment.url);
-    final opened = uri != null && await canLaunchUrl(uri)
-        ? await launchUrl(uri, mode: LaunchMode.externalApplication)
-        : false;
-    if (!opened) {
-      Clipboard.setData(ClipboardData(text: attachment.url));
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not open file — link copied instead'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-    }
-  }
+  const _MessageBubble({
+    required this.isMe,
+    required this.text,
+    required this.imageBase64,
+    required this.time,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () => _open(context),
+    final bg = isMe ? AppColors.primaryDark : Colors.white;
+    final fg = isMe ? Colors.white : Colors.black87;
+
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.18),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.white.withOpacity(0.25)),
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.72,
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: isMe
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.insert_drive_file_outlined,
-                size: 15, color: Colors.white),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(attachment.name,
-                  style: GoogleFonts.beVietnamPro(
-                      fontSize: 12,
-                      color: Colors.white,
-                      fontWeight: FontWeight.w500,
-                      decoration: TextDecoration.underline,
-                      decorationColor: Colors.white),
-                  overflow: TextOverflow.ellipsis),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: bg,
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(16),
+                  topRight: const Radius.circular(16),
+                  bottomLeft: Radius.circular(isMe ? 16 : 4),
+                  bottomRight: Radius.circular(isMe ? 4 : 16),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withAlpha(10),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (imageBase64 != null) ...[
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image(
+                        image: _imageProviderFromBase64(imageBase64!),
+                        width: 200,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    if (text.isNotEmpty) const SizedBox(height: 6),
+                  ],
+                  if (text.isNotEmpty)
+                    Text(
+                      text,
+                      style: GoogleFonts.poppins(fontSize: 13.5, color: fg),
+                    ),
+                ],
+              ),
             ),
-            const SizedBox(width: 8),
-            const Icon(Icons.open_in_new_rounded, size: 13, color: Colors.white),
+            const SizedBox(height: 3),
+            Text(
+              time,
+              style: GoogleFonts.poppins(
+                fontSize: 10,
+                color: Colors.grey.shade500,
+              ),
+            ),
           ],
         ),
       ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Models
-// ─────────────────────────────────────────────────────────────────────────────
-class Attachment {
-  final String name;
-  final String url;
-  const Attachment({required this.name, required this.url});
-}
-
-class BroadcastModel {
-  final String id;
-  final String content;
-  final String authorId;
-  final String authorName;
-  final int likes;
-  final int replyCount;
-  final bool pinned;
-  final Timestamp timestamp;
-  final List<Attachment> attachments;
-  final String? imageUrl;
-
-  const BroadcastModel({
-    required this.id,
-    required this.content,
-    required this.authorId,
-    required this.authorName,
-    required this.likes,
-    required this.replyCount,
-    required this.pinned,
-    required this.timestamp,
-    required this.attachments,
-    this.imageUrl,
-  });
-
-  factory BroadcastModel.fromFirestore(DocumentSnapshot doc) {
-    final d = doc.data() as Map<String, dynamic>;
-    String? imageUrl = d['imageUrl'] as String?;
-    if (imageUrl == '') imageUrl = null;
-
-    return BroadcastModel(
-      id: doc.id,
-      content: d['content'] ?? '',
-      authorId: d['authorId'] ?? '',
-      authorName: d['authorName'] ?? 'Unknown',
-      likes: (d['likes'] as int?) ?? 0,
-      replyCount: (d['replyCount'] as int?) ?? 0,
-      pinned: (d['pinned'] as bool?) ?? false,
-      timestamp: (d['timestamp'] as Timestamp?) ?? Timestamp.now(),
-      attachments: ((d['attachments'] as List?) ?? [])
-          .map((a) => Attachment(name: a['name'], url: a['url']))
-          .toList(),
-      imageUrl: imageUrl,
     );
   }
 }

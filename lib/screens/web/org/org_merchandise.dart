@@ -14,6 +14,9 @@ import 'package:universal_html/html.dart' as html;
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../theme/app_theme.dart';
 import '../../../widgets/admin_export_button.dart';
+import '../../../widgets/anchored_dropdown.dart';
+import '../../../widgets/product_spin_viewer.dart';
+import '../../../widgets/org_action_icon_button.dart';
 import '../admin/export_util.dart';
 import '../admin/export_pdf.dart';
 import 'export_pdf.dart' show OrgExportPdf;
@@ -156,6 +159,7 @@ class _OrgMerchandiseScreenState extends State<OrgMerchandiseScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   int _selectedTab = 0;
+  int? _selectedStatCard;
 
   // Created once, not inline in build() — _buildStatsRow rebuilds on every
   // tab change, so constructing fresh .snapshots() there each time was
@@ -175,7 +179,7 @@ class _OrgMerchandiseScreenState extends State<OrgMerchandiseScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 1, vsync: this);
     _tabController.addListener(() {
       if (_tabController.indexIsChanging) {
         setState(() => _selectedTab = _tabController.index);
@@ -208,7 +212,6 @@ class _OrgMerchandiseScreenState extends State<OrgMerchandiseScreen>
                   orgId: widget.orgId,
                   onAddProduct: () => _openAddProductModal(context),
                 ),
-                _OrdersTab(orgId: widget.orgId),
               ],
             ),
           ),
@@ -217,6 +220,9 @@ class _OrgMerchandiseScreenState extends State<OrgMerchandiseScreen>
     );
   }
 
+  // Sales/Revenue/Profit cards were removed along with the checkout flow —
+  // merch is a catalog now, so only catalog-shaped stats (count, low stock)
+  // are meaningful here. _statsOrdersStream is left defined but unused.
   Widget _buildStatsRow() {
     return StreamBuilder<QuerySnapshot>(
       stream: _statsProductsStream,
@@ -226,152 +232,54 @@ class _OrgMerchandiseScreenState extends State<OrgMerchandiseScreen>
         final lowStock = products
             .where((p) => ((p.data() as Map)['stock'] ?? 0) <= 5)
             .length;
-        double totalProfit = 0;
-        for (final doc in products) {
-          final d = doc.data() as Map;
-          final price = ((d['price'] ?? 0) as num).toDouble();
-          final costPrice = ((d['costPrice'] ?? 0) as num).toDouble();
-          final sold = ((d['sold'] ?? 0) as num).toInt();
-          totalProfit += (price - costPrice) * sold;
+
+        void selectCard(int cardIndex) {
+          setState(() => _selectedStatCard = cardIndex);
         }
 
-        return StreamBuilder<QuerySnapshot>(
-          stream: _statsOrdersStream,
-          builder: (context, orderSnap) {
-            final orders = orderSnap.data?.docs ?? [];
-            final totalSales = orders.length;
-            double totalRevenue = 0;
-            for (final doc in orders) {
-              totalRevenue += ((doc.data() as Map)['total'] ?? 0).toDouble();
-            }
-
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(28, 24, 28, 0),
-              child: Row(
-                children: [
-                  _StatCard(
-                    label: 'Total Products',
-                    value: totalProducts.toString(),
-                    icon: Icons.shopping_bag_outlined,
-                    color: UpriseColors.info,
-                  ),
-                  const SizedBox(width: 14),
-                  _StatCard(
-                    label: 'Total Sales',
-                    value: totalSales.toString(),
-                    icon: Icons.shopping_cart_outlined,
-                    color: UpriseColors.success,
-                  ),
-                  const SizedBox(width: 14),
-                  _StatCard(
-                    label: 'Total Revenue',
-                    value: '₱${NumberFormat('#,###').format(totalRevenue)}',
-                    icon: Icons.payments_outlined,
-                    color: UpriseColors.warning,
-                  ),
-                  const SizedBox(width: 14),
-                  _StatCard(
-                    label: 'Total Profit',
-                    value: '₱${NumberFormat('#,###').format(totalProfit)}',
-                    icon: Icons.trending_up_outlined,
-                    color: UpriseColors.success,
-                  ),
-                  const SizedBox(width: 14),
-                  _StatCard(
-                    label: 'Low Stock',
-                    value: lowStock.toString(),
-                    icon: Icons.warning_amber_outlined,
-                    color: lowStock > 0
-                        ? UpriseColors.error
-                        : const Color(0xFF6B7280),
-                  ),
-                ],
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(28, 24, 28, 0),
+          child: Row(
+            children: [
+              _StatCard(
+                label: 'Total Products',
+                value: totalProducts.toString(),
+                icon: Icons.shopping_bag_outlined,
+                color: UpriseColors.info,
+                isSelected: _selectedStatCard == 0,
+                onTap: () => selectCard(0),
               ),
-            );
-          },
+              const SizedBox(width: 14),
+              _StatCard(
+                label: 'Low Stock',
+                value: lowStock.toString(),
+                icon: Icons.warning_amber_outlined,
+                color: lowStock > 0
+                    ? UpriseColors.error
+                    : const Color(0xFF6B7280),
+                isSelected: _selectedStatCard == 4,
+                onTap: () => selectCard(4),
+              ),
+            ],
+          ),
         );
       },
     );
   }
 
   Widget _buildToolbar() {
+    // The Products/Orders tab toggle and the Sales Report / GCash Settings
+    // buttons are hidden now that merch is a catalog, not a checkout flow —
+    // the underlying _OrdersTab, GCash dialog, and sales report code are
+    // left in place (just unreferenced here) rather than deleted, in case
+    // payments come back later.
     return Padding(
       padding: const EdgeInsets.fromLTRB(28, 20, 28, 0),
       child: Row(
         children: [
-          // Tab pills
-          Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8F9FB),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFFE2E6EA)),
-            ),
-            child: Row(
-              children: [
-                _PillTab(
-                  label: 'Products',
-                  selected: _selectedTab == 0,
-                  onTap: () {
-                    _tabController.animateTo(0);
-                    setState(() => _selectedTab = 0);
-                  },
-                ),
-                _PillTab(
-                  label: 'Orders',
-                  selected: _selectedTab == 1,
-                  onTap: () {
-                    _tabController.animateTo(1);
-                    setState(() => _selectedTab = 1);
-                  },
-                ),
-              ],
-            ),
-          ),
           const Spacer(),
           AdminExportButton(onSelected: (format) => _exportCurrentTab(format)),
           const SizedBox(width: 10),
-          OutlinedButton.icon(
-            onPressed: () => _openSalesReport(context),
-            icon: const Icon(Icons.bar_chart_outlined, size: 16),
-            label: Text(
-              'Sales Report',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: UpriseColors.primaryDark,
-              side: BorderSide(color: UpriseColors.primaryDark),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            ),
-          ),
-          const SizedBox(width: 10),
-
-          OutlinedButton.icon(
-  onPressed: () => _openGcashSettings(context),
-  icon: const Icon(Icons.account_balance_wallet_outlined, size: 16),
-  label: Text(
-    'GCash Settings',
-    style: GoogleFonts.beVietnamPro(
-      fontSize: 13,
-      fontWeight: FontWeight.w600,
-    ),
-  ),
-  style: OutlinedButton.styleFrom(
-    foregroundColor: UpriseColors.primaryDark,
-    side: BorderSide(color: UpriseColors.primaryDark),
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(10),
-    ),
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-  ),
-),
-const SizedBox(width: 10),
-
 
           ElevatedButton.icon(
             onPressed: () => _openAddProductModal(context),
@@ -477,9 +385,10 @@ const SizedBox(width: 10),
       );
       for (final doc in docs) {
         final d = doc.data();
-        final date = DateFormat(
-          'yyyy-MM-dd',
-        ).format((d['createdAt'] as Timestamp).toDate());
+        final createdAt = d['createdAt'] as Timestamp?;
+        final date = createdAt != null
+            ? DateFormat('yyyy-MM-dd').format(createdAt.toDate())
+            : '—';
         buf.writeln(
           '"${d['orderId']}","${d['customerName']}","${d['section'] ?? ''}","${d['total']}","${d['status']}","${d['pickupStatus'] ?? 'Pending'}","$date","${d['bundleId'] ?? ''}"',
         );
@@ -492,9 +401,10 @@ const SizedBox(width: 10),
     } else if (format == 'pdf') {
       final rows = docs.map((doc) {
         final d = doc.data();
-        final date = DateFormat(
-          'yyyy-MM-dd',
-        ).format((d['createdAt'] as Timestamp).toDate());
+        final createdAt = d['createdAt'] as Timestamp?;
+        final date = createdAt != null
+            ? DateFormat('yyyy-MM-dd').format(createdAt.toDate())
+            : '—';
         return [
           '${d['orderId']}',
           '${d['customerName']}',
@@ -548,12 +458,12 @@ const SizedBox(width: 10),
   }
 
   void _openGcashSettings(BuildContext context) {
-  showDialog(
-    context: context,
-    barrierDismissible: false,
-    builder: (_) => _GcashSettingsDialog(orgId: widget.orgId),
-  );
-}
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _GcashSettingsDialog(orgId: widget.orgId),
+    );
+  }
 
   void _showSnack(String msg, Color color) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -612,61 +522,85 @@ class _StatCard extends StatelessWidget {
   final String label, value;
   final IconData icon;
   final Color color;
+  final bool isSelected;
+  final VoidCallback? onTap;
   const _StatCard({
     required this.label,
     required this.value,
     required this.icon,
     required this.color,
+    this.isSelected = false,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFE8ECF0)),
-          boxShadow: _DS.cardShadow,
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: color.withAlpha(26),
-                borderRadius: BorderRadius.circular(12),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isSelected ? color : const Color(0xFFE8ECF0),
+                width: isSelected ? 2 : 1,
               ),
-              child: Icon(icon, color: color, size: 22),
+              boxShadow: isSelected
+                  ? [
+                      BoxShadow(
+                        color: color.withAlpha(46),
+                        blurRadius: 16,
+                        offset: const Offset(0, 4),
+                      ),
+                    ]
+                  : _DS.cardShadow,
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11,
-                      color: const Color(0xFF64748B),
-                      fontWeight: FontWeight.w500,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: color.withAlpha(26),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(icon, color: color, size: 20),
                     ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    value,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF1A202C),
+                    Flexible(
+                      child: Text(
+                        value,
+                        textAlign: TextAlign.right,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF1A202C),
+                        ),
+                      ),
                     ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  label,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 11,
+                    color: const Color(0xFF64748B),
+                    fontWeight: FontWeight.w600,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -1062,7 +996,9 @@ class _ProductsTabState extends State<_ProductsTab> {
 
   Widget _buildEmptyState(IconData icon, String message, String subtitle) {
     final bool noFiltersActive =
-        _searchQuery.isEmpty && _categoryFilter == 'All' && _statusFilter == 'All';
+        _searchQuery.isEmpty &&
+        _categoryFilter == 'All' &&
+        _statusFilter == 'All';
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1081,7 +1017,11 @@ class _ProductsTabState extends State<_ProductsTab> {
               ),
               borderRadius: BorderRadius.circular(24),
             ),
-            child: Icon(icon, size: 44, color: UpriseColors.primaryDark.withAlpha(160)),
+            child: Icon(
+              icon,
+              size: 44,
+              color: UpriseColors.primaryDark.withAlpha(160),
+            ),
           ),
           const SizedBox(height: 20),
           Text(
@@ -1118,7 +1058,10 @@ class _ProductsTabState extends State<_ProductsTab> {
               ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: UpriseColors.primaryDark,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
@@ -1473,6 +1416,9 @@ class _ProductModalState extends State<_ProductModal> {
   bool _uploadingImage = false;
   bool _submitting = false;
   String? _uploadError;
+  // Angle photos for the 360 drag-to-rotate viewer — kept as raw bytes
+  // while editing, re-encoded to base64 only on submit.
+  final List<Uint8List> _rotationPhotoBytes = [];
 
   bool get _isEdit => widget.existingProduct != null;
 
@@ -1494,7 +1440,7 @@ class _ProductModalState extends State<_ProductModal> {
       }
       _isDiscontinued = p.status == 'discontinued';
       _variants = List.from(p.variants);
-      
+
       // ── LOAD EXISTING BASE64 IMAGE ──
       if (p.imageBase64 != null && p.imageBase64!.isNotEmpty) {
         try {
@@ -1503,7 +1449,32 @@ class _ProductModalState extends State<_ProductModal> {
           _imageBytes = null;
         }
       }
+
+      // ── LOAD EXISTING ROTATION PHOTOS ──
+      for (final photo in p.rotationPhotos) {
+        try {
+          _rotationPhotoBytes.add(base64Decode(photo));
+        } catch (_) {}
+      }
     }
+  }
+
+  Future<void> _pickRotationPhotos() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      allowMultiple: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    setState(() {
+      for (final file in result.files) {
+        final bytes = file.bytes;
+        if (bytes != null) _rotationPhotoBytes.add(bytes);
+      }
+    });
+  }
+
+  void _removeRotationPhoto(int index) {
+    setState(() => _rotationPhotoBytes.removeAt(index));
   }
 
   @override
@@ -1560,7 +1531,7 @@ class _ProductModalState extends State<_ProductModal> {
     try {
       final user = FirebaseAuth.instance.currentUser;
       final oldStock = _isEdit ? widget.existingProduct!.stock : 0;
-      
+
       final data = <String, dynamic>{
         'orgId': widget.orgId,
         'name': _nameCtrl.text.trim(),
@@ -1575,7 +1546,9 @@ class _ProductModalState extends State<_ProductModal> {
       };
 
       final productRef = _isEdit
-          ? FirebaseFirestore.instance.collection('products').doc(widget.existingProduct!.id)
+          ? FirebaseFirestore.instance
+                .collection('products')
+                .doc(widget.existingProduct!.id)
           : FirebaseFirestore.instance.collection('products').doc();
       final productId = productRef.id;
 
@@ -1604,6 +1577,11 @@ class _ProductModalState extends State<_ProductModal> {
         data['imageBase64'] = '';
       }
 
+      // ── SAVE ROTATION PHOTOS AS BASE64 ──
+      data['rotationPhotos'] = _rotationPhotoBytes
+          .map((bytes) => base64Encode(bytes))
+          .toList();
+
       // ── SAVE PRODUCT ──
       if (_isEdit) {
         await productRef.update(data);
@@ -1618,7 +1596,9 @@ class _ProductModalState extends State<_ProductModal> {
       // ── Log writes ──────────────────────────────────────────────
       try {
         if (stock != oldStock || !_isEdit) {
-          final reason = !_isEdit ? 'initial' : (stock > oldStock ? 'restocked' : 'adjusted');
+          final reason = !_isEdit
+              ? 'initial'
+              : (stock > oldStock ? 'restocked' : 'adjusted');
           await FirebaseFirestore.instance.collection('stock_logs').add({
             'productId': productId,
             'oldStock': oldStock,
@@ -1644,7 +1624,9 @@ class _ProductModalState extends State<_ProductModal> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              _isEdit ? 'Product updated successfully!' : 'Product added successfully!',
+              _isEdit
+                  ? 'Product updated successfully!'
+                  : 'Product added successfully!',
             ),
             backgroundColor: const Color(0xFF059669),
             behavior: SnackBarBehavior.floating,
@@ -1765,6 +1747,12 @@ class _ProductModalState extends State<_ProductModal> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildImagePicker(),
+                    const SizedBox(height: 16),
+                    _sectionLabel(
+                      '360° Photos (optional)',
+                      icon: Icons.threesixty_rounded,
+                    ),
+                    _buildRotationPhotosPicker(),
                     const SizedBox(height: 16),
                     _sectionLabel(
                       'Product Information',
@@ -1889,7 +1877,10 @@ class _ProductModalState extends State<_ProductModal> {
                     _buildProfitMarginLine(),
                     if (_variants.isEmpty) ...[
                       const SizedBox(height: 16),
-                      _sectionLabel('Inventory', icon: Icons.inventory_2_outlined),
+                      _sectionLabel(
+                        'Inventory',
+                        icon: Icons.inventory_2_outlined,
+                      ),
                       TextFormField(
                         controller: _stockCtrl,
                         keyboardType: TextInputType.number,
@@ -2049,7 +2040,7 @@ class _ProductModalState extends State<_ProductModal> {
     // Check if there's an existing base64 image
     final existingBase64 = widget.existingProduct?.imageBase64 ?? '';
     final hasImage = _imageBytes != null || existingBase64.isNotEmpty;
-    
+
     return GestureDetector(
       onTap: (_submitting || _uploadingImage) ? null : _pickImage,
       child: Container(
@@ -2129,6 +2120,91 @@ class _ProductModalState extends State<_ProductModal> {
     );
   }
 
+  Widget _buildRotationPhotosPicker() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Upload several photos of the product taken from evenly-spaced '
+          'angles (turntable-style) so students can drag to spin it — one '
+          'photo just shows as a still image.',
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 11.5,
+            color: const Color(0xFF9AA5B4),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (var i = 0; i < _rotationPhotoBytes.length; i++)
+              Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.memory(
+                      _rotationPhotoBytes[i],
+                      width: 64,
+                      height: 64,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) =>
+                          const SizedBox(width: 64, height: 64),
+                    ),
+                  ),
+                  Positioned(
+                    top: -6,
+                    right: -6,
+                    child: GestureDetector(
+                      onTap: () => _removeRotationPhoto(i),
+                      child: Container(
+                        width: 20,
+                        height: 20,
+                        decoration: const BoxDecoration(
+                          color: Colors.black87,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.close_rounded,
+                          size: 13,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            GestureDetector(
+              onTap: (_submitting || _uploadingImage)
+                  ? null
+                  : _pickRotationPhotos,
+              child: Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8F9FB),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFE2E6EA)),
+                ),
+                child: const Icon(Icons.add_rounded, color: Color(0xFF9AA5B4)),
+              ),
+            ),
+          ],
+        ),
+        if (_rotationPhotoBytes.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            '${_rotationPhotoBytes.length} photo${_rotationPhotoBytes.length == 1 ? '' : 's'}',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 11,
+              color: const Color(0xFF9AA5B4),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _uploadPill({required String label}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -2148,11 +2224,7 @@ class _ProductModalState extends State<_ProductModal> {
           : Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(
-                  Icons.upload_rounded,
-                  size: 13,
-                  color: Colors.white,
-                ),
+                const Icon(Icons.upload_rounded, size: 13, color: Colors.white),
                 const SizedBox(width: 4),
                 Text(
                   label,
@@ -2178,11 +2250,7 @@ class _ProductModalState extends State<_ProductModal> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
-            Icons.error_outline,
-            size: 12,
-            color: Color(0xFFDC2626),
-          ),
+          const Icon(Icons.error_outline, size: 12, color: Color(0xFFDC2626)),
           const SizedBox(width: 4),
           Text(
             'Upload failed',
@@ -2303,13 +2371,17 @@ class _ProductModalState extends State<_ProductModal> {
     final profit = price - cost;
     final marginPct = (profit / price) * 100;
     final isNegative = profit < 0;
-    final color = isNegative ? const Color(0xFFDC2626) : const Color(0xFF059669);
+    final color = isNegative
+        ? const Color(0xFFDC2626)
+        : const Color(0xFF059669);
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Row(
         children: [
           Icon(
-            isNegative ? Icons.trending_down_rounded : Icons.trending_up_rounded,
+            isNegative
+                ? Icons.trending_down_rounded
+                : Icons.trending_up_rounded,
             size: 14,
             color: color,
           ),
@@ -2380,25 +2452,37 @@ class _VariantDialogState extends State<_VariantDialog> {
     super.dispose();
   }
 
+  void _showVariantError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: GoogleFonts.beVietnamPro()),
+        backgroundColor: UpriseColors.error,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+  }
+
   void _save() {
     if (_sizeCtrl.text.trim().isEmpty && _colorCtrl.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Enter at least a size or color.',
-            style: GoogleFonts.beVietnamPro(),
-          ),
-          backgroundColor: UpriseColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      );
+      _showVariantError('Enter at least a size or color.');
       return;
     }
-    final stock = int.tryParse(_stockCtrl.text.trim()) ?? 0;
-    final priceOffset = _priceOffsetCtrl.text.trim().isEmpty
-        ? null
-        : double.tryParse(_priceOffsetCtrl.text.trim());
+    final stockText = _stockCtrl.text.trim();
+    final stock = stockText.isEmpty ? 0 : int.tryParse(stockText);
+    if (stock == null || stock < 0) {
+      _showVariantError('Enter a valid, non-negative stock quantity.');
+      return;
+    }
+    final offsetText = _priceOffsetCtrl.text.trim();
+    double? priceOffset;
+    if (offsetText.isNotEmpty) {
+      priceOffset = double.tryParse(offsetText);
+      if (priceOffset == null) {
+        _showVariantError('Enter a valid price offset (e.g., 10 or -5.50).');
+        return;
+      }
+    }
     Navigator.pop(
       context,
       ProductVariant(
@@ -2734,13 +2818,17 @@ class _ProductDetailsModal extends StatelessWidget {
                                 horizontal: 12,
                                 vertical: 8,
                               ),
-                              decoration: const BoxDecoration(
-                                color: Color(0xFFFFF7ED),
-                                borderRadius: BorderRadius.vertical(
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFF7ED),
+                                borderRadius: const BorderRadius.vertical(
                                   top: Radius.circular(10),
                                 ),
                                 border: Border(
-                                  bottom: BorderSide(color: Color(0xFFFB923C)),
+                                  bottom: BorderSide(
+                                    color: UpriseColors.primaryDark.withAlpha(
+                                      60,
+                                    ),
+                                  ),
                                 ),
                               ),
                               child: Row(
@@ -3024,35 +3112,13 @@ class _ProductDetailsModal extends StatelessWidget {
   }
 
   Widget _buildProductImage() {
-    // Check for base64 image first
-    if (product.imageBase64 != null && product.imageBase64!.isNotEmpty) {
-      try {
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Image.memory(
-            base64Decode(product.imageBase64!),
-            width: double.infinity,
-            height: 200,
-            fit: BoxFit.cover,
-            cacheHeight: 400,
-            errorBuilder: (_, __, ___) => Container(
-              height: 200,
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8F9FB),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(
-                Icons.image_not_supported_outlined,
-                size: 48,
-                color: Color(0xFF9AA5B4),
-              ),
-            ),
-          ),
-        );
-      } catch (_) {
-        // Fallback to network image
-        return _buildNetworkImage();
-      }
+    // Prefer the drag-to-rotate viewer when there's at least one photo to
+    // show — it degrades to a plain static image when only one is set, and
+    // falls back to the legacy network image for very old products with
+    // neither.
+    final photos = product.displayPhotos;
+    if (photos.isNotEmpty) {
+      return ProductSpinViewer(photosBase64: photos, height: 220);
     }
     return _buildNetworkImage();
   }
@@ -3942,10 +4008,12 @@ class _OrdersTabState extends State<_OrdersTab> {
   Widget _buildTableHeader() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
-      decoration: const BoxDecoration(
-        color: Color(0xFFFFF7ED),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
-        border: Border(bottom: BorderSide(color: Color(0xFFFB923C))),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7ED),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+        border: Border(
+          bottom: BorderSide(color: UpriseColors.primaryDark.withAlpha(60)),
+        ),
       ),
       child: Row(
         children: [
@@ -3979,167 +4047,177 @@ class _OrdersTabState extends State<_OrdersTab> {
 
   Widget _buildOrderRow(OrderModel order, {required bool isLast}) {
     final date = DateFormat('MMM d, yyyy').format(order.createdAt.toDate());
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-      decoration: BoxDecoration(
-        border: isLast
-            ? null
-            : const Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+    return InkWell(
+      hoverColor: const Color(0xFFF8F9FB),
+      onTap: () => showDialog(
+        context: context,
+        builder: (_) => _OrderDetailsModal(order: order),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 2,
-            child: Text(
-              order.orderId,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: UpriseColors.primaryDark,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        decoration: BoxDecoration(
+          border: isLast
+              ? null
+              : const Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              flex: 2,
+              child: Text(
+                order.orderId,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: UpriseColors.primaryDark,
+                ),
               ),
             ),
-          ),
-          Expanded(
-            flex: 2,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  order.customerName,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: const Color(0xFF1A202C),
-                  ),
-                ),
-                Text(
-                  order.customerEmail,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 11,
-                    color: const Color(0xFF64748B),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            flex: 1,
-            child: order.section.isEmpty
-                ? Text(
-                    '—',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 12,
-                      color: const Color(0xFF9AA5B4),
-                    ),
-                  )
-                : Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: UpriseColors.primaryDark.withAlpha(18),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      order.section,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: UpriseColors.primaryDark,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-          ),
-          Expanded(
-            flex: 1,
-            child: Text(
-              date,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 12,
-                color: const Color(0xFF64748B),
-              ),
-            ),
-          ),
-          Expanded(
-            flex: 1,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '₱${NumberFormat('#,###.00').format(order.total)}',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: UpriseColors.primaryDark,
-                  ),
-                ),
-                if (order.paymentMethod == 'GCash')
+            Expanded(
+              flex: 2,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    order.paymentVerified ? 'GCash · Verified' : 'GCash · Unverified',
+                    order.customerName,
                     style: GoogleFonts.beVietnamPro(
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.w600,
-                      color: order.paymentVerified
-                          ? UpriseColors.success
-                          : const Color(0xFFD97706),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: const Color(0xFF1A202C),
                     ),
                   ),
-              ],
+                  Text(
+                    order.customerEmail,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11,
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          Expanded(flex: 2, child: _pickupStatusBadge(order.pickupStatus)),
-          Expanded(
-            flex: 1,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                _ActionIconButton(
-                  icon: Icons.visibility_outlined,
-                  tooltip: 'View Details',
-                  onTap: () => showDialog(
-                    context: context,
-                    builder: (_) => _OrderDetailsModal(order: order),
-                  ),
-                ),
-                PopupMenuButton<String>(
-                  icon: const Icon(
-                    Icons.more_vert,
-                    size: 16,
-                    color: Color(0xFF64748B),
-                  ),
-                  tooltip: 'Update Pickup Status',
-                  onSelected: (value) =>
-                      _updateOrderPickupStatus(order.id, value),
-                  itemBuilder: (_) => [
-                    PopupMenuItem(
-                      value: 'Pending',
+            Expanded(
+              flex: 1,
+              child: order.section.isEmpty
+                  ? Text(
+                      '—',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12,
+                        color: const Color(0xFF9AA5B4),
+                      ),
+                    )
+                  : Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: UpriseColors.primaryDark.withAlpha(18),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       child: Text(
-                        'Pending',
-                        style: GoogleFonts.beVietnamPro(fontSize: 13),
+                        order.section,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: UpriseColors.primaryDark,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    PopupMenuItem(
-                      value: 'Ready for Pickup',
-                      child: Text(
-                        'Ready for Pickup',
-                        style: GoogleFonts.beVietnamPro(fontSize: 13),
-                      ),
-                    ),
-                    PopupMenuItem(
-                      value: 'Claimed',
-                      child: Text(
-                        'Claimed',
-                        style: GoogleFonts.beVietnamPro(fontSize: 13),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
             ),
-          ),
-        ],
+            Expanded(
+              flex: 1,
+              child: Text(
+                date,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 12,
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+            ),
+            Expanded(
+              flex: 1,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '₱${NumberFormat('#,###.00').format(order.total)}',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: UpriseColors.primaryDark,
+                    ),
+                  ),
+                  if (order.paymentMethod == 'GCash')
+                    Text(
+                      order.paymentVerified
+                          ? 'GCash · Verified'
+                          : 'GCash · Unverified',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w600,
+                        color: order.paymentVerified
+                            ? UpriseColors.success
+                            : const Color(0xFFD97706),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            Expanded(flex: 2, child: _pickupStatusBadge(order.pickupStatus)),
+            Expanded(
+              flex: 1,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OrgActionIconButton(
+                    icon: Icons.visibility_outlined,
+                    tooltip: 'View Details',
+                    onTap: () => showDialog(
+                      context: context,
+                      builder: (_) => _OrderDetailsModal(order: order),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  PopupMenuButton<String>(
+                    icon: const Icon(
+                      Icons.more_vert,
+                      size: 16,
+                      color: Color(0xFF64748B),
+                    ),
+                    tooltip: 'Update Pickup Status',
+                    onSelected: (value) =>
+                        _updateOrderPickupStatus(order.id, value),
+                    itemBuilder: (_) => [
+                      PopupMenuItem(
+                        value: 'Pending',
+                        child: Text(
+                          'Pending',
+                          style: GoogleFonts.beVietnamPro(fontSize: 13),
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'Ready for Pickup',
+                        child: Text(
+                          'Ready for Pickup',
+                          style: GoogleFonts.beVietnamPro(fontSize: 13),
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'Claimed',
+                        child: Text(
+                          'Claimed',
+                          style: GoogleFonts.beVietnamPro(fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -4309,81 +4387,37 @@ class _FilterDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE2E6EA)),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: value,
-          icon: const Icon(
-            Icons.keyboard_arrow_down_rounded,
-            size: 18,
-            color: Color(0xFF9AA5B4),
-          ),
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 13,
-            color: const Color(0xFF374151),
-          ),
-          items: items
-              .map(
-                (s) => DropdownMenuItem(
-                  value: s,
-                  child: Text(s, style: GoogleFonts.beVietnamPro(fontSize: 13)),
-                ),
-              )
-              .toList(),
-          onChanged: onChanged,
+    return AnchoredMenuTrigger<String>(
+      items: items,
+      labelOf: (s) => s,
+      selectedValue: value,
+      onSelected: onChanged,
+      trigger: Container(
+        height: 40,
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFE2E6EA)),
         ),
-      ),
-    );
-  }
-}
-
-class _ActionIconButton extends StatelessWidget {
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback? onTap;
-  final Color? color;
-  const _ActionIconButton({
-    required this.icon,
-    required this.tooltip,
-    required this.onTap,
-    this.color,
-  });
-
-  static const Map<int, Color> _bgByFg = {
-    0xFF3B82F6: Color(0xFFEFF6FF), // view - blue
-    0xFF2563EB: Color(0xFFEFF6FF), // publish - blue
-    0xFFB45309: Color(0xFFFFF7ED), // edit - orange (UpriseColors.primaryDark)
-    0xFF7C3AED: Color(0xFFF3E8FF), // revise - purple
-    0xFF0D9488: Color(0xFFECFDF5), // form builder - teal
-    0xFF6B7280: Color(0xFFF3F4F6), // archive - gray
-    0xFFDC2626: Color(0xFFFEF2F2), // delete - red
-    0xFF059669: Color(0xFFECFDF5), // approve - green
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    final fg = onTap == null ? const Color(0xFFD1D5DB) : (color ?? const Color(0xFF3B82F6));
-    final bg = onTap == null ? const Color(0xFFF1F5F9) : (_bgByFg[fg.value] ?? fg.withAlpha(26));
-    return Tooltip(
-      message: tooltip,
-      waitDuration: const Duration(milliseconds: 400),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.all(7),
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(icon, size: 14, color: fg),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              value,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                color: const Color(0xFF374151),
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 18,
+              color: Color(0xFF9AA5B4),
+            ),
+          ],
         ),
       ),
     );
@@ -4486,7 +4520,10 @@ class _OrderDetailsModalState extends State<_OrderDetailsModal> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: UpriseColors.error),
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: UpriseColors.error,
+          ),
         );
       }
     } finally {
@@ -4669,13 +4706,19 @@ class _OrderDetailsModalState extends State<_OrderDetailsModal> {
                             const SizedBox(height: 4),
                             _summaryLine(
                               'GCash Reference No.',
-                              order.gcashReferenceNumber.isNotEmpty ? order.gcashReferenceNumber : '—',
+                              order.gcashReferenceNumber.isNotEmpty
+                                  ? order.gcashReferenceNumber
+                                  : '—',
                             ),
                             const SizedBox(height: 4),
                             _summaryLine(
                               'Payment Status',
-                              _paymentVerified ? 'Verified' : 'Awaiting Verification',
-                              valueColor: _paymentVerified ? UpriseColors.success : const Color(0xFFD97706),
+                              _paymentVerified
+                                  ? 'Verified'
+                                  : 'Awaiting Verification',
+                              valueColor: _paymentVerified
+                                  ? UpriseColors.success
+                                  : const Color(0xFFD97706),
                             ),
                             if (order.gcashProofBase64.isNotEmpty) ...[
                               const SizedBox(height: 8),
@@ -4683,7 +4726,11 @@ class _OrderDetailsModalState extends State<_OrderDetailsModal> {
                                 onTap: _viewProof,
                                 child: Row(
                                   children: [
-                                    const Icon(Icons.image_outlined, size: 15, color: UpriseColors.primaryDark),
+                                    const Icon(
+                                      Icons.image_outlined,
+                                      size: 15,
+                                      color: UpriseColors.primaryDark,
+                                    ),
                                     const SizedBox(width: 6),
                                     Text(
                                       'View payment screenshot',
@@ -4758,18 +4805,29 @@ class _OrderDetailsModalState extends State<_OrderDetailsModal> {
                           ? const SizedBox(
                               width: 14,
                               height: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
                             )
                           : const Icon(Icons.check_circle_outline, size: 16),
                       label: Text(
                         'Mark Payment Verified',
-                        style: GoogleFonts.beVietnamPro(fontSize: 13, fontWeight: FontWeight.w600),
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: UpriseColors.success,
                         foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 11,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -4915,19 +4973,34 @@ class _SalesReportModal extends StatelessWidget {
     html.Url.revokeObjectUrl(url);
   }
 
-  Future<void> _exportReportPdf(BuildContext context, List<OrderModel> orders) async {
+  Future<void> _exportReportPdf(
+    BuildContext context,
+    List<OrderModel> orders,
+  ) async {
     try {
       String orgName = 'Organization';
       String orgLogoUrl = '';
-      final orgDoc = await FirebaseFirestore.instance.collection('organizations').doc(orgId).get();
+      final orgDoc = await FirebaseFirestore.instance
+          .collection('organizations')
+          .doc(orgId)
+          .get();
       if (orgDoc.exists) {
         orgName = orgDoc.data()?['name'] ?? orgName;
         orgLogoUrl = orgDoc.data()?['logoUrl'] ?? '';
       }
 
-      final headers = ['Order ID', 'Customer', 'Items', 'Total', 'Status', 'Date'];
+      final headers = [
+        'Order ID',
+        'Customer',
+        'Items',
+        'Total',
+        'Status',
+        'Date',
+      ];
       final rows = orders.map((o) {
-        final itemsSummary = o.items.map((it) => '${it.quantity}× ${it.name}').join(', ');
+        final itemsSummary = o.items
+            .map((it) => '${it.quantity}× ${it.name}')
+            .join(', ');
         return [
           o.orderId,
           o.customerName,
@@ -4953,7 +5026,10 @@ class _SalesReportModal extends StatelessWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('PDF export failed: $e'), backgroundColor: UpriseColors.error),
+          SnackBar(
+            content: Text('PDF export failed: $e'),
+            backgroundColor: UpriseColors.error,
+          ),
         );
       }
     }
@@ -5088,10 +5164,16 @@ class _SalesReportModal extends StatelessWidget {
                             onPressed: orders.isEmpty
                                 ? null
                                 : () => _exportReportPdf(context, orders),
-                            icon: const Icon(Icons.picture_as_pdf_outlined, size: 15),
+                            icon: const Icon(
+                              Icons.picture_as_pdf_outlined,
+                              size: 15,
+                            ),
                             label: Text(
                               'Export PDF',
-                              style: GoogleFonts.beVietnamPro(fontSize: 12, fontWeight: FontWeight.w600),
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: UpriseColors.primaryDark,
@@ -5532,6 +5614,10 @@ class ProductModel {
   final String? imageFormat;
   final String status;
   final List<ProductVariant> variants;
+  // Multiple angle photos for the drag-to-rotate 360 viewer. Falls back to
+  // just [imageBase64] when empty, so existing products with a single photo
+  // still render fine.
+  final List<String> rotationPhotos;
 
   ProductModel({
     required this.id,
@@ -5547,6 +5633,7 @@ class ProductModel {
     this.imageFormat,
     this.status = 'available',
     this.variants = const [],
+    this.rotationPhotos = const [],
   });
 
   factory ProductModel.fromFirestore(DocumentSnapshot doc) {
@@ -5567,8 +5654,15 @@ class ProductModel {
       variants: ((d['variants'] as List?) ?? [])
           .map((v) => ProductVariant.fromMap(v as Map<String, dynamic>))
           .toList(),
+      rotationPhotos: ((d['rotationPhotos'] as List?) ?? []).cast<String>(),
     );
   }
+
+  // Falls back to the single main photo when no dedicated rotation set was
+  // uploaded, so the spin viewer always has at least one frame to show.
+  List<String> get displayPhotos => rotationPhotos.isNotEmpty
+      ? rotationPhotos
+      : (imageBase64 != null && imageBase64!.isNotEmpty ? [imageBase64!] : []);
 }
 
 class OrderItem {
@@ -5669,7 +5763,8 @@ class OrderModel {
     );
   }
 }
-  // ─────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────
 // GCash Settings Dialog
 // ─────────────────────────────────────────────────────────────
 class _GcashSettingsDialog extends StatefulWidget {
@@ -5721,8 +5816,13 @@ class _GcashSettingsDialogState extends State<_GcashSettingsDialog> {
   }
 
   Future<void> _saveGcashInfo() async {
-    if (_numberCtrl.text.trim().isEmpty) {
+    final number = _numberCtrl.text.trim();
+    if (number.isEmpty) {
       _showSnack('Please enter a GCash number.');
+      return;
+    }
+    if (!RegExp(r'^09\d{9}$').hasMatch(number)) {
+      _showSnack('Enter a valid 11-digit GCash number (e.g., 09171234567).');
       return;
     }
     if (_nameCtrl.text.trim().isEmpty) {
@@ -5736,10 +5836,10 @@ class _GcashSettingsDialogState extends State<_GcashSettingsDialog> {
           .collection('organizations')
           .doc(widget.orgId)
           .update({
-        'gcashNumber': _numberCtrl.text.trim(),
-        'gcashName': _nameCtrl.text.trim(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+            'gcashNumber': _numberCtrl.text.trim(),
+            'gcashName': _nameCtrl.text.trim(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
       if (mounted) {
         _showSnack('GCash settings saved successfully!', isSuccess: true);
         Navigator.pop(context);

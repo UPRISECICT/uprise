@@ -1001,7 +1001,23 @@ class _EventProposalsState extends State<EventProposals> {
 
   // ── Actions ───────────────────────────────────────────────────────
 
-  void _confirmSetStatus(String docId, String title, String newStatus) {
+  void _confirmSetStatus(String docId, String title, String newStatus) async {
+    // Certificate-issuing proposals get a dedicated approval flow that
+    // authorizes which admin signatory(ies) the org may use on this event's
+    // certificates — plain approvals (or non-certificate events) keep the
+    // simple confirm dialog below unchanged.
+    if (newStatus == 'approved') {
+      final doc = await FirebaseFirestore.instance
+          .collection('event_proposals')
+          .doc(docId)
+          .get();
+      if (doc.data()?['issuesCertificate'] == true) {
+        if (!_isMounted) return;
+        _showCertificateApprovalDialog(docId, title);
+        return;
+      }
+    }
+    if (!_isMounted) return;
     final Map<String, _ConfirmStyle> styles = {
       'approved': _ConfirmStyle(
         icon: Icons.check_circle_outline_rounded,
@@ -1010,7 +1026,7 @@ class _EventProposalsState extends State<EventProposals> {
         btnColor: const Color(0xFF059669),
         heading: 'Approve Proposal',
         body:
-            'Are you sure you want to approve "$title"? This will automatically add it to the calendar.',
+            'Are you sure you want to approve "$title"? The org will then be able to publish it to their calendar.',
         btnLabel: 'Approve',
       ),
       // Removed 'rejected' from here – we handle rejection separately with reason
@@ -1133,6 +1149,337 @@ class _EventProposalsState extends State<EventProposals> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // ── Certificate-issuing approval: authorize which signatory(ies) the org
+  // may use on this event's certificates, plus a private remark that never
+  // reaches the certificate itself. ──────────────────────────────────────
+  void _showCertificateApprovalDialog(String docId, String title) {
+    bool needsSignature = false;
+    final Set<String> selectedSignatoryIds = {};
+    final remarksCtrl = TextEditingController();
+    bool submitting = false;
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.black54,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) {
+          return Dialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Container(
+              width: 460,
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.85,
+              ),
+              padding: const EdgeInsets.all(28),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFECFDF5),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.check_circle_outline_rounded,
+                            color: Color(0xFF059669),
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Text(
+                            'Approve Proposal',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF1A202C),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      '"$title" issues certificates. Decide whether the org needs an admin e-signature on them before it can be used.',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13.5,
+                        color: const Color(0xFF64748B),
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () =>
+                          setDlg(() => needsSignature = !needsSignature),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          children: [
+                            Checkbox(
+                              value: needsSignature,
+                              activeColor: const Color(0xFF059669),
+                              onChanged: (v) =>
+                                  setDlg(() => needsSignature = v ?? false),
+                            ),
+                            Expanded(
+                              child: Text(
+                                'This event needs an admin e-signature on its certificates',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF1A202C),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (needsSignature) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Select which signatory(ies) the org is authorized to use for this event only:',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 12.5,
+                          color: const Color(0xFF64748B),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance
+                            .collection('signatories')
+                            .snapshots(),
+                        builder: (context, snap) {
+                          final docs = snap.data?.docs ?? [];
+                          if (snap.connectionState == ConnectionState.waiting &&
+                              docs.isEmpty) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 12),
+                              child: Center(
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                              ),
+                            );
+                          }
+                          if (docs.isEmpty) {
+                            return Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFFBEB),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: const Color(0xFFFDE68A),
+                                ),
+                              ),
+                              child: Text(
+                                'No signatories on file yet — add one in Admin Settings → Signatories first.',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 12.5,
+                                  color: const Color(0xFF92400E),
+                                ),
+                              ),
+                            );
+                          }
+                          return Container(
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: const Color(0xFFE2E6EA),
+                              ),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                for (var i = 0; i < docs.length; i++)
+                                  CheckboxListTile(
+                                    dense: true,
+                                    controlAffinity:
+                                        ListTileControlAffinity.leading,
+                                    value: selectedSignatoryIds.contains(
+                                      docs[i].id,
+                                    ),
+                                    activeColor: const Color(0xFF059669),
+                                    onChanged: (v) => setDlg(() {
+                                      if (v == true) {
+                                        selectedSignatoryIds.add(docs[i].id);
+                                      } else {
+                                        selectedSignatoryIds.remove(docs[i].id);
+                                      }
+                                    }),
+                                    title: Text(
+                                      (docs[i].data()
+                                                  as Map<
+                                                    String,
+                                                    dynamic
+                                                  >)['fullName']
+                                              ?.toString() ??
+                                          '',
+                                      style: GoogleFonts.beVietnamPro(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    subtitle: Text(
+                                      (docs[i].data()
+                                                  as Map<
+                                                    String,
+                                                    dynamic
+                                                  >)['title']
+                                              ?.toString() ??
+                                          '',
+                                      style: GoogleFonts.beVietnamPro(
+                                        fontSize: 11.5,
+                                        color: const Color(0xFF9AA5B4),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                    const SizedBox(height: 18),
+                    Text(
+                      'Remarks (internal — never shown on the certificate)',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF64748B),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: remarksCtrl,
+                      maxLines: 3,
+                      style: GoogleFonts.beVietnamPro(fontSize: 13),
+                      decoration: InputDecoration(
+                        hintText:
+                            'e.g. reason for authorizing/declining a signature, conditions, notes for other admins…',
+                        hintStyle: GoogleFonts.beVietnamPro(
+                          fontSize: 12.5,
+                          color: const Color(0xFFB0BAC8),
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFE2E6EA),
+                          ),
+                        ),
+                        contentPadding: const EdgeInsets.all(12),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        OutlinedButton(
+                          onPressed: submitting
+                              ? null
+                              : () => Navigator.pop(ctx),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Color(0xFFE2E6EA)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 18,
+                              vertical: 11,
+                            ),
+                          ),
+                          child: Text(
+                            'Cancel',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13,
+                              color: const Color(0xFF374151),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        ElevatedButton(
+                          onPressed: submitting
+                              ? null
+                              : () async {
+                                  if (needsSignature &&
+                                      selectedSignatoryIds.isEmpty) {
+                                    AppToast.error(
+                                      ctx,
+                                      'Select at least one signatory, or uncheck the signature requirement.',
+                                    );
+                                    return;
+                                  }
+                                  setDlg(() => submitting = true);
+                                  await _setStatus(
+                                    docId,
+                                    title,
+                                    'approved',
+                                    extraFields: {
+                                      'signatoryAuthorization': {
+                                        'required': needsSignature,
+                                        'signatoryIds': needsSignature
+                                            ? selectedSignatoryIds.toList()
+                                            : <String>[],
+                                        'remarks': remarksCtrl.text.trim(),
+                                        'authorizedBy':
+                                            FirebaseAuth
+                                                .instance
+                                                .currentUser
+                                                ?.uid ??
+                                            '',
+                                        'authorizedAt':
+                                            FieldValue.serverTimestamp(),
+                                      },
+                                    },
+                                  );
+                                  if (ctx.mounted) Navigator.pop(ctx);
+                                },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF059669),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 18,
+                              vertical: 11,
+                            ),
+                          ),
+                          child: Text(
+                            submitting ? 'Approving…' : 'Approve',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -1343,7 +1690,12 @@ class _EventProposalsState extends State<EventProposals> {
     }
   }
 
-  Future<void> _setStatus(String docId, String title, String newStatus) async {
+  Future<void> _setStatus(
+    String docId,
+    String title,
+    String newStatus, {
+    Map<String, dynamic>? extraFields,
+  }) async {
     try {
       final docRef = FirebaseFirestore.instance
           .collection('event_proposals')
@@ -1353,6 +1705,7 @@ class _EventProposalsState extends State<EventProposals> {
         'status': newStatus,
         'reviewedAt': FieldValue.serverTimestamp(),
         'reviewedBy': FirebaseAuth.instance.currentUser?.uid ?? '',
+        if (extraFields != null) ...extraFields,
       });
       await activity_log.ActivityLogger.log(
         action: '${newStatus.toUpperCase()} proposal: $title',

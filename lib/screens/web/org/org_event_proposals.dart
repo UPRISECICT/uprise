@@ -1,4 +1,4 @@
-﻿// ignore_for_file: unused_field, duplicate_ignore, use_build_context_synchronously, deprecated_member_use
+// ignore_for_file: unused_field, duplicate_ignore, use_build_context_synchronously, deprecated_member_use
 import 'dart:convert';
 import 'dart:async';
 import '../../../utils/platform_file_utils.dart' as platform_file_utils;
@@ -11,6 +11,8 @@ import 'package:file_picker/file_picker.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../services/notification_service.dart';
 import '../../../widgets/admin_export_button.dart';
+import '../../../widgets/anchored_dropdown.dart';
+import '../../../widgets/org_action_icon_button.dart';
 import 'export_util.dart';
 import 'export_pdf.dart';
 import '../../../theme/app_theme.dart';
@@ -23,7 +25,10 @@ import 'org_form_builder.dart';
 Future<String> _getUserName(String uid) async {
   if (uid.isEmpty) return '—';
   try {
-    final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .get();
     if (doc.exists) {
       final data = doc.data();
       // Try various possible field names
@@ -43,7 +48,12 @@ bool _isImageAttachment(Map<String, dynamic> data) {
   return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].contains(ext);
 }
 
-Widget _buildImageFromBase64(String base64, {double? width, double? height, BoxFit fit = BoxFit.cover}) {
+Widget _buildImageFromBase64(
+  String base64, {
+  double? width,
+  double? height,
+  BoxFit fit = BoxFit.cover,
+}) {
   try {
     final bytes = base64Decode(base64);
     return Image.memory(
@@ -62,9 +72,9 @@ Widget _buildImageFromBase64(String base64, {double? width, double? height, BoxF
 // Design tokens
 // ─────────────────────────────────────────────────────────────────────────────
 class _DS {
-  static const double radiusSm   = 8;
-  static const double radiusMd   = 12;
-  static const double radiusLg   = 16;
+  static const double radiusSm = 8;
+  static const double radiusMd = 12;
+  static const double radiusLg = 16;
   static const double radiusPill = 100;
 
   static final cardShadow = [
@@ -87,13 +97,34 @@ class _BadgeStyle {
 
 Widget _statusBadge(String status) {
   final Map<String, _BadgeStyle> styles = {
-    'approved':   _BadgeStyle(const Color(0xFFECFDF5), const Color(0xFF059669), 'APPROVED'),
-    'pending':    _BadgeStyle(const Color(0xFFFFFBEB), const Color(0xFFFB923C), 'PENDING'),
-    'rejected':   _BadgeStyle(const Color(0xFFFEF2F2), const Color(0xFFDC2626), 'REJECTED'),
-    'for_review': _BadgeStyle(const Color(0xFFEFF6FF), const Color(0xFF2563EB), 'FOR REVIEW'),
+    'approved': _BadgeStyle(
+      const Color(0xFFECFDF5),
+      const Color(0xFF059669),
+      'APPROVED',
+    ),
+    'pending': _BadgeStyle(
+      const Color(0xFFFFFBEB),
+      const Color(0xFFFB923C),
+      'PENDING',
+    ),
+    'rejected': _BadgeStyle(
+      const Color(0xFFFEF2F2),
+      const Color(0xFFDC2626),
+      'REJECTED',
+    ),
+    'for_review': _BadgeStyle(
+      const Color(0xFFEFF6FF),
+      const Color(0xFF2563EB),
+      'FOR REVIEW',
+    ),
   };
-  final s = styles[status.toLowerCase()] ??
-      _BadgeStyle(const Color(0xFFF3F4F6), const Color(0xFF6B7280), status.toUpperCase());
+  final s =
+      styles[status.toLowerCase()] ??
+      _BadgeStyle(
+        const Color(0xFFF3F4F6),
+        const Color(0xFF6B7280),
+        status.toUpperCase(),
+      );
   return Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
     decoration: BoxDecoration(
@@ -118,36 +149,83 @@ Widget _statusBadge(String status) {
 Widget _sectionLabel(String text, {IconData? icon}) {
   return Padding(
     padding: const EdgeInsets.only(bottom: 12),
-    child: Row(children: [
-      if (icon != null) ...[
-        Icon(icon, size: 16, color: UpriseColors.primaryDark),
-        const SizedBox(width: 8),
-      ],
-      Text(
-        text,
-        style: GoogleFonts.beVietnamPro(
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-          color: UpriseColors.primaryDark,
-          letterSpacing: 0.3,
+    child: Row(
+      children: [
+        if (icon != null) ...[
+          Icon(icon, size: 16, color: UpriseColors.primaryDark),
+          const SizedBox(width: 8),
+        ],
+        Text(
+          text,
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: UpriseColors.primaryDark,
+            letterSpacing: 0.3,
+          ),
         ),
-      ),
-      const SizedBox(width: 12),
-      Expanded(child: Divider(color: const Color(0xFFE2E6EA), thickness: 1)),
-    ]),
+        const SizedBox(width: 12),
+        Expanded(child: Divider(color: const Color(0xFFE2E6EA), thickness: 1)),
+      ],
+    ),
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Input decoration helper
 // ─────────────────────────────────────────────────────────────────────────────
-InputDecoration _orgEventProposalsInputDecoration(String label, {String? hint, IconData? icon}) {
+InputDecoration _orgEventProposalsInputDecoration(
+  String label, {
+  String? hint,
+  IconData? icon,
+}) {
+  // Required fields are labeled "Foo *" — the asterisk used to render in the
+  // same muted gray as the rest of the label and was easy to miss. Splitting
+  // it into its own red TextSpan (via `label:` instead of plain `labelText:`)
+  // makes it actually stand out.
+  final trimmed = label.trimRight();
+  final isRequired = trimmed.endsWith('*');
+  final baseLabel = isRequired
+      ? trimmed.substring(0, trimmed.length - 1).trimRight()
+      : label;
+
   return InputDecoration(
-    labelText: label,
+    labelText: isRequired ? null : label,
+    label: isRequired
+        ? RichText(
+            text: TextSpan(
+              children: [
+                TextSpan(
+                  text: baseLabel,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 13,
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+                TextSpan(
+                  text: ' *',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 13,
+                    color: UpriseColors.error,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          )
+        : null,
     hintText: hint,
-    prefixIcon: icon != null ? Icon(icon, size: 18, color: const Color(0xFF9AA5B4)) : null,
-    labelStyle: GoogleFonts.beVietnamPro(fontSize: 13, color: const Color(0xFF64748B)),
-    hintStyle: GoogleFonts.beVietnamPro(fontSize: 13, color: const Color(0xFF9AA5B4)),
+    prefixIcon: icon != null
+        ? Icon(icon, size: 18, color: const Color(0xFF9AA5B4))
+        : null,
+    labelStyle: GoogleFonts.beVietnamPro(
+      fontSize: 13,
+      color: const Color(0xFF64748B),
+    ),
+    hintStyle: GoogleFonts.beVietnamPro(
+      fontSize: 13,
+      color: const Color(0xFF9AA5B4),
+    ),
     filled: true,
     fillColor: const Color(0xFFF8F9FB),
     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -182,12 +260,13 @@ class OrgEventProposalsScreen extends StatefulWidget {
   const OrgEventProposalsScreen({super.key, required this.orgId});
 
   @override
-  State<OrgEventProposalsScreen> createState() => _OrgEventProposalsScreenState();
+  State<OrgEventProposalsScreen> createState() =>
+      _OrgEventProposalsScreenState();
 }
 
 class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
   final TextEditingController _searchController = TextEditingController();
-  String _searchQuery  = '';
+  String _searchQuery = '';
   String _filterStatus = 'All';
   int _currentPage = 1;
   static const int _pageSize = 10;
@@ -237,15 +316,25 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
 
   // ── Filters ───────────────────────────────────────────────────────
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _applyFilters(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
     var filtered = docs;
     if (_filterStatus == 'All') {
-      filtered = filtered.where((d) =>
-          ((d.data())['status']?.toString().toLowerCase() ?? '') != 'archived').toList();
+      filtered = filtered
+          .where(
+            (d) =>
+                ((d.data())['status']?.toString().toLowerCase() ?? '') !=
+                'archived',
+          )
+          .toList();
     } else {
       final key = _filterStatus.toLowerCase().replaceAll(' ', '_');
-      filtered = filtered.where((d) =>
-          ((d.data())['status']?.toString().toLowerCase() ?? '') == key).toList();
+      filtered = filtered
+          .where(
+            (d) =>
+                ((d.data())['status']?.toString().toLowerCase() ?? '') == key,
+          )
+          .toList();
     }
     if (_searchQuery.isNotEmpty) {
       final q = _searchQuery.toLowerCase();
@@ -274,7 +363,9 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
     if (status != 'pending' && status != 'for_review') {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Only pending or revision-requested proposals can be edited'),
+          content: Text(
+            'Only pending or revision-requested proposals can be edited',
+          ),
           backgroundColor: Colors.orange,
           behavior: SnackBarBehavior.floating,
         ),
@@ -285,14 +376,18 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
       context: context,
       barrierDismissible: false,
       barrierColor: Colors.black54,
-      builder: (_) => _SubmitProposalModal(orgId: widget.orgId, editDocId: docId, existing: data),
+      builder: (_) => _SubmitProposalModal(
+        orgId: widget.orgId,
+        editDocId: docId,
+        existing: data,
+      ),
     ).then((_) => setState(() {}));
   }
 
   void _openFormBuilder(String docId, Map<String, dynamic> data) {
     final eventDate = data['date'];
-    final isPast = eventDate is Timestamp &&
-        !eventDate.toDate().isAfter(DateTime.now());
+    final isPast =
+        eventDate is Timestamp && !eventDate.toDate().isAfter(DateTime.now());
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -341,51 +436,93 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(children: [
-                Container(
-                  width: 42, height: 42,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF3F4F6),
-                    borderRadius: BorderRadius.circular(10),
+              Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF3F4F6),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.archive_outlined,
+                      color: Color(0xFF6B7280),
+                      size: 20,
+                    ),
                   ),
-                  child: const Icon(Icons.archive_outlined, color: Color(0xFF6B7280), size: 20),
-                ),
-                const SizedBox(width: 14),
-                Text('Archive Proposal',
-                    style: GoogleFonts.beVietnamPro(fontSize: 17, fontWeight: FontWeight.w700, color: const Color(0xFF1A202C))),
-              ]),
+                  const SizedBox(width: 14),
+                  Text(
+                    'Archive Proposal',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF1A202C),
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 16),
               Text(
                 'Are you sure you want to archive "$title"? You can still view it in the archived filter. This action can be reversed.',
-                style: GoogleFonts.beVietnamPro(fontSize: 14, color: const Color(0xFF64748B), height: 1.5),
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 14,
+                  color: const Color(0xFF64748B),
+                  height: 1.5,
+                ),
               ),
               const SizedBox(height: 24),
-              Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                OutlinedButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Color(0xFFE2E6EA)),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFFE2E6EA)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 11,
+                      ),
+                    ),
+                    child: Text(
+                      'Cancel',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        color: const Color(0xFF374151),
+                      ),
+                    ),
                   ),
-                  child: Text('Cancel', style: GoogleFonts.beVietnamPro(fontSize: 13, color: const Color(0xFF374151))),
-                ),
-                const SizedBox(width: 10),
-                ElevatedButton(
-                  onPressed: () async {
-                    Navigator.pop(ctx);
-                    await _archiveProposal(docId, title);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF6B7280),
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+                  const SizedBox(width: 10),
+                  ElevatedButton(
+                    onPressed: () async {
+                      Navigator.pop(ctx);
+                      await _archiveProposal(docId, title);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF6B7280),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 11,
+                      ),
+                    ),
+                    child: Text(
+                      'Archive',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
-                  child: Text('Archive', style: GoogleFonts.beVietnamPro(fontSize: 13, fontWeight: FontWeight.w600)),
-                ),
-              ]),
+                ],
+              ),
             ],
           ),
         ),
@@ -399,31 +536,39 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
           .collection('event_proposals')
           .doc(docId)
           .update({
-        'status': 'archived',
-        'archivedAt': FieldValue.serverTimestamp(),
-        'archivedBy': FirebaseAuth.instance.currentUser?.uid ?? '',
-      });
+            'status': 'archived',
+            'archivedAt': FieldValue.serverTimestamp(),
+            'archivedBy': FirebaseAuth.instance.currentUser?.uid ?? '',
+          });
       await activity_log.ActivityLogger.log(
         action: 'archive_proposal',
         module: 'event_proposals',
         details: {'orgId': widget.orgId, 'proposalId': docId, 'title': title},
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Proposal "$title" has been archived'),
-          backgroundColor: const Color(0xFF6B7280),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Proposal "$title" has been archived'),
+            backgroundColor: const Color(0xFF6B7280),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Archive failed: $e'),
-          backgroundColor: UpriseColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Archive failed: $e'),
+            backgroundColor: UpriseColors.error,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        );
       }
     }
   }
@@ -446,56 +591,97 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(10)),
-                  child: const Icon(Icons.publish_rounded, color: Color(0xFF2563EB), size: 20),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Text(isPublished ? 'Update Published Event' : 'Publish Event',
+              Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.publish_rounded,
+                      color: Color(0xFF2563EB),
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      isPublished ? 'Update Published Event' : 'Publish Event',
                       style: GoogleFonts.beVietnamPro(
-                          fontSize: 17, fontWeight: FontWeight.w700, color: const Color(0xFF1A202C))),
-                ),
-              ]),
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF1A202C),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 16),
               Text(
                 isPublished
                     ? 'Push the latest details of "$title" to its existing entry on the student events page. This will not create a second listing.'
                     : 'Publish "$title" to the student events page? Students will be able to view its full details and register immediately.',
-                style: GoogleFonts.beVietnamPro(fontSize: 14, color: const Color(0xFF64748B), height: 1.5),
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 14,
+                  color: const Color(0xFF64748B),
+                  height: 1.5,
+                ),
               ),
               const SizedBox(height: 24),
-              Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                OutlinedButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Color(0xFFE2E6EA)),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFFE2E6EA)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 11,
+                      ),
+                    ),
+                    child: Text(
+                      'Cancel',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        color: const Color(0xFF374151),
+                      ),
+                    ),
                   ),
-                  child: Text('Cancel',
-                      style: GoogleFonts.beVietnamPro(fontSize: 13, color: const Color(0xFF374151))),
-                ),
-                const SizedBox(width: 10),
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    _publishProposal(docId);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF2563EB),
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+                  const SizedBox(width: 10),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _publishProposal(docId);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2563EB),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 11,
+                      ),
+                    ),
+                    child: Text(
+                      isPublished ? 'Update' : 'Publish',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
-                  child: Text(isPublished ? 'Update' : 'Publish',
-                      style: GoogleFonts.beVietnamPro(fontSize: 13, fontWeight: FontWeight.w600)),
-                ),
-              ]),
+                ],
+              ),
             ],
           ),
         ),
@@ -504,183 +690,207 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
   }
 
   Future<void> _publishProposal(String proposalId) async {
-  if (_publishingIds.contains(proposalId)) return;
-  _publishingIds.add(proposalId);
+    if (_publishingIds.contains(proposalId)) return;
+    _publishingIds.add(proposalId);
 
-  try {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) throw Exception('You must be logged in to publish.');
-
-    final doc = await FirebaseFirestore.instance
-        .collection('event_proposals')
-        .doc(proposalId)
-        .get();
-    if (!doc.exists) throw Exception('Proposal not found.');
-    final data = doc.data() as Map<String, dynamic>;
-
-    if (data['status'] != 'approved') {
-      throw Exception('Proposal is not approved.');
-    }
-
-    // Validate required fields...
-    final title = (data['title'] ?? '').toString().trim();
-    final description = (data['description'] ?? '').toString().trim();
-    final location = (data['location'] ?? '').toString().trim();
-    final proposalDate = data['date'] as Timestamp?;
-    if (title.isEmpty) throw Exception('Missing event title.');
-    if (description.isEmpty) throw Exception('Missing description.');
-    if (location.isEmpty) throw Exception('Missing location.');
-    if (proposalDate == null) throw Exception('Missing event date.');
-
-    // Get org details
-    String orgName = (data['orgName'] ?? '').toString();
-    String logoUrl = (data['orgLogoUrl'] as String?) ?? '';
     try {
-      final orgDoc = await FirebaseFirestore.instance
-          .collection('organizations')
-          .doc(widget.orgId)
-          .get();
-      if (orgDoc.exists) {
-        final orgData = orgDoc.data() ?? {};
-        if (orgName.isEmpty) orgName = (orgData['name'] ?? '').toString();
-        if (logoUrl.isEmpty) logoUrl = (orgData['logoUrl'] ?? '').toString();
-      }
-    } catch (_) {}
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('You must be logged in to publish.');
 
-    // Prepare event data (without bannerUrl yet)
-    final date = proposalDate.toDate();
-    final startTime = (data['startTime'] ?? '').toString();
-    final endTime = (data['endTime'] ?? '').toString();
-    final audience = (data['audience'] ?? 'Public').toString();
-
-    final eventData = {
-      'orgId': widget.orgId,
-      'orgName': orgName,
-      'title': title,
-      'description': description,
-      'location': location,
-      'category': data['category'] ?? 'Other',
-      'audience': audience,
-      'schoolYear': data['schoolYear'] ?? SchoolYearUtil.currentSchoolYear(),
-      'semester': data['semester'] ?? SchoolYearUtil.currentSemester(),
-      'date': Timestamp.fromDate(date),
-      'startTime': startTime,
-      'endTime': endTime,
-      'status': 'approved',
-      'isPublic': true,
-      'logoUrl': logoUrl,
-      'createdFromProposalId': proposalId,
-      // bannerUrl will be added later
-    };
-
-    // ─── NOW SAVE EVENT IMMEDIATELY (no image yet) ───
-    final existingEventId = (data['publishedEventId'] ?? '').toString();
-    String eventId;
-
-    if (existingEventId.isNotEmpty) {
-      eventId = existingEventId;
-      await FirebaseFirestore.instance.collection('events').doc(eventId).update(eventData);
-    } else {
-      final eventRef = FirebaseFirestore.instance.collection('events').doc();
-      eventId = eventRef.id;
-      await eventRef.set({
-        ...eventData,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-      await FirebaseFirestore.instance
+      final doc = await FirebaseFirestore.instance
           .collection('event_proposals')
           .doc(proposalId)
-          .update({
-        'publishedEventId': eventId,
-        'publishedAt': FieldValue.serverTimestamp(),
-        'publishedBy': user.uid,
-      });
-    }
+          .get();
+      if (!doc.exists) throw Exception('Proposal not found.');
+      final data = doc.data() as Map<String, dynamic>;
 
-    // ─── UPLOAD IMAGE ─────────────────────────────────────────────
-    // Awaited (not fire-and-forget) so a Storage failure is caught by the
-    // outer try/catch below and actually shown to the org — previously
-    // this ran unawaited in the background, so a failed upload looked
-    // identical to success and the banner silently never appeared.
-    final imgB64 = data['imageBase64'] as String?;
-    String? imageUploadError;
-    if (imgB64 != null && imgB64.isNotEmpty) {
-      try {
-        await _uploadEventImage(imgB64, data['imageName'], eventId);
-      } catch (e) {
-        imageUploadError = e.toString();
+      if (data['status'] != 'approved') {
+        throw Exception('Proposal is not approved.');
       }
-    }
 
-    // Show success (or a partial-success warning if the image failed)
-    if (mounted) {
-      final baseMsg = existingEventId.isNotEmpty
-          ? 'Event updated on the student events page!'
-          : 'Event published to the student events page!';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(imageUploadError == null
-              ? '✅ $baseMsg'
-              : '⚠️ $baseMsg But the banner image failed to upload: $imageUploadError'),
-          backgroundColor: imageUploadError == null ? const Color(0xFF059669) : const Color(0xFFB45309),
-          behavior: SnackBarBehavior.floating,
-          duration: imageUploadError == null ? const Duration(seconds: 4) : const Duration(seconds: 7),
-        ),
+      // Validate required fields...
+      final title = (data['title'] ?? '').toString().trim();
+      final description = (data['description'] ?? '').toString().trim();
+      final location = (data['location'] ?? '').toString().trim();
+      final proposalDate = data['date'] as Timestamp?;
+      if (title.isEmpty) throw Exception('Missing event title.');
+      if (description.isEmpty) throw Exception('Missing description.');
+      if (location.isEmpty) throw Exception('Missing location.');
+      if (proposalDate == null) throw Exception('Missing event date.');
+
+      // Get org details
+      String orgName = (data['orgName'] ?? '').toString();
+      String logoUrl = (data['orgLogoUrl'] as String?) ?? '';
+      try {
+        final orgDoc = await FirebaseFirestore.instance
+            .collection('organizations')
+            .doc(widget.orgId)
+            .get();
+        if (orgDoc.exists) {
+          final orgData = orgDoc.data() ?? {};
+          if (orgName.isEmpty) orgName = (orgData['name'] ?? '').toString();
+          if (logoUrl.isEmpty) logoUrl = (orgData['logoUrl'] ?? '').toString();
+        }
+      } catch (_) {}
+
+      // Prepare event data (without bannerUrl yet)
+      final date = proposalDate.toDate();
+      final startTime = (data['startTime'] ?? '').toString();
+      final endTime = (data['endTime'] ?? '').toString();
+      final audience = (data['audience'] ?? 'Public').toString();
+
+      final eventData = {
+        'orgId': widget.orgId,
+        'orgName': orgName,
+        'title': title,
+        'description': description,
+        'location': location,
+        'category': data['category'] ?? 'Other',
+        'audience': audience,
+        'schoolYear': data['schoolYear'] ?? SchoolYearUtil.currentSchoolYear(),
+        'semester': data['semester'] ?? SchoolYearUtil.currentSemester(),
+        'date': Timestamp.fromDate(date),
+        'startTime': startTime,
+        'endTime': endTime,
+        'status': 'approved',
+        'isPublic': true,
+        'logoUrl': logoUrl,
+        'createdFromProposalId': proposalId,
+        // bannerUrl will be added later
+      };
+
+      // ─── NOW SAVE EVENT IMMEDIATELY (no image yet) ───
+      final existingEventId = (data['publishedEventId'] ?? '').toString();
+      String eventId;
+
+      if (existingEventId.isNotEmpty) {
+        eventId = existingEventId;
+        await FirebaseFirestore.instance
+            .collection('events')
+            .doc(eventId)
+            .update(eventData);
+      } else {
+        final eventRef = FirebaseFirestore.instance.collection('events').doc();
+        eventId = eventRef.id;
+        await eventRef.set({
+          ...eventData,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        await FirebaseFirestore.instance
+            .collection('event_proposals')
+            .doc(proposalId)
+            .update({
+              'publishedEventId': eventId,
+              'publishedAt': FieldValue.serverTimestamp(),
+              'publishedBy': user.uid,
+            });
+      }
+
+      // ─── UPLOAD IMAGE ─────────────────────────────────────────────
+      // Awaited (not fire-and-forget) so a Storage failure is caught by the
+      // outer try/catch below and actually shown to the org — previously
+      // this ran unawaited in the background, so a failed upload looked
+      // identical to success and the banner silently never appeared.
+      final imgB64 = data['imageBase64'] as String?;
+      String? imageUploadError;
+      if (imgB64 != null && imgB64.isNotEmpty) {
+        try {
+          await _uploadEventImage(imgB64, data['imageName'], eventId);
+        } catch (e) {
+          imageUploadError = e.toString();
+        }
+      }
+
+      // Show success (or a partial-success warning if the image failed)
+      if (mounted) {
+        final baseMsg = existingEventId.isNotEmpty
+            ? 'Event updated on the student events page!'
+            : 'Event published to the student events page!';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              imageUploadError == null
+                  ? '✅ $baseMsg'
+                  : '⚠️ $baseMsg But the banner image failed to upload: $imageUploadError',
+            ),
+            backgroundColor: imageUploadError == null
+                ? const Color(0xFF059669)
+                : const Color(0xFFB45309),
+            behavior: SnackBarBehavior.floating,
+            duration: imageUploadError == null
+                ? const Duration(seconds: 4)
+                : const Duration(seconds: 7),
+          ),
+        );
+      }
+
+      // Log activity (optional)
+      await activity_log.ActivityLogger.log(
+        action: existingEventId.isNotEmpty
+            ? 'update_published_event'
+            : 'publish_event_from_proposal',
+        module: 'event_proposals',
+        details: {
+          'orgId': widget.orgId,
+          'proposalId': proposalId,
+          'eventId': eventId,
+        },
+      );
+    } catch (e, stack) {
+      debugPrint('❌ PUBLISH ERROR: $e');
+      debugPrint('Stack trace: $stack');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('⚠️ Publish failed: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } finally {
+      _publishingIds.remove(proposalId);
+    }
+  }
+
+  // Separate function for image upload — lets failures propagate to the
+  // caller (org_event_proposals.dart's _publishProposal) instead of being
+  // silently swallowed, since a swallowed failure looks identical to a
+  // successful publish from the org's point of view.
+  //
+  // Stored as a base64 data URL directly on the event doc (no Firebase
+  // Storage — avoids Storage billing, mirrors the org profile logo/cover
+  // photo pattern). The proposal already carries the image as base64, so
+  // this is just a re-encode into a data: URI, no actual network upload.
+  Future<void> _uploadEventImage(
+    String base64Image,
+    String? imageName,
+    String eventId,
+  ) async {
+    final ext = (imageName?.contains('.') ?? false)
+        ? imageName!.split('.').last.toLowerCase()
+        : 'jpg';
+    const contentTypes = {
+      'png': 'image/png',
+      'gif': 'image/gif',
+      'webp': 'image/webp',
+    };
+    final contentType = contentTypes[ext] ?? 'image/jpeg';
+    final bannerUrl = 'data:$contentType;base64,$base64Image';
+
+    // Firestore caps a document at 1MB; the banner shares the doc with the
+    // rest of the event fields, so keep a safety margin.
+    if (bannerUrl.length > 900 * 1024) {
+      throw Exception(
+        'Image is too large (max ~650KB). Please use a smaller image.',
       );
     }
 
-    // Log activity (optional)
-    await activity_log.ActivityLogger.log(
-      action: existingEventId.isNotEmpty ? 'update_published_event' : 'publish_event_from_proposal',
-      module: 'event_proposals',
-      details: {'orgId': widget.orgId, 'proposalId': proposalId, 'eventId': eventId},
-    );
-  } catch (e, stack) {
-    debugPrint('❌ PUBLISH ERROR: $e');
-    debugPrint('Stack trace: $stack');
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('⚠️ Publish failed: $e'),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 5),
-        ),
-      );
-    }
-  } finally {
-    _publishingIds.remove(proposalId);
+    await FirebaseFirestore.instance.collection('events').doc(eventId).update({
+      'bannerUrl': bannerUrl,
+    });
   }
-}
-
-// Separate function for image upload — lets failures propagate to the
-// caller (org_event_proposals.dart's _publishProposal) instead of being
-// silently swallowed, since a swallowed failure looks identical to a
-// successful publish from the org's point of view.
-//
-// Stored as a base64 data URL directly on the event doc (no Firebase
-// Storage — avoids Storage billing, mirrors the org profile logo/cover
-// photo pattern). The proposal already carries the image as base64, so
-// this is just a re-encode into a data: URI, no actual network upload.
-Future<void> _uploadEventImage(String base64Image, String? imageName, String eventId) async {
-  final ext = (imageName?.contains('.') ?? false)
-      ? imageName!.split('.').last.toLowerCase()
-      : 'jpg';
-  const contentTypes = {'png': 'image/png', 'gif': 'image/gif', 'webp': 'image/webp'};
-  final contentType = contentTypes[ext] ?? 'image/jpeg';
-  final bannerUrl = 'data:$contentType;base64,$base64Image';
-
-  // Firestore caps a document at 1MB; the banner shares the doc with the
-  // rest of the event fields, so keep a safety margin.
-  if (bannerUrl.length > 900 * 1024) {
-    throw Exception('Image is too large (max ~650KB). Please use a smaller image.');
-  }
-
-  await FirebaseFirestore.instance
-      .collection('events')
-      .doc(eventId)
-      .update({'bannerUrl': bannerUrl});
-}
 
   // ── Export ────────────────────────────────────────────────────────
   Future<void> _exportProposals(String format) async {
@@ -690,13 +900,18 @@ Future<void> _uploadEventImage(String base64Image, String? imageName, String eve
         .orderBy('submittedAt', descending: true)
         .get();
     final docs = _applyFilters(
-        snapshot.docs.cast<QueryDocumentSnapshot<Map<String, dynamic>>>().toList());
+      snapshot.docs
+          .cast<QueryDocumentSnapshot<Map<String, dynamic>>>()
+          .toList(),
+    );
 
     if (docs.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('No data to export'),
-        behavior: SnackBarBehavior.floating,
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No data to export'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
       return;
     }
 
@@ -705,30 +920,46 @@ Future<void> _uploadEventImage(String base64Image, String? imageName, String eve
 
     String esc(String v) =>
         (v.contains(',') || v.contains('"') || v.contains('\n'))
-            ? '"${v.replaceAll('"', '""')}"'
-            : v;
+        ? '"${v.replaceAll('"', '""')}"'
+        : v;
 
     if (format == 'csv') {
       final buf = StringBuffer();
-      buf.writeln('Proposal ID,Title,Category,Audience,Description,Date,Start Time,End Time,Location,Status,Submitted By,Submitted At');
+      buf.writeln(
+        'Proposal ID,Title,Category,Audience,Description,Date,Start Time,End Time,Location,Status,Submitted By,Submitted At',
+      );
       for (final doc in docs) {
         final d = doc.data();
-        buf.writeln([
-          'EP-${doc.id.substring(0, 4).toUpperCase()}',
-          esc(d['title'] ?? ''),
-          esc(d['category'] ?? ''),
-          esc(d['audience'] ?? ''),
-          esc(d['description'] ?? ''),
-          d['date'] != null ? DateFormat('yyyy-MM-dd').format((d['date'] as Timestamp).toDate()) : '',
-          d['startTime'] ?? '',
-          d['endTime'] ?? '',
-          esc(d['location'] ?? ''),
-          d['status'] ?? 'pending',
-          d['submittedByEmail'] ?? '',
-          d['submittedAt'] != null ? DateFormat('yyyy-MM-dd HH:mm').format((d['submittedAt'] as Timestamp).toDate()) : '',
-        ].join(','));
+        buf.writeln(
+          [
+            'EP-${doc.id.substring(0, 4).toUpperCase()}',
+            esc(d['title'] ?? ''),
+            esc(d['category'] ?? ''),
+            esc(d['audience'] ?? ''),
+            esc(d['description'] ?? ''),
+            d['date'] != null
+                ? DateFormat(
+                    'yyyy-MM-dd',
+                  ).format((d['date'] as Timestamp).toDate())
+                : '',
+            d['startTime'] ?? '',
+            d['endTime'] ?? '',
+            esc(d['location'] ?? ''),
+            d['status'] ?? 'pending',
+            d['submittedByEmail'] ?? '',
+            d['submittedAt'] != null
+                ? DateFormat(
+                    'yyyy-MM-dd HH:mm',
+                  ).format((d['submittedAt'] as Timestamp).toDate())
+                : '',
+          ].join(','),
+        );
       }
-      await OrgExportUtil.saveText(buf.toString(), '$fileName.csv', mimeType: 'text/csv');
+      await OrgExportUtil.saveText(
+        buf.toString(),
+        '$fileName.csv',
+        mimeType: 'text/csv',
+      );
     } else if (format == 'pdf') {
       final rows = docs.map((doc) {
         final d = doc.data();
@@ -738,30 +969,57 @@ Future<void> _uploadEventImage(String base64Image, String? imageName, String eve
           d['category'] ?? '',
           d['audience'] ?? '',
           d['description'] ?? '',
-          d['date'] != null ? DateFormat('yyyy-MM-dd').format((d['date'] as Timestamp).toDate()) : '',
+          d['date'] != null
+              ? DateFormat(
+                  'yyyy-MM-dd',
+                ).format((d['date'] as Timestamp).toDate())
+              : '',
           d['startTime'] ?? '',
           d['endTime'] ?? '',
           d['location'] ?? '',
           d['status'] ?? 'pending',
           d['submittedByEmail'] ?? '',
-          d['submittedAt'] != null ? DateFormat('yyyy-MM-dd HH:mm').format((d['submittedAt'] as Timestamp).toDate()) : '',
+          d['submittedAt'] != null
+              ? DateFormat(
+                  'yyyy-MM-dd HH:mm',
+                ).format((d['submittedAt'] as Timestamp).toDate())
+              : '',
         ];
       }).toList();
       final pdfBytes = await OrgExportPdf.generateTablePdf(
         title: 'Event Proposals Report',
-        headers: const ['Proposal ID', 'Title', 'Category', 'Audience', 'Description', 'Date', 'Start Time', 'End Time', 'Location', 'Status', 'Submitted By', 'Submitted At'],
+        headers: const [
+          'Proposal ID',
+          'Title',
+          'Category',
+          'Audience',
+          'Description',
+          'Date',
+          'Start Time',
+          'End Time',
+          'Location',
+          'Status',
+          'Submitted By',
+          'Submitted At',
+        ],
         rows: rows,
       );
-      await OrgExportUtil.saveBytes(pdfBytes, '$fileName.pdf', mimeType: 'application/pdf');
+      await OrgExportUtil.saveBytes(
+        pdfBytes,
+        '$fileName.pdf',
+        mimeType: 'application/pdf',
+      );
     }
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Exported ${docs.length} proposals as $format'),
-        backgroundColor: const Color(0xFF059669),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Exported ${docs.length} proposals as $format'),
+          backgroundColor: const Color(0xFF059669),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      );
     }
   }
 
@@ -791,30 +1049,46 @@ Future<void> _uploadEventImage(String base64Image, String? imageName, String eve
   Widget _buildStatsRow(bool isMobile, bool isTablet) {
     final horizontalPadding = isMobile ? 16.0 : (isTablet ? 20.0 : 28.0);
     final cardGap = isMobile ? 8.0 : 14.0;
+    void selectStatus(String status) => setState(() {
+      _filterStatus = _filterStatus == status ? 'All' : status;
+      _currentPage = 1;
+    });
+
     final statCards = [
       _StatCard(
         label: 'Total Proposals',
         stream: _allStream,
         icon: Icons.description_outlined,
         color: UpriseColors.primaryDark,
+        isSelected: _filterStatus == 'All',
+        onTap: () => setState(() {
+          _filterStatus = 'All';
+          _currentPage = 1;
+        }),
       ),
       _StatCard(
         label: 'Pending',
         stream: _pendingStream,
         icon: Icons.hourglass_empty_rounded,
         color: const Color(0xFFFB923C),
+        isSelected: _filterStatus == 'Pending',
+        onTap: () => selectStatus('Pending'),
       ),
       _StatCard(
         label: 'Approved',
         stream: _approvedStream,
         icon: Icons.check_circle_outline_rounded,
         color: const Color(0xFF059669),
+        isSelected: _filterStatus == 'Approved',
+        onTap: () => selectStatus('Approved'),
       ),
       _StatCard(
         label: 'For Review',
         stream: _forReviewStream,
         icon: Icons.rate_review_outlined,
         color: const Color(0xFF2563EB),
+        isSelected: _filterStatus == 'For Review',
+        onTap: () => selectStatus('For Review'),
       ),
     ];
 
@@ -827,7 +1101,9 @@ Future<void> _uploadEventImage(String base64Image, String? imageName, String eve
                 children: List.generate(
                   statCards.length,
                   (index) => Padding(
-                    padding: EdgeInsets.only(right: index < statCards.length - 1 ? cardGap : 0),
+                    padding: EdgeInsets.only(
+                      right: index < statCards.length - 1 ? cardGap : 0,
+                    ),
                     child: SizedBox(width: 220, child: statCards[index]),
                   ),
                 ),
@@ -835,16 +1111,13 @@ Future<void> _uploadEventImage(String base64Image, String? imageName, String eve
             )
           : Row(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: List.generate(
-                statCards.length * 2 - 1,
-                (index) {
-                  if (index.isOdd) {
-                    return SizedBox(width: cardGap);
-                  }
-                  final card = statCards[index ~/ 2];
-                  return Expanded(child: card);
-                },
-              ),
+              children: List.generate(statCards.length * 2 - 1, (index) {
+                if (index.isOdd) {
+                  return SizedBox(width: cardGap);
+                }
+                final card = statCards[index ~/ 2];
+                return Expanded(child: card);
+              }),
             ),
     );
   }
@@ -855,7 +1128,12 @@ Future<void> _uploadEventImage(String base64Image, String? imageName, String eve
     final itemGap = isMobile ? 10.0 : 12.0;
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(horizontalPadding, isMobile ? 16 : 20, horizontalPadding, 0),
+      padding: EdgeInsets.fromLTRB(
+        horizontalPadding,
+        isMobile ? 16 : 20,
+        horizontalPadding,
+        0,
+      ),
       child: isMobile
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -867,11 +1145,21 @@ Future<void> _uploadEventImage(String base64Image, String? imageName, String eve
                     style: GoogleFonts.beVietnamPro(fontSize: 13),
                     decoration: InputDecoration(
                       hintText: 'Search by title, category, or location…',
-                      hintStyle: GoogleFonts.beVietnamPro(fontSize: 13, color: const Color(0xFF9AA5B4)),
-                      prefixIcon: const Icon(Icons.search_rounded, size: 18, color: Color(0xFF9AA5B4)),
+                      hintStyle: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        color: const Color(0xFF9AA5B4),
+                      ),
+                      prefixIcon: const Icon(
+                        Icons.search_rounded,
+                        size: 18,
+                        color: Color(0xFF9AA5B4),
+                      ),
                       filled: true,
                       fillColor: Colors.white,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+                      contentPadding: const EdgeInsets.symmetric(
+                        vertical: 0,
+                        horizontal: 16,
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                         borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
@@ -882,19 +1170,35 @@ Future<void> _uploadEventImage(String base64Image, String? imageName, String eve
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(color: UpriseColors.primaryDark, width: 1.5),
+                        borderSide: BorderSide(
+                          color: UpriseColors.primaryDark,
+                          width: 1.5,
+                        ),
                       ),
                     ),
-                    onChanged: (v) => setState(() { _searchQuery = v; _currentPage = 1; }),
+                    onChanged: (v) => setState(() {
+                      _searchQuery = v;
+                      _currentPage = 1;
+                    }),
                   ),
                 ),
                 SizedBox(height: itemGap),
                 _FilterDropdown(
                   value: _filterStatus,
-                  items: const ['All', 'Pending', 'Approved', 'For Review', 'Rejected', 'Archived'],
+                  items: const [
+                    'All',
+                    'Pending',
+                    'Approved',
+                    'For Review',
+                    'Rejected',
+                    'Archived',
+                  ],
                   hint: 'Status',
                   icon: Icons.tune_rounded,
-                  onChanged: (v) => setState(() { _filterStatus = v!; _currentPage = 1; }),
+                  onChanged: (v) => setState(() {
+                    _filterStatus = v!;
+                    _currentPage = 1;
+                  }),
                 ),
                 SizedBox(height: itemGap),
                 AdminExportButton(
@@ -909,58 +1213,90 @@ Future<void> _uploadEventImage(String base64Image, String? imageName, String eve
                 ),
               ],
             )
-          : Row(children: [
-              Expanded(
-                child: SizedBox(
-                  height: 40,
-                  child: TextField(
-                    controller: _searchController,
-                    style: GoogleFonts.beVietnamPro(fontSize: 13),
-                    decoration: InputDecoration(
-                      hintText: 'Search by title, category, or location…',
-                      hintStyle: GoogleFonts.beVietnamPro(fontSize: 13, color: const Color(0xFF9AA5B4)),
-                      prefixIcon: const Icon(Icons.search_rounded, size: 18, color: Color(0xFF9AA5B4)),
-                      filled: true,
-                      fillColor: Colors.white,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
+          : Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 40,
+                    child: TextField(
+                      controller: _searchController,
+                      style: GoogleFonts.beVietnamPro(fontSize: 13),
+                      decoration: InputDecoration(
+                        hintText: 'Search by title, category, or location…',
+                        hintStyle: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          color: const Color(0xFF9AA5B4),
+                        ),
+                        prefixIcon: const Icon(
+                          Icons.search_rounded,
+                          size: 18,
+                          color: Color(0xFF9AA5B4),
+                        ),
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 0,
+                          horizontal: 16,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFE2E6EA),
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFE2E6EA),
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(
+                            color: UpriseColors.primaryDark,
+                            width: 1.5,
+                          ),
+                        ),
                       ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(color: UpriseColors.primaryDark, width: 1.5),
-                      ),
+                      onChanged: (v) => setState(() {
+                        _searchQuery = v;
+                        _currentPage = 1;
+                      }),
                     ),
-                    onChanged: (v) => setState(() { _searchQuery = v; _currentPage = 1; }),
                   ),
                 ),
-              ),
-              SizedBox(width: itemGap),
-              _FilterDropdown(
-                value: _filterStatus,
-                items: const ['All', 'Pending', 'Approved', 'For Review', 'Rejected', 'Archived'],
-                hint: 'Status',
-                icon: Icons.tune_rounded,
-                onChanged: (v) => setState(() { _filterStatus = v!; _currentPage = 1; }),
-              ),
-              SizedBox(width: itemGap),
-              AdminExportButton(
-                label: 'Export',
-                onSelected: (format) => _exportProposals(format),
-              ),
-              SizedBox(width: itemGap),
-              _ToolbarButton(
-                label: 'Submit Proposal',
-                icon: Icons.add_rounded,
-                outlined: false,
-                onPressed: _openSubmitModal,
-              ),
-            ]),
+                SizedBox(width: itemGap),
+                _FilterDropdown(
+                  value: _filterStatus,
+                  items: const [
+                    'All',
+                    'Pending',
+                    'Approved',
+                    'For Review',
+                    'Rejected',
+                    'Archived',
+                  ],
+                  hint: 'Status',
+                  icon: Icons.tune_rounded,
+                  onChanged: (v) => setState(() {
+                    _filterStatus = v!;
+                    _currentPage = 1;
+                  }),
+                ),
+                SizedBox(width: itemGap),
+                AdminExportButton(
+                  label: 'Export',
+                  onSelected: (format) => _exportProposals(format),
+                ),
+                SizedBox(width: itemGap),
+                _ToolbarButton(
+                  label: 'Submit Proposal',
+                  icon: Icons.add_rounded,
+                  outlined: false,
+                  onPressed: _openSubmitModal,
+                ),
+              ],
+            ),
     );
   }
 
@@ -982,11 +1318,15 @@ Future<void> _uploadEventImage(String base64Image, String? imageName, String eve
             .cast<QueryDocumentSnapshot<Map<String, dynamic>>>();
         final filtered = _applyFilters(allDocs);
 
-        final totalPages = filtered.isEmpty ? 1 : (filtered.length / _pageSize).ceil();
+        final totalPages = filtered.isEmpty
+            ? 1
+            : (filtered.length / _pageSize).ceil();
         final safePage = _currentPage.clamp(1, totalPages);
         final start = (safePage - 1) * _pageSize;
         final end = (start + _pageSize).clamp(0, filtered.length);
-        final pageDocs = filtered.isEmpty ? <QueryDocumentSnapshot<Map<String, dynamic>>>[] : filtered.sublist(start, end);
+        final pageDocs = filtered.isEmpty
+            ? <QueryDocumentSnapshot<Map<String, dynamic>>>[]
+            : filtered.sublist(start, end);
 
         final tableContent = Container(
           margin: EdgeInsets.symmetric(horizontal: horizontalPadding),
@@ -996,26 +1336,28 @@ Future<void> _uploadEventImage(String base64Image, String? imageName, String eve
             border: Border.all(color: const Color(0xFFE8ECF0)),
             boxShadow: _DS.cardShadow,
           ),
-          child: Column(children: [
-            _buildTableHeader(),
-            Expanded(
-              child: filtered.isEmpty
-                  ? _buildEmptyState()
-                  : ListView.builder(
-                      itemCount: pageDocs.length,
-                      itemBuilder: (_, i) {
-                        final doc = pageDocs[i];
-                        final data = doc.data();
-                        return _buildProposalRow(
-                          docId: doc.id,
-                          data: data,
-                          isLast: i == pageDocs.length - 1,
-                        );
-                      },
-                    ),
-            ),
-            _buildFooter(filtered.length, totalPages, start, end),
-          ]),
+          child: Column(
+            children: [
+              _buildTableHeader(),
+              Expanded(
+                child: filtered.isEmpty
+                    ? _buildEmptyState()
+                    : ListView.builder(
+                        itemCount: pageDocs.length,
+                        itemBuilder: (_, i) {
+                          final doc = pageDocs[i];
+                          final data = doc.data();
+                          return _buildProposalRow(
+                            docId: doc.id,
+                            data: data,
+                            isLast: i == pageDocs.length - 1,
+                          );
+                        },
+                      ),
+              ),
+              _buildFooter(filtered.length, totalPages, start, end),
+            ],
+          ),
         );
 
         return isMobile
@@ -1034,20 +1376,26 @@ Future<void> _uploadEventImage(String base64Image, String? imageName, String eve
       decoration: BoxDecoration(
         color: const Color(0xFFFFF7ED),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-        border: Border(bottom: BorderSide(color: UpriseColors.primaryDark.withAlpha(60))),
+        border: Border(
+          bottom: BorderSide(color: UpriseColors.primaryDark.withAlpha(60)),
+        ),
       ),
-      child: Row(children: [
-        Expanded(flex: 4, child: _headerCell('EVENT TITLE')),
-        Expanded(flex: 2, child: _headerCell('CATEGORY')),
-        Expanded(flex: 2, child: _headerCell('EVENT DATE')),
-        Expanded(flex: 2, child: _headerCell('STATUS')),
-        Expanded(flex: 2, child: _headerCell('SIGNING DATE')),
-        Expanded(flex: 2, child: _headerCell('SUBMITTED')),
-        Expanded(flex: 2, child: Align(
-          alignment: Alignment.centerRight,
-          child: _headerCell('ACTIONS'),
-        )),
-      ]),
+      child: Row(
+        children: [
+          Expanded(flex: 5, child: _headerCell('EVENT TITLE')),
+          Expanded(flex: 2, child: _headerCell('CATEGORY')),
+          Expanded(flex: 2, child: _headerCell('EVENT DATE')),
+          Expanded(flex: 2, child: _headerCell('STATUS')),
+          Expanded(flex: 2, child: _headerCell('SUBMITTED')),
+          Expanded(
+            flex: 2,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: _headerCell('ACTIONS'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1077,19 +1425,19 @@ Future<void> _uploadEventImage(String base64Image, String? imageName, String eve
         ? DateFormat('MMM dd, yyyy').format(submittedAt.toDate())
         : '—';
 
-    final wetSign = data['wetSignSchedule'] as Map<String, dynamic>?;
-    final signingTs = wetSign?['startDateTime'] as Timestamp?;
-    final signingStr = signingTs != null
-        ? DateFormat('MMM dd, yyyy').format(signingTs.toDate())
-        : '—';
-    final hasSigningDate = signingTs != null;
-
     // Use the dedicated image if present, else fallback to attachment image
-    final bool hasImage = data['imageBase64'] != null && data['imageBase64'].toString().isNotEmpty;
+    final bool hasImage =
+        data['imageBase64'] != null &&
+        data['imageBase64'].toString().isNotEmpty;
     final Widget? thumbnail = hasImage
         ? ClipRRect(
             borderRadius: BorderRadius.circular(6),
-            child: _buildImageFromBase64(data['imageBase64']!, width: 40, height: 40, fit: BoxFit.cover),
+            child: _buildImageFromBase64(
+              data['imageBase64']!,
+              width: 40,
+              height: 40,
+              fit: BoxFit.cover,
+            ),
           )
         : null;
 
@@ -1099,182 +1447,235 @@ Future<void> _uploadEventImage(String base64Image, String? imageName, String eve
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         decoration: BoxDecoration(
-          border: isLast ? null : const Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+          border: isLast
+              ? null
+              : const Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
         ),
-        child: Row(children: [
-          // TITLE column – now with dedicated image thumbnail if exists
-          Expanded(
-            flex: 4,
-            child: Row(
-              children: [
-                if (thumbnail != null) ...[
-                  thumbnail,
-                  const SizedBox(width: 10),
-                ],
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        data['title'] ?? '—',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFF1A202C),
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if ((data['location'] ?? '').toString().isNotEmpty)
+        child: Row(
+          children: [
+            // TITLE column – now with dedicated image thumbnail if exists
+            Expanded(
+              flex: 4,
+              child: Row(
+                children: [
+                  if (thumbnail != null) ...[
+                    thumbnail,
+                    const SizedBox(width: 10),
+                  ],
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
                         Text(
-                          data['location'] ?? '',
-                          style: GoogleFonts.beVietnamPro(fontSize: 11, color: const Color(0xFF9AA5B4)),
+                          data['title'] ?? '—',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFF1A202C),
+                          ),
                           overflow: TextOverflow.ellipsis,
                         ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // CATEGORY
-          Expanded(
-            flex: 2,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
-                decoration: BoxDecoration(
-                  color: UpriseColors.primaryDark.withAlpha(18),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  data['category'] ?? '—',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: UpriseColors.primaryDark,
-                    letterSpacing: 0.2,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          // EVENT DATE
-          Expanded(
-            flex: 2,
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.calendar_today_outlined, size: 12, color: Color(0xFF9AA5B4)),
-              const SizedBox(width: 5),
-              Flexible(child: Text(dateStr,
-                  style: GoogleFonts.beVietnamPro(fontSize: 12, color: const Color(0xFF64748B)))),
-            ]),
-          ),
-          // STATUS
-          Expanded(
-            flex: 2,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                _statusBadge(status),
-                if (isPublished) ...[
-                  const SizedBox(width: 4),
-                  const Tooltip(
-                    message: 'Live on student events page',
-                    child: Icon(Icons.circle, size: 8, color: Color(0xFF2563EB)),
+                        if ((data['location'] ?? '').toString().isNotEmpty)
+                          Text(
+                            data['location'] ?? '',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 11,
+                              color: const Color(0xFF9AA5B4),
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
+                    ),
                   ),
                 ],
-              ]),
-            ),
-          ),
-          // SIGNING DATE
-          Expanded(
-            flex: 2,
-            child: hasSigningDate
-                ? Row(mainAxisSize: MainAxisSize.min, children: [
-                    Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF059669).withAlpha(20),
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                      child: const Icon(Icons.edit_calendar_rounded, size: 11, color: Color(0xFF059669)),
-                    ),
-                    const SizedBox(width: 5),
-                    Flexible(child: Text(signingStr,
-                        style: GoogleFonts.beVietnamPro(fontSize: 12, color: const Color(0xFF059669), fontWeight: FontWeight.w500))),
-                  ])
-                : Text('—', style: GoogleFonts.beVietnamPro(fontSize: 12, color: const Color(0xFFD1D5DB))),
-          ),
-          // SUBMITTED
-          Expanded(
-            flex: 2,
-            child: Text(submittedStr,
-                style: GoogleFonts.beVietnamPro(fontSize: 12, color: const Color(0xFF64748B))),
-          ),
-          // ACTIONS
-          Expanded(
-            flex: 2,
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: _ActionPopupButton(
-                onView: () => _openViewModal(docId, data),
-                onEdit: status == 'pending' ? () => _openEditModal(docId, data) : null,
-                onRevise: status == 'for_review' ? () => _openEditModal(docId, data) : null,
-                onFormBuilder: status == 'approved' ? () => _openFormBuilder(docId, data) : null,
-                onPublish: (status == 'approved' && !isPublished)
-    ? () => _confirmPublish(docId, data)
-    : null,
-                onLiveTracker: isPublished ? () => _openLiveTrackerModal(data) : null,
-                onArchive: (status == 'approved' || status == 'rejected')
-                    ? () => _confirmArchive(docId, data['title'] ?? 'Proposal')
-                    : null,
               ),
             ),
-          ),
-        ]),
+            // CATEGORY
+            Expanded(
+              flex: 2,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: UpriseColors.primaryDark.withAlpha(18),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    data['category'] ?? '—',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: UpriseColors.primaryDark,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // EVENT DATE
+            Expanded(
+              flex: 2,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.calendar_today_outlined,
+                    size: 12,
+                    color: Color(0xFF9AA5B4),
+                  ),
+                  const SizedBox(width: 5),
+                  Flexible(
+                    child: Text(
+                      dateStr,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12,
+                        color: const Color(0xFF64748B),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // STATUS
+            Expanded(
+              flex: 2,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _statusBadge(status),
+                    if (isPublished) ...[
+                      const SizedBox(width: 4),
+                      const Tooltip(
+                        message: 'Live on student events page',
+                        child: Icon(
+                          Icons.circle,
+                          size: 8,
+                          color: Color(0xFF2563EB),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            // SUBMITTED
+            Expanded(
+              flex: 2,
+              child: Text(
+                submittedStr,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 12,
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+            ),
+            // ACTIONS
+            Expanded(
+              flex: 2,
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: _ActionPopupButton(
+                  onView: () => _openViewModal(docId, data),
+                  onEdit: status == 'pending'
+                      ? () => _openEditModal(docId, data)
+                      : null,
+                  onRevise: status == 'for_review'
+                      ? () => _openEditModal(docId, data)
+                      : null,
+                  onFormBuilder: status == 'approved'
+                      ? () => _openFormBuilder(docId, data)
+                      : null,
+                  onPublish: (status == 'approved' && !isPublished)
+                      ? () => _confirmPublish(docId, data)
+                      : null,
+                  onLiveTracker: isPublished
+                      ? () => _openLiveTrackerModal(data)
+                      : null,
+                  onArchive: (status == 'approved' || status == 'rejected')
+                      ? () =>
+                            _confirmArchive(docId, data['title'] ?? 'Proposal')
+                      : null,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildEmptyState() {
     return Center(
-      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Container(
-          width: 80, height: 80,
-          decoration: BoxDecoration(
-            color: const Color(0xFFF1F5F9),
-            borderRadius: BorderRadius.circular(20),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Icon(
+              Icons.description_outlined,
+              size: 40,
+              color: Color(0xFF9AA5B4),
+            ),
           ),
-          child: const Icon(Icons.description_outlined, size: 40, color: Color(0xFF9AA5B4)),
-        ),
-        const SizedBox(height: 16),
-        Text('No proposals found',
-            style: GoogleFonts.beVietnamPro(fontSize: 15, fontWeight: FontWeight.w600, color: const Color(0xFF374151))),
-        const SizedBox(height: 6),
-        Text('Submit your first event proposal to get started.',
-            style: GoogleFonts.beVietnamPro(fontSize: 13, color: const Color(0xFF64748B))),
-        const SizedBox(height: 16),
-        ElevatedButton.icon(
-          onPressed: _openSubmitModal,
-          icon: const Icon(Icons.add_rounded, size: 15),
-          label: Text('Submit Proposal', style: GoogleFonts.beVietnamPro(fontSize: 13, fontWeight: FontWeight.w600)),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: UpriseColors.primaryDark,
-            foregroundColor: Colors.white,
-            elevation: 0,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+          const SizedBox(height: 16),
+          Text(
+            'No proposals found',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF374151),
+            ),
           ),
-        ),
-      ]),
+          const SizedBox(height: 6),
+          Text(
+            'Submit your first event proposal to get started.',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 13,
+              color: const Color(0xFF64748B),
+            ),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton.icon(
+            onPressed: _openSubmitModal,
+            icon: const Icon(Icons.add_rounded, size: 15),
+            label: Text(
+              'Submit Proposal',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: UpriseColors.primaryDark,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildFooter(int total, int totalPages, int start, int end) {
     const int maxVisible = 5;
     int firstPage = (_currentPage - maxVisible ~/ 2).clamp(1, totalPages);
-    int lastPage  = (firstPage + maxVisible - 1).clamp(1, totalPages);
+    int lastPage = (firstPage + maxVisible - 1).clamp(1, totalPages);
     if (lastPage - firstPage + 1 < maxVisible && firstPage > 1) {
       firstPage = (lastPage - maxVisible + 1).clamp(1, totalPages);
     }
@@ -1287,42 +1688,58 @@ Future<void> _uploadEventImage(String base64Image, String? imageName, String eve
         color: Color(0xFFF8F9FB),
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(14)),
       ),
-      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        Text(
-          'Showing ${total == 0 ? 0 : start + 1}–$end of $total proposals',
-          style: GoogleFonts.beVietnamPro(fontSize: 12, color: const Color(0xFF64748B)),
-        ),
-        Row(children: [
-          _PageButton(
-            icon: Icons.chevron_left_rounded,
-            enabled: _currentPage > 1,
-            onTap: () => setState(() => _currentPage--),
-          ),
-          const SizedBox(width: 4),
-          ...pages.map((p) => _PageNumButton(
-            page: p,
-            isActive: p == _currentPage,
-            onTap: () => setState(() => _currentPage = p),
-          )),
-          if (lastPage < totalPages) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Text('…', style: GoogleFonts.beVietnamPro(color: const Color(0xFF64748B), fontSize: 12)),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            'Showing ${total == 0 ? 0 : start + 1}–$end of $total proposals',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 12,
+              color: const Color(0xFF64748B),
             ),
-            _PageNumButton(
-              page: totalPages,
-              isActive: _currentPage == totalPages,
-              onTap: () => setState(() => _currentPage = totalPages),
-            ),
-          ],
-          const SizedBox(width: 4),
-          _PageButton(
-            icon: Icons.chevron_right_rounded,
-            enabled: _currentPage < totalPages,
-            onTap: () => setState(() => _currentPage++),
           ),
-        ]),
-      ]),
+          Row(
+            children: [
+              _PageButton(
+                icon: Icons.chevron_left_rounded,
+                enabled: _currentPage > 1,
+                onTap: () => setState(() => _currentPage--),
+              ),
+              const SizedBox(width: 4),
+              ...pages.map(
+                (p) => _PageNumButton(
+                  page: p,
+                  isActive: p == _currentPage,
+                  onTap: () => setState(() => _currentPage = p),
+                ),
+              ),
+              if (lastPage < totalPages) ...[
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Text(
+                    '…',
+                    style: GoogleFonts.beVietnamPro(
+                      color: const Color(0xFF64748B),
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                _PageNumButton(
+                  page: totalPages,
+                  isActive: _currentPage == totalPages,
+                  onTap: () => setState(() => _currentPage = totalPages),
+                ),
+              ],
+              const SizedBox(width: 4),
+              _PageButton(
+                icon: Icons.chevron_right_rounded,
+                enabled: _currentPage < totalPages,
+                onTap: () => setState(() => _currentPage++),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1335,7 +1752,16 @@ class _StatCard extends StatelessWidget {
   final Stream<QuerySnapshot> stream;
   final IconData icon;
   final Color color;
-  const _StatCard({required this.label, required this.stream, required this.icon, required this.color});
+  final bool isSelected;
+  final VoidCallback? onTap;
+  const _StatCard({
+    required this.label,
+    required this.stream,
+    required this.icon,
+    required this.color,
+    this.isSelected = false,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1343,32 +1769,72 @@ class _StatCard extends StatelessWidget {
       stream: stream,
       builder: (context, snapshot) {
         final count = snapshot.data?.docs.length ?? 0;
-        return Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFE8ECF0)),
-            boxShadow: _DS.cardShadow,
-          ),
-          child: Row(children: [
-            Container(
-              width: 44, height: 44,
+        return MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: onTap,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
-                color: color.withAlpha(26),
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isSelected ? color : const Color(0xFFE8ECF0),
+                  width: isSelected ? 2 : 1,
+                ),
+                boxShadow: isSelected
+                    ? [
+                        BoxShadow(
+                          color: color.withAlpha(46),
+                          blurRadius: 16,
+                          offset: const Offset(0, 4),
+                        ),
+                      ]
+                    : _DS.cardShadow,
               ),
-              child: Icon(icon, color: color, size: 22),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: color.withAlpha(26),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(icon, color: color, size: 20),
+                      ),
+                      Flexible(
+                        child: Text(
+                          '$count',
+                          textAlign: TextAlign.right,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFF1A202C),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    label,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11,
+                      color: const Color(0xFF64748B),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(label, style: GoogleFonts.beVietnamPro(fontSize: 11, color: const Color(0xFF64748B), fontWeight: FontWeight.w500)),
-                const SizedBox(height: 2),
-                Text('$count', style: GoogleFonts.beVietnamPro(fontSize: 28, fontWeight: FontWeight.w700, color: const Color(0xFF1A202C))),
-              ]),
-            ),
-          ]),
+          ),
         );
       },
     );
@@ -1384,25 +1850,47 @@ class _FilterDropdown extends StatelessWidget {
   final String hint;
   final IconData icon;
   final ValueChanged<String?> onChanged;
-  const _FilterDropdown({required this.value, required this.items, required this.hint, required this.icon, required this.onChanged});
+  const _FilterDropdown({
+    required this.value,
+    required this.items,
+    required this.hint,
+    required this.icon,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE2E6EA)),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: value,
-          icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: Color(0xFF9AA5B4)),
-          style: GoogleFonts.beVietnamPro(fontSize: 13, color: const Color(0xFF374151)),
-          items: items.map((s) => DropdownMenuItem(value: s, child: Text(s, style: GoogleFonts.beVietnamPro(fontSize: 13)))).toList(),
-          onChanged: onChanged,
+    return AnchoredMenuTrigger<String>(
+      items: items,
+      labelOf: (s) => s,
+      selectedValue: value,
+      onSelected: onChanged,
+      trigger: Container(
+        height: 40,
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFE2E6EA)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              value,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                color: const Color(0xFF374151),
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 18,
+              color: Color(0xFF9AA5B4),
+            ),
+          ],
         ),
       ),
     );
@@ -1427,19 +1915,33 @@ class _ToolbarButton extends StatelessWidget {
       return OutlinedButton.icon(
         onPressed: onPressed,
         icon: Icon(icon, size: 15),
-        label: Text(label, style: GoogleFonts.beVietnamPro(fontSize: 13, fontWeight: FontWeight.w600)),
+        label: Text(
+          label,
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         style: OutlinedButton.styleFrom(
           foregroundColor: UpriseColors.primaryDark,
           side: BorderSide(color: UpriseColors.primaryDark),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
         ),
       );
     }
     return ElevatedButton.icon(
       onPressed: onPressed,
       icon: Icon(icon, size: 15),
-      label: Text(label, style: GoogleFonts.beVietnamPro(fontSize: 13, fontWeight: FontWeight.w600)),
+      label: Text(
+        label,
+        style: GoogleFonts.beVietnamPro(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
       style: ElevatedButton.styleFrom(
         backgroundColor: UpriseColors.primaryDark,
         foregroundColor: Colors.white,
@@ -1459,78 +1961,79 @@ class _ActionPopupButton extends StatelessWidget {
   final VoidCallback? onPublish;
   final VoidCallback? onLiveTracker;
   final VoidCallback? onArchive;
-  const _ActionPopupButton({required this.onView, this.onEdit, this.onRevise, this.onFormBuilder, this.onPublish, this.onLiveTracker, this.onArchive});
+  const _ActionPopupButton({
+    required this.onView,
+    this.onEdit,
+    this.onRevise,
+    this.onFormBuilder,
+    this.onPublish,
+    this.onLiveTracker,
+    this.onArchive,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _IconChip(
-          icon: Icons.remove_red_eye_rounded,
-          bg: const Color(0xFFEFF6FF),
-          fg: const Color(0xFF3B82F6),
+        OrgActionIconButton(
+          icon: Icons.visibility_outlined,
+          color: const Color(0xFF3B82F6),
           tooltip: 'View Details',
           onTap: onView,
         ),
         if (onEdit != null) ...[
           const SizedBox(width: 6),
-          _IconChip(
-            icon: Icons.edit_rounded,
-            bg: const Color(0xFFFFF7ED),
-            fg: UpriseColors.primaryDark,
+          OrgActionIconButton(
+            icon: Icons.edit_outlined,
+            color: UpriseColors.primaryDark,
             tooltip: 'Edit Proposal',
-            onTap: onEdit!,
+            onTap: onEdit,
           ),
         ],
         if (onRevise != null) ...[
           const SizedBox(width: 6),
-          _IconChip(
-            icon: Icons.rate_review_rounded,
-            bg: const Color(0xFFF3E8FF),
-            fg: const Color(0xFF7C3AED),
+          OrgActionIconButton(
+            icon: Icons.rate_review_outlined,
+            color: const Color(0xFF7C3AED),
             tooltip: 'Revise & Resubmit',
-            onTap: onRevise!,
+            onTap: onRevise,
           ),
         ],
         if (onFormBuilder != null) ...[
           const SizedBox(width: 6),
-          _IconChip(
-            icon: Icons.dynamic_form_rounded,
-            bg: const Color(0xFFECFDF5),
-            fg: const Color(0xFF0D9488),
+          OrgActionIconButton(
+            icon: Icons.dynamic_form_outlined,
+            color: const Color(0xFF0D9488),
             tooltip: 'Registration Form',
-            onTap: onFormBuilder!,
+            onTap: onFormBuilder,
           ),
         ],
         if (onPublish != null) ...[
           const SizedBox(width: 6),
-          _IconChip(
-            icon: Icons.publish_rounded,
-            bg: const Color(0xFFEFF6FF),
-            fg: const Color(0xFF2563EB),
+          OrgActionIconButton(
+            icon: Icons.publish_outlined,
+            color: const Color(0xFF2563EB),
             tooltip: 'Publish to Students',
-            onTap: onPublish!,
+            onTap: onPublish,
           ),
         ],
         if (onLiveTracker != null) ...[
           const SizedBox(width: 6),
-          _IconChip(
-            icon: Icons.insights_rounded,
-            bg: const Color(0xFFECFDF5),
-            fg: const Color(0xFF059669),
+          OrgActionIconButton(
+            icon: Icons.insights_outlined,
+            color: const Color(0xFF059669),
             tooltip: 'Live Participants',
-            onTap: onLiveTracker!,
+            onTap: onLiveTracker,
           ),
         ],
         if (onArchive != null) ...[
           const SizedBox(width: 6),
-          _IconChip(
-            icon: Icons.inventory_2_rounded,
-            bg: const Color(0xFFF3F4F6),
-            fg: const Color(0xFF6B7280),
+          OrgActionIconButton(
+            icon: Icons.inventory_2_outlined,
+            color: const Color(0xFF6B7280),
             tooltip: 'Archive',
-            onTap: onArchive!,
+            onTap: onArchive,
           ),
         ],
       ],
@@ -1544,148 +2047,618 @@ class _ActionPopupButton extends StatelessWidget {
 // `events/{id}/attendances` collections org_attendance_qr.dart writes to, so
 // it stays in sync with whatever the QR/manual check-in flow records.
 // ─────────────────────────────────────────────────────────────────────────────
-class _LiveTrackerModal extends StatelessWidget {
+class _LiveTrackerModal extends StatefulWidget {
   final String eventDocId;
   final String eventTitle;
   const _LiveTrackerModal({required this.eventDocId, required this.eventTitle});
+
+  @override
+  State<_LiveTrackerModal> createState() => _LiveTrackerModalState();
+}
+
+class _LiveTrackerModalState extends State<_LiveTrackerModal> {
+  String _search = '';
+  String _statusFilter = 'All';
+
+  Future<void> _exportParticipants(
+    String choice,
+    List<Map<String, dynamic>> rows,
+  ) async {
+    if (rows.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No participants to export')),
+      );
+      return;
+    }
+    final headers = ['Name', 'Email', 'Status', 'Registered At'];
+    final tableRows = rows
+        .map(
+          (p) => [
+            p['name'] as String,
+            p['email'] as String,
+            p['statusLabel'] as String,
+            p['registeredAtStr'] as String,
+          ],
+        )
+        .toList();
+    final stamp = DateFormat('yyyyMMdd').format(DateTime.now());
+    final safeTitle = widget.eventTitle.replaceAll(' ', '_');
+    try {
+      if (choice == 'csv') {
+        final csv = [
+          headers,
+          ...tableRows,
+        ].map((row) => row.map((c) => '"$c"').join(',')).join('\n');
+        await OrgExportUtil.saveText(
+          csv,
+          'participants_${safeTitle}_$stamp.csv',
+          mimeType: 'text/csv',
+        );
+      } else if (choice == 'pdf') {
+        final bytes = await OrgExportPdf.generateTablePdf(
+          title: 'Participants — ${widget.eventTitle}',
+          headers: headers,
+          rows: tableRows,
+        );
+        await OrgExportUtil.saveBytes(
+          bytes,
+          'participants_${safeTitle}_$stamp.pdf',
+          mimeType: 'application/pdf',
+        );
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Exported ${rows.length} participants')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Export failed: $e')));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: SizedBox(
-        width: 480,
+        width: 760,
         child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Container(
-              padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
-              decoration: BoxDecoration(
-                color: UpriseColors.primaryDark,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
-              ),
-              child: Row(children: [
-                Container(
-                  width: 38, height: 38,
-                  decoration: BoxDecoration(color: Colors.white.withAlpha(38), borderRadius: BorderRadius.circular(10)),
-                  child: const Icon(Icons.insights_rounded, color: Colors.white, size: 18),
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.85,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
+                decoration: BoxDecoration(
+                  color: UpriseColors.primaryDark,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(18),
+                  ),
                 ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(eventTitle,
-                        style: GoogleFonts.beVietnamPro(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white),
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 3),
-                    Row(mainAxisSize: MainAxisSize.min, children: [
-                      Container(
-                        width: 7, height: 7,
-                        decoration: const BoxDecoration(color: Color(0xFF4ADE80), shape: BoxShape.circle),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withAlpha(38),
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      const SizedBox(width: 6),
-                      Text('LIVE',
-                          style: GoogleFonts.beVietnamPro(
-                              fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white.withAlpha(204), letterSpacing: 0.6)),
-                    ]),
-                  ]),
+                      child: const Icon(
+                        Icons.insights_rounded,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.eventTitle,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 3),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 7,
+                                height: 7,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFF4ADE80),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'LIVE',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white.withAlpha(204),
+                                  letterSpacing: 0.6,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
                 ),
-                IconButton(
-                  icon: const Icon(Icons.close_rounded, color: Colors.white, size: 20),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ]),
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
+              ),
+              Expanded(
                 child: StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
                       .collection('registrations')
-                      .where('eventId', isEqualTo: eventDocId)
+                      .where('eventId', isEqualTo: widget.eventDocId)
                       .snapshots(),
                   builder: (context, regSnap) {
-                    final registered = regSnap.data?.docs.length ?? 0;
+                    final regDocs = regSnap.data?.docs ?? [];
                     return StreamBuilder<QuerySnapshot>(
                       stream: FirebaseFirestore.instance
                           .collection('events')
-                          .doc(eventDocId)
+                          .doc(widget.eventDocId)
                           .collection('attendances')
-                          .orderBy('timestamp', descending: true)
                           .snapshots(),
                       builder: (context, attSnap) {
                         final attDocs = attSnap.data?.docs ?? [];
-                        final present = attDocs.where((d) => (d.data() as Map)['status'] == 'present').length;
-                        final late = attDocs.where((d) => (d.data() as Map)['status'] == 'late').length;
-                        final checkedIn = present + late;
-                        final pct = registered == 0 ? 0.0 : (checkedIn / registered).clamp(0.0, 1.0);
+                        final attByStudent = <String, Map<String, dynamic>>{};
+                        for (final d in attDocs) {
+                          final m = d.data() as Map<String, dynamic>;
+                          final sid = (m['studentId'] ?? '').toString();
+                          if (sid.isNotEmpty) attByStudent[sid] = m;
+                        }
 
-                        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Row(children: [
-                            Expanded(child: _statTile('Registered', '$registered', Icons.how_to_reg_rounded, const Color(0xFF2563EB))),
-                            const SizedBox(width: 10),
-                            Expanded(child: _statTile('Checked In', '$checkedIn', Icons.verified_rounded, const Color(0xFF059669))),
-                            const SizedBox(width: 10),
-                            Expanded(child: _statTile('Late', '$late', Icons.schedule_rounded, const Color(0xFFFB923C))),
-                          ]),
-                          const SizedBox(height: 20),
-                          Text('Check-in Progress',
-                              style: GoogleFonts.beVietnamPro(fontSize: 12, fontWeight: FontWeight.w700, color: const Color(0xFF64748B))),
-                          const SizedBox(height: 8),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: LinearProgressIndicator(
-                              value: pct,
-                              minHeight: 10,
-                              backgroundColor: const Color(0xFFF1F5F9),
-                              color: UpriseColors.primaryDark,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text('${(pct * 100).toStringAsFixed(0)}% of registrants checked in',
-                              style: GoogleFonts.beVietnamPro(fontSize: 12, color: const Color(0xFF9AA5B4))),
-                          const SizedBox(height: 24),
-                          Text('Recent Check-ins',
-                              style: GoogleFonts.beVietnamPro(fontSize: 12, fontWeight: FontWeight.w700, color: const Color(0xFF64748B))),
-                          const SizedBox(height: 10),
-                          if (attDocs.isEmpty)
-                            Text('No check-ins yet.', style: GoogleFonts.beVietnamPro(fontSize: 13, color: const Color(0xFF9AA5B4)))
-                          else
-                            ...attDocs.take(5).map((d) {
-                              final m = d.data() as Map<String, dynamic>;
-                              final name = (m['studentName'] ?? m['guestEmail'] ?? 'Participant').toString();
-                              final ts = m['timestamp'] as Timestamp?;
-                              final timeStr = ts != null ? DateFormat('h:mm a').format(ts.toDate()) : '—';
-                              final isLate = m['status'] == 'late';
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
-                                child: Row(children: [
-                                  Container(
-                                    width: 28, height: 28,
-                                    decoration: BoxDecoration(
-                                      color: (isLate ? const Color(0xFFFB923C) : const Color(0xFF059669)).withAlpha(26),
-                                      shape: BoxShape.circle,
+                        final participants =
+                            regDocs.map((doc) {
+                              final d = doc.data() as Map<String, dynamic>;
+                              final uid = (d['userId'] ?? '').toString();
+                              final att = attByStudent[uid];
+                              final status = att == null
+                                  ? 'not_checked_in'
+                                  : (att['status'] ?? 'present').toString();
+                              final registeredAt =
+                                  d['registeredAt'] as Timestamp?;
+                              final name =
+                                  (d['fullName'] as String?)
+                                          ?.trim()
+                                          .isNotEmpty ==
+                                      true
+                                  ? d['fullName'] as String
+                                  : 'Unknown';
+                              return {
+                                'name': name,
+                                'email': (d['email'] ?? '').toString(),
+                                'status': status,
+                                'statusLabel': status == 'not_checked_in'
+                                    ? 'Not Checked In'
+                                    : (status == 'late' ? 'Late' : 'Present'),
+                                'registeredAtStr': registeredAt != null
+                                    ? DateFormat(
+                                        'MMM d, h:mm a',
+                                      ).format(registeredAt.toDate())
+                                    : '—',
+                              };
+                            }).toList()..sort(
+                              (a, b) => (a['name'] as String).compareTo(
+                                b['name'] as String,
+                              ),
+                            );
+
+                        final registered = participants.length;
+                        final checkedIn = participants
+                            .where((p) => p['status'] != 'not_checked_in')
+                            .length;
+                        final late = participants
+                            .where((p) => p['status'] == 'late')
+                            .length;
+
+                        final query = _search.trim().toLowerCase();
+                        final filtered = participants.where((p) {
+                          final matchSearch =
+                              query.isEmpty ||
+                              (p['name'] as String).toLowerCase().contains(
+                                query,
+                              ) ||
+                              (p['email'] as String).toLowerCase().contains(
+                                query,
+                              );
+                          final matchFilter =
+                              _statusFilter == 'All' ||
+                              (_statusFilter == 'Checked In' &&
+                                  p['status'] != 'not_checked_in') ||
+                              (_statusFilter == 'Late' &&
+                                  p['status'] == 'late') ||
+                              (_statusFilter == 'Not Checked In' &&
+                                  p['status'] == 'not_checked_in');
+                          return matchSearch && matchFilter;
+                        }).toList();
+
+                        return Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _statTile(
+                                      'Registered',
+                                      '$registered',
+                                      Icons.how_to_reg_rounded,
+                                      const Color(0xFF2563EB),
                                     ),
-                                    child: Icon(isLate ? Icons.schedule_rounded : Icons.check_rounded,
-                                        size: 14, color: isLate ? const Color(0xFFFB923C) : const Color(0xFF059669)),
                                   ),
                                   const SizedBox(width: 10),
                                   Expanded(
-                                    child: Text(name,
-                                        style: GoogleFonts.beVietnamPro(fontSize: 13, color: const Color(0xFF1A202C)),
-                                        overflow: TextOverflow.ellipsis),
+                                    child: _statTile(
+                                      'Checked In',
+                                      '$checkedIn',
+                                      Icons.verified_rounded,
+                                      const Color(0xFF059669),
+                                    ),
                                   ),
-                                  Text(timeStr, style: GoogleFonts.beVietnamPro(fontSize: 12, color: const Color(0xFF9AA5B4))),
-                                ]),
-                              );
-                            }),
-                        ]);
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: _statTile(
+                                      'Late',
+                                      '$late',
+                                      Icons.schedule_rounded,
+                                      const Color(0xFFFB923C),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 18),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      onChanged: (v) =>
+                                          setState(() => _search = v),
+                                      style: GoogleFonts.beVietnamPro(
+                                        fontSize: 13,
+                                      ),
+                                      decoration: InputDecoration(
+                                        hintText: 'Search by name or email…',
+                                        hintStyle: GoogleFonts.beVietnamPro(
+                                          fontSize: 13,
+                                          color: const Color(0xFF9AA5B4),
+                                        ),
+                                        prefixIcon: const Icon(
+                                          Icons.search_rounded,
+                                          size: 18,
+                                          color: Color(0xFF9AA5B4),
+                                        ),
+                                        isDense: true,
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 10,
+                                            ),
+                                        filled: true,
+                                        fillColor: Colors.white,
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                          borderSide: const BorderSide(
+                                            color: Color(0xFFE2E6EA),
+                                          ),
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                          borderSide: const BorderSide(
+                                            color: Color(0xFFE2E6EA),
+                                          ),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                          borderSide: BorderSide(
+                                            color: UpriseColors.primaryDark,
+                                            width: 1.5,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  _FilterDropdown(
+                                    value: _statusFilter,
+                                    items: const [
+                                      'All',
+                                      'Checked In',
+                                      'Late',
+                                      'Not Checked In',
+                                    ],
+                                    hint: 'Status',
+                                    icon: Icons.filter_list_rounded,
+                                    onChanged: (v) => setState(
+                                      () => _statusFilter = v ?? 'All',
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  AdminExportButton(
+                                    enabled: filtered.isNotEmpty,
+                                    label: 'Export',
+                                    onSelected: (choice) =>
+                                        _exportParticipants(choice, filtered),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 14),
+                              Expanded(
+                                child: participants.isEmpty
+                                    ? Center(
+                                        child: Text(
+                                          'No one has registered yet.',
+                                          style: GoogleFonts.beVietnamPro(
+                                            fontSize: 13,
+                                            color: const Color(0xFF9AA5B4),
+                                          ),
+                                        ),
+                                      )
+                                    : filtered.isEmpty
+                                    ? Center(
+                                        child: Text(
+                                          'No participants match your search/filter.',
+                                          style: GoogleFonts.beVietnamPro(
+                                            fontSize: 13,
+                                            color: const Color(0xFF9AA5B4),
+                                          ),
+                                        ),
+                                      )
+                                    : Container(
+                                        decoration: BoxDecoration(
+                                          border: Border.all(
+                                            color: const Color(0xFFE8ECF0),
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            _DS.radiusMd,
+                                          ),
+                                        ),
+                                        clipBehavior: Clip.antiAlias,
+                                        child: Column(
+                                          children: [
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 16,
+                                                    vertical: 10,
+                                                  ),
+                                              color: const Color(0xFFFFF7ED),
+                                              child: Row(
+                                                children: [
+                                                  Expanded(
+                                                    flex: 3,
+                                                    child: Text(
+                                                      'NAME',
+                                                      style:
+                                                          GoogleFonts.beVietnamPro(
+                                                            fontSize: 11,
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                            color: const Color(
+                                                              0xFF64748B,
+                                                            ),
+                                                            letterSpacing: 0.7,
+                                                          ),
+                                                    ),
+                                                  ),
+                                                  Expanded(
+                                                    flex: 3,
+                                                    child: Text(
+                                                      'EMAIL',
+                                                      style:
+                                                          GoogleFonts.beVietnamPro(
+                                                            fontSize: 11,
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                            color: const Color(
+                                                              0xFF64748B,
+                                                            ),
+                                                            letterSpacing: 0.7,
+                                                          ),
+                                                    ),
+                                                  ),
+                                                  Expanded(
+                                                    flex: 2,
+                                                    child: Text(
+                                                      'STATUS',
+                                                      style:
+                                                          GoogleFonts.beVietnamPro(
+                                                            fontSize: 11,
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                            color: const Color(
+                                                              0xFF64748B,
+                                                            ),
+                                                            letterSpacing: 0.7,
+                                                          ),
+                                                    ),
+                                                  ),
+                                                  Expanded(
+                                                    flex: 2,
+                                                    child: Text(
+                                                      'REGISTERED',
+                                                      style:
+                                                          GoogleFonts.beVietnamPro(
+                                                            fontSize: 11,
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                            color: const Color(
+                                                              0xFF64748B,
+                                                            ),
+                                                            letterSpacing: 0.7,
+                                                          ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            Expanded(
+                                              child: ListView.separated(
+                                                itemCount: filtered.length,
+                                                separatorBuilder: (_, __) =>
+                                                    const Divider(
+                                                      height: 1,
+                                                      color: Color(0xFFF1F5F9),
+                                                    ),
+                                                itemBuilder: (context, i) {
+                                                  final p = filtered[i];
+                                                  final statusColor =
+                                                      p['status'] ==
+                                                          'not_checked_in'
+                                                      ? const Color(0xFF9AA5B4)
+                                                      : (p['status'] == 'late'
+                                                            ? const Color(
+                                                                0xFFFB923C,
+                                                              )
+                                                            : const Color(
+                                                                0xFF059669,
+                                                              ));
+                                                  return Padding(
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 16,
+                                                          vertical: 12,
+                                                        ),
+                                                    child: Row(
+                                                      children: [
+                                                        Expanded(
+                                                          flex: 3,
+                                                          child: Text(
+                                                            p['name'] as String,
+                                                            style: GoogleFonts.beVietnamPro(
+                                                              fontSize: 13,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w600,
+                                                              color:
+                                                                  const Color(
+                                                                    0xFF1A202C,
+                                                                  ),
+                                                            ),
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
+                                                          ),
+                                                        ),
+                                                        Expanded(
+                                                          flex: 3,
+                                                          child: Text(
+                                                            p['email']
+                                                                as String,
+                                                            style: GoogleFonts.beVietnamPro(
+                                                              fontSize: 12.5,
+                                                              color:
+                                                                  const Color(
+                                                                    0xFF64748B,
+                                                                  ),
+                                                            ),
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
+                                                          ),
+                                                        ),
+                                                        Expanded(
+                                                          flex: 2,
+                                                          child: Align(
+                                                            alignment: Alignment
+                                                                .centerLeft,
+                                                            child: Container(
+                                                              padding:
+                                                                  const EdgeInsets.symmetric(
+                                                                    horizontal:
+                                                                        8,
+                                                                    vertical: 3,
+                                                                  ),
+                                                              decoration: BoxDecoration(
+                                                                color: statusColor
+                                                                    .withAlpha(
+                                                                      26,
+                                                                    ),
+                                                                borderRadius:
+                                                                    BorderRadius.circular(
+                                                                      6,
+                                                                    ),
+                                                              ),
+                                                              child: Text(
+                                                                p['statusLabel']
+                                                                    as String,
+                                                                style: GoogleFonts.beVietnamPro(
+                                                                  fontSize: 11,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w700,
+                                                                  color:
+                                                                      statusColor,
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        Expanded(
+                                                          flex: 2,
+                                                          child: Text(
+                                                            p['registeredAtStr']
+                                                                as String,
+                                                            style: GoogleFonts.beVietnamPro(
+                                                              fontSize: 12,
+                                                              color:
+                                                                  const Color(
+                                                                    0xFF9AA5B4,
+                                                                  ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  );
+                                                },
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                              ),
+                            ],
+                          ),
+                        );
                       },
                     );
                   },
                 ),
               ),
-            ),
-          ]),
+            ],
+          ),
         ),
       ),
     );
@@ -1699,41 +2672,28 @@ class _LiveTrackerModal extends StatelessWidget {
         borderRadius: BorderRadius.circular(_DS.radiusMd),
         border: Border.all(color: color.withAlpha(38)),
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Icon(icon, size: 16, color: color),
-        const SizedBox(height: 8),
-        Text(value, style: GoogleFonts.beVietnamPro(fontSize: 20, fontWeight: FontWeight.w800, color: color)),
-        const SizedBox(height: 2),
-        Text(label, style: GoogleFonts.beVietnamPro(fontSize: 11, color: const Color(0xFF64748B))),
-      ]),
-    );
-  }
-}
-
-class _IconChip extends StatelessWidget {
-  final IconData icon;
-  final Color bg;
-  final Color fg;
-  final String tooltip;
-  final VoidCallback onTap;
-  const _IconChip({required this.icon, required this.bg, required this.fg, required this.tooltip, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      waitDuration: const Duration(milliseconds: 400),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.all(7),
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
           ),
-          child: Icon(icon, size: 14, color: fg),
-        ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 11,
+              color: const Color(0xFF64748B),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1743,7 +2703,11 @@ class _PageButton extends StatelessWidget {
   final IconData icon;
   final bool enabled;
   final VoidCallback onTap;
-  const _PageButton({required this.icon, required this.enabled, required this.onTap});
+  const _PageButton({
+    required this.icon,
+    required this.enabled,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1752,7 +2716,11 @@ class _PageButton extends StatelessWidget {
       borderRadius: BorderRadius.circular(6),
       child: Padding(
         padding: const EdgeInsets.all(4),
-        child: Icon(icon, size: 20, color: enabled ? const Color(0xFF374151) : const Color(0xFFD1D5DB)),
+        child: Icon(
+          icon,
+          size: 20,
+          color: enabled ? const Color(0xFF374151) : const Color(0xFFD1D5DB),
+        ),
       ),
     );
   }
@@ -1762,7 +2730,11 @@ class _PageNumButton extends StatelessWidget {
   final int page;
   final bool isActive;
   final VoidCallback onTap;
-  const _PageNumButton({required this.page, required this.isActive, required this.onTap});
+  const _PageNumButton({
+    required this.page,
+    required this.isActive,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1770,18 +2742,21 @@ class _PageNumButton extends StatelessWidget {
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 2),
-        width: 28, height: 28,
+        width: 28,
+        height: 28,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: isActive ? UpriseColors.primaryDark : Colors.transparent,
           borderRadius: BorderRadius.circular(6),
         ),
-        child: Text('$page',
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 12,
-              fontWeight: isActive ? FontWeight.w700 : FontWeight.normal,
-              color: isActive ? Colors.white : const Color(0xFF374151),
-            )),
+        child: Text(
+          '$page',
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 12,
+            fontWeight: isActive ? FontWeight.w700 : FontWeight.normal,
+            color: isActive ? Colors.white : const Color(0xFF374151),
+          ),
+        ),
       ),
     );
   }
@@ -1794,20 +2769,24 @@ class _SubmitProposalModal extends StatefulWidget {
   final String orgId;
   final String? editDocId;
   final Map<String, dynamic>? existing;
-  const _SubmitProposalModal({required this.orgId, this.editDocId, this.existing});
+  const _SubmitProposalModal({
+    required this.orgId,
+    this.editDocId,
+    this.existing,
+  });
 
   @override
   State<_SubmitProposalModal> createState() => _SubmitProposalModalState();
 }
 
 class _SubmitProposalModalState extends State<_SubmitProposalModal> {
-  final _formKey     = GlobalKey<FormState>();
-  final _titleCtrl   = TextEditingController();
-  final _descCtrl    = TextEditingController();
-  final _locCtrl     = TextEditingController();
-  final _dateCtrl    = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  final _titleCtrl = TextEditingController();
+  final _descCtrl = TextEditingController();
+  final _locCtrl = TextEditingController();
+  final _dateCtrl = TextEditingController();
   final _startTimeCtrl = TextEditingController();
-  final _endTimeCtrl   = TextEditingController();
+  final _endTimeCtrl = TextEditingController();
   final _otherCategoryCtrl = TextEditingController();
 
   String _category = 'Workshop';
@@ -1833,8 +2812,17 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
   double _attachmentUploadProgress = 0.0;
 
   static const _categories = [
-    'Workshop', 'Seminar', 'Competition', 'General Assembly',
-    'Social', 'Outreach', 'Sports', 'Academic', 'Technical', 'Cultural', 'Other',
+    'Workshop',
+    'Seminar',
+    'Competition',
+    'General Assembly',
+    'Social',
+    'Outreach',
+    'Sports',
+    'Academic',
+    'Technical',
+    'Cultural',
+    'Other',
   ];
   static const _audiences = ['Public', 'CICT Only', 'Members Only', 'Bulsuan'];
 
@@ -1844,20 +2832,22 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
     final e = widget.existing;
     if (e != null) {
       _titleCtrl.text = e['title'] ?? '';
-      _descCtrl.text  = e['description'] ?? '';
-      _locCtrl.text   = e['location'] ?? '';
+      _descCtrl.text = e['description'] ?? '';
+      _locCtrl.text = e['location'] ?? '';
       _startTimeCtrl.text = e['startTime'] ?? '';
-      _endTimeCtrl.text   = e['endTime'] ?? '';
+      _endTimeCtrl.text = e['endTime'] ?? '';
       // Dedicated image
       _imageBase64 = e['imageBase64'];
-      _imageName   = e['imageName'];
-      _imageSize   = e['imageSize'];
+      _imageName = e['imageName'];
+      _imageSize = e['imageSize'];
       // Attachment
       _attachmentBase64 = e['attachmentBase64'];
-      _attachmentName   = e['attachmentName'];
-      _attachmentSize   = e['attachmentSize'];
+      _attachmentName = e['attachmentName'];
+      _attachmentSize = e['attachmentSize'];
       if (e['date'] is Timestamp) {
-        _dateCtrl.text = DateFormat('MM/dd/yyyy').format((e['date'] as Timestamp).toDate());
+        _dateCtrl.text = DateFormat(
+          'MM/dd/yyyy',
+        ).format((e['date'] as Timestamp).toDate());
       }
       final cat = e['category'] ?? 'Workshop';
       _category = _categories.contains(cat) ? cat : 'Workshop';
@@ -1923,8 +2913,8 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
 
   void _removeImage() => setState(() {
     _imageBase64 = null;
-    _imageName   = null;
-    _imageSize   = null;
+    _imageName = null;
+    _imageSize = null;
     _imageUploadProgress = 0.0;
   });
 
@@ -1966,30 +2956,97 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
 
   void _removeAttachment() => setState(() {
     _attachmentBase64 = null;
-    _attachmentName   = null;
-    _attachmentSize   = null;
+    _attachmentName = null;
+    _attachmentSize = null;
     _attachmentUploadProgress = 0.0;
   });
 
   void _showError(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg),
-      backgroundColor: UpriseColors.error,
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: UpriseColors.error,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+  }
+
+  // Parses a "h:mm a" string (e.g. "9:00 AM", from TimeOfDay.format) into
+  // minutes since midnight, for comparing two time ranges. Returns null on
+  // anything unparsable so a bad/blank value never falsely blocks or falsely
+  // passes a conflict check.
+  int? _minutesSinceMidnight(String value) {
+    if (value.trim().isEmpty) return null;
+    try {
+      final t = DateFormat('h:mm a').parse(value.trim());
+      return t.hour * 60 + t.minute;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // Same venue, same day, overlapping time — across every org, not just
+  // this one, since two different orgs double-booking the same room is
+  // exactly the case this needs to catch. Only checks against *approved*
+  // proposals: a still-pending proposal from another org isn't a confirmed
+  // booking yet, so it shouldn't block this one.
+  Future<String?> _findVenueConflict({
+    required String location,
+    required DateTime date,
+    required String startTime,
+    required String endTime,
+  }) async {
+    final loc = location.trim().toLowerCase();
+    if (loc.isEmpty) return null;
+    final newStart = _minutesSinceMidnight(startTime);
+    final newEnd = _minutesSinceMidnight(endTime);
+    if (newStart == null || newEnd == null) return null;
+
+    final dayStart = DateTime(date.year, date.month, date.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
+
+    final snap = await FirebaseFirestore.instance
+        .collection('event_proposals')
+        .where('status', isEqualTo: 'approved')
+        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(dayStart))
+        .where('date', isLessThan: Timestamp.fromDate(dayEnd))
+        .get();
+
+    for (final doc in snap.docs) {
+      if (doc.id == widget.editDocId) continue;
+      final d = doc.data();
+      final otherLoc = (d['location'] as String? ?? '').trim().toLowerCase();
+      if (otherLoc.isEmpty || otherLoc != loc) continue;
+      final otherStart = _minutesSinceMidnight(
+        (d['startTime'] as String?) ?? '',
+      );
+      final otherEnd = _minutesSinceMidnight((d['endTime'] as String?) ?? '');
+      if (otherStart == null || otherEnd == null) continue;
+      final overlaps = newStart < otherEnd && otherStart < newEnd;
+      if (overlaps) {
+        return '${d['title'] ?? 'Another event'} (${d['orgName'] ?? 'another org'})';
+      }
+    }
+    return null;
   }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() { _isSubmitting = true; _errorMsg = null; });
+    setState(() {
+      _isSubmitting = true;
+      _errorMsg = null;
+    });
 
     try {
       final user = FirebaseAuth.instance.currentUser;
       String orgName = '';
       try {
-        final orgDoc = await FirebaseFirestore.instance.collection('organizations').doc(widget.orgId).get();
+        final orgDoc = await FirebaseFirestore.instance
+            .collection('organizations')
+            .doc(widget.orgId)
+            .get();
         if (orgDoc.exists) orgName = orgDoc.data()?['name'] ?? '';
       } catch (_) {}
 
@@ -1998,7 +3055,9 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
         'orgName': orgName,
         'title': _titleCtrl.text.trim(),
         'category': _category,
-        'otherCategory': _category == 'Other' ? _otherCategoryCtrl.text.trim() : null,
+        'otherCategory': _category == 'Other'
+            ? _otherCategoryCtrl.text.trim()
+            : null,
         'audience': _audience,
         'schoolYear': _schoolYear,
         'semester': _semester,
@@ -2025,12 +3084,29 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
         final todayMidnight = DateTime(today.year, today.month, today.day);
         if (!parsed.isAfter(todayMidnight)) {
           setState(() {
-            _errorMsg = 'Event date must be a future date. Today\'s date is not allowed.';
+            _errorMsg =
+                'Event date must be a future date. Today\'s date is not allowed.';
             _isSubmitting = false;
           });
           return;
         }
         payload['date'] = Timestamp.fromDate(parsed);
+
+        final conflict = await _findVenueConflict(
+          location: payload['location'] as String,
+          date: parsed,
+          startTime: payload['startTime'] as String,
+          endTime: payload['endTime'] as String,
+        );
+        if (conflict != null) {
+          setState(() {
+            _errorMsg =
+                'That venue is already booked at this time by $conflict. '
+                'Pick a different time or location.';
+            _isSubmitting = false;
+          });
+          return;
+        }
       } catch (_) {
         setState(() {
           _errorMsg = 'Please enter a valid event date.';
@@ -2064,7 +3140,8 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
         payload['submittedAt'] = FieldValue.serverTimestamp();
         final ref = await col.add(payload);
         await activity_log.ActivityLogger.log(
-          action: 'submit_proposal', module: 'event_proposals',
+          action: 'submit_proposal',
+          module: 'event_proposals',
           details: {'orgId': widget.orgId, 'proposalId': ref.id},
         );
         _notifyAdminsOfProposal(
@@ -2075,26 +3152,47 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
 
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(widget.editDocId != null ? 'Proposal updated.' : 'Proposal submitted successfully!'),
-          backgroundColor: const Color(0xFF059669),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              widget.editDocId != null
+                  ? 'Proposal updated.'
+                  : 'Proposal submitted successfully!',
+            ),
+            backgroundColor: const Color(0xFF059669),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        );
       }
     } catch (e) {
-      setState(() { _errorMsg = e.toString(); _isSubmitting = false; });
+      setState(() {
+        _errorMsg = e.toString();
+        _isSubmitting = false;
+      });
     }
   }
 
   // Fire-and-forget — runs after the snackbar/pop so it never blocks the
   // org's own submit flow.
-  Future<void> _notifyAdminsOfProposal({required String title, required String verb}) async {
+  Future<void> _notifyAdminsOfProposal({
+    required String title,
+    required String verb,
+  }) async {
     try {
       String orgName = widget.orgId;
-      final orgDoc = await FirebaseFirestore.instance.collection('organizations').doc(widget.orgId).get();
+      final orgDoc = await FirebaseFirestore.instance
+          .collection('organizations')
+          .doc(widget.orgId)
+          .get();
       if (orgDoc.exists) {
-        orgName = (orgDoc.data()?['name'] ?? orgDoc.data()?['orgName'] ?? widget.orgId).toString();
+        orgName =
+            (orgDoc.data()?['name'] ??
+                    orgDoc.data()?['orgName'] ??
+                    widget.orgId)
+                .toString();
       }
       await NotificationService.sendToAllAdmins(
         title: 'Event proposal $verb',
@@ -2113,244 +3211,464 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: Container(
         width: 560,
-        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.88),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
-            decoration: BoxDecoration(
-              color: UpriseColors.primaryDark,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
-            ),
-            child: Row(children: [
-              Container(
-                width: 38, height: 38,
-                decoration: BoxDecoration(color: Colors.white.withAlpha(38), borderRadius: BorderRadius.circular(10)),
-                child: Icon(isEdit ? Icons.edit_rounded : Icons.description_outlined, color: Colors.white, size: 18),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Text(
-                  isEdit ? 'Edit Event Proposal' : 'Submit Event Proposal',
-                  style: GoogleFonts.beVietnamPro(fontSize: 17, fontWeight: FontWeight.w700, color: Colors.white),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.88,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
+              decoration: BoxDecoration(
+                color: UpriseColors.primaryDark,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(18),
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.close_rounded, color: Colors.white, size: 20),
-                onPressed: _isSubmitting ? null : () => Navigator.pop(context),
+              child: Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withAlpha(38),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      isEdit ? Icons.edit_rounded : Icons.description_outlined,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      isEdit ? 'Edit Event Proposal' : 'Submit Event Proposal',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                    onPressed: _isSubmitting
+                        ? null
+                        : () => Navigator.pop(context),
+                  ),
+                ],
               ),
-            ]),
-          ),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Form(
-                key: _formKey,
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  // ── NEW: Dedicated Image Upload (before title) ──
-                  _sectionLabel('Event Image', icon: Icons.image_outlined),
-                  _buildImageUploadArea(),
-                  const SizedBox(height: 20),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // ── NEW: Dedicated Image Upload (before title) ──
+                      _sectionLabel('Event Image', icon: Icons.image_outlined),
+                      _buildImageUploadArea(),
+                      const SizedBox(height: 20),
 
-                  _sectionLabel('Event Details', icon: Icons.event_outlined),
-                  Row(children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: _titleCtrl,
-                        decoration: _orgEventProposalsInputDecoration('Event Title *', hint: 'e.g. Flutter Workshop 2025', icon: Icons.title),
-                        style: GoogleFonts.beVietnamPro(fontSize: 13),
-                        validator: (v) => v?.trim().isEmpty == true ? 'Required' : null,
+                      _sectionLabel(
+                        'Event Details',
+                        icon: Icons.event_outlined,
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        value: _category,
-                        decoration: _orgEventProposalsInputDecoration('Category *'),
-                        style: GoogleFonts.beVietnamPro(fontSize: 13, color: const Color(0xFF1A202C)),
-                        items: _categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
-                        onChanged: (v) => setState(() => _category = v!),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: _titleCtrl,
+                              decoration: _orgEventProposalsInputDecoration(
+                                'Event Title *',
+                                hint: 'e.g. Flutter Workshop 2025',
+                                icon: Icons.title,
+                              ),
+                              style: GoogleFonts.beVietnamPro(fontSize: 13),
+                              validator: (v) =>
+                                  v?.trim().isEmpty == true ? 'Required' : null,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: _category,
+                              decoration: _orgEventProposalsInputDecoration(
+                                'Category *',
+                              ),
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 13,
+                                color: const Color(0xFF1A202C),
+                              ),
+                              items: _categories
+                                  .map(
+                                    (c) => DropdownMenuItem(
+                                      value: c,
+                                      child: Text(c),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (v) => setState(() => _category = v!),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ]),
-                  if (_category == 'Other') ...[
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _otherCategoryCtrl,
-                      decoration: _orgEventProposalsInputDecoration('Specify Category *', hint: 'e.g. Webinar', icon: Icons.category_outlined),
-                      style: GoogleFonts.beVietnamPro(fontSize: 13),
-                      validator: (v) => _category == 'Other' && v?.trim().isEmpty == true ? 'Required' : null,
-                    ),
-                  ],
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    value: _audience,
-                    decoration: _orgEventProposalsInputDecoration('Audience *'),
-                    style: GoogleFonts.beVietnamPro(fontSize: 13, color: const Color(0xFF1A202C)),
-                    items: _audiences.map((a) => DropdownMenuItem(value: a, child: Text(a))).toList(),
-                    onChanged: (v) => setState(() => _audience = v!),
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _descCtrl,
-                    maxLines: 3,
-                    decoration: _orgEventProposalsInputDecoration('Description *', hint: 'Describe your event...', icon: Icons.notes_rounded),
-                    style: GoogleFonts.beVietnamPro(fontSize: 13),
-                    validator: (v) => v?.trim().isEmpty == true ? 'Required' : null,
-                  ),
-                  const SizedBox(height: 12),
-                  Row(children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: _dateCtrl,
-                        readOnly: true,
-                        onTap: () async {
-                          final tomorrow = DateTime.now().add(const Duration(days: 1));
-                          final picked = await showDatePicker(
-                            context: context,
-                            initialDate: tomorrow,
-                            firstDate: tomorrow,
-                            lastDate: DateTime(2030),
-                          );
-                          if (picked != null) _dateCtrl.text = DateFormat('MM/dd/yyyy').format(picked);
-                        },
-                        decoration: _orgEventProposalsInputDecoration('Date *', hint: 'MM/DD/YYYY', icon: Icons.calendar_today_outlined),
-                        style: GoogleFonts.beVietnamPro(fontSize: 13),
-                        validator: (v) => v?.trim().isEmpty == true ? 'Required' : null,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextFormField(
-                        controller: _startTimeCtrl,
-                        readOnly: true,
-                        onTap: () async {
-                          final picked = await showTimePicker(context: context, initialTime: TimeOfDay.now());
-                          if (picked != null && mounted) _startTimeCtrl.text = picked.format(context);
-                        },
-                        decoration: _orgEventProposalsInputDecoration('Start Time *', hint: '-- : --', icon: Icons.access_time_rounded),
-                        style: GoogleFonts.beVietnamPro(fontSize: 13),
-                        validator: (v) => v?.trim().isEmpty == true ? 'Required' : null,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextFormField(
-                        controller: _endTimeCtrl,
-                        readOnly: true,
-                        onTap: () async {
-                          final picked = await showTimePicker(context: context, initialTime: TimeOfDay.now());
-                          if (picked != null && mounted) _endTimeCtrl.text = picked.format(context);
-                        },
-                        decoration: _orgEventProposalsInputDecoration('End Time *', hint: '-- : --', icon: Icons.access_time_rounded),
-                        style: GoogleFonts.beVietnamPro(fontSize: 13),
-                        validator: (v) => v?.trim().isEmpty == true ? 'Required' : null,
-                      ),
-                    ),
-                  ]),
-                  const SizedBox(height: 12),
-                  Row(children: [
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        value: _schoolYear,
-                        decoration: _orgEventProposalsInputDecoration('School Year *'),
-                        style: GoogleFonts.beVietnamPro(fontSize: 13, color: const Color(0xFF1A202C)),
-                        items: SchoolYearUtil.schoolYears()
-                            .map((y) => DropdownMenuItem(value: y, child: Text(y)))
+                      if (_category == 'Other') ...[
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _otherCategoryCtrl,
+                          decoration: _orgEventProposalsInputDecoration(
+                            'Specify Category *',
+                            hint: 'e.g. Webinar',
+                            icon: Icons.category_outlined,
+                          ),
+                          style: GoogleFonts.beVietnamPro(fontSize: 13),
+                          validator: (v) =>
+                              _category == 'Other' && v?.trim().isEmpty == true
+                              ? 'Required'
+                              : null,
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        value: _audience,
+                        decoration: _orgEventProposalsInputDecoration(
+                          'Audience *',
+                        ),
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          color: const Color(0xFF1A202C),
+                        ),
+                        items: _audiences
+                            .map(
+                              (a) => DropdownMenuItem(value: a, child: Text(a)),
+                            )
                             .toList(),
-                        onChanged: (v) => setState(() => _schoolYear = v!),
+                        onChanged: (v) => setState(() => _audience = v!),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        value: _semester,
-                        decoration: _orgEventProposalsInputDecoration('Semester *'),
-                        style: GoogleFonts.beVietnamPro(fontSize: 13, color: const Color(0xFF1A202C)),
-                        items: SchoolYearUtil.semesters
-                            .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                            .toList(),
-                        onChanged: (v) => setState(() => _semester = v!),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _descCtrl,
+                        maxLines: 3,
+                        decoration: _orgEventProposalsInputDecoration(
+                          'Description *',
+                          hint: 'Describe your event...',
+                          icon: Icons.notes_rounded,
+                        ),
+                        style: GoogleFonts.beVietnamPro(fontSize: 13),
+                        validator: (v) =>
+                            v?.trim().isEmpty == true ? 'Required' : null,
                       ),
-                    ),
-                  ]),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _locCtrl,
-                    decoration: _orgEventProposalsInputDecoration('Location *', hint: 'e.g. IT Building Room 301', icon: Icons.location_on_outlined),
-                    style: GoogleFonts.beVietnamPro(fontSize: 13),
-                    validator: (v) => v?.trim().isEmpty == true ? 'Required' : null,
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: _dateCtrl,
+                              readOnly: true,
+                              onTap: () async {
+                                final tomorrow = DateTime.now().add(
+                                  const Duration(days: 1),
+                                );
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: tomorrow,
+                                  firstDate: tomorrow,
+                                  lastDate: DateTime(2030),
+                                  // Material 3's default seed skews
+                                  // purple/indigo unless the scheme is
+                                  // seeded from the brand color instead.
+                                  builder: (context, child) {
+                                    final baseTheme = Theme.of(context);
+                                    final scheme =
+                                        ColorScheme.fromSeed(
+                                          seedColor: UpriseColors.primaryDark,
+                                          brightness: Brightness.light,
+                                        ).copyWith(
+                                          primary: UpriseColors.primaryDark,
+                                          onPrimary: Colors.white,
+                                          surface: Colors.white,
+                                          surfaceTint: Colors.transparent,
+                                        );
+                                    return Theme(
+                                      data: baseTheme.copyWith(
+                                        colorScheme: scheme,
+                                        textButtonTheme: TextButtonThemeData(
+                                          style: TextButton.styleFrom(
+                                            foregroundColor:
+                                                UpriseColors.primaryDark,
+                                          ),
+                                        ),
+                                      ),
+                                      child: child!,
+                                    );
+                                  },
+                                );
+                                if (picked != null)
+                                  _dateCtrl.text = DateFormat(
+                                    'MM/dd/yyyy',
+                                  ).format(picked);
+                              },
+                              decoration: _orgEventProposalsInputDecoration(
+                                'Date *',
+                                hint: 'MM/DD/YYYY',
+                                icon: Icons.calendar_today_outlined,
+                              ),
+                              style: GoogleFonts.beVietnamPro(fontSize: 13),
+                              validator: (v) =>
+                                  v?.trim().isEmpty == true ? 'Required' : null,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextFormField(
+                              controller: _startTimeCtrl,
+                              readOnly: true,
+                              onTap: () async {
+                                final picked = await showTimePicker(
+                                  context: context,
+                                  initialTime: TimeOfDay.now(),
+                                );
+                                if (picked != null && mounted)
+                                  _startTimeCtrl.text = picked.format(context);
+                              },
+                              decoration: _orgEventProposalsInputDecoration(
+                                'Start Time *',
+                                hint: '-- : --',
+                                icon: Icons.access_time_rounded,
+                              ),
+                              style: GoogleFonts.beVietnamPro(fontSize: 13),
+                              validator: (v) =>
+                                  v?.trim().isEmpty == true ? 'Required' : null,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextFormField(
+                              controller: _endTimeCtrl,
+                              readOnly: true,
+                              onTap: () async {
+                                final picked = await showTimePicker(
+                                  context: context,
+                                  initialTime: TimeOfDay.now(),
+                                );
+                                if (picked != null && mounted)
+                                  _endTimeCtrl.text = picked.format(context);
+                              },
+                              decoration: _orgEventProposalsInputDecoration(
+                                'End Time *',
+                                hint: '-- : --',
+                                icon: Icons.access_time_rounded,
+                              ),
+                              style: GoogleFonts.beVietnamPro(fontSize: 13),
+                              validator: (v) =>
+                                  v?.trim().isEmpty == true ? 'Required' : null,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: _schoolYear,
+                              decoration: _orgEventProposalsInputDecoration(
+                                'School Year *',
+                              ),
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 13,
+                                color: const Color(0xFF1A202C),
+                              ),
+                              items: SchoolYearUtil.schoolYears()
+                                  .map(
+                                    (y) => DropdownMenuItem(
+                                      value: y,
+                                      child: Text(y),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (v) =>
+                                  setState(() => _schoolYear = v!),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: _semester,
+                              decoration: _orgEventProposalsInputDecoration(
+                                'Semester *',
+                              ),
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 13,
+                                color: const Color(0xFF1A202C),
+                              ),
+                              items: SchoolYearUtil.semesters
+                                  .map(
+                                    (s) => DropdownMenuItem(
+                                      value: s,
+                                      child: Text(s),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (v) => setState(() => _semester = v!),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _locCtrl,
+                        decoration: _orgEventProposalsInputDecoration(
+                          'Location *',
+                          hint: 'e.g. IT Building Room 301',
+                          icon: Icons.location_on_outlined,
+                        ),
+                        style: GoogleFonts.beVietnamPro(fontSize: 13),
+                        validator: (v) =>
+                            v?.trim().isEmpty == true ? 'Required' : null,
+                      ),
+                      const SizedBox(height: 12),
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        dense: true,
+                        title: Text(
+                          'Issue certificates to participants/guests',
+                          style: GoogleFonts.beVietnamPro(fontSize: 13),
+                        ),
+                        value: _issuesCertificate,
+                        onChanged: (v) =>
+                            setState(() => _issuesCertificate = v ?? false),
+                      ),
+                      const SizedBox(height: 20),
+                      _sectionLabel(
+                        'Attachment (PDF, DOC, etc.)',
+                        icon: Icons.attach_file_rounded,
+                      ),
+                      _buildAttachmentArea(),
+                      if (_errorMsg != null) ...[
+                        const SizedBox(height: 14),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEF2F2),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFFCA5A5)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.error_outline_rounded,
+                                size: 15,
+                                color: Color(0xFFDC2626),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _errorMsg!,
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 12,
+                                    color: const Color(0xFF991B1B),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                  const SizedBox(height: 12),
-                  CheckboxListTile(
-                    contentPadding: EdgeInsets.zero,
-                    controlAffinity: ListTileControlAffinity.leading,
-                    dense: true,
-                    title: Text('Issue certificates to participants/guests', style: GoogleFonts.beVietnamPro(fontSize: 13)),
-                    value: _issuesCertificate,
-                    onChanged: (v) => setState(() => _issuesCertificate = v ?? false),
-                  ),
-                  const SizedBox(height: 20),
-                  _sectionLabel('Attachment (PDF, DOC, etc.)', icon: Icons.attach_file_rounded),
-                  _buildAttachmentArea(),
-                  if (_errorMsg != null) ...[
-                    const SizedBox(height: 14),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFEF2F2),
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: Color(0xFFE8ECF0))),
+                color: Color(0xFFF8F9FB),
+                borderRadius: BorderRadius.vertical(
+                  bottom: Radius.circular(18),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton(
+                    onPressed: _isSubmitting
+                        ? null
+                        : () => Navigator.pop(context),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFFE2E6EA)),
+                      shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: const Color(0xFFFCA5A5)),
                       ),
-                      child: Row(children: [
-                        const Icon(Icons.error_outline_rounded, size: 15, color: Color(0xFFDC2626)),
-                        const SizedBox(width: 8),
-                        Expanded(child: Text(_errorMsg!,
-                            style: GoogleFonts.beVietnamPro(fontSize: 12, color: const Color(0xFF991B1B)))),
-                      ]),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 11,
+                      ),
                     ),
-                  ],
-                ]),
+                    child: Text(
+                      'Cancel',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        color: const Color(0xFF374151),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  ElevatedButton.icon(
+                    onPressed:
+                        (_isSubmitting ||
+                            _isImageUploading ||
+                            _isAttachmentUploading)
+                        ? null
+                        : _submit,
+                    icon: _isSubmitting
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Icon(
+                            isEdit ? Icons.save_rounded : Icons.send_rounded,
+                            size: 16,
+                          ),
+                    label: Text(
+                      isEdit ? 'Save Changes' : 'Submit Proposal',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: UpriseColors.primaryDark,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 11,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-          Container(
-            padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
-            decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: Color(0xFFE8ECF0))),
-              color: Color(0xFFF8F9FB),
-              borderRadius: BorderRadius.vertical(bottom: Radius.circular(18)),
-            ),
-            child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-              OutlinedButton(
-                onPressed: _isSubmitting ? null : () => Navigator.pop(context),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Color(0xFFE2E6EA)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
-                ),
-                child: Text('Cancel', style: GoogleFonts.beVietnamPro(fontSize: 13, color: const Color(0xFF374151))),
-              ),
-              const SizedBox(width: 12),
-              ElevatedButton.icon(
-                onPressed: (_isSubmitting || _isImageUploading || _isAttachmentUploading) ? null : _submit,
-                icon: _isSubmitting
-                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : Icon(isEdit ? Icons.save_rounded : Icons.send_rounded, size: 16),
-                label: Text(
-                  isEdit ? 'Save Changes' : 'Submit Proposal',
-                  style: GoogleFonts.beVietnamPro(fontSize: 13, fontWeight: FontWeight.w600),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: UpriseColors.primaryDark,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
-                ),
-              ),
-            ]),
-          ),
-        ]),
+          ],
+        ),
       ),
     );
   }
@@ -2367,94 +3685,192 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
         border: Border.all(
           color: _isImageUploading
               ? UpriseColors.primaryDark.withAlpha(102)
-              : hasImage ? const Color(0xFF059669) : const Color(0xFFE2E6EA),
+              : hasImage
+              ? const Color(0xFF059669)
+              : const Color(0xFFE2E6EA),
           width: (_isImageUploading || hasImage) ? 1.5 : 1,
         ),
       ),
       child: _isImageUploading
           ? _imageUploadingState()
-          : hasImage ? _imageUploadedState() : _imageIdleState(),
+          : hasImage
+          ? _imageUploadedState()
+          : _imageIdleState(),
     );
   }
 
   Widget _imageIdleState() => GestureDetector(
     onTap: _pickImage,
     behavior: HitTestBehavior.opaque,
-    child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-      Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: UpriseColors.primaryDark.withAlpha(20),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Icon(Icons.image_outlined, size: 24, color: UpriseColors.primaryDark),
-      ),
-      const SizedBox(width: 14),
-      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        RichText(
-          text: TextSpan(
-            style: GoogleFonts.beVietnamPro(fontSize: 13, color: const Color(0xFF64748B)),
-            children: [
-              TextSpan(text: 'Click to upload event image ', style: GoogleFonts.beVietnamPro(fontSize: 13, color: UpriseColors.primaryDark, fontWeight: FontWeight.w600)),
-              const TextSpan(text: '(JPG, PNG)'),
-            ],
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: UpriseColors.primaryDark.withAlpha(20),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(
+            Icons.image_outlined,
+            size: 24,
+            color: UpriseColors.primaryDark,
           ),
         ),
-        const SizedBox(height: 2),
-        Text('Max 700 KB',
-            style: GoogleFonts.beVietnamPro(fontSize: 11, color: const Color(0xFF9AA5B4))),
-      ]),
-    ]),
+        const SizedBox(width: 14),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            RichText(
+              text: TextSpan(
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: const Color(0xFF64748B),
+                ),
+                children: [
+                  TextSpan(
+                    text: 'Click to upload event image ',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 13,
+                      color: UpriseColors.primaryDark,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const TextSpan(text: '(JPG, PNG)'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'Max 700 KB',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 11,
+                color: const Color(0xFF9AA5B4),
+              ),
+            ),
+          ],
+        ),
+      ],
+    ),
   );
 
-  Widget _imageUploadingState() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    Row(children: [
-      Icon(Icons.image_outlined, size: 16, color: UpriseColors.primaryDark),
-      const SizedBox(width: 10),
-      Expanded(child: Text(_imageName ?? 'Uploading...',
-          style: GoogleFonts.beVietnamPro(fontSize: 12, fontWeight: FontWeight.w500, color: const Color(0xFF1A202C)),
-          overflow: TextOverflow.ellipsis)),
-      Text(_imageSize ?? '', style: GoogleFonts.beVietnamPro(fontSize: 11, color: const Color(0xFF64748B))),
-    ]),
-    const SizedBox(height: 10),
-    ClipRRect(
-      borderRadius: BorderRadius.circular(6),
-      child: LinearProgressIndicator(
-        value: _imageUploadProgress, minHeight: 6,
-        backgroundColor: const Color(0xFFE2E6EA),
-        valueColor: AlwaysStoppedAnimation<Color>(UpriseColors.primaryDark),
+  Widget _imageUploadingState() => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        children: [
+          Icon(Icons.image_outlined, size: 16, color: UpriseColors.primaryDark),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _imageName ?? 'Uploading...',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: const Color(0xFF1A202C),
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Text(
+            _imageSize ?? '',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 11,
+              color: const Color(0xFF64748B),
+            ),
+          ),
+        ],
       ),
-    ),
-    const SizedBox(height: 6),
-    Text('Uploading ${(_imageUploadProgress * 100).toInt()}%',
-        style: GoogleFonts.beVietnamPro(fontSize: 10, color: const Color(0xFF64748B))),
-  ]);
+      const SizedBox(height: 10),
+      ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: LinearProgressIndicator(
+          value: _imageUploadProgress,
+          minHeight: 6,
+          backgroundColor: const Color(0xFFE2E6EA),
+          valueColor: AlwaysStoppedAnimation<Color>(UpriseColors.primaryDark),
+        ),
+      ),
+      const SizedBox(height: 6),
+      Text(
+        'Uploading ${(_imageUploadProgress * 100).toInt()}%',
+        style: GoogleFonts.beVietnamPro(
+          fontSize: 10,
+          color: const Color(0xFF64748B),
+        ),
+      ),
+    ],
+  );
 
-  Widget _imageUploadedState() => Row(children: [
-    // Preview thumbnail
-    ClipRRect(
-      borderRadius: BorderRadius.circular(6),
-      child: _buildImageFromBase64(_imageBase64!, width: 48, height: 48, fit: BoxFit.cover),
-    ),
-    const SizedBox(width: 12),
-    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(_imageName ?? 'Image attached',
-          style: GoogleFonts.beVietnamPro(fontSize: 12, fontWeight: FontWeight.w500, color: const Color(0xFF1A202C)),
-          overflow: TextOverflow.ellipsis),
-      if (_imageSize != null)
-        Text(_imageSize!, style: GoogleFonts.beVietnamPro(fontSize: 11, color: const Color(0xFF059669))),
-    ])),
-    TextButton(
-      onPressed: _removeImage,
-      style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-      child: Text('Remove', style: GoogleFonts.beVietnamPro(fontSize: 12, color: const Color(0xFFDC2626))),
-    ),
-    TextButton(
-      onPressed: _pickImage,
-      style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-      child: Text('Change', style: GoogleFonts.beVietnamPro(fontSize: 12, color: UpriseColors.primaryDark)),
-    ),
-  ]);
+  Widget _imageUploadedState() => Row(
+    children: [
+      // Preview thumbnail
+      ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: _buildImageFromBase64(
+          _imageBase64!,
+          width: 48,
+          height: 48,
+          fit: BoxFit.cover,
+        ),
+      ),
+      const SizedBox(width: 12),
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _imageName ?? 'Image attached',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: const Color(0xFF1A202C),
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (_imageSize != null)
+              Text(
+                _imageSize!,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 11,
+                  color: const Color(0xFF059669),
+                ),
+              ),
+          ],
+        ),
+      ),
+      TextButton(
+        onPressed: _removeImage,
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          minimumSize: Size.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        child: Text(
+          'Remove',
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 12,
+            color: const Color(0xFFDC2626),
+          ),
+        ),
+      ),
+      TextButton(
+        onPressed: _pickImage,
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          minimumSize: Size.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        child: Text(
+          'Change',
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 12,
+            color: UpriseColors.primaryDark,
+          ),
+        ),
+      ),
+    ],
+  );
 
   // ── Attachment upload UI (unchanged but renamed) ──────────────────
   Widget _buildAttachmentArea() {
@@ -2468,94 +3884,198 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
         border: Border.all(
           color: _isAttachmentUploading
               ? UpriseColors.primaryDark.withAlpha(102)
-              : hasFile ? const Color(0xFF059669) : const Color(0xFFE2E6EA),
+              : hasFile
+              ? const Color(0xFF059669)
+              : const Color(0xFFE2E6EA),
           width: (_isAttachmentUploading || hasFile) ? 1.5 : 1,
         ),
       ),
       child: _isAttachmentUploading
           ? _attachmentUploadingState()
-          : hasFile ? _attachmentUploadedState() : _attachmentIdleState(),
+          : hasFile
+          ? _attachmentUploadedState()
+          : _attachmentIdleState(),
     );
   }
 
   Widget _attachmentIdleState() => GestureDetector(
     onTap: _pickAttachment,
     behavior: HitTestBehavior.opaque,
-    child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-      Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: UpriseColors.primaryDark.withAlpha(20),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Icon(Icons.cloud_upload_outlined, size: 24, color: UpriseColors.primaryDark),
-      ),
-      const SizedBox(width: 14),
-      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        RichText(
-          text: TextSpan(
-            style: GoogleFonts.beVietnamPro(fontSize: 13, color: const Color(0xFF64748B)),
-            children: [
-              TextSpan(text: 'Click to upload attachment ', style: GoogleFonts.beVietnamPro(fontSize: 13, color: UpriseColors.primaryDark, fontWeight: FontWeight.w600)),
-              const TextSpan(text: '(PDF, DOC, etc.)'),
-            ],
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: UpriseColors.primaryDark.withAlpha(20),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(
+            Icons.cloud_upload_outlined,
+            size: 24,
+            color: UpriseColors.primaryDark,
           ),
         ),
-        const SizedBox(height: 2),
-        Text('PDF, DOC, DOCX, TXT, JPG, PNG — max 700 KB',
-            style: GoogleFonts.beVietnamPro(fontSize: 11, color: const Color(0xFF9AA5B4))),
-      ]),
-    ]),
+        const SizedBox(width: 14),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            RichText(
+              text: TextSpan(
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: const Color(0xFF64748B),
+                ),
+                children: [
+                  TextSpan(
+                    text: 'Click to upload attachment ',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 13,
+                      color: UpriseColors.primaryDark,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const TextSpan(text: '(PDF, DOC, etc.)'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'PDF, DOC, DOCX, TXT, JPG, PNG — max 700 KB',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 11,
+                color: const Color(0xFF9AA5B4),
+              ),
+            ),
+          ],
+        ),
+      ],
+    ),
   );
 
-  Widget _attachmentUploadingState() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    Row(children: [
-      Icon(Icons.insert_drive_file_outlined, size: 16, color: UpriseColors.primaryDark),
-      const SizedBox(width: 10),
-      Expanded(child: Text(_attachmentName ?? 'Uploading...',
-          style: GoogleFonts.beVietnamPro(fontSize: 12, fontWeight: FontWeight.w500, color: const Color(0xFF1A202C)),
-          overflow: TextOverflow.ellipsis)),
-      Text(_attachmentSize ?? '', style: GoogleFonts.beVietnamPro(fontSize: 11, color: const Color(0xFF64748B))),
-    ]),
-    const SizedBox(height: 10),
-    ClipRRect(
-      borderRadius: BorderRadius.circular(6),
-      child: LinearProgressIndicator(
-        value: _attachmentUploadProgress, minHeight: 6,
-        backgroundColor: const Color(0xFFE2E6EA),
-        valueColor: AlwaysStoppedAnimation<Color>(UpriseColors.primaryDark),
+  Widget _attachmentUploadingState() => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        children: [
+          Icon(
+            Icons.insert_drive_file_outlined,
+            size: 16,
+            color: UpriseColors.primaryDark,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _attachmentName ?? 'Uploading...',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: const Color(0xFF1A202C),
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Text(
+            _attachmentSize ?? '',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 11,
+              color: const Color(0xFF64748B),
+            ),
+          ),
+        ],
       ),
-    ),
-    const SizedBox(height: 6),
-    Text('Uploading ${(_attachmentUploadProgress * 100).toInt()}%',
-        style: GoogleFonts.beVietnamPro(fontSize: 10, color: const Color(0xFF64748B))),
-  ]);
+      const SizedBox(height: 10),
+      ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: LinearProgressIndicator(
+          value: _attachmentUploadProgress,
+          minHeight: 6,
+          backgroundColor: const Color(0xFFE2E6EA),
+          valueColor: AlwaysStoppedAnimation<Color>(UpriseColors.primaryDark),
+        ),
+      ),
+      const SizedBox(height: 6),
+      Text(
+        'Uploading ${(_attachmentUploadProgress * 100).toInt()}%',
+        style: GoogleFonts.beVietnamPro(
+          fontSize: 10,
+          color: const Color(0xFF64748B),
+        ),
+      ),
+    ],
+  );
 
-  Widget _attachmentUploadedState() => Row(children: [
-    Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(color: const Color(0xFFECFDF5), borderRadius: BorderRadius.circular(8)),
-      child: const Icon(Icons.check_circle_rounded, size: 18, color: Color(0xFF059669)),
-    ),
-    const SizedBox(width: 12),
-    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(_attachmentName ?? 'File attached',
-          style: GoogleFonts.beVietnamPro(fontSize: 12, fontWeight: FontWeight.w500, color: const Color(0xFF1A202C)),
-          overflow: TextOverflow.ellipsis),
-      if (_attachmentSize != null)
-        Text(_attachmentSize!, style: GoogleFonts.beVietnamPro(fontSize: 11, color: const Color(0xFF059669))),
-    ])),
-    TextButton(
-      onPressed: _removeAttachment,
-      style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-      child: Text('Remove', style: GoogleFonts.beVietnamPro(fontSize: 12, color: const Color(0xFFDC2626))),
-    ),
-    TextButton(
-      onPressed: _pickAttachment,
-      style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-      child: Text('Change', style: GoogleFonts.beVietnamPro(fontSize: 12, color: UpriseColors.primaryDark)),
-    ),
-  ]);
+  Widget _attachmentUploadedState() => Row(
+    children: [
+      Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFECFDF5),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Icon(
+          Icons.check_circle_rounded,
+          size: 18,
+          color: Color(0xFF059669),
+        ),
+      ),
+      const SizedBox(width: 12),
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _attachmentName ?? 'File attached',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: const Color(0xFF1A202C),
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (_attachmentSize != null)
+              Text(
+                _attachmentSize!,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 11,
+                  color: const Color(0xFF059669),
+                ),
+              ),
+          ],
+        ),
+      ),
+      TextButton(
+        onPressed: _removeAttachment,
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          minimumSize: Size.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        child: Text(
+          'Remove',
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 12,
+            color: const Color(0xFFDC2626),
+          ),
+        ),
+      ),
+      TextButton(
+        onPressed: _pickAttachment,
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          minimumSize: Size.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        child: Text(
+          'Change',
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 12,
+            color: UpriseColors.primaryDark,
+          ),
+        ),
+      ),
+    ],
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2580,16 +4100,27 @@ class _ViewProposalModal extends StatelessWidget {
 
   static String _mimeFromExt(String ext) {
     switch (ext) {
-      case 'png': return 'image/png';
-      case 'jpg': case 'jpeg': return 'image/jpeg';
-      case 'pdf': return 'application/pdf';
-      case 'txt': return 'text/plain';
-      default: return 'application/octet-stream';
+      case 'png':
+        return 'image/png';
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'pdf':
+        return 'application/pdf';
+      case 'txt':
+        return 'text/plain';
+      default:
+        return 'application/octet-stream';
     }
   }
 
   // ── Helper: detail item (label + value with icon) ──
-  Widget _detailItem(String label, String value, IconData icon, {Color? valueColor}) {
+  Widget _detailItem(
+    String label,
+    String value,
+    IconData icon, {
+    Color? valueColor,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2625,8 +4156,11 @@ class _ViewProposalModal extends StatelessWidget {
   Widget build(BuildContext context) {
     final status = (data['status'] ?? 'pending').toString().toLowerCase();
     final propNum = 'EP-${docId.substring(0, 4).toUpperCase()}';
-    final hasImage = data['imageBase64'] != null && data['imageBase64'].toString().isNotEmpty;
-    final hasAttachment = data['attachmentBase64'] != null &&
+    final hasImage =
+        data['imageBase64'] != null &&
+        data['imageBase64'].toString().isNotEmpty;
+    final hasAttachment =
+        data['attachmentBase64'] != null &&
         data['attachmentBase64'].toString().isNotEmpty;
     final issuesCertificate = data['issuesCertificate'] == true;
 
@@ -2652,7 +4186,9 @@ class _ViewProposalModal extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(24, 18, 18, 18),
               decoration: BoxDecoration(
                 color: UpriseColors.primaryDark,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(18),
+                ),
               ),
               child: Row(
                 children: [
@@ -2663,8 +4199,11 @@ class _ViewProposalModal extends StatelessWidget {
                       color: Colors.white.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(Icons.event_note_rounded,
-                        color: Colors.white, size: 20),
+                    child: const Icon(
+                      Icons.event_note_rounded,
+                      color: Colors.white,
+                      size: 20,
+                    ),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
@@ -2698,8 +4237,11 @@ class _ViewProposalModal extends StatelessWidget {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close_rounded,
-                        color: Colors.white, size: 20),
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: Colors.white,
+                      size: 20,
+                    ),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
@@ -2725,14 +4267,19 @@ class _ViewProposalModal extends StatelessWidget {
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(12),
                           child: _buildImageFromBase64(
-                              data['imageBase64']!, fit: BoxFit.contain),
+                            data['imageBase64']!,
+                            fit: BoxFit.contain,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 20),
                     ],
 
                     // ── Event Details Section ──
-                    _sectionLabel('Event Details', icon: Icons.info_outline_rounded),
+                    _sectionLabel(
+                      'Event Details',
+                      icon: Icons.info_outline_rounded,
+                    ),
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
@@ -2747,18 +4294,23 @@ class _ViewProposalModal extends StatelessWidget {
                             children: [
                               Expanded(
                                 child: _detailItem(
-                                    'Category',
-                                    data['category'] == 'Other' &&
-                                            (data['otherCategory'] ?? '').toString().isNotEmpty
-                                        ? data['otherCategory']
-                                        : (data['category'] ?? '—'),
-                                    Icons.category_outlined),
+                                  'Category',
+                                  data['category'] == 'Other' &&
+                                          (data['otherCategory'] ?? '')
+                                              .toString()
+                                              .isNotEmpty
+                                      ? data['otherCategory']
+                                      : (data['category'] ?? '—'),
+                                  Icons.category_outlined,
+                                ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
                                 child: _detailItem(
-                                    'Audience', data['audience'] ?? '—',
-                                    Icons.people_outline_rounded),
+                                  'Audience',
+                                  data['audience'] ?? '—',
+                                  Icons.people_outline_rounded,
+                                ),
                               ),
                             ],
                           ),
@@ -2768,14 +4320,18 @@ class _ViewProposalModal extends StatelessWidget {
                             children: [
                               Expanded(
                                 child: _detailItem(
-                                    'Date', _fmt(data['date']),
-                                    Icons.calendar_today_outlined),
+                                  'Date',
+                                  _fmt(data['date']),
+                                  Icons.calendar_today_outlined,
+                                ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
                                 child: _detailItem(
-                                    'Time', timeStr,
-                                    Icons.access_time_rounded),
+                                  'Time',
+                                  timeStr,
+                                  Icons.access_time_rounded,
+                                ),
                               ),
                             ],
                           ),
@@ -2785,14 +4341,18 @@ class _ViewProposalModal extends StatelessWidget {
                             children: [
                               Expanded(
                                 child: _detailItem(
-                                    'School Year', data['schoolYear'] ?? '—',
-                                    Icons.school_outlined),
+                                  'School Year',
+                                  data['schoolYear'] ?? '—',
+                                  Icons.school_outlined,
+                                ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
                                 child: _detailItem(
-                                    'Semester', data['semester'] ?? '—',
-                                    Icons.date_range_outlined),
+                                  'Semester',
+                                  data['semester'] ?? '—',
+                                  Icons.date_range_outlined,
+                                ),
                               ),
                             ],
                           ),
@@ -2802,8 +4362,10 @@ class _ViewProposalModal extends StatelessWidget {
                             children: [
                               Expanded(
                                 child: _detailItem(
-                                    'Location', data['location'] ?? '—',
-                                    Icons.location_on_outlined),
+                                  'Location',
+                                  data['location'] ?? '—',
+                                  Icons.location_on_outlined,
+                                ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
@@ -2824,7 +4386,10 @@ class _ViewProposalModal extends StatelessWidget {
                     const SizedBox(height: 20),
 
                     // ── Description ──
-                    _sectionLabel('Description', icon: Icons.description_outlined),
+                    _sectionLabel(
+                      'Description',
+                      icon: Icons.description_outlined,
+                    ),
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
@@ -2844,7 +4409,10 @@ class _ViewProposalModal extends StatelessWidget {
                     const SizedBox(height: 20),
 
                     // ── Submission Info ──
-                    _sectionLabel('Submission Info', icon: Icons.person_outline_rounded),
+                    _sectionLabel(
+                      'Submission Info',
+                      icon: Icons.person_outline_rounded,
+                    ),
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
@@ -2859,16 +4427,18 @@ class _ViewProposalModal extends StatelessWidget {
                             children: [
                               Expanded(
                                 child: _detailItem(
-                                    'Submitted By',
-                                    data['submittedByEmail'] ?? '—',
-                                    Icons.email_outlined),
+                                  'Submitted By',
+                                  data['submittedByEmail'] ?? '—',
+                                  Icons.email_outlined,
+                                ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
                                 child: _detailItem(
-                                    'Submitted At',
-                                    _fmt(data['submittedAt']),
-                                    Icons.access_time_rounded),
+                                  'Submitted At',
+                                  _fmt(data['submittedAt']),
+                                  Icons.access_time_rounded,
+                                ),
                               ),
                             ],
                           ),
@@ -2878,20 +4448,29 @@ class _ViewProposalModal extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Expanded(
-  child: FutureBuilder<String>(
-    future: _getUserName(data['reviewedBy'] ?? ''),
-    builder: (context, snapshot) {
-      final name = snapshot.hasData ? snapshot.data! : 'Loading...';
-      return _detailItem('Reviewed By', name, Icons.rate_review_outlined);
-    },
-  ),
-),
+                                  child: FutureBuilder<String>(
+                                    future: _getUserName(
+                                      data['reviewedBy'] ?? '',
+                                    ),
+                                    builder: (context, snapshot) {
+                                      final name = snapshot.hasData
+                                          ? snapshot.data!
+                                          : 'Loading...';
+                                      return _detailItem(
+                                        'Reviewed By',
+                                        name,
+                                        Icons.rate_review_outlined,
+                                      );
+                                    },
+                                  ),
+                                ),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: _detailItem(
-                                      'Reviewed At',
-                                      _fmt(data['reviewedAt']),
-                                      Icons.access_time_rounded),
+                                    'Reviewed At',
+                                    _fmt(data['reviewedAt']),
+                                    Icons.access_time_rounded,
+                                  ),
                                 ),
                               ],
                             ),
@@ -2970,19 +4549,18 @@ class _ViewProposalModal extends StatelessWidget {
                       ),
                     ],
 
-                    // ── Wet Sign Schedule (if present) ──
-                    if (data['wetSignSchedule'] != null) ...[
-                      const SizedBox(height: 20),
-                      _buildWetSignInfo(),
-                    ],
-
                     // ── Attachment (if present) ──
                     if (hasAttachment) ...[
                       const SizedBox(height: 20),
-                      _sectionLabel('Attachment', icon: Icons.attach_file_rounded),
+                      _sectionLabel(
+                        'Attachment',
+                        icon: Icons.attach_file_rounded,
+                      ),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 12),
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFFF8F9FB),
                           borderRadius: BorderRadius.circular(12),
@@ -2994,11 +4572,16 @@ class _ViewProposalModal extends StatelessWidget {
                               width: 44,
                               height: 44,
                               decoration: BoxDecoration(
-                                color: UpriseColors.primaryDark.withOpacity(0.10),
+                                color: UpriseColors.primaryDark.withOpacity(
+                                  0.10,
+                                ),
                                 borderRadius: BorderRadius.circular(10),
                               ),
-                              child: Icon(Icons.insert_drive_file_rounded,
-                                  size: 20, color: UpriseColors.primaryDark),
+                              child: Icon(
+                                Icons.insert_drive_file_rounded,
+                                size: 20,
+                                color: UpriseColors.primaryDark,
+                              ),
                             ),
                             const SizedBox(width: 14),
                             Expanded(
@@ -3008,35 +4591,46 @@ class _ViewProposalModal extends StatelessWidget {
                                   Text(
                                     data['attachmentName'] ?? 'Attached File',
                                     style: GoogleFonts.beVietnamPro(
-                                        fontSize: 13, fontWeight: FontWeight.w600),
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                   if (data['attachmentSize'] != null)
                                     Text(
                                       data['attachmentSize'],
                                       style: GoogleFonts.beVietnamPro(
-                                          fontSize: 11,
-                                          color: const Color(0xFF9AA5B4)),
+                                        fontSize: 11,
+                                        color: const Color(0xFF9AA5B4),
+                                      ),
                                     ),
                                 ],
                               ),
                             ),
                             ElevatedButton.icon(
                               onPressed: () => _openAttachment(context),
-                              icon: const Icon(Icons.open_in_new_rounded, size: 14),
+                              icon: const Icon(
+                                Icons.open_in_new_rounded,
+                                size: 14,
+                              ),
                               label: Text(
                                 'Open',
                                 style: GoogleFonts.beVietnamPro(
-                                    fontSize: 13, fontWeight: FontWeight.w600),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: UpriseColors.primaryDark,
                                 foregroundColor: Colors.white,
                                 elevation: 0,
                                 shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8)),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 14, vertical: 10),
+                                  horizontal: 14,
+                                  vertical: 10,
+                                ),
                               ),
                             ),
                           ],
@@ -3054,7 +4648,9 @@ class _ViewProposalModal extends StatelessWidget {
               decoration: const BoxDecoration(
                 border: Border(top: BorderSide(color: Color(0xFFE8ECF0))),
                 color: Color(0xFFF8F9FB),
-                borderRadius: BorderRadius.vertical(bottom: Radius.circular(18)),
+                borderRadius: BorderRadius.vertical(
+                  bottom: Radius.circular(18),
+                ),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
@@ -3068,14 +4664,19 @@ class _ViewProposalModal extends StatelessWidget {
                       foregroundColor: Colors.white,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8)),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 11),
+                        horizontal: 20,
+                        vertical: 11,
+                      ),
                     ),
                     child: Text(
                       'Close',
                       style: GoogleFonts.beVietnamPro(
-                          fontSize: 13, fontWeight: FontWeight.w600),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],
@@ -3084,123 +4685,6 @@ class _ViewProposalModal extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-
-  // ─── Wet Sign Info ──────────────────────────────────────────────────
-  Widget _buildWetSignInfo() {
-    final wetSign = data['wetSignSchedule'];
-    if (wetSign == null) return const SizedBox.shrink();
-    final startDateTime = wetSign['startDateTime'] as Timestamp?;
-    final endDateTime = wetSign['endDateTime'] as Timestamp?;
-    final location = wetSign['location'] ?? 'Dean\'s Office';
-    if (startDateTime == null) return const SizedBox.shrink();
-    final startDate = startDateTime.toDate();
-    final endDate = endDateTime?.toDate();
-    final dateStr = DateFormat('MMMM dd, yyyy').format(startDate);
-    final startTimeStr = DateFormat('h:mm a').format(startDate);
-    final endTimeStr = endDate != null ? DateFormat('h:mm a').format(endDate) : 'TBD';
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF059669).withOpacity(0.06),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF059669).withOpacity(0.25)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF059669).withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.edit_calendar_rounded,
-                    color: Color(0xFF059669), size: 18),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  '📄 Wet Sign Schedule',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF059669),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _buildWetSignDetailRow(
-              Icons.calendar_today_outlined, 'Date', dateStr),
-          const SizedBox(height: 8),
-          _buildWetSignDetailRow(
-              Icons.access_time_rounded, 'Time', '$startTimeStr – $endTimeStr'),
-          const SizedBox(height: 8),
-          _buildWetSignDetailRow(
-              Icons.location_on_outlined, 'Location', location),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: const Color(0xFF059669).withOpacity(0.06),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.info_outline_rounded,
-                    size: 14, color: Color(0xFF059669)),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Please bring printed copies of your proposal documents for signing.',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11,
-                      color: const Color(0xFF065F46),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWetSignDetailRow(IconData icon, String label, String value) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 14, color: const Color(0xFF059669)),
-        const SizedBox(width: 8),
-        SizedBox(
-          width: 50,
-          child: Text(
-            label,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 12,
-              color: const Color(0xFF64748B),
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            value,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: const Color(0xFF1F2937),
-            ),
-          ),
-        ),
-      ],
     );
   }
 
@@ -3224,7 +4708,9 @@ class _ViewProposalModal extends StatelessWidget {
                   padding: const EdgeInsets.all(8),
                   child: Text(
                     name,
-                    style: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w600),
+                    style: GoogleFonts.beVietnamPro(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
                 Flexible(child: Image.memory(bytes)),
@@ -3255,14 +4741,17 @@ class _ViewProposalModal extends StatelessWidget {
           ),
         );
       } else {
-        await platform_file_utils.saveBytesToTempAndOpen(bytes, name,
-            mimeType: mime);
+        await platform_file_utils.saveBytesToTempAndOpen(
+          bytes,
+          name,
+          mimeType: mime,
+        );
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error opening attachment: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error opening attachment: $e')));
       }
     }
   }

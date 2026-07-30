@@ -1,4 +1,4 @@
-﻿// ignore_for_file: unused_element_parameter
+// ignore_for_file: unused_element_parameter
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -8,17 +8,17 @@ import '../admin/export_pdf.dart';
 
 // ==================== CATEGORY COLORS ====================
 Map<String, Color> _categoryColors = {
-  'Workshop':         const Color(0xFF8B5CF6),
-  'Seminar':          const Color(0xFF3B82F6),
-  'Competition':      const Color(0xFFEF4444),
+  'Workshop': const Color(0xFF8B5CF6),
+  'Seminar': const Color(0xFF3B82F6),
+  'Competition': const Color(0xFFEF4444),
   'General Assembly': const Color(0xFFF97316),
-  'Social':           const Color(0xFFEC4899),
-  'Outreach':         const Color(0xFF10B981),
-  'Sports':           const Color(0xFF14B8A6),
-  'Academic':         const Color(0xFF6366F1),
-  'Technical':        const Color(0xFF06B6D4),
-  'Cultural':         const Color(0xFFD946EF),
-  'Other':            const Color(0xFF6B7280),
+  'Social': const Color(0xFFEC4899),
+  'Outreach': const Color(0xFF10B981),
+  'Sports': const Color(0xFF14B8A6),
+  'Academic': const Color(0xFF6366F1),
+  'Technical': const Color(0xFF06B6D4),
+  'Cultural': const Color(0xFFD946EF),
+  'Other': const Color(0xFF6B7280),
 };
 
 Color _getCategoryColor(String category) {
@@ -91,7 +91,15 @@ Widget _sectionLabel(String text, {IconData? icon}) {
           Icon(icon, size: 16, color: UpriseColors.primaryDark),
           const SizedBox(width: 8),
         ],
-        Text(text, style: GoogleFonts.beVietnamPro(fontSize: 13, fontWeight: FontWeight.w700, color: UpriseColors.primaryDark, letterSpacing: 0.3)),
+        Text(
+          text,
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: UpriseColors.primaryDark,
+            letterSpacing: 0.3,
+          ),
+        ),
         const SizedBox(width: 12),
         Expanded(child: Divider(color: const Color(0xFFE2E6EA), thickness: 1)),
       ],
@@ -108,18 +116,28 @@ Widget _categoryChip(String category) {
     ),
     child: Text(
       category.toUpperCase(),
-      style: GoogleFonts.beVietnamPro(fontSize: 10, fontWeight: FontWeight.w700, color: CategoryColors.getFg(category), letterSpacing: 0.8),
+      style: GoogleFonts.beVietnamPro(
+        fontSize: 10,
+        fontWeight: FontWeight.w700,
+        color: CategoryColors.getFg(category),
+        letterSpacing: 0.8,
+      ),
     ),
   );
 }
 
 Color _statusColor(String status) {
   switch (status.toLowerCase()) {
-    case 'approved': return const Color(0xFF059669);
-    case 'pending': return const Color(0xFFFB923C);
-    case 'rejected': return const Color(0xFFDC2626);
-    case 'archived': return const Color(0xFF6B7280);
-    default: return UpriseColors.primaryDark;
+    case 'approved':
+      return const Color(0xFF059669);
+    case 'pending':
+      return const Color(0xFFFB923C);
+    case 'rejected':
+      return const Color(0xFFDC2626);
+    case 'archived':
+      return const Color(0xFF6B7280);
+    default:
+      return UpriseColors.primaryDark;
   }
 }
 
@@ -171,6 +189,7 @@ class EventModel {
       if (v is List) return v.map((e) => e.toString()).toList();
       return [];
     }
+
     return EventModel(
       id: doc.id,
       orgId: (d['orgId'] ?? '').toString(),
@@ -202,7 +221,8 @@ class OrgEventsScheduleScreen extends StatefulWidget {
   const OrgEventsScheduleScreen({super.key, required this.orgId});
 
   @override
-  State<OrgEventsScheduleScreen> createState() => _OrgEventsScheduleScreenState();
+  State<OrgEventsScheduleScreen> createState() =>
+      _OrgEventsScheduleScreenState();
 }
 
 class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
@@ -223,13 +243,15 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
       .orderBy('date')
       .snapshots();
 
-  late final Stream<QuerySnapshot> _orgPendingStream = FirebaseFirestore.instance
+  late final Stream<QuerySnapshot> _orgPendingStream = FirebaseFirestore
+      .instance
       .collection('event_proposals')
       .where('orgId', isEqualTo: widget.orgId)
       .where('status', isEqualTo: 'pending')
       .snapshots();
 
-  late final Stream<QuerySnapshot> _allPendingStream = FirebaseFirestore.instance
+  late final Stream<QuerySnapshot> _allPendingStream = FirebaseFirestore
+      .instance
       .collection('event_proposals')
       .where('status', isEqualTo: 'pending')
       .snapshots();
@@ -277,15 +299,6 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: EdgeInsets.fromLTRB(0, 24, 0, 0),
-              child: Text(
-                _showOrgEventsOnly
-                    ? 'Showing only your organization’s approved events'
-                    : 'Showing all CICT approved events',
-                style: GoogleFonts.beVietnamPro(fontSize: 11, color: const Color(0xFF64748B), fontStyle: FontStyle.italic),
-              ),
-            ),
             _buildToolbar(isMobile, isTablet, horizontalPadding),
             const SizedBox(height: 16),
             _buildCalendarStream(),
@@ -317,18 +330,32 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
               children: [
                 _NavButton(
                   icon: Icons.chevron_left_rounded,
-                  onTap: () => setState(() => _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1)),
+                  onTap: () => setState(
+                    () => _currentMonth = DateTime(
+                      _currentMonth.year,
+                      _currentMonth.month - 1,
+                    ),
+                  ),
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Text(
                     DateFormat('MMMM yyyy').format(_currentMonth),
-                    style: GoogleFonts.beVietnamPro(fontSize: 14, fontWeight: FontWeight.w700, color: const Color(0xFF1A202C)),
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF1A202C),
+                    ),
                   ),
                 ),
                 _NavButton(
                   icon: Icons.chevron_right_rounded,
-                  onTap: () => setState(() => _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1)),
+                  onTap: () => setState(
+                    () => _currentMonth = DateTime(
+                      _currentMonth.year,
+                      _currentMonth.month + 1,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -343,14 +370,31 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
               decoration: BoxDecoration(
                 color: UpriseColors.primaryDark,
                 borderRadius: BorderRadius.circular(10),
-                boxShadow: [BoxShadow(color: UpriseColors.primaryDark.withAlpha(70), blurRadius: 10, offset: const Offset(0, 3))],
+                boxShadow: [
+                  BoxShadow(
+                    color: UpriseColors.primaryDark.withAlpha(70),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.today_rounded, size: 15, color: Colors.white),
+                  const Icon(
+                    Icons.today_rounded,
+                    size: 15,
+                    color: Colors.white,
+                  ),
                   const SizedBox(width: 7),
-                  Text('Today', style: GoogleFonts.beVietnamPro(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white)),
+                  Text(
+                    'Today',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -385,11 +429,7 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
             ),
           );
 
-          final controls = [
-            todayButton,
-            dateControl,
-            toggleContainer,
-          ];
+          final controls = [todayButton, dateControl, toggleContainer];
 
           if (canUseRow) {
             return Row(
@@ -420,8 +460,12 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
       key: ValueKey('cal_${_showOrgEventsOnly}_${widget.orgId}'),
       stream: _activeStream,
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null) {
-          return const Padding(padding: EdgeInsets.all(48), child: Center(child: CircularProgressIndicator()));
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            snapshot.data == null) {
+          return const Padding(
+            padding: EdgeInsets.all(48),
+            child: Center(child: CircularProgressIndicator()),
+          );
         }
         if (snapshot.hasError) {
           return Center(child: Text('Error: ${snapshot.error}'));
@@ -452,26 +496,37 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
   int get _totalRows {
     final firstDay = DateTime(_currentMonth.year, _currentMonth.month, 1);
     final startWeekday = firstDay.weekday % 7;
-    final daysInMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 0).day;
+    final daysInMonth = DateTime(
+      _currentMonth.year,
+      _currentMonth.month + 1,
+      0,
+    ).day;
     return ((startWeekday + daysInMonth) / 7).ceil();
   }
 
   Widget _buildCalendarGrid(List<EventModel> events) {
     final firstDay = DateTime(_currentMonth.year, _currentMonth.month, 1);
     final startWeekday = firstDay.weekday % 7;
-    final daysInMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 0).day;
+    final daysInMonth = DateTime(
+      _currentMonth.year,
+      _currentMonth.month + 1,
+      0,
+    ).day;
     final totalRows = _totalRows;
 
     final Map<int, List<EventModel>> byDay = {};
     for (final e in events) {
-      if (e.date.year == _currentMonth.year && e.date.month == _currentMonth.month) {
+      if (e.date.year == _currentMonth.year &&
+          e.date.month == _currentMonth.month) {
         byDay.putIfAbsent(e.date.day, () => []).add(e);
       }
     }
 
     const weekdays = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 
-    final horizontalPadding = MediaQuery.of(context).size.width < 720 ? 16.0 : 28.0;
+    final horizontalPadding = MediaQuery.of(context).size.width < 720
+        ? 16.0
+        : 28.0;
     return Container(
       margin: EdgeInsets.symmetric(horizontal: horizontalPadding),
       decoration: BoxDecoration(
@@ -486,22 +541,39 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
             decoration: const BoxDecoration(
               color: Color(0xFFFFF7ED),
               borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
-              border: Border(bottom: BorderSide(color: UpriseColors.primaryLight)),
+              border: Border(
+                bottom: BorderSide(color: UpriseColors.primaryLight),
+              ),
             ),
             child: Row(
-              children: weekdays.map((d) => Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 11),
-                  child: Text(d, textAlign: TextAlign.center,
-                      style: GoogleFonts.beVietnamPro(fontSize: 11, fontWeight: FontWeight.w700, color: const Color(0xFF64748B), letterSpacing: 0.7)),
-                ),
-              )).toList(),
+              children: weekdays
+                  .map(
+                    (d) => Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 11),
+                        child: Text(
+                          d,
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF64748B),
+                            letterSpacing: 0.7,
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
             ),
           ),
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 7, mainAxisExtent: 120),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 7,
+              mainAxisExtent: 120,
+            ),
             itemCount: totalRows * 7,
             itemBuilder: (_, index) {
               final dayNum = index - startWeekday + 1;
@@ -521,27 +593,40 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
     );
   }
 
-  Widget _buildEmptyCell({bool isLastRow = false, int colIndex = 0, bool isBottomRight = false, bool isBottomLeft = false}) {
+  Widget _buildEmptyCell({
+    bool isLastRow = false,
+    int colIndex = 0,
+    bool isBottomRight = false,
+    bool isBottomLeft = false,
+  }) {
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFFFBFCFE),
         border: Border(
-          right: colIndex < 6 ? const BorderSide(color: Color(0xFFF1F5F9)) : BorderSide.none,
-          bottom: !isLastRow ? const BorderSide(color: Color(0xFFF1F5F9)) : BorderSide.none,
+          right: colIndex < 6
+              ? const BorderSide(color: Color(0xFFF1F5F9))
+              : BorderSide.none,
+          bottom: !isLastRow
+              ? const BorderSide(color: Color(0xFFF1F5F9))
+              : BorderSide.none,
         ),
         borderRadius: isBottomLeft
             ? const BorderRadius.only(bottomLeft: Radius.circular(14))
-            : isBottomRight ? const BorderRadius.only(bottomRight: Radius.circular(14)) : null,
+            : isBottomRight
+            ? const BorderRadius.only(bottomRight: Radius.circular(14))
+            : null,
       ),
     );
   }
 
   Widget _buildDayCell(int day, List<EventModel> events, int totalRows) {
-    final isToday = day == DateTime.now().day &&
+    final isToday =
+        day == DateTime.now().day &&
         _currentMonth.year == DateTime.now().year &&
         _currentMonth.month == DateTime.now().month;
 
-    final sorted = List<EventModel>.from(events)..sort((a, b) => a.startTime.compareTo(b.startTime));
+    final sorted = List<EventModel>.from(events)
+      ..sort((a, b) => a.startTime.compareTo(b.startTime));
     final display = sorted.take(3).toList();
     final extra = sorted.length - display.length;
 
@@ -551,22 +636,31 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
     final colIndex = cellIndex % 7;
     final isLastRow = cellIndex >= (totalRows - 1) * 7;
     final isBottomLeft = isLastRow && colIndex == 0;
-    final isBottomRight = cellIndex == totalRows * 7 - 1 ||
-        (isLastRow && day == DateTime(_currentMonth.year, _currentMonth.month + 1, 0).day);
+    final isBottomRight =
+        cellIndex == totalRows * 7 - 1 ||
+        (isLastRow &&
+            day ==
+                DateTime(_currentMonth.year, _currentMonth.month + 1, 0).day);
 
     return InkWell(
-      onTap: events.isEmpty ? null : () => _showDayEventsSheet(day, sorted),
+      onTap: () => _showDayEventsSheet(day, sorted),
       hoverColor: UpriseColors.primaryDark.withAlpha(8),
       child: Container(
         decoration: BoxDecoration(
           color: isToday ? UpriseColors.primaryDark.withAlpha(10) : null,
           border: Border(
-            right: colIndex < 6 ? const BorderSide(color: Color(0xFFF1F5F9)) : BorderSide.none,
-            bottom: !isLastRow ? const BorderSide(color: Color(0xFFF1F5F9)) : BorderSide.none,
+            right: colIndex < 6
+                ? const BorderSide(color: Color(0xFFF1F5F9))
+                : BorderSide.none,
+            bottom: !isLastRow
+                ? const BorderSide(color: Color(0xFFF1F5F9))
+                : BorderSide.none,
           ),
           borderRadius: isBottomLeft
               ? const BorderRadius.only(bottomLeft: Radius.circular(14))
-              : isBottomRight ? const BorderRadius.only(bottomRight: Radius.circular(14)) : null,
+              : isBottomRight
+              ? const BorderRadius.only(bottomRight: Radius.circular(14))
+              : null,
         ),
         padding: const EdgeInsets.fromLTRB(8, 5, 8, 4),
         child: Column(
@@ -577,60 +671,95 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Container(
-                  width: 20, height: 20,
+                  width: 20,
+                  height: 20,
                   decoration: isToday
                       ? BoxDecoration(
                           shape: BoxShape.circle,
                           color: UpriseColors.primaryDark,
-                          boxShadow: [BoxShadow(color: UpriseColors.primaryDark.withAlpha(70), blurRadius: 6, offset: const Offset(0, 2))],
+                          boxShadow: [
+                            BoxShadow(
+                              color: UpriseColors.primaryDark.withAlpha(70),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                         )
                       : null,
                   alignment: Alignment.center,
-                  child: Text('$day',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 12,
-                        fontWeight: isToday ? FontWeight.w700 : FontWeight.w600,
-                        color: isToday ? Colors.white : const Color(0xFF1A202C),
-                      )),
+                  child: Text(
+                    '$day',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 12,
+                      fontWeight: isToday ? FontWeight.w700 : FontWeight.w600,
+                      color: isToday ? Colors.white : const Color(0xFF1A202C),
+                    ),
+                  ),
                 ),
                 if (events.length > 1)
-                  Text('${events.length}',
-                      style: GoogleFonts.beVietnamPro(fontSize: 10, fontWeight: FontWeight.w600, color: const Color(0xFF9AA5B4))),
+                  Text(
+                    '${events.length}',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF9AA5B4),
+                    ),
+                  ),
               ],
             ),
             const SizedBox(height: 2),
-            ...display.map((e) => Padding(
-              padding: const EdgeInsets.only(bottom: 2.0),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                decoration: BoxDecoration(
-                  color: _getCategoryColor(e.category).withAlpha(26),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 5, height: 5,
-                      margin: const EdgeInsets.only(right: 5),
-                      decoration: BoxDecoration(color: _getCategoryColor(e.category), shape: BoxShape.circle),
-                    ),
-                    Expanded(
-                      child: Text(
-                        e.title,
-                        style: GoogleFonts.beVietnamPro(fontSize: 10.5, fontWeight: FontWeight.w600, color: _getCategoryColor(e.category)),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+            ...display.map(
+              (e) => Padding(
+                padding: const EdgeInsets.only(bottom: 2.0),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 1,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _getCategoryColor(e.category).withAlpha(26),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 5,
+                        height: 5,
+                        margin: const EdgeInsets.only(right: 5),
+                        decoration: BoxDecoration(
+                          color: _getCategoryColor(e.category),
+                          shape: BoxShape.circle,
+                        ),
                       ),
-                    ),
-                  ],
+                      Expanded(
+                        child: Text(
+                          e.title,
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w600,
+                            color: _getCategoryColor(e.category),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            )),
+            ),
             if (extra > 0)
               Padding(
                 padding: const EdgeInsets.only(left: 10),
-                child: Text('+$extra more', style: GoogleFonts.beVietnamPro(fontSize: 10, color: const Color(0xFF9AA5B4), fontWeight: FontWeight.w500)),
+                child: Text(
+                  '+$extra more',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 10,
+                    color: const Color(0xFF9AA5B4),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ),
           ],
         ),
@@ -640,26 +769,31 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
 
   // ── Day events dialog ──────────────────────────────────────────
   Future<void> _showDayEventsSheet(int day, List<EventModel> events) async {
-    final dateLabel = DateFormat('EEEE, MMMM d, yyyy')
-        .format(DateTime(_currentMonth.year, _currentMonth.month, day));
+    final dateLabel = DateFormat(
+      'EEEE, MMMM d, yyyy',
+    ).format(DateTime(_currentMonth.year, _currentMonth.month, day));
 
     final resolvedTimes = <String, String>{};
-    await Future.wait(events.map((e) async {
-      if (e.createdFromProposalId.isEmpty) {
-        resolvedTimes[e.id] = e.startTime;
-        return;
-      }
-      try {
-        final propDoc = await FirebaseFirestore.instance
-            .collection('event_proposals')
-            .doc(e.createdFromProposalId)
-            .get();
-        final pd = propDoc.data();
-        resolvedTimes[e.id] = pd != null ? (pd['startTime'] ?? '').toString() : e.startTime;
-      } catch (_) {
-        resolvedTimes[e.id] = e.startTime;
-      }
-    }));
+    await Future.wait(
+      events.map((e) async {
+        if (e.createdFromProposalId.isEmpty) {
+          resolvedTimes[e.id] = e.startTime;
+          return;
+        }
+        try {
+          final propDoc = await FirebaseFirestore.instance
+              .collection('event_proposals')
+              .doc(e.createdFromProposalId)
+              .get();
+          final pd = propDoc.data();
+          resolvedTimes[e.id] = pd != null
+              ? (pd['startTime'] ?? '').toString()
+              : e.startTime;
+        } catch (_) {
+          resolvedTimes[e.id] = e.startTime;
+        }
+      }),
+    );
 
     if (!mounted) return;
     showDialog(
@@ -669,78 +803,170 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         child: Container(
           width: 460,
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.85,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(18),
+                ),
                 child: Container(
                   padding: const EdgeInsets.fromLTRB(22, 20, 16, 20),
-                  decoration: const BoxDecoration(color: UpriseColors.primaryDark),
-                  child: Stack(children: [
-                    Positioned(
-                      right: -20, top: -20,
-                      child: Container(
-                        width: 90, height: 90,
-                        decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withAlpha(20)),
+                  decoration: const BoxDecoration(
+                    color: UpriseColors.primaryDark,
+                  ),
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        right: -20,
+                        top: -20,
+                        child: Container(
+                          width: 90,
+                          height: 90,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withAlpha(20),
+                          ),
+                        ),
                       ),
-                    ),
-                    Row(children: [
-                      Container(
-                        width: 42, height: 42,
-                        decoration: BoxDecoration(color: Colors.white.withAlpha(38), borderRadius: BorderRadius.circular(10)),
-                        child: const Icon(Icons.event_rounded, color: Colors.white, size: 20),
+                      Row(
+                        children: [
+                          Container(
+                            width: 42,
+                            height: 42,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withAlpha(38),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              Icons.event_rounded,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  dateLabel,
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${events.length} event${events.length == 1 ? '' : 's'}',
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 12,
+                                    color: Colors.white.withAlpha(204),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                            onPressed: () => Navigator.pop(ctx),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 14),
-                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(dateLabel, style: GoogleFonts.beVietnamPro(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
-                        const SizedBox(height: 2),
-                        Text('${events.length} event${events.length == 1 ? '' : 's'}',
-                            style: GoogleFonts.beVietnamPro(fontSize: 12, color: Colors.white.withAlpha(204))),
-                      ])),
-                      IconButton(
-                        icon: const Icon(Icons.close_rounded, color: Colors.white, size: 20),
-                        onPressed: () => Navigator.pop(ctx),
-                      ),
-                    ]),
-                  ]),
+                    ],
+                  ),
                 ),
               ),
               Flexible(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  padding: const EdgeInsets.all(20),
-                  itemCount: events.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
-                  itemBuilder: (_, i) => _EventListTile(
-                    event: events[i],
-                    displayTime: resolvedTimes[events[i].id],
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      _showEventDetailDialog(events[i]);
-                    },
-                  ),
-                ),
+                child: events.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 36),
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 52,
+                                height: 52,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: const Icon(
+                                  Icons.event_busy_rounded,
+                                  size: 26,
+                                  color: Color(0xFF9AA5B4),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'No events this day',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 13,
+                                  color: const Color(0xFF9AA5B4),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : ListView.separated(
+                        shrinkWrap: true,
+                        padding: const EdgeInsets.all(20),
+                        itemCount: events.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (_, i) => _EventListTile(
+                          event: events[i],
+                          displayTime: resolvedTimes[events[i].id],
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            _showEventDetailDialog(events[i]);
+                          },
+                        ),
+                      ),
               ),
               Container(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
                 decoration: const BoxDecoration(
                   border: Border(top: BorderSide(color: Color(0xFFE8ECF0))),
                   color: Color(0xFFF8F9FB),
-                  borderRadius: BorderRadius.vertical(bottom: Radius.circular(18)),
-                ),
-                child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                  OutlinedButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFFE2E6EA)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                    ),
-                    child: Text('Close', style: GoogleFonts.beVietnamPro(fontSize: 13, color: const Color(0xFF374151))),
+                  borderRadius: BorderRadius.vertical(
+                    bottom: Radius.circular(18),
                   ),
-                ]),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    OutlinedButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Color(0xFFE2E6EA)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 18,
+                          vertical: 10,
+                        ),
+                      ),
+                      child: Text(
+                        'Close',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          color: const Color(0xFF374151),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -794,14 +1020,19 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
             children: [
               // ─── HEADER ──────────────────────────────────────────────
               ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(20),
+                ),
                 child: Container(
                   padding: const EdgeInsets.fromLTRB(26, 24, 18, 22),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [UpriseColors.primaryDark, catColor.withAlpha(230)],
+                      colors: [
+                        UpriseColors.primaryDark,
+                        catColor.withAlpha(230),
+                      ],
                     ),
                   ),
                   child: Stack(
@@ -840,9 +1071,15 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                             decoration: BoxDecoration(
                               color: Colors.white.withAlpha(35),
                               borderRadius: BorderRadius.circular(13),
-                              border: Border.all(color: Colors.white.withAlpha(90)),
+                              border: Border.all(
+                                color: Colors.white.withAlpha(90),
+                              ),
                             ),
-                            child: const Icon(Icons.event_rounded, color: Colors.white, size: 22),
+                            child: const Icon(
+                              Icons.event_rounded,
+                              color: Colors.white,
+                              size: 22,
+                            ),
                           ),
                           const SizedBox(width: 14),
                           Expanded(
@@ -855,12 +1092,20 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                                   crossAxisAlignment: WrapCrossAlignment.center,
                                   children: [
                                     _categoryChip(event.category),
-                                    if (event.orgName.isNotEmpty && event.orgName != 'Unknown')
+                                    if (event.orgName.isNotEmpty &&
+                                        event.orgName != 'Unknown')
                                       Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 4,
+                                        ),
                                         decoration: BoxDecoration(
-                                          borderRadius: BorderRadius.circular(100),
-                                          border: Border.all(color: Colors.white.withAlpha(150)),
+                                          borderRadius: BorderRadius.circular(
+                                            100,
+                                          ),
+                                          border: Border.all(
+                                            color: Colors.white.withAlpha(150),
+                                          ),
                                         ),
                                         child: Text(
                                           event.orgName.toUpperCase(),
@@ -872,12 +1117,18 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                                           ),
                                         ),
                                       ),
-                                    if (event.status.toLowerCase() != 'approved')
+                                    if (event.status.toLowerCase() !=
+                                        'approved')
                                       Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 4,
+                                        ),
                                         decoration: BoxDecoration(
                                           color: _statusColor(event.status),
-                                          borderRadius: BorderRadius.circular(100),
+                                          borderRadius: BorderRadius.circular(
+                                            100,
+                                          ),
                                         ),
                                         child: Text(
                                           event.status.toUpperCase(),
@@ -907,7 +1158,11 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                             ),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.close_rounded, color: Colors.white, size: 20),
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              color: Colors.white,
+                              size: 20,
+                            ),
                             onPressed: () => Navigator.pop(ctx),
                           ),
                         ],
@@ -938,7 +1193,9 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                           _detailCard(
                             'Time',
                             startTime.isNotEmpty
-                                ? (endTime.isNotEmpty ? '$startTime - $endTime' : startTime)
+                                ? (endTime.isNotEmpty
+                                      ? '$startTime - $endTime'
+                                      : startTime)
                                 : 'TBD',
                             Icons.access_time_rounded,
                             accent: catColor,
@@ -951,26 +1208,38 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                           ),
                           _detailCard(
                             'Audience',
-                            event.audience.isNotEmpty ? event.audience : 'Public',
+                            event.audience.isNotEmpty
+                                ? event.audience
+                                : 'Public',
                             Icons.group_outlined,
                             accent: catColor,
                           ),
                           if (event.orgName.isNotEmpty)
-                            _detailCard('Organization', event.orgName, Icons.business_center, accent: catColor),
+                            _detailCard(
+                              'Organization',
+                              event.orgName,
+                              Icons.business_center,
+                              accent: catColor,
+                            ),
                         ],
                       ),
                       const SizedBox(height: 22),
 
                       // ── Description ──────────────────────────────────
                       if (event.description.isNotEmpty) ...[
-                        _sectionLabel('Description', icon: Icons.description_outlined),
+                        _sectionLabel(
+                          'Description',
+                          icon: Icons.description_outlined,
+                        ),
                         Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
                             color: const Color(0xFFF8F9FB),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border(left: BorderSide(color: catColor, width: 3)),
+                            border: Border(
+                              left: BorderSide(color: catColor, width: 3),
+                            ),
                           ),
                           child: Text(
                             event.description,
@@ -986,7 +1255,10 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
 
                       // ── Guest Speaker ────────────────────────────────
                       if (guestSpeaker.isNotEmpty) ...[
-                        _sectionLabel('Guest Speaker', icon: Icons.person_outline_rounded),
+                        _sectionLabel(
+                          'Guest Speaker',
+                          icon: Icons.person_outline_rounded,
+                        ),
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
@@ -1003,7 +1275,11 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                                   color: catColor.withAlpha(30),
                                   shape: BoxShape.circle,
                                 ),
-                                child: Icon(Icons.person_rounded, color: catColor, size: 18),
+                                child: Icon(
+                                  Icons.person_rounded,
+                                  color: catColor,
+                                  size: 18,
+                                ),
                               ),
                               const SizedBox(width: 14),
                               Expanded(
@@ -1031,7 +1307,10 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
 
                       // ── Lab Preparation ──────────────────────────────
                       if (event.labPreparation.isNotEmpty) ...[
-                        _sectionLabel('Lab Preparation', icon: Icons.build_circle_outlined),
+                        _sectionLabel(
+                          'Lab Preparation',
+                          icon: Icons.build_circle_outlined,
+                        ),
                         _buildBulletList(event.labPreparation),
                         const SizedBox(height: 22),
                       ],
@@ -1044,11 +1323,16 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                           runSpacing: 8,
                           children: event.tags.map((tag) {
                             return Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
                               decoration: BoxDecoration(
                                 color: catColor.withAlpha(15),
                                 borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: catColor.withAlpha(60)),
+                                border: Border.all(
+                                  color: catColor.withAlpha(60),
+                                ),
                               ),
                               child: Text(
                                 tag,
@@ -1082,12 +1366,20 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                       style: OutlinedButton.styleFrom(
                         foregroundColor: const Color(0xFF374151),
                         side: const BorderSide(color: Color(0xFFE2E6EA)),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 11,
+                        ),
                       ),
                       child: Text(
                         'Close',
-                        style: GoogleFonts.beVietnamPro(fontSize: 13, fontWeight: FontWeight.w600),
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ],
@@ -1101,7 +1393,12 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
   }
 
   // ─── DETAIL CARD helper (used in the dialog) ─────────────────────
-  Widget _detailCard(String label, String value, IconData icon, {Color? accent}) {
+  Widget _detailCard(
+    String label,
+    String value,
+    IconData icon, {
+    Color? accent,
+  }) {
     final c = accent ?? UpriseColors.primaryDark;
     return Container(
       width: 260,
@@ -1159,22 +1456,29 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
   Widget _buildBulletList(List<String> items) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: items.map((item) => Padding(
-        padding: const EdgeInsets.only(bottom: 4),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Icon(Icons.circle, size: 5, color: Color(0xFF9AA5B4)),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                item,
-                style: GoogleFonts.beVietnamPro(fontSize: 13, color: const Color(0xFF4B5563)),
+      children: items
+          .map(
+            (item) => Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.circle, size: 5, color: Color(0xFF9AA5B4)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      item,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        color: const Color(0xFF4B5563),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
-      )).toList(),
+          )
+          .toList(),
     );
   }
 
@@ -1182,17 +1486,26 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
   Future<void> _exportEvents(String format) async {
     if (_cachedEvents.isEmpty) return;
     String csvEscape(String value) => '"${value.replaceAll('"', '""')}"';
-    final rows = _cachedEvents.map((event) => [
-      event.title, event.category, event.status.toUpperCase(),
-      DateFormat('yyyy-MM-dd').format(event.date),
-      '${event.startTime} - ${event.endTime}', event.location,
-    ]).toList();
+    final rows = _cachedEvents
+        .map(
+          (event) => [
+            event.title,
+            event.category,
+            event.status.toUpperCase(),
+            DateFormat('yyyy-MM-dd').format(event.date),
+            '${event.startTime} - ${event.endTime}',
+            event.location,
+          ],
+        )
+        .toList();
     final headers = ['Title', 'Category', 'Status', 'Date', 'Time', 'Location'];
 
     if (format == 'csv') {
       final csv = StringBuffer();
       csv.writeln(headers.map(csvEscape).join(','));
-      for (final row in rows) { csv.writeln(row.map(csvEscape).join(',')); }
+      for (final row in rows) {
+        csv.writeln(row.map(csvEscape).join(','));
+      }
       await AdminExportUtil.saveText(
         csv.toString(),
         '${_showOrgEventsOnly ? 'org' : 'cict'}_events_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.csv',
@@ -1205,7 +1518,9 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
       title: _showOrgEventsOnly ? 'Organization Events' : 'CICT Events',
       headers: headers,
       rows: rows,
-      subtitle: _showOrgEventsOnly ? 'Organization event schedule export' : 'CICT event schedule export',
+      subtitle: _showOrgEventsOnly
+          ? 'Organization event schedule export'
+          : 'CICT event schedule export',
     );
     await AdminExportUtil.saveBytes(
       bytes,
@@ -1238,7 +1553,11 @@ class _ToggleTab extends StatelessWidget {
   final String label;
   final bool active;
   final VoidCallback onTap;
-  const _ToggleTab({required this.label, required this.active, required this.onTap});
+  const _ToggleTab({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1267,7 +1586,11 @@ class _EventListTile extends StatelessWidget {
   final EventModel event;
   final String? displayTime;
   final VoidCallback onTap;
-  const _EventListTile({required this.event, this.displayTime, required this.onTap});
+  const _EventListTile({
+    required this.event,
+    this.displayTime,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1284,46 +1607,93 @@ class _EventListTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: categoryColor.withAlpha(51)),
         ),
-        child: Row(children: [
-          Container(
-            width: 4, height: 48,
-            decoration: BoxDecoration(
-              color: categoryColor,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(event.title, style: GoogleFonts.beVietnamPro(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF1A202C))),
-            const SizedBox(height: 3),
-            Row(children: [
-              Container(
-                width: 8, height: 8,
-                decoration: BoxDecoration(
-                  color: categoryColor,
-                  borderRadius: BorderRadius.circular(2),
-                ),
+        child: Row(
+          children: [
+            Container(
+              width: 4,
+              height: 48,
+              decoration: BoxDecoration(
+                color: categoryColor,
+                borderRadius: BorderRadius.circular(2),
               ),
-              const SizedBox(width: 4),
-              Text(event.category,
-                  style: GoogleFonts.beVietnamPro(fontSize: 11, color: categoryColor)),
-              const SizedBox(width: 8),
-              Text(event.location,
-                  style: GoogleFonts.beVietnamPro(fontSize: 11, color: const Color(0xFF64748B))),
-            ]),
-          ])),
-          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            _categoryChip(event.category),
-            const SizedBox(height: 4),
-            Row(children: [
-              const Icon(Icons.access_time_rounded, size: 11, color: Color(0xFF9AA5B4)),
-              const SizedBox(width: 3),
-              Text(displayTime ?? event.startTime, style: GoogleFonts.beVietnamPro(fontSize: 11, color: const Color(0xFF9AA5B4))),
-            ]),
-          ]),
-          const SizedBox(width: 6),
-          const Icon(Icons.chevron_right_rounded, size: 18, color: Color(0xFF9AA5B4)),
-        ]),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    event.title,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF1A202C),
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: categoryColor,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        event.category,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 11,
+                          color: categoryColor,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        event.location,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 11,
+                          color: const Color(0xFF64748B),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                _categoryChip(event.category),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.access_time_rounded,
+                      size: 11,
+                      color: Color(0xFF9AA5B4),
+                    ),
+                    const SizedBox(width: 3),
+                    Text(
+                      displayTime ?? event.startTime,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 11,
+                        color: const Color(0xFF9AA5B4),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(width: 6),
+            const Icon(
+              Icons.chevron_right_rounded,
+              size: 18,
+              color: Color(0xFF9AA5B4),
+            ),
+          ],
+        ),
       ),
     );
   }

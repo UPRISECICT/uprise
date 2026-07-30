@@ -2186,8 +2186,13 @@ class _DashboardHomeState extends State<DashboardHome> {
           ),
           const SizedBox(height: 20),
           FutureBuilder<QuerySnapshot>(
+            // Standardized on event_proposals for "approved" counts — this
+            // used to read the `events` collection (only populated once an
+            // org separately "publishes" an approved proposal), which could
+            // disagree with the Active Events stat card and Org Standings
+            // table elsewhere on this same dashboard.
             future: FirebaseFirestore.instance
-                .collection('events')
+                .collection('event_proposals')
                 .where('status', isEqualTo: 'approved')
                 .where(
                   'date',
@@ -2978,9 +2983,6 @@ class _DashboardHomeState extends State<DashboardHome> {
           );
         }
 
-        String money(double v) =>
-            NumberFormat.currency(symbol: '₱', decimalDigits: 0).format(v);
-
         return _tableCard(
           header: _panelHeader(
             title: 'Organization Standings',
@@ -2995,8 +2997,7 @@ class _DashboardHomeState extends State<DashboardHome> {
                 'Proposals',
                 'Approved',
                 'Pending',
-                'Merch Orders',
-                'Merch Revenue',
+                'Merch Items',
               ],
               rows: [
                 for (var i = 0; i < items.length; i++)
@@ -3006,8 +3007,7 @@ class _DashboardHomeState extends State<DashboardHome> {
                     '${items[i].proposals}',
                     '${items[i].approvedEvents}',
                     '${items[i].pendingProposals}',
-                    '${items[i].merchOrders}',
-                    money(items[i].merchRevenue),
+                    '${items[i].merchItems}',
                   ],
               ],
               fileNamePrefix: 'org_standings',
@@ -3021,12 +3021,11 @@ class _DashboardHomeState extends State<DashboardHome> {
                 MapEntry('Proposals', 2),
                 MapEntry('Approved', 2),
                 MapEntry('Pending', 2),
-                MapEntry('Merch Orders', 2),
-                MapEntry('Merch Revenue', 2),
+                MapEntry('Merch Items', 2),
               ]),
               for (var i = 0; i < items.length; i++)
                 _customTableRow(
-                  flexes: const [1, 4, 2, 2, 2, 2, 2],
+                  flexes: const [1, 4, 2, 2, 2, 2],
                   isLast: i == items.length - 1,
                   onTap: () => _showDetailDialog(
                     title: items[i].orgName,
@@ -3038,8 +3037,7 @@ class _DashboardHomeState extends State<DashboardHome> {
                         'Pending Proposals',
                         '${items[i].pendingProposals}',
                       ),
-                      MapEntry('Merch Orders', '${items[i].merchOrders}'),
-                      MapEntry('Merch Revenue', money(items[i].merchRevenue)),
+                      MapEntry('Merch Items', '${items[i].merchItems}'),
                     ],
                   ),
                   cells: [
@@ -3048,8 +3046,7 @@ class _DashboardHomeState extends State<DashboardHome> {
                     _cellText('${items[i].proposals}'),
                     _cellText('${items[i].approvedEvents}'),
                     _cellText('${items[i].pendingProposals}'),
-                    _cellText('${items[i].merchOrders}'),
-                    _cellText(money(items[i].merchRevenue)),
+                    _cellText('${items[i].merchItems}'),
                   ],
                 ),
             ],
@@ -3449,14 +3446,17 @@ class _DashboardHomeState extends State<DashboardHome> {
     try {
       final snaps = await Future.wait([
         FirebaseFirestore.instance.collection('event_proposals').get(),
-        FirebaseFirestore.instance.collection('orders').get(),
+        FirebaseFirestore.instance
+            .collection('products')
+            .where('isArchived', isEqualTo: false)
+            .get(),
         FirebaseFirestore.instance
             .collection('organizations')
             .where('status', isEqualTo: 'active')
             .get(),
       ]);
       final proposalsSnap = snaps[0];
-      final ordersSnap = snaps[1];
+      final productsSnap = snaps[1];
       final activeOrgsSnap = snaps[2];
 
       final proposalStats = <String, Map<String, dynamic>>{};
@@ -3497,20 +3497,13 @@ class _DashboardHomeState extends State<DashboardHome> {
         }
       }
 
-      for (final doc in ordersSnap.docs) {
+      for (final doc in productsSnap.docs) {
         final data = doc.data();
         final orgId = (data['orgId'] as String?)?.trim() ?? '';
         if (orgId.isEmpty) continue;
         orgIds.add(orgId);
-        final stat = orderStats.putIfAbsent(
-          orgId,
-          () => {'orderCount': 0, 'revenue': 0.0},
-        );
-        stat['orderCount'] = (stat['orderCount'] as int) + 1;
-        final total = (data['total'] is num)
-            ? (data['total'] as num).toDouble()
-            : 0.0;
-        stat['revenue'] = (stat['revenue'] as double) + total;
+        final stat = orderStats.putIfAbsent(orgId, () => {'itemCount': 0});
+        stat['itemCount'] = (stat['itemCount'] as int) + 1;
       }
 
       final missingOrgIds = orgIds.where((id) {
@@ -3536,7 +3529,7 @@ class _DashboardHomeState extends State<DashboardHome> {
 
       return orgIds.map((orgId) {
         final proposalStat = proposalStats[orgId];
-        final orderStat = orderStats[orgId];
+        final merchStat = orderStats[orgId];
         final orgName =
             (proposalStat?['orgName'] as String?)?.isNotEmpty == true
             ? proposalStat!['orgName'] as String
@@ -3547,8 +3540,7 @@ class _DashboardHomeState extends State<DashboardHome> {
           proposals: proposalStat?['proposalCount'] as int? ?? 0,
           approvedEvents: proposalStat?['approvedCount'] as int? ?? 0,
           pendingProposals: proposalStat?['pendingCount'] as int? ?? 0,
-          merchOrders: orderStat?['orderCount'] as int? ?? 0,
-          merchRevenue: orderStat?['revenue'] as double? ?? 0.0,
+          merchItems: merchStat?['itemCount'] as int? ?? 0,
         );
       }).toList();
     } catch (e, s) {
@@ -3607,8 +3599,10 @@ class _OrgPerformance {
   final int proposals;
   final int approvedEvents;
   final int pendingProposals;
-  final int merchOrders;
-  final double merchRevenue;
+  // Was merchOrders/merchRevenue (summed from the `orders` collection) —
+  // merch has no checkout anymore, so order counts/revenue are frozen and
+  // meaningless. This now counts the org's active catalog listings instead.
+  final int merchItems;
 
   const _OrgPerformance({
     required this.orgId,
@@ -3616,8 +3610,7 @@ class _OrgPerformance {
     required this.proposals,
     required this.approvedEvents,
     required this.pendingProposals,
-    required this.merchOrders,
-    required this.merchRevenue,
+    required this.merchItems,
   });
 }
 

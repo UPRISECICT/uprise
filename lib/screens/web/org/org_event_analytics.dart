@@ -1,4 +1,4 @@
-﻿// lib/screens/web/org/org_event_analytics.dart
+// lib/screens/web/org/org_event_analytics.dart
 
 import 'dart:async';
 import 'dart:math' as math;
@@ -9,6 +9,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../widgets/admin_export_button.dart';
+import '../../../widgets/anchored_dropdown.dart';
 import 'export_util.dart';
 import 'export_pdf.dart';
 import '../../../theme/app_theme.dart';
@@ -205,6 +206,20 @@ class _AnalyticsData {
     }
     return titles.toList()..sort();
   }
+
+  ({String title, double score})? get highestRatedEvent {
+    final avg = avgByEvent;
+    if (avg.isEmpty) return null;
+    final entry = avg.entries.reduce((a, b) => a.value >= b.value ? a : b);
+    return (title: eventDisplayTitle(entry.key), score: entry.value);
+  }
+
+  ({String title, double score})? get lowestRatedEvent {
+    final avg = avgByEvent;
+    if (avg.isEmpty) return null;
+    final entry = avg.entries.reduce((a, b) => a.value <= b.value ? a : b);
+    return (title: eventDisplayTitle(entry.key), score: entry.value);
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -228,6 +243,8 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
   String _searchQuery = '';
   String _selectedEvent = 'All Events';
   int? _selectedRating;
+  static const int _feedbackPageSize = 5;
+  int _feedbackShowCount = _feedbackPageSize;
 
   // For attendees tab
   String _selectedAttendeeEvent = '';
@@ -243,12 +260,17 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
     _tabCtrl = TabController(length: 3, vsync: this);
     _dataFuture = _loadAll();
     _searchCtrl.addListener(
-      () =>
-          setState(() => _searchQuery = _searchCtrl.text.toLowerCase().trim()),
+      () => setState(() {
+        _searchQuery = _searchCtrl.text.toLowerCase().trim();
+        _feedbackShowCount = _feedbackPageSize;
+      }),
     );
     _attendeeSearchCtrl.addListener(
       () => setState(
-          () => _attendeeSearchQuery = _attendeeSearchCtrl.text.toLowerCase().trim()),
+        () => _attendeeSearchQuery = _attendeeSearchCtrl.text
+            .toLowerCase()
+            .trim(),
+      ),
     );
     _listenForUpdates();
     activity_log.ActivityLogger.log(
@@ -458,9 +480,7 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
       context: context,
       barrierDismissible: true,
       builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Container(
           width: 640,
           constraints: const BoxConstraints(maxHeight: 640),
@@ -530,8 +550,12 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                       final notYetFeedback = totalAttendees - feedbackCount;
 
                       final studentIdsWithFeedback = feedbackDocs
-                          .map((d) => (d.data() as Map<String, dynamic>)[
-                                  'userId']?.toString() ?? '')
+                          .map(
+                            (d) =>
+                                (d.data() as Map<String, dynamic>)['userId']
+                                    ?.toString() ??
+                                '',
+                          )
                           .where((id) => id.isNotEmpty)
                           .toSet();
 
@@ -642,14 +666,14 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                                   child: Container(
                                     decoration: BoxDecoration(
                                       border: Border.all(
-                                          color: _C.border.withOpacity(0.4)),
+                                        color: _C.border.withOpacity(0.4),
+                                      ),
                                       borderRadius: BorderRadius.circular(10),
                                     ),
                                     child: SingleChildScrollView(
                                       child: attendees.isEmpty
                                           ? Padding(
-                                              padding:
-                                                  const EdgeInsets.all(32),
+                                              padding: const EdgeInsets.all(32),
                                               child: Center(
                                                 child: Column(
                                                   children: [
@@ -671,30 +695,30 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                                               ),
                                             )
                                           : Column(
-                                              children: attendees
-                                                  .map((attendee) {
-                                                final studentName = attendee[
-                                                        'studentName'] ??
+                                              children: attendees.map((
+                                                attendee,
+                                              ) {
+                                                final studentName =
+                                                    attendee['studentName'] ??
                                                     'Unknown';
-                                                final uid = attendee[
-                                                        'studentId']
-                                                    ?.toString() ??
+                                                final uid =
+                                                    attendee['studentId']
+                                                        ?.toString() ??
                                                     '';
                                                 final isPresent =
                                                     attendee['status'] ==
                                                     'present';
-                                                final hasFeedback = uid
-                                                        .isNotEmpty &&
+                                                final hasFeedback =
+                                                    uid.isNotEmpty &&
                                                     studentIdsWithFeedback
                                                         .contains(uid);
 
                                                 return Container(
                                                   padding:
-                                                      const EdgeInsets
-                                                          .symmetric(
-                                                    horizontal: 12,
-                                                    vertical: 10,
-                                                  ),
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 12,
+                                                        vertical: 10,
+                                                      ),
                                                   decoration: BoxDecoration(
                                                     border: Border(
                                                       bottom: BorderSide(
@@ -708,62 +732,60 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                                                       Icon(
                                                         isPresent
                                                             ? Icons
-                                                                .check_circle_rounded
+                                                                  .check_circle_rounded
                                                             : Icons
-                                                                .access_time_rounded,
+                                                                  .access_time_rounded,
                                                         color: isPresent
                                                             ? _C.green
                                                             : _C.amber,
                                                         size: 16,
                                                       ),
-                                                      const SizedBox(
-                                                          width: 10),
+                                                      const SizedBox(width: 10),
                                                       Expanded(
                                                         child: Text(
                                                           studentName,
-                                                          style: GoogleFonts
-                                                              .inter(
-                                                            fontSize: 13,
-                                                            fontWeight:
-                                                                FontWeight
-                                                                    .w500,
-                                                            color: _C
-                                                                .charcoal,
-                                                          ),
+                                                          style:
+                                                              GoogleFonts.inter(
+                                                                fontSize: 13,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w500,
+                                                                color:
+                                                                    _C.charcoal,
+                                                              ),
                                                         ),
                                                       ),
                                                       Container(
                                                         padding:
-                                                            const EdgeInsets
-                                                                .symmetric(
-                                                          horizontal: 8,
-                                                          vertical: 3,
-                                                        ),
-                                                        decoration:
-                                                            BoxDecoration(
+                                                            const EdgeInsets.symmetric(
+                                                              horizontal: 8,
+                                                              vertical: 3,
+                                                            ),
+                                                        decoration: BoxDecoration(
                                                           color: hasFeedback
                                                               ? const Color(
-                                                                  0xFFECFDF5)
+                                                                  0xFFECFDF5,
+                                                                )
                                                               : const Color(
-                                                                  0xFFF1F5F9),
+                                                                  0xFFF1F5F9,
+                                                                ),
                                                           borderRadius:
-                                                              BorderRadius
-                                                                  .circular(
-                                                                      12),
+                                                              BorderRadius.circular(
+                                                                12,
+                                                              ),
                                                         ),
                                                         child: Text(
                                                           hasFeedback
                                                               ? '✓ Feedback'
                                                               : 'Pending',
-                                                          style: GoogleFonts
-                                                              .inter(
+                                                          style: GoogleFonts.inter(
                                                             fontSize: 10,
                                                             fontWeight:
-                                                                FontWeight
-                                                                    .w600,
+                                                                FontWeight.w600,
                                                             color: hasFeedback
                                                                 ? const Color(
-                                                                    0xFF166534)
+                                                                    0xFF166534,
+                                                                  )
                                                                 : _C.muted,
                                                           ),
                                                         ),
@@ -810,11 +832,11 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
           if (studentDoc.exists) {
             final studentData = studentDoc.data() as Map<String, dynamic>;
             result.add({
-              'studentName': studentData['fullName'] ??
-                  data['studentName'] ??
-                  'Unknown',
+              'studentName':
+                  studentData['fullName'] ?? data['studentName'] ?? 'Unknown',
               'studentId': uid,
               'status': data['status'] ?? 'present',
+              'timestamp': data['timestamp'],
             });
             continue;
           }
@@ -825,6 +847,7 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
         'studentName': data['studentName'] ?? 'Unknown',
         'studentId': uid,
         'status': data['status'] ?? 'present',
+        'timestamp': data['timestamp'],
       });
     }
 
@@ -832,7 +855,11 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
   }
 
   Widget _buildSummaryStat(
-      String label, String value, IconData icon, Color color) {
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.all(8),
@@ -854,17 +881,38 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                 color: _C.charcoal,
               ),
             ),
-            Text(
-              label,
-              style: GoogleFonts.inter(
-                fontSize: 9,
-                color: _C.muted,
-              ),
-            ),
+            Text(label, style: GoogleFonts.inter(fontSize: 9, color: _C.muted)),
           ],
         ),
       ),
     );
+  }
+
+  // Feedback docs only carry `userId` + `isAnonymous` — this resolves real
+  // names for the non-anonymous ones in one batched pass instead of a
+  // per-row FutureBuilder (which would fire one Firestore read per row on
+  // every rebuild).
+  Future<Map<String, String>> _resolveFeedbackNames(
+    List<Map<String, dynamic>> feedbacks,
+  ) async {
+    final names = <String, String>{};
+    final uids = feedbacks
+        .where((f) => f['isAnonymous'] != true)
+        .map((f) => f['userId']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    for (final uid in uids) {
+      try {
+        final doc = await FirebaseFirestore.instance
+            .collection('students')
+            .doc(uid)
+            .get();
+        if (doc.exists) {
+          names[uid] = (doc.data()?['fullName'] as String?) ?? 'Unknown';
+        }
+      } catch (_) {}
+    }
+    return names;
   }
 
   // ── Feedback List Dialog ──────────────────────────────────────────────────
@@ -878,9 +926,7 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
       context: context,
       barrierDismissible: true,
       builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Container(
           width: 640,
           constraints: const BoxConstraints(maxHeight: 560),
@@ -921,97 +967,110 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
               ),
               const Divider(height: 20, color: _C.border),
               Expanded(
-                child: SingleChildScrollView(
-                  child: Column(
-                    children: feedbacks.map((f) {
-                      final rating = f['rating'] as int? ?? 0;
-                      final comment = f['comment'] as String? ?? '';
-                      final createdAt =
-                          (f['submittedAt'] as Timestamp?)?.toDate() ??
+                child: FutureBuilder<Map<String, String>>(
+                  future: _resolveFeedbackNames(feedbacks),
+                  builder: (context, nameSnap) {
+                    final names = nameSnap.data ?? const {};
+                    return SingleChildScrollView(
+                      child: Column(
+                        children: feedbacks.map((f) {
+                          final rating = f['rating'] as int? ?? 0;
+                          final comment = f['comment'] as String? ?? '';
+                          final createdAt =
+                              (f['submittedAt'] as Timestamp?)?.toDate() ??
                               DateTime.now();
+                          final isAnonymous = f['isAnonymous'] == true;
+                          final uid = f['userId']?.toString() ?? '';
+                          final displayName = isAnonymous
+                              ? 'Anonymous Student'
+                              : (names[uid] ?? 'Unknown Student');
 
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 4,
-                          vertical: 12,
-                        ),
-                        decoration: BoxDecoration(
-                          border: Border(
-                            bottom: BorderSide(
-                              color: _C.border.withOpacity(0.4),
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 12,
                             ),
-                          ),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFEFF6FF),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.person_outline,
-                                size: 18,
-                                color: _C.blue,
+                            decoration: BoxDecoration(
+                              border: Border(
+                                bottom: BorderSide(
+                                  color: _C.border.withOpacity(0.4),
+                                ),
                               ),
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFEFF6FF),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.person_outline,
+                                    size: 18,
+                                    color: _C.blue,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        'Anonymous Student',
-                                        style: GoogleFonts.inter(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                          color: _C.muted,
-                                        ),
+                                      Row(
+                                        children: [
+                                          Text(
+                                            displayName,
+                                            style: GoogleFonts.inter(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                              color: _C.muted,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          _buildRatingStarsSmall(rating),
+                                          const Spacer(),
+                                          Text(
+                                            DateFormat(
+                                              'MMM dd, yyyy',
+                                            ).format(createdAt),
+                                            style: GoogleFonts.inter(
+                                              fontSize: 11,
+                                              color: _C.muted,
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                      const SizedBox(width: 8),
-                                      _buildRatingStarsSmall(rating),
-                                      const Spacer(),
-                                      Text(
-                                        DateFormat('MMM dd, yyyy')
-                                            .format(createdAt),
-                                        style: GoogleFonts.inter(
-                                          fontSize: 11,
-                                          color: _C.muted,
+                                      const SizedBox(height: 6),
+                                      if (comment.isNotEmpty)
+                                        Text(
+                                          comment,
+                                          style: GoogleFonts.inter(
+                                            fontSize: 14,
+                                            color: _C.charcoal,
+                                            height: 1.5,
+                                          ),
+                                        )
+                                      else
+                                        Text(
+                                          'No comment provided',
+                                          style: GoogleFonts.inter(
+                                            fontSize: 13,
+                                            color: _C.muted,
+                                            fontStyle: FontStyle.italic,
+                                          ),
                                         ),
-                                      ),
                                     ],
                                   ),
-                                  const SizedBox(height: 6),
-                                  if (comment.isNotEmpty)
-                                    Text(
-                                      comment,
-                                      style: GoogleFonts.inter(
-                                        fontSize: 14,
-                                        color: _C.charcoal,
-                                        height: 1.5,
-                                      ),
-                                    )
-                                  else
-                                    Text(
-                                      'No comment provided',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 13,
-                                        color: _C.muted,
-                                        fontStyle: FontStyle.italic,
-                                      ),
-                                    ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                  ),
+                          );
+                        }).toList(),
+                      ),
+                    );
+                  },
                 ),
               ),
             ],
@@ -1132,10 +1191,10 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
   }
 
   Widget _buildStatsRow(_AnalyticsData data, bool isMobile) {
-    final published = data.evalForms
-        .where((f) => f['status'] == 'published')
-        .length;
-    final totalEvents = data.events.length;
+    final highest = data.highestRatedEvent;
+    final lowest = data.lowestRatedEvent;
+
+    void goToTab(int index) => setState(() => _tabCtrl.animateTo(index));
 
     final cards = [
       _StatCardData(
@@ -1143,24 +1202,34 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
         data.totalFeedbacks.toString(),
         Icons.assignment_outlined,
         _C.blue,
+        isSelected: _tabCtrl.index == 1,
+        onTap: () => goToTab(1),
       ),
       _StatCardData(
         'Average rating',
         data.totalFeedbacks > 0 ? data.avgRating.toStringAsFixed(1) : '—',
         Icons.star_outline,
         _C.amber,
+        isSelected: _tabCtrl.index == 1,
+        onTap: () => goToTab(1),
       ),
       _StatCardData(
-        'Active events',
-        totalEvents.toString(),
-        Icons.event_outlined,
+        'Highest rated',
+        highest != null ? highest.title : '—',
+        Icons.emoji_events_outlined,
         _C.green,
+        isSelected: _tabCtrl.index == 0,
+        onTap: () => goToTab(0),
+        valueFontSize: 15,
       ),
       _StatCardData(
-        'Published forms',
-        published.toString(),
-        Icons.assignment_outlined,
+        'Needs improvement',
+        lowest != null ? lowest.title : '—',
+        Icons.trending_down_rounded,
         UpriseColors.primaryDark,
+        isSelected: _tabCtrl.index == 0,
+        onTap: () => goToTab(0),
+        valueFontSize: 15,
       ),
     ];
 
@@ -1199,11 +1268,7 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
         Icons.forum_outlined,
         data.totalFeedbacks > 0 ? data.totalFeedbacks.toString() : null,
       ),
-      (
-        'Attendees',
-        Icons.people_alt_rounded,
-        null,
-      ),
+      ('Attendees', Icons.people_alt_rounded, null),
     ];
 
     return Container(
@@ -1313,107 +1378,11 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
 
   // ── Analytics tab ──────────────────────────────────────────────────────────
   Widget _buildAnalyticsTab(_AnalyticsData data) {
-    final avgByEvent = data.avgByEvent;
-
-    String highestEvent = '—';
-    double highestScore = 0.0;
-    String lowestEvent = '—';
-    double lowestScore = 5.1;
-
-    for (final entry in avgByEvent.entries) {
-      final title = data.eventDisplayTitle(entry.key);
-      final score = entry.value;
-      if (score > highestScore) {
-        highestScore = score;
-        highestEvent = title;
-      }
-      if (score < lowestScore) {
-        lowestScore = score;
-        lowestEvent = title;
-      }
-    }
-    if (avgByEvent.isEmpty) {
-      highestScore = 0;
-      lowestScore = 0;
-      highestEvent = '—';
-      lowestEvent = '—';
-    }
-
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final narrow = constraints.maxWidth < 900;
-              final kpis = [
-                _KpiCard(
-                  icon: Icons.bar_chart_rounded,
-                  label: 'Total evaluations',
-                  value: data.totalFeedbacks.toString(),
-                  sub: data.totalFeedbacks > 0
-                      ? 'All responses collected'
-                      : 'No data yet',
-                  color: _C.blue,
-                ),
-                _KpiCard(
-                  icon: Icons.star_outline,
-                  label: 'Average rating',
-                  value: data.totalFeedbacks > 0
-                      ? data.avgRating.toStringAsFixed(1)
-                      : '—',
-                  sub: data.totalFeedbacks > 0
-                      ? 'Based on ${data.totalFeedbacks} responses'
-                      : 'No ratings yet',
-                  color: _C.amber,
-                ),
-                _KpiCard(
-                  icon: Icons.emoji_events_outlined,
-                  label: 'Highest rated',
-                  value: highestEvent,
-                  sub: avgByEvent.isNotEmpty
-                      ? 'Score: ${highestScore.toStringAsFixed(1)} / 5.0'
-                      : 'No data yet',
-                  color: _C.green,
-                ),
-                _KpiCard(
-                  icon: Icons.trending_down_rounded,
-                  label: 'Needs improvement',
-                  value: lowestEvent,
-                  sub: avgByEvent.isNotEmpty
-                      ? 'Score: ${lowestScore.toStringAsFixed(1)} / 5.0'
-                      : 'No data yet',
-                  color: _C.red,
-                ),
-              ];
-              if (narrow) {
-                return Wrap(
-                  spacing: 14,
-                  runSpacing: 14,
-                  children: kpis
-                      .map(
-                        (k) => SizedBox(
-                          width: (constraints.maxWidth - 14) / 2,
-                          child: k,
-                        ),
-                      )
-                      .toList(),
-                );
-              }
-              return Row(
-                children: kpis.asMap().entries.map((e) {
-                  return Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.only(left: e.key == 0 ? 0 : 14),
-                      child: e.value,
-                    ),
-                  );
-                }).toList(),
-              );
-            },
-          ),
-          const SizedBox(height: 20),
           LayoutBuilder(
             builder: (context, constraints) {
               final stack = constraints.maxWidth < 900;
@@ -1491,10 +1460,7 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
               const SizedBox(width: 8),
               Text(
                 '${filtered.length} total responses',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 12,
-                  color: _C.muted,
-                ),
+                style: GoogleFonts.beVietnamPro(fontSize: 12, color: _C.muted),
               ),
             ],
           ),
@@ -1509,13 +1475,19 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
               filteredCount: filtered.length,
               totalCount: data.totalFeedbacks,
               onRemoveSearch: () => _searchCtrl.clear(),
-              onRemoveEvent: () =>
-                  setState(() => _selectedEvent = 'All Events'),
-              onRemoveRating: () => setState(() => _selectedRating = null),
+              onRemoveEvent: () => setState(() {
+                _selectedEvent = 'All Events';
+                _feedbackShowCount = _feedbackPageSize;
+              }),
+              onRemoveRating: () => setState(() {
+                _selectedRating = null;
+                _feedbackShowCount = _feedbackPageSize;
+              }),
               onClearAll: () => setState(() {
                 _searchCtrl.clear();
                 _selectedEvent = 'All Events';
                 _selectedRating = null;
+                _feedbackShowCount = _feedbackPageSize;
               }),
             ),
           ],
@@ -1549,14 +1521,16 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
               ),
             )
           else
-            ...sortedEvents.map((entry) {
+            ...sortedEvents.take(_feedbackShowCount).map((entry) {
               final eventTitle = entry.key;
               final feedbacks = entry.value;
               final count = feedbacks.length;
-              final avgRating = feedbacks.fold<double>(
-                0.0,
-                (sum, f) => sum + ((f['rating'] as int? ?? 0) as double),
-              ) / count;
+              final avgRating =
+                  feedbacks.fold<double>(
+                    0.0,
+                    (sum, f) => sum + ((f['rating'] as int? ?? 0) as double),
+                  ) /
+                  count;
 
               return Container(
                 margin: const EdgeInsets.only(bottom: 12),
@@ -1629,7 +1603,10 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                                 data: data,
                               );
                             },
-                            icon: const Icon(Icons.visibility_outlined, size: 16),
+                            icon: const Icon(
+                              Icons.visibility_outlined,
+                              size: 16,
+                            ),
                             label: Text(
                               'View',
                               style: GoogleFonts.inter(
@@ -1640,7 +1617,9 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                             style: OutlinedButton.styleFrom(
                               foregroundColor: UpriseColors.primaryDark,
                               side: BorderSide(
-                                color: UpriseColors.primaryDark.withOpacity(0.3),
+                                color: UpriseColors.primaryDark.withOpacity(
+                                  0.3,
+                                ),
                               ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
@@ -1656,60 +1635,79 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                     ),
                     if (feedbacks.isNotEmpty) ...[
                       const Divider(height: 1, color: _C.border),
-                      ...feedbacks.take(2).map((f) {
-                        final comment = f['comment'] as String? ?? '';
-                        if (comment.isEmpty) return const SizedBox.shrink();
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
-                          ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFEFF6FF),
-                                  shape: BoxShape.circle,
+                      FutureBuilder<Map<String, String>>(
+                        future: _resolveFeedbackNames(
+                          feedbacks.take(2).toList(),
+                        ),
+                        builder: (context, nameSnap) {
+                          final names = nameSnap.data ?? const {};
+                          return Column(
+                            children: feedbacks.take(2).map((f) {
+                              final comment = f['comment'] as String? ?? '';
+                              if (comment.isEmpty)
+                                return const SizedBox.shrink();
+                              final isAnonymous = f['isAnonymous'] == true;
+                              final uid = f['userId']?.toString() ?? '';
+                              final displayName = isAnonymous
+                                  ? 'Anonymous Student'
+                                  : (names[uid] ?? 'Unknown Student');
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 10,
                                 ),
-                                child: const Icon(
-                                  Icons.person_outline,
-                                  size: 14,
-                                  color: _C.blue,
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
+                                child: Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      'Anonymous Student',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 11,
-                                        color: _C.muted,
-                                        fontWeight: FontWeight.w500,
+                                    Container(
+                                      padding: const EdgeInsets.all(4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFEFF6FF),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        Icons.person_outline,
+                                        size: 14,
+                                        color: _C.blue,
                                       ),
                                     ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      comment,
-                                      style: GoogleFonts.inter(
-                                        fontSize: 13,
-                                        color: _C.charcoal,
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            displayName,
+                                            style: GoogleFonts.inter(
+                                              fontSize: 11,
+                                              color: _C.muted,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            comment,
+                                            style: GoogleFonts.inter(
+                                              fontSize: 13,
+                                              color: _C.charcoal,
+                                            ),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ],
                                       ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    _buildRatingStarsSmall(
+                                      f['rating'] as int? ?? 0,
                                     ),
                                   ],
                                 ),
-                              ),
-                              _buildRatingStarsSmall(f['rating'] as int? ?? 0),
-                            ],
-                          ),
-                        );
-                      }),
+                              );
+                            }).toList(),
+                          );
+                        },
+                      ),
                       if (feedbacks.length > 2)
                         Padding(
                           padding: const EdgeInsets.symmetric(
@@ -1730,6 +1728,37 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                 ),
               );
             }),
+          if (sortedEvents.length > _feedbackShowCount)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 4, bottom: 8),
+                child: OutlinedButton.icon(
+                  onPressed: () =>
+                      setState(() => _feedbackShowCount += _feedbackPageSize),
+                  icon: const Icon(Icons.expand_more_rounded, size: 16),
+                  label: Text(
+                    'Show more (${sortedEvents.length - _feedbackShowCount} remaining)',
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: UpriseColors.primaryDark,
+                    side: BorderSide(
+                      color: UpriseColors.primaryDark.withOpacity(0.3),
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -1793,19 +1822,22 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
           _FilterDropdown(
             value: _selectedEvent,
             items: eventOptions,
-            onChanged: (v) =>
-                setState(() => _selectedEvent = v ?? 'All Events'),
+            onChanged: (v) => setState(() {
+              _selectedEvent = v ?? 'All Events';
+              _feedbackShowCount = _feedbackPageSize;
+            }),
           ),
           _FilterDropdown(
             value: _selectedRating == null
                 ? 'All Ratings'
                 : '$_selectedRating ★',
             items: ['All Ratings', ...List.generate(5, (i) => '${5 - i} ★')],
-            onChanged: (v) => setState(
-              () => _selectedRating = v == 'All Ratings'
+            onChanged: (v) => setState(() {
+              _feedbackShowCount = _feedbackPageSize;
+              _selectedRating = v == 'All Ratings'
                   ? null
-                  : int.tryParse(v?.split(' ').first ?? ''),
-            ),
+                  : int.tryParse(v?.split(' ').first ?? '');
+            }),
           ),
           AdminExportButton(
             label: 'Export',
@@ -1837,14 +1869,14 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
   }
 
   Widget _hCell(String t) => Text(
-        t.toUpperCase(),
-        style: GoogleFonts.inter(
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          color: _C.muted,
-          letterSpacing: 0.8,
-        ),
-      );
+    t.toUpperCase(),
+    style: GoogleFonts.inter(
+      fontSize: 10,
+      fontWeight: FontWeight.w700,
+      color: _C.muted,
+      letterSpacing: 0.8,
+    ),
+  );
 
   // ──────────────────────────────────────────────────────────────────────────
   // ATTENDEES TAB
@@ -1874,10 +1906,7 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                 ),
                 child: Text(
                   '${data.events.length} events',
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    color: _C.muted,
-                  ),
+                  style: GoogleFonts.inter(fontSize: 12, color: _C.muted),
                 ),
               ),
             ],
@@ -1923,7 +1952,10 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                   size: 17,
                   color: _C.muted,
                 ),
-                style: GoogleFonts.beVietnamPro(fontSize: 13, color: _C.charcoal),
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: _C.charcoal,
+                ),
                 isExpanded: true,
                 items: eventOptions.map((s) {
                   return DropdownMenuItem(
@@ -1969,7 +2001,11 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                 ),
                 suffixIcon: _attendeeSearchQuery.isNotEmpty
                     ? IconButton(
-                        icon: const Icon(Icons.close, size: 15, color: _C.muted),
+                        icon: const Icon(
+                          Icons.close,
+                          size: 15,
+                          color: _C.muted,
+                        ),
                         onPressed: () {
                           _attendeeSearchCtrl.clear();
                           setState(() => _attendeeSearchQuery = '');
@@ -2014,13 +2050,11 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                   size: 17,
                   color: _C.muted,
                 ),
-                style: GoogleFonts.beVietnamPro(fontSize: 13, color: _C.charcoal),
-                items: const [
-                  'All',
-                  'present',
-                  'late',
-                  'absent',
-                ].map((s) {
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: _C.charcoal,
+                ),
+                items: const ['All', 'present', 'late', 'absent'].map((s) {
                   final label = s == 'All'
                       ? 'All Status'
                       : s[0].toUpperCase() + s.substring(1);
@@ -2068,7 +2102,8 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
   }
 
   Widget _buildAttendeeContent(_AnalyticsData data) {
-    if (_selectedAttendeeEvent.isEmpty || _selectedAttendeeEvent == 'Select an event...') {
+    if (_selectedAttendeeEvent.isEmpty ||
+        _selectedAttendeeEvent == 'Select an event...') {
       return _buildEventList(data);
     }
 
@@ -2089,18 +2124,31 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(_DS.radiusMd),
-        border: Border.all(color: _C.border),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE8ECF0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(15),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-            decoration: const BoxDecoration(
-              color: _C.surface,
-              border: Border(bottom: BorderSide(color: _C.border)),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(_DS.radiusMd)),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF7ED),
+              border: Border(
+                bottom: BorderSide(
+                  color: UpriseColors.primaryDark.withAlpha(60),
+                ),
+              ),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(14),
+              ),
             ),
             child: Row(
               children: [
@@ -2162,14 +2210,13 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                         _selectedAttendeeEvent = title;
                       });
                     },
-                    hoverColor: const Color(0xFFF1F4F8),
+                    hoverColor: const Color(0xFFF8F9FB),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 20,
-                        vertical: 16,
+                        vertical: 14,
                       ),
                       decoration: BoxDecoration(
-                        color: i.isOdd ? const Color(0xFFFBFCFE) : Colors.white,
                         border: isLast
                             ? null
                             : const Border(
@@ -2209,7 +2256,9 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                             flex: 2,
                             child: Text(
                               date != null
-                                  ? DateFormat('MMM dd, yyyy').format(date.toDate())
+                                  ? DateFormat(
+                                      'MMM dd, yyyy',
+                                    ).format(date.toDate())
                                   : '—',
                               style: GoogleFonts.inter(
                                 fontSize: 13,
@@ -2235,7 +2284,9 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                                 style: GoogleFonts.inter(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
-                                  color: hasAttendees ? const Color(0xFF166534) : _C.muted,
+                                  color: hasAttendees
+                                      ? const Color(0xFF166534)
+                                      : _C.muted,
                                 ),
                               ),
                             ),
@@ -2296,6 +2347,50 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                               ],
                             ),
                           ),
+                          if (hasAttendees)
+                            AnchoredMenuTrigger<String>(
+                              items: const ['csv', 'pdf'],
+                              menuWidth: 170,
+                              itemBuilder: (value, selected) => Row(
+                                children: [
+                                  Icon(
+                                    value == 'csv'
+                                        ? Icons.table_chart_rounded
+                                        : Icons.picture_as_pdf_rounded,
+                                    size: 15,
+                                    color: const Color(0xFF64748B),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    value == 'csv'
+                                        ? 'Export as CSV'
+                                        : 'Export as PDF',
+                                    style: GoogleFonts.beVietnamPro(
+                                      fontSize: 12.5,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              onSelected: (choice) async {
+                                final attendees = await _getAttendeesWithNames(
+                                  attDocs,
+                                );
+                                _exportAttendees(
+                                  choice,
+                                  attendees,
+                                  data,
+                                  eventTitleOverride: title,
+                                );
+                              },
+                              trigger: const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 6),
+                                child: Icon(
+                                  Icons.download_rounded,
+                                  size: 17,
+                                  color: _C.muted,
+                                ),
+                              ),
+                            ),
                           const Icon(
                             Icons.chevron_right_rounded,
                             size: 18,
@@ -2320,10 +2415,7 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
               ),
               child: Text(
                 '${data.events.length} events',
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  color: _C.muted,
-                ),
+                style: GoogleFonts.inter(fontSize: 12, color: _C.muted),
               ),
             ),
         ],
@@ -2369,9 +2461,11 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
               final name = (a['studentName'] ?? '').toLowerCase();
               final status = (a['status'] ?? '').toLowerCase();
 
-              final matchSearch = _attendeeSearchQuery.isEmpty ||
+              final matchSearch =
+                  _attendeeSearchQuery.isEmpty ||
                   name.contains(_attendeeSearchQuery);
-              final matchStatus = _attendeeStatusFilter == 'All' ||
+              final matchStatus =
+                  _attendeeStatusFilter == 'All' ||
                   status == _attendeeStatusFilter;
 
               return matchSearch && matchStatus;
@@ -2385,7 +2479,12 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
               builder: (ctx, feedbackSnap) {
                 final feedbackDocs = feedbackSnap.data?.docs ?? [];
                 final studentIdsWithFeedback = feedbackDocs
-                    .map((d) => (d.data() as Map<String, dynamic>)['userId']?.toString() ?? '')
+                    .map(
+                      (d) =>
+                          (d.data() as Map<String, dynamic>)['userId']
+                              ?.toString() ??
+                          '',
+                    )
                     .where((id) => id.isNotEmpty)
                     .toSet();
 
@@ -2449,8 +2548,15 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                     Container(
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(_DS.radiusMd),
-                        border: Border.all(color: _C.border),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: const Color(0xFFE8ECF0)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withAlpha(15),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2458,13 +2564,17 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 20,
-                              vertical: 14,
+                              vertical: 13,
                             ),
-                            decoration: const BoxDecoration(
-                              color: _C.surface,
-                              border: Border(bottom: BorderSide(color: _C.border)),
-                              borderRadius: BorderRadius.vertical(
-                                top: Radius.circular(_DS.radiusMd),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF7ED),
+                              border: Border(
+                                bottom: BorderSide(
+                                  color: UpriseColors.primaryDark.withAlpha(60),
+                                ),
+                              ),
+                              borderRadius: const BorderRadius.vertical(
+                                top: Radius.circular(14),
                               ),
                             ),
                             child: Row(
@@ -2482,12 +2592,18 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                               child: Center(
                                 child: Column(
                                   children: [
-                                    Icon(Icons.people_outline,
-                                        size: 42, color: Color(0xFFD1D5DB)),
+                                    Icon(
+                                      Icons.people_outline,
+                                      size: 42,
+                                      color: Color(0xFFD1D5DB),
+                                    ),
                                     SizedBox(height: 10),
                                     Text(
                                       'No attendees match your filters',
-                                      style: TextStyle(fontSize: 13, color: _C.muted),
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: _C.muted,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -2500,22 +2616,36 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                               final isLast = i == filtered.length - 1;
                               final name = attendee['studentName'] ?? 'Unknown';
                               final status = attendee['status'] ?? 'present';
-                              final uid = attendee['studentId']?.toString() ?? '';
-                              final hasFeedback = uid.isNotEmpty &&
+                              final uid =
+                                  attendee['studentId']?.toString() ?? '';
+                              final hasFeedback =
+                                  uid.isNotEmpty &&
                                   studentIdsWithFeedback.contains(uid);
 
                               // Find timestamp from attendance doc
                               QueryDocumentSnapshot attDoc;
                               try {
                                 attDoc = attDocs.firstWhere(
-                                  (d) => (d.data() as Map<String, dynamic>)['studentId']?.toString() == uid,
+                                  (d) =>
+                                      (d.data()
+                                              as Map<
+                                                String,
+                                                dynamic
+                                              >)['studentId']
+                                          ?.toString() ==
+                                      uid,
                                 );
                               } catch (_) {
-                                attDoc = attDocs.isNotEmpty ? attDocs.first : attDocs.first;
+                                attDoc = attDocs.isNotEmpty
+                                    ? attDocs.first
+                                    : attDocs.first;
                               }
-                              
-                              final attData = attDoc.data() as Map<String, dynamic>;
-                              final timestamp = (attData['timestamp'] as Timestamp?)?.toDate();
+
+                              final attData =
+                                  attDoc.data() as Map<String, dynamic>;
+                              final timestamp =
+                                  (attData['timestamp'] as Timestamp?)
+                                      ?.toDate();
 
                               return Container(
                                 padding: const EdgeInsets.symmetric(
@@ -2523,14 +2653,12 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                                   vertical: 14,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: i.isOdd
-                                      ? const Color(0xFFFBFCFE)
-                                      : Colors.white,
                                   border: isLast
                                       ? null
                                       : const Border(
                                           bottom: BorderSide(
-                                              color: Color(0xFFF1F5F9)),
+                                            color: Color(0xFFF1F5F9),
+                                          ),
                                         ),
                                 ),
                                 child: Row(
@@ -2571,16 +2699,14 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                                         ],
                                       ),
                                     ),
-                                    Expanded(
-                                      flex: 2,
-                                      child: _attBadge(status),
-                                    ),
+                                    Expanded(flex: 2, child: _attBadge(status)),
                                     Expanded(
                                       flex: 3,
                                       child: Text(
                                         timestamp != null
-                                            ? DateFormat('hh:mm a, MMM dd')
-                                                .format(timestamp)
+                                            ? DateFormat(
+                                                'hh:mm a, MMM dd',
+                                              ).format(timestamp)
                                             : '—',
                                         style: GoogleFonts.inter(
                                           fontSize: 13,
@@ -2599,8 +2725,9 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                                           color: hasFeedback
                                               ? const Color(0xFFECFDF5)
                                               : const Color(0xFFF1F5F9),
-                                          borderRadius:
-                                              BorderRadius.circular(12),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
                                         ),
                                         child: Text(
                                           hasFeedback ? '✓ Given' : 'Pending',
@@ -2626,7 +2753,8 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                               ),
                               decoration: BoxDecoration(
                                 border: const Border(
-                                    top: BorderSide(color: _C.border)),
+                                  top: BorderSide(color: _C.border),
+                                ),
                                 color: _C.surface,
                                 borderRadius: const BorderRadius.vertical(
                                   bottom: Radius.circular(_DS.radiusMd),
@@ -2685,10 +2813,7 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
     return Container(
       width: 8,
       height: 8,
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-      ),
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
     );
   }
 
@@ -2696,8 +2821,9 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
   Future<void> _exportAttendees(
     String choice,
     List<Map<String, dynamic>> attendees,
-    _AnalyticsData data,
-  ) async {
+    _AnalyticsData data, {
+    String? eventTitleOverride,
+  }) async {
     if (attendees.isEmpty) {
       _snack('No attendees to export', isError: true);
       return;
@@ -2705,18 +2831,21 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
 
     final List<List<String>> rows = attendees.asMap().entries.map((e) {
       final a = e.value;
+      final ts = a['timestamp'] as Timestamp?;
       return <String>[
         '${e.key + 1}',
         '${a['studentName'] ?? ''}',
         '${a['studentId'] ?? ''}',
         '${a['status'] ?? ''}',
-        DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
+        ts != null ? DateFormat('yyyy-MM-dd HH:mm').format(ts.toDate()) : '—',
       ];
     }).toList();
 
+    final titleForExport = eventTitleOverride ?? _selectedAttendeeEvent;
+
     try {
       final stamp = DateFormat('yyyyMMdd').format(DateTime.now());
-      final eventTitle = _selectedAttendeeEvent.replaceAll(' ', '_');
+      final eventTitle = titleForExport.replaceAll(' ', '_');
 
       if (choice == 'csv') {
         final csv = [
@@ -2730,7 +2859,7 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
         );
       } else if (choice == 'pdf') {
         final pdfBytes = await OrgExportPdf.generateTablePdf(
-          title: 'Attendees - $_selectedAttendeeEvent',
+          title: 'Attendees - $titleForExport',
           headers: ['#', 'Student Name', 'Student ID', 'Status', 'Time In'],
           rows: rows,
         );
@@ -2748,16 +2877,33 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
 
   Widget _attBadge(String status) {
     final Map<String, (Color, Color, Color, String)> s = {
-      'present': (const Color(0xFFECFDF5), const Color(0xFF059669),
-          const Color(0xFFBBF7D0), 'PRESENT'),
-      'late': (const Color(0xFFFFFBEB), const Color(0xFFFB923C),
-          const Color(0xFFFDE68A), 'LATE'),
-      'absent': (const Color(0xFFFEF2F2), const Color(0xFFDC2626),
-          const Color(0xFFFECACA), 'ABSENT'),
+      'present': (
+        const Color(0xFFECFDF5),
+        const Color(0xFF059669),
+        const Color(0xFFBBF7D0),
+        'PRESENT',
+      ),
+      'late': (
+        const Color(0xFFFFFBEB),
+        const Color(0xFFFB923C),
+        const Color(0xFFFDE68A),
+        'LATE',
+      ),
+      'absent': (
+        const Color(0xFFFEF2F2),
+        const Color(0xFFDC2626),
+        const Color(0xFFFECACA),
+        'ABSENT',
+      ),
     };
-    final style = s[status.toLowerCase()] ??
-        (const Color(0xFFF3F4F6), const Color(0xFF6B7280),
-            const Color(0xFFE5E7EB), status.toUpperCase());
+    final style =
+        s[status.toLowerCase()] ??
+        (
+          const Color(0xFFF3F4F6),
+          const Color(0xFF6B7280),
+          const Color(0xFFE5E7EB),
+          status.toUpperCase(),
+        );
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
       decoration: BoxDecoration(
@@ -2788,34 +2934,45 @@ class _RefreshButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => OutlinedButton.icon(
-        onPressed: onTap,
-        icon: const Icon(
-          Icons.refresh_rounded,
-          size: 15,
-          color: UpriseColors.primaryDark,
-        ),
-        label: Text(
-          'Refresh',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 12.5,
-            color: UpriseColors.primaryDark,
-          ),
-        ),
-        style: OutlinedButton.styleFrom(
-          side: BorderSide(color: UpriseColors.primaryDark.withOpacity(0.35)),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          minimumSize: Size.zero,
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      );
+    onPressed: onTap,
+    icon: const Icon(
+      Icons.refresh_rounded,
+      size: 15,
+      color: UpriseColors.primaryDark,
+    ),
+    label: Text(
+      'Refresh',
+      style: GoogleFonts.beVietnamPro(
+        fontSize: 12.5,
+        color: UpriseColors.primaryDark,
+      ),
+    ),
+    style: OutlinedButton.styleFrom(
+      side: BorderSide(color: UpriseColors.primaryDark.withOpacity(0.35)),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      minimumSize: Size.zero,
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+    ),
+  );
 }
 
 class _StatCardData {
   final String label, value;
   final IconData icon;
   final Color color;
-  const _StatCardData(this.label, this.value, this.icon, this.color);
+  final bool isSelected;
+  final VoidCallback? onTap;
+  final double valueFontSize;
+  const _StatCardData(
+    this.label,
+    this.value,
+    this.icon,
+    this.color, {
+    this.isSelected = false,
+    this.onTap,
+    this.valueFontSize = 28,
+  });
 }
 
 class _StatCard extends StatelessWidget {
@@ -2823,136 +2980,74 @@ class _StatCard extends StatelessWidget {
   const _StatCard(this.c);
 
   @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(20),
+  Widget build(BuildContext context) => MouseRegion(
+    cursor: SystemMouseCursors.click,
+    child: GestureDetector(
+      onTap: c.onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: _C.white,
-          borderRadius: BorderRadius.circular(_DS.radiusMd),
-          border: Border.all(color: _C.border.withOpacity(0.5)),
-          boxShadow: _DS.cardShadow,
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [c.color.withOpacity(0.15), c.color.withOpacity(0.05)],
-                ),
-                borderRadius: BorderRadius.circular(_DS.radiusMd),
-              ),
-              child: Icon(c.icon, color: c.color, size: 22),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    c.label,
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      color: _C.muted,
-                      fontWeight: FontWeight.w500,
-                      letterSpacing: 0.3,
-                    ),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: c.isSelected ? c.color : _C.border.withAlpha(128),
+            width: c.isSelected ? 2 : 1,
+          ),
+          boxShadow: c.isSelected
+              ? [
+                  BoxShadow(
+                    color: c.color.withAlpha(46),
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
+                ]
+              : _DS.cardShadow,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: c.color.withAlpha(26),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(c.icon, color: c.color, size: 20),
+                ),
+                Flexible(
+                  child: Text(
                     c.value,
-                    style: GoogleFonts.inter(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w700,
-                      color: _C.charcoal,
-                      letterSpacing: -0.5,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-}
-
-class _KpiCard extends StatelessWidget {
-  final IconData icon;
-  final String label, value, sub;
-  final Color color;
-  const _KpiCard({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.sub,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: _C.white,
-          borderRadius: BorderRadius.circular(_DS.radiusMd),
-          border: Border.all(color: _C.border.withOpacity(0.5)),
-          boxShadow: _DS.cardShadow,
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [color.withOpacity(0.15), color.withOpacity(0.05)],
-                ),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: color, size: 20),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      color: _C.muted,
-                      fontWeight: FontWeight.w500,
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    value,
+                    textAlign: TextAlign.right,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: c.valueFontSize,
+                      fontWeight: FontWeight.w800,
                       color: _C.charcoal,
-                      letterSpacing: -0.3,
                     ),
                   ),
-                  Text(
-                    sub,
-                    style: GoogleFonts.inter(
-                      fontSize: 10,
-                      color: _C.muted,
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-                ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              c.label,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 11,
+                color: _C.muted,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],
         ),
-      );
+      ),
+    ),
+  );
 }
 
 class _SatisfactionCard extends StatelessWidget {
@@ -3058,8 +3153,8 @@ class _SatisfactionCard extends StatelessWidget {
                                 color: score >= 4.0
                                     ? const Color(0xFFECFDF5)
                                     : score >= 3.0
-                                        ? const Color(0xFFFFFBEB)
-                                        : const Color(0xFFFEF2F2),
+                                    ? const Color(0xFFFFFBEB)
+                                    : const Color(0xFFFEF2F2),
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text(
@@ -3563,35 +3658,35 @@ class _Chip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: UpriseColors.primaryDark.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(99),
-          border: Border.all(color: UpriseColors.primaryDark.withOpacity(0.2)),
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+    decoration: BoxDecoration(
+      color: UpriseColors.primaryDark.withOpacity(0.08),
+      borderRadius: BorderRadius.circular(99),
+      border: Border.all(color: UpriseColors.primaryDark.withOpacity(0.2)),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 11,
+            color: UpriseColors.primaryDark,
+            fontWeight: FontWeight.w500,
+          ),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              label,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 11,
-                color: UpriseColors.primaryDark,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(width: 4),
-            GestureDetector(
-              onTap: onRemove,
-              child: const Icon(
-                Icons.close,
-                size: 11,
-                color: UpriseColors.primaryDark,
-              ),
-            ),
-          ],
+        const SizedBox(width: 4),
+        GestureDetector(
+          onTap: onRemove,
+          child: const Icon(
+            Icons.close,
+            size: 11,
+            color: UpriseColors.primaryDark,
+          ),
         ),
-      );
+      ],
+    ),
+  );
 }
 
 class _FilterDropdown extends StatelessWidget {
@@ -3606,32 +3701,32 @@ class _FilterDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        height: 42,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: _C.border),
+    height: 42,
+    padding: const EdgeInsets.symmetric(horizontal: 12),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: _C.border),
+    ),
+    child: DropdownButtonHideUnderline(
+      child: DropdownButton<String>(
+        value: value,
+        icon: const Icon(
+          Icons.keyboard_arrow_down_rounded,
+          size: 17,
+          color: _C.muted,
         ),
-        child: DropdownButtonHideUnderline(
-          child: DropdownButton<String>(
-            value: value,
-            icon: const Icon(
-              Icons.keyboard_arrow_down_rounded,
-              size: 17,
-              color: _C.muted,
-            ),
-            style: GoogleFonts.beVietnamPro(fontSize: 13, color: _C.charcoal),
-            items: items
-                .map(
-                  (s) => DropdownMenuItem(
-                    value: s,
-                    child: Text(s, style: GoogleFonts.beVietnamPro(fontSize: 13)),
-                  ),
-                )
-                .toList(),
-            onChanged: onChanged,
-          ),
-        ),
-      );
+        style: GoogleFonts.beVietnamPro(fontSize: 13, color: _C.charcoal),
+        items: items
+            .map(
+              (s) => DropdownMenuItem(
+                value: s,
+                child: Text(s, style: GoogleFonts.beVietnamPro(fontSize: 13)),
+              ),
+            )
+            .toList(),
+        onChanged: onChanged,
+      ),
+    ),
+  );
 }

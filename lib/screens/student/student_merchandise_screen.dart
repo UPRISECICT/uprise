@@ -8,7 +8,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../../widgets/student/app_colors.dart';
-
+import '../../widgets/product_spin_viewer.dart';
 
 // ─────────────────────────────────────────────────────────────
 // Models
@@ -29,14 +29,14 @@ class ProductVariant {
   });
 
   factory ProductVariant.fromMap(Map<String, dynamic> m) => ProductVariant(
-        id: m['id'] as String? ?? '',
-        size: m['size'] as String? ?? '',
-        color: m['color'] as String? ?? '',
-        stock: ((m['stock'] ?? 0) as num).toInt(),
-        priceOffset: m['priceOffset'] != null
-            ? (m['priceOffset'] as num).toDouble()
-            : null,
-      );
+    id: m['id'] as String? ?? '',
+    size: m['size'] as String? ?? '',
+    color: m['color'] as String? ?? '',
+    stock: ((m['stock'] ?? 0) as num).toInt(),
+    priceOffset: m['priceOffset'] != null
+        ? (m['priceOffset'] as num).toDouble()
+        : null,
+  );
 }
 
 class _Product {
@@ -53,6 +53,10 @@ class _Product {
   final String status;
   final double costPrice;
   final List<ProductVariant> variants;
+  // Angle photos for the drag-to-rotate 360 viewer — raw base64 strings
+  // (not data-url-wrapped like imageBase64 above), same shape ProductSpinViewer
+  // expects and the same shape the org side writes them in.
+  final List<String> rotationPhotos;
 
   const _Product({
     required this.id,
@@ -68,15 +72,22 @@ class _Product {
     this.status = 'available',
     this.costPrice = 0,
     this.variants = const [],
+    this.rotationPhotos = const [],
   });
+
+  // Falls back to the single main photo when no dedicated rotation set was
+  // uploaded, so the spin viewer always has at least one frame to show.
+  List<String> get displayPhotos => rotationPhotos.isNotEmpty
+      ? rotationPhotos
+      : (imageBase64.isNotEmpty ? [imageBase64] : []);
 
   factory _Product.fromFirestore(DocumentSnapshot doc) {
     final d = doc.data() as Map<String, dynamic>;
     final rawVariants = d['variants'];
-    
+
     String imageBase64 = d['imageBase64'] as String? ?? '';
     String imageFormat = d['imageFormat'] as String? ?? 'jpg';
-    
+
     String imageDataUrl = '';
     if (imageBase64.isNotEmpty) {
       if (imageBase64.startsWith('data:image')) {
@@ -85,7 +96,7 @@ class _Product {
         imageDataUrl = 'data:image/$imageFormat;base64,$imageBase64';
       }
     }
-    
+
     return _Product(
       id: doc.id,
       orgId: d['orgId'] as String? ?? '',
@@ -101,10 +112,11 @@ class _Product {
       costPrice: (d['costPrice'] ?? 0).toDouble(),
       variants: rawVariants is List
           ? rawVariants
-              .whereType<Map<String, dynamic>>()
-              .map(ProductVariant.fromMap)
-              .toList()
+                .whereType<Map<String, dynamic>>()
+                .map(ProductVariant.fromMap)
+                .toList()
           : const [],
+      rotationPhotos: ((d['rotationPhotos'] as List?) ?? []).cast<String>(),
     );
   }
 
@@ -146,8 +158,7 @@ class StudentMerchandiseScreen extends StatefulWidget {
       _StudentMerchandiseScreenState();
 }
 
-class _StudentMerchandiseScreenState
-    extends State<StudentMerchandiseScreen>
+class _StudentMerchandiseScreenState extends State<StudentMerchandiseScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   int _selectedTab = 0;
@@ -168,7 +179,7 @@ class _StudentMerchandiseScreenState
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this)
+    _tabController = TabController(length: 1, vsync: this)
       ..addListener(() {
         if (_tabController.indexIsChanging) {
           setState(() => _selectedTab = _tabController.index);
@@ -231,8 +242,10 @@ class _StudentMerchandiseScreenState
             .get();
         if (userDoc.exists) {
           final ud = userDoc.data() ?? {};
-          orgId = (ud['orgId'] as String?) ??
-              (ud['organizationId'] as String?) ?? '';
+          orgId =
+              (ud['orgId'] as String?) ??
+              (ud['organizationId'] as String?) ??
+              '';
         }
       }
 
@@ -257,13 +270,15 @@ class _StudentMerchandiseScreenState
       if (existing.isNotEmpty) {
         if (existing.first.quantity < maxStock) existing.first.quantity++;
       } else {
-        _cart.add(_CartItem(
-          product: product,
-          variantId: variantId,
-          variantSize: variant?.size,
-          variantColor: variant?.color,
-          variantPrice: variantPrice,
-        ));
+        _cart.add(
+          _CartItem(
+            product: product,
+            variantId: variantId,
+            variantSize: variant?.size,
+            variantColor: variant?.color,
+            variantPrice: variantPrice,
+          ),
+        );
       }
     });
   }
@@ -271,8 +286,12 @@ class _StudentMerchandiseScreenState
   void _increaseItem(String cartKey) {
     setState(() {
       final item = _cart.firstWhere((i) => i.cartKey == cartKey);
-      final variants = item.product.variants.where((v) => v.id == item.variantId);
-      final maxStock = variants.isEmpty ? item.product.stock : variants.first.stock;
+      final variants = item.product.variants.where(
+        (v) => v.id == item.variantId,
+      );
+      final maxStock = variants.isEmpty
+          ? item.product.stock
+          : variants.first.stock;
       if (item.quantity < maxStock) item.quantity++;
     });
   }
@@ -305,72 +324,28 @@ class _StudentMerchandiseScreenState
         title: const Text(
           'Merchandise',
           style: TextStyle(
-              color: Colors.black, fontWeight: FontWeight.w600, fontSize: 18),
+            color: Colors.black,
+            fontWeight: FontWeight.w600,
+            fontSize: 18,
+          ),
         ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
-        actions: [
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              IconButton(
-                icon: Icon(Icons.shopping_cart_outlined,
-                    color: AppColors.primaryDark),
-                onPressed: _cart.isEmpty
-                    ? null
-                    : () => _openCart(context),
-              ),
-              if (_cartCount() > 0)
-                Positioned(
-                  top: 6,
-                  right: 6,
-                  child: Container(
-                    width: 16,
-                    height: 16,
-                    decoration: BoxDecoration(
-                        color: AppColors.primaryDark, shape: BoxShape.circle),
-                    child: Center(
-                      child: Text(
-                        _cartCount().toString(),
-                        style: const TextStyle(
-                            fontSize: 9,
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ],
       ),
+      // Merch is a catalog now — no cart/checkout, so the tab row (which
+      // used to toggle Products vs. My Orders) and the cart badge are gone;
+      // that code (_addToCart, _openCart, _MyOrdersTab, _TabRow, etc.) is
+      // left defined but unused rather than deleted.
       body: _loadingOrgId
-          ? const Center(child: CircularProgressIndicator(color: AppColors.primaryDark))
-          : Column(
-              children: [
-                _TabRow(
-                  selectedTab: _selectedTab,
-                  onTap: (i) {
-                    _tabController.animateTo(i);
-                    setState(() => _selectedTab = i);
-                  },
-                ),
-                Expanded(
-                  child: TabBarView(
-                    controller: _tabController,
-                    physics: const NeverScrollableScrollPhysics(),
-                    children: [
-                      _ProductsTab(
-                        onAddToCart: _addToCart,
-                        cart: _cart,
-                      ),
-                      const _MyOrdersTab(),
-                    ],
-                  ),
-                ),
-              ],
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.primaryDark),
+            )
+          : TabBarView(
+              controller: _tabController,
+              physics: const NeverScrollableScrollPhysics(),
+              children: [_ProductsTab(onAddToCart: _addToCart, cart: _cart)],
             ),
     );
   }
@@ -479,8 +454,11 @@ class _TabPill extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
-  const _TabPill(
-      {required this.label, required this.selected, required this.onTap});
+  const _TabPill({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -513,10 +491,7 @@ class _ProductsTab extends StatefulWidget {
   final void Function(_Product, {ProductVariant? variant}) onAddToCart;
   final List<_CartItem> cart;
 
-  const _ProductsTab({
-    required this.onAddToCart,
-    required this.cart,
-  });
+  const _ProductsTab({required this.onAddToCart, required this.cart});
 
   @override
   State<_ProductsTab> createState() => _ProductsTabState();
@@ -527,7 +502,7 @@ class _ProductsTabState extends State<_ProductsTab> {
   String _selectedCategory = 'All';
   String _selectedOrg = 'All';
   final _searchCtrl = TextEditingController();
-  
+
   List<String> _categories = ['All'];
   List<String> _orgs = ['All'];
   final Map<String, String> _orgIdMap = {};
@@ -551,37 +526,39 @@ class _ProductsTabState extends State<_ProductsTab> {
           .collection('organizations')
           .where('status', isEqualTo: 'active')
           .get();
-      
+
       for (final doc in orgSnapshot.docs) {
         final name = doc.data()['name'] as String? ?? '';
         if (name.isNotEmpty) {
           _orgIdMap[name] = doc.id;
         }
       }
-      
+
       final productsSnap = await FirebaseFirestore.instance
           .collection('products')
           .where('isArchived', isEqualTo: false)
           .get();
-      
-      final categories = productsSnap.docs
-          .map((d) => d.data()['category'] as String? ?? '')
-          .where((cat) => cat.isNotEmpty)
-          .toSet()
-          .toList()
-          ..sort();
-      
+
+      final categories =
+          productsSnap.docs
+              .map((d) => d.data()['category'] as String? ?? '')
+              .where((cat) => cat.isNotEmpty)
+              .toSet()
+              .toList()
+            ..sort();
+
       final productOrgIds = productsSnap.docs
           .map((d) => d.data()['orgId'] as String? ?? '')
           .where((id) => id.isNotEmpty)
           .toSet();
-      
-      final filteredOrgs = _orgIdMap.entries
-          .where((entry) => productOrgIds.contains(entry.value))
-          .map((entry) => entry.key)
-          .toList()
-          ..sort();
-      
+
+      final filteredOrgs =
+          _orgIdMap.entries
+              .where((entry) => productOrgIds.contains(entry.value))
+              .map((entry) => entry.key)
+              .toList()
+            ..sort();
+
       setState(() {
         _categories = ['All', ...categories];
         _orgs = ['All', ...filteredOrgs];
@@ -616,7 +593,11 @@ class _ProductsTabState extends State<_ProductsTab> {
                   decoration: InputDecoration(
                     hintText: 'Search merchandise…',
                     hintStyle: const TextStyle(fontSize: 13),
-                    prefixIcon: const Icon(Icons.search, size: 18, color: Colors.black38),
+                    prefixIcon: const Icon(
+                      Icons.search,
+                      size: 18,
+                      color: Colors.black38,
+                    ),
                     suffixIcon: _searchCtrl.text.isNotEmpty
                         ? IconButton(
                             icon: const Icon(Icons.clear, size: 16),
@@ -628,7 +609,10 @@ class _ProductsTabState extends State<_ProductsTab> {
                         : null,
                     filled: true,
                     fillColor: AppColors.background,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
                       borderSide: BorderSide.none,
@@ -644,13 +628,13 @@ class _ProductsTabState extends State<_ProductsTab> {
                     child: Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: _hasOrgFilter 
-                            ? AppColors.primaryDark.withOpacity(0.1) 
+                        color: _hasOrgFilter
+                            ? AppColors.primaryDark.withOpacity(0.1)
                             : AppColors.background,
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: _hasOrgFilter 
-                              ? AppColors.primaryDark 
+                          color: _hasOrgFilter
+                              ? AppColors.primaryDark
                               : Colors.transparent,
                           width: 1.5,
                         ),
@@ -658,7 +642,9 @@ class _ProductsTabState extends State<_ProductsTab> {
                       child: Icon(
                         Icons.filter_list_rounded,
                         size: 22,
-                        color: _hasOrgFilter ? AppColors.primaryDark : Colors.black38,
+                        color: _hasOrgFilter
+                            ? AppColors.primaryDark
+                            : Colors.black38,
                       ),
                     ),
                   ),
@@ -693,7 +679,7 @@ class _ProductsTabState extends State<_ProductsTab> {
             ],
           ),
         ),
-        
+
         // ── Category Chips Row ──
         if (!_loadingFilters && _categories.isNotEmpty)
           Container(
@@ -711,7 +697,9 @@ class _ProductsTabState extends State<_ProductsTab> {
                   child: Container(
                     margin: const EdgeInsets.only(right: 8),
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 6),
+                      horizontal: 14,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: sel ? AppColors.primaryDark : Colors.transparent,
                       borderRadius: BorderRadius.circular(16),
@@ -740,7 +728,10 @@ class _ProductsTabState extends State<_ProductsTab> {
             builder: (ctx, snap) {
               if (snap.connectionState == ConnectionState.waiting) {
                 return const Center(
-                    child: CircularProgressIndicator(color: AppColors.primaryDark));
+                  child: CircularProgressIndicator(
+                    color: AppColors.primaryDark,
+                  ),
+                );
               }
               if (snap.hasError) {
                 return _EmptyHint(
@@ -770,9 +761,11 @@ class _ProductsTabState extends State<_ProductsTab> {
               if (_search.isNotEmpty) {
                 final q = _search.toLowerCase();
                 products = products
-                    .where((p) =>
-                        p.name.toLowerCase().contains(q) ||
-                        p.description.toLowerCase().contains(q))
+                    .where(
+                      (p) =>
+                          p.name.toLowerCase().contains(q) ||
+                          p.description.toLowerCase().contains(q),
+                    )
                     .toList();
               }
 
@@ -783,8 +776,8 @@ class _ProductsTabState extends State<_ProductsTab> {
                   subtitle: _search.isNotEmpty
                       ? 'Try a different search term.'
                       : _hasOrgFilter
-                          ? 'No products from ${_selectedOrg} organization.'
-                          : 'No merchandise available yet.',
+                      ? 'No products from ${_selectedOrg} organization.'
+                      : 'No merchandise available yet.',
                 );
               }
 
@@ -843,10 +836,7 @@ class _ProductsTabState extends State<_ProductsTab> {
               children: [
                 const Text(
                   'Filter by Organization',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 if (_hasOrgFilter)
                   TextButton(
@@ -902,12 +892,20 @@ class _ProductsTabState extends State<_ProductsTab> {
                   title: Text(
                     org,
                     style: TextStyle(
-                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                      color: isSelected ? AppColors.primaryDark : Colors.black87,
+                      fontWeight: isSelected
+                          ? FontWeight.w600
+                          : FontWeight.normal,
+                      color: isSelected
+                          ? AppColors.primaryDark
+                          : Colors.black87,
                     ),
                   ),
                   trailing: isSelected
-                      ? const Icon(Icons.check_circle, color: AppColors.primaryDark, size: 20)
+                      ? const Icon(
+                          Icons.check_circle,
+                          color: AppColors.primaryDark,
+                          size: 20,
+                        )
                       : null,
                   onTap: () {
                     setState(() => _selectedOrg = org);
@@ -930,8 +928,11 @@ class _ProductCard extends StatelessWidget {
   final _Product product;
   final void Function({ProductVariant? variant}) onAdd;
   final int cartQty;
-  const _ProductCard(
-      {required this.product, required this.onAdd, required this.cartQty});
+  const _ProductCard({
+    required this.product,
+    required this.onAdd,
+    required this.cartQty,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -956,8 +957,9 @@ class _ProductCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ClipRRect(
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(16)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(16),
+              ),
               child: Stack(
                 children: [
                   _buildProductImage(),
@@ -971,9 +973,10 @@ class _ProductCard extends StatelessWidget {
                                 ? 'DISCONTINUED'
                                 : 'OUT OF STOCK',
                             style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold),
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       ),
@@ -989,7 +992,9 @@ class _ProductCard extends StatelessWidget {
                       right: 6,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: AppColors.primaryDark,
                           borderRadius: BorderRadius.circular(10),
@@ -997,9 +1002,10 @@ class _ProductCard extends StatelessWidget {
                         child: Text(
                           'x$cartQty in cart',
                           style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold),
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ),
@@ -1013,7 +1019,10 @@ class _ProductCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.primaryDark.withOpacity(0.08),
                       borderRadius: BorderRadius.circular(6),
@@ -1021,17 +1030,21 @@ class _ProductCard extends StatelessWidget {
                     child: Text(
                       product.category.toUpperCase(),
                       style: const TextStyle(
-                          fontSize: 8.5,
-                          color: AppColors.primaryDark,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.4),
+                        fontSize: 8.5,
+                        color: AppColors.primaryDark,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.4,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     product.name,
                     style: const TextStyle(
-                        fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.black87),
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.black87,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -1045,14 +1058,20 @@ class _ProductCard extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             if (hasVariants)
-                              Text('Starts at',
-                                  style: TextStyle(fontSize: 9, color: Colors.grey.shade500)),
+                              Text(
+                                'Starts at',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  color: Colors.grey.shade500,
+                                ),
+                              ),
                             Text(
                               '₱${fmt.format(product.price)}',
                               style: const TextStyle(
-                                  fontSize: 15.5,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.deepOrange),
+                                fontSize: 15.5,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.deepOrange,
+                              ),
                             ),
                           ],
                         ),
@@ -1064,25 +1083,37 @@ class _ProductCard extends StatelessWidget {
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
                               gradient: const LinearGradient(
-                                  colors: [Colors.deepOrange, AppColors.primaryDark]),
+                                colors: [
+                                  Colors.deepOrange,
+                                  AppColors.primaryDark,
+                                ],
+                              ),
                               shape: BoxShape.circle,
                               boxShadow: [
                                 BoxShadow(
-                                  color: AppColors.primaryDark.withOpacity(0.35),
+                                  color: AppColors.primaryDark.withOpacity(
+                                    0.35,
+                                  ),
                                   blurRadius: 8,
                                   offset: const Offset(0, 3),
                                 ),
                               ],
                             ),
-                            child: const Icon(Icons.add_shopping_cart_rounded,
-                                size: 15, color: Colors.white),
+                            child: const Icon(
+                              Icons.add_shopping_cart_rounded,
+                              size: 15,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                     ],
                   ),
                   const SizedBox(height: 7),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 3,
+                    ),
                     decoration: BoxDecoration(
                       color: product.inStock
                           ? Colors.green.withOpacity(0.1)
@@ -1093,9 +1124,13 @@ class _ProductCard extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                          product.inStock ? Icons.inventory_2_outlined : Icons.block_rounded,
+                          product.inStock
+                              ? Icons.inventory_2_outlined
+                              : Icons.block_rounded,
                           size: 10,
-                          color: product.inStock ? Colors.green.shade700 : Colors.redAccent,
+                          color: product.inStock
+                              ? Colors.green.shade700
+                              : Colors.redAccent,
                         ),
                         const SizedBox(width: 4),
                         Text(
@@ -1105,7 +1140,9 @@ class _ProductCard extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 9.5,
                             fontWeight: FontWeight.w600,
-                            color: product.inStock ? Colors.green.shade700 : Colors.redAccent,
+                            color: product.inStock
+                                ? Colors.green.shade700
+                                : Colors.redAccent,
                           ),
                         ),
                       ],
@@ -1122,7 +1159,7 @@ class _ProductCard extends StatelessWidget {
 
   Widget _buildProductImage() {
     final imageData = product.imageBase64;
-    
+
     if (imageData.isEmpty) {
       return _imgPlaceholder(product.name);
     }
@@ -1156,19 +1193,20 @@ class _ProductCard extends StatelessWidget {
   }
 
   Widget _imgPlaceholder(String name) => Container(
-        height: 120,
-        width: double.infinity,
-        color: AppColors.primaryDark.withOpacity(0.1),
-        child: Center(
-          child: Text(
-            name.isNotEmpty ? name[0].toUpperCase() : '?',
-            style: const TextStyle(
-                fontSize: 36,
-                color: AppColors.primaryDark,
-                fontWeight: FontWeight.bold),
-          ),
+    height: 120,
+    width: double.infinity,
+    color: AppColors.primaryDark.withOpacity(0.1),
+    child: Center(
+      child: Text(
+        name.isNotEmpty ? name[0].toUpperCase() : '?',
+        style: const TextStyle(
+          fontSize: 36,
+          color: AppColors.primaryDark,
+          fontWeight: FontWeight.bold,
         ),
-      );
+      ),
+    ),
+  );
 
   void _triggerAdd(BuildContext context, {bool closeParent = false}) {
     if (product.variants.isNotEmpty) {
@@ -1217,8 +1255,9 @@ class _ProductCard extends StatelessWidget {
                     width: 40,
                     height: 4,
                     decoration: BoxDecoration(
-                        color: Colors.grey.shade300,
-                        borderRadius: BorderRadius.circular(2)),
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -1228,25 +1267,31 @@ class _ProductCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                      child: Text(product.name,
-                          style: const TextStyle(
-                              fontSize: 20, fontWeight: FontWeight.bold)),
+                      child: Text(
+                        product.name,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                     const SizedBox(width: 8),
                     _StatusBadge(status: product.status),
                   ],
                 ),
                 const SizedBox(height: 4),
-                Text(product.category,
-                    style: const TextStyle(
-                        fontSize: 12, color: Colors.black38)),
+                Text(
+                  product.category,
+                  style: const TextStyle(fontSize: 12, color: Colors.black38),
+                ),
                 const SizedBox(height: 10),
                 Text(
                   '₱${fmt.format(product.price)}',
                   style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.primaryDark),
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.primaryDark,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Text(
@@ -1254,57 +1299,35 @@ class _ProductCard extends StatelessWidget {
                       ? product.description
                       : 'No description provided.',
                   style: const TextStyle(
-                      fontSize: 13, color: Colors.black54, height: 1.5),
+                    fontSize: 13,
+                    color: Colors.black54,
+                    height: 1.5,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Row(
                   children: [
+                    // "sold" is frozen at 0 for every product now that
+                    // checkout/orders are gone (nothing increments it
+                    // anymore), so it's no longer shown here — it would
+                    // always read "0 sold" and mislead rather than inform.
                     _DetailChip(
-                        icon: Icons.inventory_2_outlined,
-                        label: '${product.variants.isNotEmpty ? product.variants.fold<int>(0, (sum, v) => sum + v.stock) : product.stock} in stock'),
-                    const SizedBox(width: 8),
-                    _DetailChip(
-                        icon: Icons.sell_outlined,
-                        label: '${product.sold} sold'),
+                      icon: Icons.inventory_2_outlined,
+                      label:
+                          '${product.variants.isNotEmpty ? product.variants.fold<int>(0, (sum, v) => sum + v.stock) : product.stock} in stock',
+                    ),
                   ],
                 ),
                 if (product.variants.isNotEmpty) ...[
                   const SizedBox(height: 16),
                   const Text(
                     'Variants',
-                    style: TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w700),
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 8),
-                  _VariantsTable(
-                      product: product, basePrice: product.price),
+                  _VariantsTable(product: product, basePrice: product.price),
                 ],
                 const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed:
-                        product.inStock && product.status != 'discontinued'
-                            ? () => _triggerAdd(context, closeParent: true)
-                            : null,
-                    icon: const Icon(Icons.shopping_cart_outlined, size: 18),
-                    label: Text(
-                      product.status == 'discontinued'
-                          ? 'Discontinued'
-                          : product.inStock
-                              ? 'Add to Cart'
-                              : 'Out of Stock',
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryDark,
-                      foregroundColor: Colors.white,
-                      disabledBackgroundColor: Colors.grey.shade300,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
@@ -1313,79 +1336,42 @@ class _ProductCard extends StatelessWidget {
     );
   }
 
+  // Merch is a catalog now — no "Add to Cart" here anymore, just the photo
+  // (or 360 spin, if the org uploaded a rotation set).
   Widget _buildDetailImage() {
-    final imageData = product.imageBase64;
-    
-    if (imageData.isEmpty) {
-      return _detailPlaceholder();
-    }
-
-    try {
-      if (imageData.startsWith('data:image')) {
-        final base64String = imageData.split(',').last;
-        final bytes = base64Decode(base64String);
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Image.memory(
-            bytes,
-            height: 200,
-            width: double.infinity,
-            fit: BoxFit.cover,
-            cacheHeight: 400,
-            errorBuilder: (_, __, ___) => _detailPlaceholder(),
-          ),
-        );
-      } else {
-        final bytes = base64Decode(imageData);
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Image.memory(
-            bytes,
-            height: 200,
-            width: double.infinity,
-            fit: BoxFit.cover,
-            cacheHeight: 400,
-            errorBuilder: (_, __, ___) => _detailPlaceholder(),
-          ),
-        );
-      }
-    } catch (e) {
-      return _detailPlaceholder();
-    }
+    final photos = product.displayPhotos;
+    if (photos.isEmpty) return _detailPlaceholder();
+    return ProductSpinViewer(photosBase64: photos, height: 200);
   }
 
   Widget _detailPlaceholder() => Container(
-        height: 200,
-        decoration: BoxDecoration(
-          color: AppColors.primaryDark.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
+    height: 200,
+    decoration: BoxDecoration(
+      color: AppColors.primaryDark.withOpacity(0.1),
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(
+          Icons.image_not_supported_outlined,
+          size: 48,
+          color: Colors.grey.shade400,
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.image_not_supported_outlined,
-              size: 48,
-              color: Colors.grey.shade400,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'No Image Available',
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.grey.shade500,
-              ),
-            ),
-          ],
+        const SizedBox(height: 8),
+        Text(
+          'No Image Available',
+          style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
         ),
-      );
+      ],
+    ),
+  );
 }
 
 class _VariantPickerSheet extends StatefulWidget {
   final _Product product;
   final void Function(ProductVariant) onSelect;
-  const _VariantPickerSheet(
-      {required this.product, required this.onSelect});
+  const _VariantPickerSheet({required this.product, required this.onSelect});
 
   @override
   State<_VariantPickerSheet> createState() => _VariantPickerSheetState();
@@ -1445,16 +1431,24 @@ class _VariantPickerSheetState extends State<_VariantPickerSheet> {
               final inStock = v.stock > 0;
 
               return GestureDetector(
-                onTap: inStock ? () => setState(() => _selectedIndex = i) : null,
+                onTap: inStock
+                    ? () => setState(() => _selectedIndex = i)
+                    : null,
                 child: Container(
                   margin: const EdgeInsets.only(bottom: 8),
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 12),
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
-                    color: selected ? AppColors.primaryDark.withOpacity(0.1) : AppColors.background,
+                    color: selected
+                        ? AppColors.primaryDark.withOpacity(0.1)
+                        : AppColors.background,
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: selected ? AppColors.primaryDark : Colors.transparent,
+                      color: selected
+                          ? AppColors.primaryDark
+                          : Colors.transparent,
                       width: 1.5,
                     ),
                   ),
@@ -1487,9 +1481,7 @@ class _VariantPickerSheetState extends State<_VariantPickerSheet> {
                               ),
                             const SizedBox(height: 2),
                             Text(
-                              inStock
-                                  ? '${v.stock} left'
-                                  : 'Out of stock',
+                              inStock ? '${v.stock} left' : 'Out of stock',
                               style: TextStyle(
                                 fontSize: 11,
                                 color: inStock
@@ -1505,14 +1497,19 @@ class _VariantPickerSheetState extends State<_VariantPickerSheet> {
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
-                          color: inStock ? AppColors.primaryDark : Colors.black38,
+                          color: inStock
+                              ? AppColors.primaryDark
+                              : Colors.black38,
                         ),
                       ),
                       if (selected)
                         const Padding(
                           padding: EdgeInsets.only(left: 8),
-                          child: Icon(Icons.check_circle,
-                              color: AppColors.primaryDark, size: 18),
+                          child: Icon(
+                            Icons.check_circle,
+                            color: AppColors.primaryDark,
+                            size: 18,
+                          ),
                         ),
                     ],
                   ),
@@ -1533,7 +1530,8 @@ class _VariantPickerSheetState extends State<_VariantPickerSheet> {
                 disabledBackgroundColor: Colors.grey.shade300,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
               child: const Text(
                 'Add to Cart',
@@ -1565,9 +1563,10 @@ class _DetailChip extends StatelessWidget {
         children: [
           Icon(icon, size: 13, color: Colors.black45),
           const SizedBox(width: 4),
-          Text(label,
-              style:
-                  const TextStyle(fontSize: 11, color: Colors.black54)),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 11, color: Colors.black54),
+          ),
         ],
       ),
     );
@@ -1644,18 +1643,14 @@ class _VariantsTable extends StatelessWidget {
           for (final v in product.variants)
             TableRow(
               decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(color: Colors.grey.shade100),
-                ),
+                border: Border(bottom: BorderSide(color: Colors.grey.shade100)),
               ),
               children: [
                 _cell(v.size.isNotEmpty ? v.size : '—'),
                 _cell(v.color.isNotEmpty ? v.color : '—'),
                 _cell(
                   v.stock > 0 ? '${v.stock}' : 'Out',
-                  color: v.stock > 0
-                      ? Colors.green.shade600
-                      : Colors.redAccent,
+                  color: v.stock > 0 ? Colors.green.shade600 : Colors.redAccent,
                 ),
                 _cell('₱${fmt.format(basePrice + (v.priceOffset ?? 0))}'),
               ],
@@ -1666,16 +1661,16 @@ class _VariantsTable extends StatelessWidget {
   }
 
   Widget _cell(String text, {bool header = false, Color? color}) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        child: Text(
-          text,
-          style: TextStyle(
-            fontSize: header ? 11 : 12,
-            fontWeight: header ? FontWeight.w700 : FontWeight.normal,
-            color: color ?? (header ? Colors.black54 : Colors.black87),
-          ),
-        ),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+    child: Text(
+      text,
+      style: TextStyle(
+        fontSize: header ? 11 : 12,
+        fontWeight: header ? FontWeight.w700 : FontWeight.normal,
+        color: color ?? (header ? Colors.black54 : Colors.black87),
+      ),
+    ),
+  );
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1690,7 +1685,11 @@ class _MyOrdersTab extends StatefulWidget {
 
 class _MyOrdersTabState extends State<_MyOrdersTab> {
   String _selectedFilter = 'All';
-  final List<String> _filters = ['All', 'Pending', 'Claimed'];  // ⭐ TINANGGAL ANG "Ready for Pickup"
+  final List<String> _filters = [
+    'All',
+    'Pending',
+    'Claimed',
+  ]; // ⭐ TINANGGAL ANG "Ready for Pickup"
 
   late final Stream<QuerySnapshot> _stream = () {
     final user = FirebaseAuth.instance.currentUser;
@@ -1729,38 +1728,45 @@ class _MyOrdersTabState extends State<_MyOrdersTab> {
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: selected ? AppColors.primaryDark : Colors.transparent,
+                      color: selected
+                          ? AppColors.primaryDark
+                          : Colors.transparent,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: selected ? AppColors.primaryDark : Colors.grey.shade300,
+                        color: selected
+                            ? AppColors.primaryDark
+                            : Colors.grey.shade300,
                         width: 1,
                       ),
                     ),
-                    child: Center(  // ⭐ IDINAGDAG ITO PARA I-CENTER ANG TEXT
-                    child: Text(
-                      filter,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: selected ? Colors.white : Colors.black54,
+                    child: Center(
+                      // ⭐ IDINAGDAG ITO PARA I-CENTER ANG TEXT
+                      child: Text(
+                        filter,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: selected ? Colors.white : Colors.black54,
+                        ),
                       ),
                     ),
                   ),
-                ),
                 );
               },
             ),
           ),
         ),
-    
+
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
             stream: _stream,
             builder: (ctx, snap) {
               if (snap.connectionState == ConnectionState.waiting) {
                 return const Center(
-                  child: CircularProgressIndicator(color: AppColors.primaryDark),
+                  child: CircularProgressIndicator(
+                    color: AppColors.primaryDark,
+                  ),
                 );
               }
               if (snap.hasError) {
@@ -1791,8 +1797,8 @@ class _MyOrdersTabState extends State<_MyOrdersTab> {
               if (docs.isEmpty) {
                 return _EmptyHint(
                   icon: Icons.receipt_long_outlined,
-                  title: _selectedFilter == 'All' 
-                      ? 'No orders yet' 
+                  title: _selectedFilter == 'All'
+                      ? 'No orders yet'
                       : 'No $_selectedFilter orders',
                   subtitle: _selectedFilter == 'All'
                       ? 'Your order history will appear here.'
@@ -1823,8 +1829,9 @@ class _OrderTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final d = doc.data() as Map<String, dynamic>;
-    final orderId = d['orderId'] as String?
-        ?? 'ORD-${doc.id.substring(0, 6).toUpperCase()}';
+    final orderId =
+        d['orderId'] as String? ??
+        'ORD-${doc.id.substring(0, 6).toUpperCase()}';
     final total = (d['total'] ?? 0).toDouble();
     final ts = d['createdAt'] as Timestamp?;
     final dateStr = ts != null
@@ -1834,11 +1841,11 @@ class _OrderTile extends StatelessWidget {
     final pickupStatus = (d['pickupStatus'] as String?) ?? 'Pending';
     final fmt = NumberFormat('#,##0.00');
 
-    final statusColor = pickupStatus == 'Ready for Pickup' 
-        ? const Color(0xFF2563EB) 
-        : pickupStatus == 'Claimed' 
-            ? const Color(0xFF059669) 
-            : AppColors.primaryDark;
+    final statusColor = pickupStatus == 'Ready for Pickup'
+        ? const Color(0xFF2563EB)
+        : pickupStatus == 'Claimed'
+        ? const Color(0xFF059669)
+        : AppColors.primaryDark;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -1949,7 +1956,8 @@ class _OrderTile extends StatelessWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
-                            if (m['variantSize'] != null && m['variantSize'].toString().isNotEmpty)
+                            if (m['variantSize'] != null &&
+                                m['variantSize'].toString().isNotEmpty)
                               Text(
                                 'Size: ${m['variantSize']}',
                                 style: const TextStyle(
@@ -1987,10 +1995,7 @@ class _OrderTile extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 14),
               child: Text(
                 '+${items.length - 2} more item(s)',
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: Colors.grey,
-                ),
+                style: const TextStyle(fontSize: 11, color: Colors.grey),
               ),
             ),
 
@@ -2012,10 +2017,7 @@ class _OrderTile extends StatelessWidget {
                     const SizedBox(width: 6),
                     Text(
                       '${items.length} item(s)',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey,
-                      ),
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                   ],
                 ),
@@ -2023,10 +2025,7 @@ class _OrderTile extends StatelessWidget {
                   children: [
                     const Text(
                       'Total: ',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey,
-                      ),
+                      style: TextStyle(fontSize: 13, color: Colors.grey),
                     ),
                     Text(
                       '₱${fmt.format(total)}',
@@ -2048,7 +2047,7 @@ class _OrderTile extends StatelessWidget {
 
   Widget _buildItemImage(Map<String, dynamic> item) {
     final imageBase64 = item['imageBase64'] as String? ?? '';
-    
+
     if (imageBase64.isEmpty) {
       return Container(
         width: 50,
@@ -2160,8 +2159,7 @@ class _CartSheet extends StatelessWidget {
     required this.onOrderPlaced,
   });
 
-  double get _total =>
-      cart.fold(0.0, (sum, i) => sum + i.subtotal);
+  double get _total => cart.fold(0.0, (sum, i) => sum + i.subtotal);
 
   @override
   Widget build(BuildContext context) {
@@ -2182,19 +2180,22 @@ class _CartSheet extends StatelessWidget {
             height: 4,
             margin: const EdgeInsets.symmetric(vertical: 12),
             decoration: BoxDecoration(
-                color: Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(2)),
+              color: Colors.grey.shade300,
+              borderRadius: BorderRadius.circular(2),
+            ),
           ),
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 20),
             child: Row(
               children: [
-                Icon(Icons.shopping_cart_outlined, color: AppColors.primaryDark),
+                Icon(
+                  Icons.shopping_cart_outlined,
+                  color: AppColors.primaryDark,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   'Your Cart',
-                  style: TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
@@ -2215,14 +2216,18 @@ class _CartSheet extends StatelessWidget {
                 : ListView(
                     shrinkWrap: true,
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 8),
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                     children: cart
-                        .map((item) => _CartItemRow(
-                              item: item,
-                              onIncrease: () => onIncrease(item.cartKey),
-                              onDecrease: () => onDecrease(item.cartKey),
-                              onRemove: () => onRemove(item.cartKey),
-                            ))
+                        .map(
+                          (item) => _CartItemRow(
+                            item: item,
+                            onIncrease: () => onIncrease(item.cartKey),
+                            onDecrease: () => onDecrease(item.cartKey),
+                            onRemove: () => onRemove(item.cartKey),
+                          ),
+                        )
                         .toList(),
                   ),
           ),
@@ -2235,7 +2240,11 @@ class _CartSheet extends StatelessWidget {
               children: [
                 const Text(
                   'Payment Method',
-                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.black54),
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black54,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Row(
@@ -2280,15 +2289,17 @@ class _CartSheet extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Total',
-                    style: TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.bold)),
+                const Text(
+                  'Total',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                ),
                 Text(
                   '₱${fmt.format(_total)}',
                   style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.primaryDark),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.primaryDark,
+                  ),
                 ),
               ],
             ),
@@ -2308,12 +2319,15 @@ class _CartSheet extends StatelessWidget {
                   disabledBackgroundColor: Colors.grey.shade300,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 child: Text(
                   paymentMethod == 'GCash' ? 'Pay with GCash' : 'Place Order',
                   style: const TextStyle(
-                      fontWeight: FontWeight.w700, fontSize: 15),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                  ),
                 ),
               ),
             ),
@@ -2334,20 +2348,29 @@ class _CartSheet extends StatelessWidget {
   bool _validateSingleOrg(BuildContext context) {
     final cartOrgIds = cart.map((i) => i.product.orgId).toSet();
     if (cartOrgIds.length > 1) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Your cart has items from more than one organization. Please order from one organization at a time.'),
-        backgroundColor: Colors.redAccent,
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Your cart has items from more than one organization. Please order from one organization at a time.',
+          ),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
       return false;
     }
     return true;
   }
 
-  Future<({String customerName, String studentSection})> _loadCustomerInfo(String uid) async {
+  Future<({String customerName, String studentSection})> _loadCustomerInfo(
+    String uid,
+  ) async {
     String customerName = '';
     String studentSection = '';
     try {
-      final doc = await FirebaseFirestore.instance.collection('students').doc(uid).get();
+      final doc = await FirebaseFirestore.instance
+          .collection('students')
+          .doc(uid)
+          .get();
       if (doc.exists) {
         customerName = doc.data()?['fullName'] as String? ?? '';
         studentSection = doc.data()?['section'] as String? ?? '';
@@ -2374,17 +2397,19 @@ class _CartSheet extends StatelessWidget {
       'section': section,
       'pickupStatus': 'Pending',
       'items': cart
-          .map((i) => {
-                'productId': i.product.id,
-                'name': i.product.name,
-                'variantId': i.variantId ?? '',
-                'variantSize': i.variantSize ?? '',
-                'variantColor': i.variantColor ?? '',
-                'quantity': i.quantity,
-                'price': i.variantPrice ?? i.product.price,
-                'totalPrice': i.subtotal,
-                'imageBase64': i.product.imageBase64,
-              })
+          .map(
+            (i) => {
+              'productId': i.product.id,
+              'name': i.product.name,
+              'variantId': i.variantId ?? '',
+              'variantSize': i.variantSize ?? '',
+              'variantColor': i.variantColor ?? '',
+              'quantity': i.quantity,
+              'price': i.variantPrice ?? i.product.price,
+              'totalPrice': i.subtotal,
+              'imageBase64': i.product.imageBase64,
+            },
+          )
           .toList(),
       'total': _total,
       'createdAt': FieldValue.serverTimestamp(),
@@ -2401,15 +2426,16 @@ class _CartSheet extends StatelessWidget {
     final orderId =
         'ORD-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
 
-    final orderData = _buildBaseOrderData(
-      orderId: orderId,
-      userId: user.uid,
-      customerName: info.customerName,
-      customerEmail: user.email ?? '',
-      section: info.studentSection,
-    )
-      ..['paymentMethod'] = 'Cash on Pickup'
-      ..['status'] = 'pending';
+    final orderData =
+        _buildBaseOrderData(
+            orderId: orderId,
+            userId: user.uid,
+            customerName: info.customerName,
+            customerEmail: user.email ?? '',
+            section: info.studentSection,
+          )
+          ..['paymentMethod'] = 'Cash on Pickup'
+          ..['status'] = 'pending';
 
     if (!context.mounted) return;
     await _runOrderTransaction(
@@ -2428,17 +2454,23 @@ class _CartSheet extends StatelessWidget {
 
     final reference = gcashRefController.text.trim();
     if (reference.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Please enter your GCash reference number.'),
-        backgroundColor: Colors.redAccent,
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter your GCash reference number.'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
       return;
     }
     if (gcashNumber.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('This organization hasn\'t set up GCash payments yet. Please choose Cash on Pickup.'),
-        backgroundColor: Colors.redAccent,
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'This organization hasn\'t set up GCash payments yet. Please choose Cash on Pickup.',
+          ),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
       return;
     }
 
@@ -2446,20 +2478,23 @@ class _CartSheet extends StatelessWidget {
     final orderId =
         'ORD-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
 
-    final orderData = _buildBaseOrderData(
-      orderId: orderId,
-      userId: user.uid,
-      customerName: info.customerName,
-      customerEmail: user.email ?? '',
-      section: info.studentSection,
-    )
-      ..['paymentMethod'] = 'GCash'
-      ..['status'] = 'pending'
-      ..['paymentVerified'] = false
-      ..['gcashReferenceNumber'] = reference;
+    final orderData =
+        _buildBaseOrderData(
+            orderId: orderId,
+            userId: user.uid,
+            customerName: info.customerName,
+            customerEmail: user.email ?? '',
+            section: info.studentSection,
+          )
+          ..['paymentMethod'] = 'GCash'
+          ..['status'] = 'pending'
+          ..['paymentVerified'] = false
+          ..['gcashReferenceNumber'] = reference;
     if (gcashProofBase64.isNotEmpty) {
       orderData['gcashProofBase64'] = gcashProofBase64;
-      orderData['gcashProofFormat'] = gcashProofFormat.isNotEmpty ? gcashProofFormat : 'jpg';
+      orderData['gcashProofFormat'] = gcashProofFormat.isNotEmpty
+          ? gcashProofFormat
+          : 'jpg';
     }
 
     if (!context.mounted) return;
@@ -2494,7 +2529,9 @@ class _CartSheet extends StatelessWidget {
         for (final id in productIds) {
           final snap = snaps[id]!;
           if (!snap.exists) {
-            throw Exception('A product in your cart is no longer available. Please remove it and try again.');
+            throw Exception(
+              'A product in your cart is no longer available. Please remove it and try again.',
+            );
           }
           final d = snap.data() as Map<String, dynamic>;
           productState[id] = {
@@ -2502,9 +2539,9 @@ class _CartSheet extends StatelessWidget {
             'status': (d['status'] ?? 'available') as String,
             'variants': (d['variants'] is List)
                 ? (d['variants'] as List)
-                    .whereType<Map<String, dynamic>>()
-                    .map((v) => Map<String, dynamic>.from(v))
-                    .toList()
+                      .whereType<Map<String, dynamic>>()
+                      .map((v) => Map<String, dynamic>.from(v))
+                      .toList()
                 : <Map<String, dynamic>>[],
             'variantsModified': false,
           };
@@ -2513,10 +2550,11 @@ class _CartSheet extends StatelessWidget {
         for (final item in cart) {
           final state = productState[item.product.id]!;
           if (state['status'] == 'discontinued') {
-            throw Exception('${item.product.name} is no longer available for order.');
+            throw Exception(
+              '${item.product.name} is no longer available for order.',
+            );
           }
-          final variantList =
-              state['variants'] as List<Map<String, dynamic>>;
+          final variantList = state['variants'] as List<Map<String, dynamic>>;
           final hasVariant =
               item.variantId != null && item.variantId!.isNotEmpty;
 
@@ -2524,23 +2562,33 @@ class _CartSheet extends StatelessWidget {
           final int logNewStock;
 
           if (hasVariant) {
-            final idx =
-                variantList.indexWhere((v) => v['id'] == item.variantId);
+            final idx = variantList.indexWhere(
+              (v) => v['id'] == item.variantId,
+            );
             if (idx == -1) {
-              throw Exception('The selected option for ${item.product.name} is no longer available.');
+              throw Exception(
+                'The selected option for ${item.product.name} is no longer available.',
+              );
             }
             logOldStock = (variantList[idx]['stock'] ?? 0) as int;
             if (item.quantity > logOldStock) {
-              throw Exception('Only $logOldStock left of ${item.product.name}.');
+              throw Exception(
+                'Only $logOldStock left of ${item.product.name}.',
+              );
             }
             logNewStock = logOldStock - item.quantity;
             variantList[idx]['stock'] = logNewStock;
             state['variantsModified'] = true;
-            state['stock'] = ((state['stock'] as int) - item.quantity).clamp(0, 999999);
+            state['stock'] = ((state['stock'] as int) - item.quantity).clamp(
+              0,
+              999999,
+            );
           } else {
             logOldStock = state['stock'] as int;
             if (item.quantity > logOldStock) {
-              throw Exception('Only $logOldStock left of ${item.product.name}.');
+              throw Exception(
+                'Only $logOldStock left of ${item.product.name}.',
+              );
             }
             logNewStock = logOldStock - item.quantity;
             state['stock'] = logNewStock;
@@ -2562,8 +2610,7 @@ class _CartSheet extends StatelessWidget {
 
         for (final entry in productState.entries) {
           final state = entry.value;
-          final variantList =
-              state['variants'] as List<Map<String, dynamic>>;
+          final variantList = state['variants'] as List<Map<String, dynamic>>;
           final update = <String, dynamic>{'stock': state['stock']};
           if (state['variantsModified'] as bool) {
             update['variants'] = variantList;
@@ -2571,9 +2618,14 @@ class _CartSheet extends StatelessWidget {
           final currentStatus = state['status'] as String;
           if (currentStatus != 'discontinued') {
             final effectiveStock = variantList.isNotEmpty
-                ? variantList.fold<int>(0, (s, v) => s + ((v['stock'] ?? 0) as int))
+                ? variantList.fold<int>(
+                    0,
+                    (s, v) => s + ((v['stock'] ?? 0) as int),
+                  )
                 : state['stock'] as int;
-            update['status'] = effectiveStock == 0 ? 'out_of_stock' : 'available';
+            update['status'] = effectiveStock == 0
+                ? 'out_of_stock'
+                : 'available';
           }
           txn.update(db.collection('products').doc(entry.key), update);
         }
@@ -2629,8 +2681,11 @@ class _GcashProofPanelState extends State<_GcashProofPanel> {
   Future<void> _pickProof() async {
     setState(() => _picking = true);
     try {
-      final picked = await ImagePicker()
-          .pickImage(source: ImageSource.gallery, imageQuality: 60, maxWidth: 1000);
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 60,
+        maxWidth: 1000,
+      );
       if (picked != null) {
         final bytes = await picked.readAsBytes();
         final ext = picked.path.split('.').last.toLowerCase();
@@ -2638,10 +2693,14 @@ class _GcashProofPanelState extends State<_GcashProofPanel> {
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Could not attach screenshot. You can still place the order without it.'),
-          backgroundColor: Colors.redAccent,
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not attach screenshot. You can still place the order without it.',
+            ),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _picking = false);
@@ -2650,10 +2709,12 @@ class _GcashProofPanelState extends State<_GcashProofPanel> {
 
   void _copyNumber() {
     Clipboard.setData(ClipboardData(text: widget.gcashNumber));
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text('GCash number copied'),
-      duration: Duration(seconds: 1),
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('GCash number copied'),
+        duration: Duration(seconds: 1),
+      ),
+    );
   }
 
   @override
@@ -2663,7 +2724,9 @@ class _GcashProofPanelState extends State<_GcashProofPanel> {
     if (widget.loading) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 12),
-        child: Center(child: CircularProgressIndicator(color: AppColors.primaryDark)),
+        child: Center(
+          child: CircularProgressIndicator(color: AppColors.primaryDark),
+        ),
       );
     }
 
@@ -2703,7 +2766,10 @@ class _GcashProofPanelState extends State<_GcashProofPanel> {
                   Expanded(
                     child: Text(
                       '${widget.gcashName.isNotEmpty ? widget.gcashName : '—'} • ${widget.gcashNumber}',
-                      style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+                      style: const TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                   InkWell(
@@ -2711,7 +2777,11 @@ class _GcashProofPanelState extends State<_GcashProofPanel> {
                     borderRadius: BorderRadius.circular(6),
                     child: const Padding(
                       padding: EdgeInsets.all(4),
-                      child: Icon(Icons.copy_rounded, size: 16, color: AppColors.primaryDark),
+                      child: Icon(
+                        Icons.copy_rounded,
+                        size: 16,
+                        color: AppColors.primaryDark,
+                      ),
                     ),
                   ),
                 ],
@@ -2727,7 +2797,10 @@ class _GcashProofPanelState extends State<_GcashProofPanel> {
             hintText: 'e.g. 1234567890123',
             labelStyle: const TextStyle(fontSize: 12.5),
             isDense: true,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 12,
+            ),
             filled: true,
             fillColor: AppColors.background,
             border: OutlineInputBorder(
@@ -2751,9 +2824,13 @@ class _GcashProofPanelState extends State<_GcashProofPanel> {
             child: Row(
               children: [
                 Icon(
-                  widget.proofBase64.isNotEmpty ? Icons.check_circle : Icons.attach_file_rounded,
+                  widget.proofBase64.isNotEmpty
+                      ? Icons.check_circle
+                      : Icons.attach_file_rounded,
                   size: 16,
-                  color: widget.proofBase64.isNotEmpty ? Colors.green.shade600 : Colors.black45,
+                  color: widget.proofBase64.isNotEmpty
+                      ? Colors.green.shade600
+                      : Colors.black45,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -2761,9 +2838,12 @@ class _GcashProofPanelState extends State<_GcashProofPanel> {
                     _picking
                         ? 'Attaching…'
                         : widget.proofBase64.isNotEmpty
-                            ? 'Screenshot attached'
-                            : 'Attach screenshot (optional)',
-                    style: const TextStyle(fontSize: 12.5, color: Colors.black54),
+                        ? 'Screenshot attached'
+                        : 'Attach screenshot (optional)',
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      color: Colors.black54,
+                    ),
                   ),
                 ),
               ],
@@ -2795,7 +2875,9 @@ class _PaymentMethodOption extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         decoration: BoxDecoration(
-          color: selected ? AppColors.primaryDark.withAlpha(20) : AppColors.background,
+          color: selected
+              ? AppColors.primaryDark.withAlpha(20)
+              : AppColors.background,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: selected ? AppColors.primaryDark : Colors.transparent,
@@ -2805,7 +2887,11 @@ class _PaymentMethodOption extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 16, color: selected ? AppColors.primaryDark : Colors.black54),
+            Icon(
+              icon,
+              size: 16,
+              color: selected ? AppColors.primaryDark : Colors.black54,
+            ),
             const SizedBox(width: 6),
             Flexible(
               child: Text(
@@ -2858,7 +2944,9 @@ class _CartItemRow extends StatelessWidget {
                             ? item.product.name[0]
                             : '?',
                         style: const TextStyle(
-                            color: AppColors.primaryDark, fontWeight: FontWeight.bold),
+                          color: AppColors.primaryDark,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ),
@@ -2868,57 +2956,57 @@ class _CartItemRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(item.product.name,
-                    style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w600),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
-                if (item.variantSize != null &&
-                    item.variantSize!.isNotEmpty)
+                Text(
+                  item.product.name,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (item.variantSize != null && item.variantSize!.isNotEmpty)
                   Text(
                     item.variantSize!,
-                    style: const TextStyle(
-                        fontSize: 10, color: Colors.black38),
+                    style: const TextStyle(fontSize: 10, color: Colors.black38),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                 Text(
-                    '₱${fmt.format(item.variantPrice ?? item.product.price)}',
-                    style: const TextStyle(
-                        fontSize: 11, color: Colors.black45)),
+                  '₱${fmt.format(item.variantPrice ?? item.product.price)}',
+                  style: const TextStyle(fontSize: 11, color: Colors.black45),
+                ),
               ],
             ),
           ),
           Row(
             children: [
-              _QtyBtn(
-                  icon: Icons.remove,
-                  onTap: onDecrease),
+              _QtyBtn(icon: Icons.remove, onTap: onDecrease),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 child: Text(
                   item.quantity.toString(),
                   style: const TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.bold),
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
-              _QtyBtn(
-                  icon: Icons.add,
-                  onTap: onIncrease),
+              _QtyBtn(icon: Icons.add, onTap: onIncrease),
             ],
           ),
           const SizedBox(width: 8),
           Text(
             '₱${fmt.format(item.subtotal)}',
             style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: AppColors.primaryDark),
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: AppColors.primaryDark,
+            ),
           ),
           const SizedBox(width: 4),
           IconButton(
-            icon:
-                const Icon(Icons.close, size: 14, color: Colors.black38),
+            icon: const Icon(Icons.close, size: 14, color: Colors.black38),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
             onPressed: onRemove,
@@ -2945,7 +3033,11 @@ class _CartItemRow extends StatelessWidget {
             width: 44,
             height: 44,
             color: AppColors.primaryDark.withOpacity(0.1),
-            child: const Icon(Icons.image_not_supported, size: 20, color: Colors.grey),
+            child: const Icon(
+              Icons.image_not_supported,
+              size: 20,
+              color: Colors.grey,
+            ),
           ),
         );
       } else {
@@ -2961,7 +3053,11 @@ class _CartItemRow extends StatelessWidget {
             width: 44,
             height: 44,
             color: AppColors.primaryDark.withOpacity(0.1),
-            child: const Icon(Icons.image_not_supported, size: 20, color: Colors.grey),
+            child: const Icon(
+              Icons.image_not_supported,
+              size: 20,
+              color: Colors.grey,
+            ),
           ),
         );
       }
@@ -2970,7 +3066,11 @@ class _CartItemRow extends StatelessWidget {
         width: 44,
         height: 44,
         color: AppColors.primaryDark.withOpacity(0.1),
-        child: const Icon(Icons.image_not_supported, size: 20, color: Colors.grey),
+        child: const Icon(
+          Icons.image_not_supported,
+          size: 20,
+          color: Colors.grey,
+        ),
       );
     }
   }
@@ -3019,8 +3119,19 @@ class _PickupBadge extends StatelessWidget {
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
-      child: Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: fg, letterSpacing: 0.5)),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: fg,
+          letterSpacing: 0.5,
+        ),
+      ),
     );
   }
 }
@@ -3029,8 +3140,11 @@ class _EmptyHint extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
-  const _EmptyHint(
-      {required this.icon, required this.title, required this.subtitle});
+  const _EmptyHint({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -3042,16 +3156,20 @@ class _EmptyHint extends StatelessWidget {
           children: [
             Icon(icon, size: 52, color: Colors.black12),
             const SizedBox(height: 12),
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black45)),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: Colors.black45,
+              ),
+            ),
             const SizedBox(height: 4),
-            Text(subtitle,
-                style: const TextStyle(
-                    fontSize: 12, color: Colors.black38),
-                textAlign: TextAlign.center),
+            Text(
+              subtitle,
+              style: const TextStyle(fontSize: 12, color: Colors.black38),
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
       ),

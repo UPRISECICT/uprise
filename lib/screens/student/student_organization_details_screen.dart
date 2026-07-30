@@ -10,7 +10,6 @@ import 'student_broadcast_screen.dart';
 import 'student_events_screen.dart';
 import 'student_announcements_screen.dart';
 
-
 // ─────────────────────────────────────────────────────────────
 //  ORGANIZATION DETAILS SCREEN
 // ─────────────────────────────────────────────────────────────
@@ -124,9 +123,7 @@ class _StudentOrganizationsDetailsScreenState
   void _navigateToAnnouncementDetail(String announcementId) {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => const StudentAnnouncementsScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const StudentAnnouncementsScreen()),
     );
   }
 
@@ -142,9 +139,7 @@ class _StudentOrganizationsDetailsScreenState
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
-              child: CircularProgressIndicator(
-                color: AppColors.primaryDark,
-              ),
+              child: CircularProgressIndicator(color: AppColors.primaryDark),
             );
           }
 
@@ -192,10 +187,7 @@ class _StudentOrganizationsDetailsScreenState
               centerTitle: true,
               bottom: PreferredSize(
                 preferredSize: const Size.fromHeight(1),
-                child: Container(
-                  height: 1,
-                  color: Colors.grey.shade200,
-                ),
+                child: Container(height: 1, color: Colors.grey.shade200),
               ),
               actions: [
                 IconButton(
@@ -210,7 +202,10 @@ class _StudentOrganizationsDetailsScreenState
                       ),
                     );
                   },
-                  icon: Icon(Icons.radio, color: AppColors.primaryDark),
+                  icon: Icon(
+                    Icons.chat_bubble_outline_rounded,
+                    color: AppColors.primaryDark,
+                  ),
                 ),
                 const SizedBox(width: 8),
               ],
@@ -232,21 +227,24 @@ class _StudentOrganizationsDetailsScreenState
                           height: 180,
                           width: double.infinity,
                           decoration: BoxDecoration(
-                            image: (org['coverPhotoUrl'] != null && 
-                                    (org['coverPhotoUrl'] as String).isNotEmpty && 
+                            image:
+                                (org['coverPhotoUrl'] != null &&
+                                    (org['coverPhotoUrl'] as String)
+                                        .isNotEmpty &&
                                     !_coverImageFailed)
                                 ? _buildCoverImage(org['coverPhotoUrl'])
                                 : null,
                             color: AppColors.primaryDark.withOpacity(0.08),
                           ),
-                          child: (org['coverPhotoUrl'] == null ||
+                          child:
+                              (org['coverPhotoUrl'] == null ||
                                   (org['coverPhotoUrl'] as String).isEmpty ||
                                   _coverImageFailed)
                               ? _buildCoverPlaceholder()
                               : null,
                         ),
                       ),
-                      
+
                       Positioned.fill(
                         child: Container(
                           height: 180,
@@ -262,7 +260,7 @@ class _StudentOrganizationsDetailsScreenState
                           ),
                         ),
                       ),
-                      
+
                       Positioned(
                         bottom: -35,
                         left: 16,
@@ -282,7 +280,8 @@ class _StudentOrganizationsDetailsScreenState
                             radius: 45,
                             backgroundColor: Colors.white,
                             backgroundImage: _buildLogoImage(org['logoUrl']),
-                            child: (org['logoUrl'] == null ||
+                            child:
+                                (org['logoUrl'] == null ||
                                     (org['logoUrl'] as String).isEmpty)
                                 ? Text(
                                     (org['name'] ?? 'O')[0].toUpperCase(),
@@ -331,9 +330,7 @@ class _StudentOrganizationsDetailsScreenState
                           decoration: BoxDecoration(
                             color: Colors.green.shade50,
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: Colors.green.shade200,
-                            ),
+                            border: Border.all(color: Colors.green.shade200),
                           ),
                           child: Text(
                             'ACCREDITED',
@@ -366,107 +363,120 @@ class _StudentOrganizationsDetailsScreenState
                         const SizedBox(height: 24),
 
                         // ── Organization Adviser(s) ──
-                        Builder(builder: (context) {
-                          final adviserList = (org['advisers'] as List?)
-                              ?.whereType<Map<String, dynamic>>()
-                              .toList();
-                          final hasMultiple = adviserList != null && adviserList.isNotEmpty;
-                          final photoUrl = org['adviserPhotoUrl'] as String?;
-                          ImageProvider? photoProvider;
-                          if (photoUrl != null && photoUrl.isNotEmpty) {
-                            try {
-                              photoProvider = photoUrl.startsWith('data:')
-                                  ? MemoryImage(base64Decode(photoUrl.split(',').last))
-                                  : NetworkImage(photoUrl) as ImageProvider;
-                            } catch (_) {}
-                          }
-                          final advisersToShow = hasMultiple
-                              ? adviserList!
-                              : [
-                                  {
-                                    'name': org['adviserName'] ?? 'No adviser listed',
-                                    'title': org['adviserTitle'],
-                                  }
-                                ];
-                          return Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: Colors.grey.shade200,
+                        Builder(
+                          builder: (context) {
+                            final adviserList = (org['advisers'] as List?)
+                                ?.whereType<Map<String, dynamic>>()
+                                .toList();
+                            final hasMultiple =
+                                adviserList != null && adviserList.isNotEmpty;
+                            final photoUrl = org['adviserPhotoUrl'] as String?;
+                            ImageProvider? photoProvider;
+                            if (photoUrl != null && photoUrl.isNotEmpty) {
+                              try {
+                                photoProvider = photoUrl.startsWith('data:')
+                                    ? MemoryImage(
+                                        base64Decode(photoUrl.split(',').last),
+                                      )
+                                    : NetworkImage(photoUrl) as ImageProvider;
+                              } catch (_) {}
+                            }
+                            final advisersToShow = hasMultiple
+                                ? adviserList!
+                                : [
+                                    {
+                                      'name':
+                                          org['adviserName'] ??
+                                          'No adviser listed',
+                                      'title': org['adviserTitle'],
+                                    },
+                                  ];
+                            return Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.grey.shade200),
                               ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                for (final adv in advisersToShow)
-                                  Padding(
-                                    padding: const EdgeInsets.only(bottom: 4),
-                                    child: Row(
-                                      children: [
-                                        photoProvider != null
-                                            ? CircleAvatar(
-                                                radius: 20,
-                                                backgroundImage: photoProvider,
-                                              )
-                                            : Container(
-                                                padding: const EdgeInsets.all(8),
-                                                decoration: BoxDecoration(
-                                                  color: AppColors.primaryDark
-                                                      .withOpacity(0.08),
-                                                  borderRadius:
-                                                      BorderRadius.circular(10),
-                                                ),
-                                                child: Icon(
-                                                  Icons.person_outline,
-                                                  color: AppColors.primaryDark,
-                                                  size: 20,
-                                                ),
-                                              ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              const Text(
-                                                'Organization Adviser',
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  color: Colors.grey,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 2),
-                                              Text(
-                                                (adv['name'] ?? 'No adviser listed')
-                                                    .toString(),
-                                                style: const TextStyle(
-                                                  fontSize: 14,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: Colors.black87,
-                                                ),
-                                              ),
-                                              if ((adv['title'] ?? '')
-                                                  .toString()
-                                                  .isNotEmpty)
-                                                Text(
-                                                  (adv['title']).toString(),
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    color: Colors.grey.shade600,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  for (final adv in advisersToShow)
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 4),
+                                      child: Row(
+                                        children: [
+                                          photoProvider != null
+                                              ? CircleAvatar(
+                                                  radius: 20,
+                                                  backgroundImage:
+                                                      photoProvider,
+                                                )
+                                              : Container(
+                                                  padding: const EdgeInsets.all(
+                                                    8,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: AppColors.primaryDark
+                                                        .withOpacity(0.08),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          10,
+                                                        ),
+                                                  ),
+                                                  child: Icon(
+                                                    Icons.person_outline,
+                                                    color:
+                                                        AppColors.primaryDark,
+                                                    size: 20,
                                                   ),
                                                 ),
-                                            ],
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                const Text(
+                                                  'Organization Adviser',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.grey,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  (adv['name'] ??
+                                                          'No adviser listed')
+                                                      .toString(),
+                                                  style: const TextStyle(
+                                                    fontSize: 14,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: Colors.black87,
+                                                  ),
+                                                ),
+                                                if ((adv['title'] ?? '')
+                                                    .toString()
+                                                    .isNotEmpty)
+                                                  Text(
+                                                    (adv['title']).toString(),
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color:
+                                                          Colors.grey.shade600,
+                                                    ),
+                                                  ),
+                                              ],
+                                            ),
                                           ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                              ],
-                            ),
-                          );
-                        }),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
                         const SizedBox(height: 24),
 
                         // ── Connect / Social Links ──
@@ -474,8 +484,10 @@ class _StudentOrganizationsDetailsScreenState
                           org['facebook'],
                           org['instagram'],
                           org['twitter'],
-                          org['gmail']
-                        ].any((v) => (v ?? '').toString().trim().isNotEmpty)) ...[
+                          org['gmail'],
+                        ].any(
+                          (v) => (v ?? '').toString().trim().isNotEmpty,
+                        )) ...[
                           const Text(
                             'Connect',
                             style: TextStyle(
@@ -489,25 +501,37 @@ class _StudentOrganizationsDetailsScreenState
                             spacing: 10,
                             runSpacing: 10,
                             children: [
-                              if ((org['facebook'] ?? '').toString().trim().isNotEmpty)
+                              if ((org['facebook'] ?? '')
+                                  .toString()
+                                  .trim()
+                                  .isNotEmpty)
                                 _SocialChip(
                                   icon: Icons.facebook_rounded,
                                   label: 'Facebook',
                                   url: org['facebook'],
                                 ),
-                              if ((org['instagram'] ?? '').toString().trim().isNotEmpty)
+                              if ((org['instagram'] ?? '')
+                                  .toString()
+                                  .trim()
+                                  .isNotEmpty)
                                 _SocialChip(
                                   icon: Icons.camera_alt_outlined,
                                   label: 'Instagram',
                                   url: org['instagram'],
                                 ),
-                              if ((org['twitter'] ?? '').toString().trim().isNotEmpty)
+                              if ((org['twitter'] ?? '')
+                                  .toString()
+                                  .trim()
+                                  .isNotEmpty)
                                 _SocialChip(
                                   icon: Icons.alternate_email_rounded,
                                   label: 'Twitter/X',
                                   url: org['twitter'],
                                 ),
-                              if ((org['gmail'] ?? '').toString().trim().isNotEmpty)
+                              if ((org['gmail'] ?? '')
+                                  .toString()
+                                  .trim()
+                                  .isNotEmpty)
                                 _SocialChip(
                                   icon: Icons.email_outlined,
                                   label: org['gmail'],
@@ -534,16 +558,12 @@ class _StudentOrganizationsDetailsScreenState
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: Colors.grey.shade200,
-                              ),
+                              border: Border.all(color: Colors.grey.shade200),
                             ),
                             child: Center(
                               child: Text(
                                 'No officers listed',
-                                style: TextStyle(
-                                  color: Colors.grey.shade500,
-                                ),
+                                style: TextStyle(color: Colors.grey.shade500),
                               ),
                             ),
                           )
@@ -552,10 +572,8 @@ class _StudentOrganizationsDetailsScreenState
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),
                             itemCount: officers.length,
-                            separatorBuilder: (_, __) => const Divider(
-                              height: 0,
-                              color: Colors.grey,
-                            ),
+                            separatorBuilder: (_, __) =>
+                                const Divider(height: 0, color: Colors.grey),
                             itemBuilder: (context, index) {
                               final officer = officers[index];
                               return Container(
@@ -571,7 +589,8 @@ class _StudentOrganizationsDetailsScreenState
                                       backgroundImage: _buildLogoImage(
                                         officer['photoUrl'],
                                       ),
-                                      child: (officer['photoUrl'] == null ||
+                                      child:
+                                          (officer['photoUrl'] == null ||
                                               (officer['photoUrl'] as String?)
                                                       ?.isEmpty ==
                                                   true)
@@ -668,10 +687,7 @@ class _UpcomingEventsList extends StatelessWidget {
   final String orgId;
   final Function(String) onEventTap;
 
-  const _UpcomingEventsList({
-    required this.orgId,
-    required this.onEventTap,
-  });
+  const _UpcomingEventsList({required this.orgId, required this.onEventTap});
 
   @override
   Widget build(BuildContext context) {
@@ -926,13 +942,15 @@ class _RecentAnnouncementsList extends StatelessWidget {
         var docs = snapshot.data?.docs ?? [];
 
         docs.sort((a, b) {
-          final dateA = (a.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
-          final dateB = (b.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
-          
+          final dateA =
+              (a.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
+          final dateB =
+              (b.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
+
           if (dateA == null && dateB == null) return 0;
           if (dateA == null) return 1;
           if (dateB == null) return -1;
-          
+
           return dateB.compareTo(dateA);
         });
 
@@ -964,11 +982,16 @@ class _RecentAnnouncementsList extends StatelessWidget {
             final doc = docs[index];
             final data = doc.data() as Map<String, dynamic>;
             final timestamp = data['timestamp'] as Timestamp?;
-            final date = timestamp != null ? timestamp.toDate() : DateTime.now();
+            final date = timestamp != null
+                ? timestamp.toDate()
+                : DateTime.now();
             final timeAgo = DateFormat('MMM dd, yyyy').format(date);
 
-            final isUrgent = (data['category'] ?? '').toString().toLowerCase() == 'urgent' ||
-                (data['title'] ?? '').toString().toLowerCase().contains('urgent');
+            final isUrgent =
+                (data['category'] ?? '').toString().toLowerCase() == 'urgent' ||
+                (data['title'] ?? '').toString().toLowerCase().contains(
+                  'urgent',
+                );
 
             return GestureDetector(
               onTap: () => onAnnouncementTap(doc.id),
@@ -978,7 +1001,9 @@ class _RecentAnnouncementsList extends StatelessWidget {
                   color: isUrgent ? Colors.red.shade50 : Colors.white,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: isUrgent ? Colors.red.shade200 : Colors.grey.shade200,
+                    color: isUrgent
+                        ? Colors.red.shade200
+                        : Colors.grey.shade200,
                   ),
                 ),
                 child: Row(
@@ -1008,7 +1033,9 @@ class _RecentAnnouncementsList extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
-                              color: isUrgent ? Colors.red.shade800 : Colors.black87,
+                              color: isUrgent
+                                  ? Colors.red.shade800
+                                  : Colors.black87,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -1070,9 +1097,9 @@ class _SocialChip extends StatelessWidget {
         ? await launchUrl(uri, mode: LaunchMode.externalApplication)
         : false;
     if (!opened && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open link')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Could not open link')));
     }
   }
 
@@ -1086,9 +1113,7 @@ class _SocialChip extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppColors.primaryDark.withOpacity(0.08),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: AppColors.primaryDark.withOpacity(0.2),
-          ),
+          border: Border.all(color: AppColors.primaryDark.withOpacity(0.2)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,

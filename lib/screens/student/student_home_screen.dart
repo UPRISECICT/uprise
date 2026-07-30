@@ -5,14 +5,22 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
-import 'package:provider/provider.dart';
-import 'package:uprise/models/event_model.dart';
-import '../../providers/event_provider.dart';
-import '../../widgets/common/loading_widget.dart';
+
+// Models
+import '../../models/event_model.dart';
+import '../../models/announcement_model.dart'; // for AnnouncementData
+
+// Providers (if still needed – remove if unused)
+// import 'package:provider/provider.dart'; // removed – not used
+
+// Widgets
+import '../../widgets/common/loading_widget.dart'; // for SkeletonLoader, UpriseErrorState, UpriseEmptyState
 import '../../widgets/student/announcements_feed.dart';
 import '../../widgets/student/profile_summary.dart';
 import '../../widgets/student/countdown_widget.dart';
 import '../../widgets/student/app_colors.dart';
+
+// Screens (navigation targets)
 import 'student_events_screen.dart';
 import 'student_organizations_screen.dart';
 import 'student_certificates_screen.dart';
@@ -21,9 +29,11 @@ import 'student_announcements_screen.dart';
 import 'student_notifications_screen.dart';
 import 'student_merchandise_screen.dart';
 import 'student_feedback_prompt.dart';
+import 'student_events_screen.dart'; // adjust if needed
+import 'student_announcements_screen.dart'; // adjust if needed
 
 // ─────────────────────────────────────────────────────────────
-// Shared style tokens (UI only — no logic here)
+// Shared style tokens
 // ─────────────────────────────────────────────────────────────
 class _UiTokens {
   static const double radius = 12;
@@ -66,10 +76,8 @@ class Base64Image extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     try {
-      // Extract the base64 part if it's a data URL
       String base64Data = base64String;
       if (base64String.startsWith('data:image')) {
-        // Find the comma that separates the metadata from the base64 data
         final commaIndex = base64String.indexOf(',');
         if (commaIndex != -1) {
           base64Data = base64String.substring(commaIndex + 1);
@@ -110,7 +118,7 @@ class Base64Image extends StatelessWidget {
   }
 }
 
-// Reusable section header used across Quick Access / Events / Announcements
+// Reusable section header used across Events / Announcements
 class _SectionHeader extends StatelessWidget {
   final String title;
   final String? actionLabel;
@@ -306,6 +314,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
             .doc(user.uid)
             .get();
 
+        if (!mounted) return;
+
         if (doc.exists) {
           final data = doc.data()!;
           final firstName = (data['firstName'] ?? '').toString().trim();
@@ -391,20 +401,16 @@ class _HomeContent extends StatefulWidget {
 }
 
 class _HomeContentState extends State<_HomeContent> {
-  Map<String, dynamic>? _orgData;
-  bool _orgLoading = true;
   bool _isOffline = false;
   StreamSubscription<QuerySnapshot>? _cacheMonitor;
 
-  // ⭐ REGISTERED EVENTS STATE ⭐
-  Set<String> _registeredEventIds = {};
-  bool _loadingRegistered = true;
+  // Cached future for registered events – prevents duplicate queries.
+  Future<List<EventModel>>? _registeredEventsFuture;
 
   @override
   void initState() {
     super.initState();
-    _loadOrgData();
-    _loadRegisteredEvents();
+    _refreshRegisteredEvents();
 
     _cacheMonitor = FirebaseFirestore.instance
         .collection('events')
@@ -423,209 +429,68 @@ class _HomeContentState extends State<_HomeContent> {
     super.dispose();
   }
 
-  // ⭐ LOAD ONLY THIS STUDENT'S REGISTERED EVENTS ⭐
-  Future<void> _loadRegisteredEvents() async {
+  // Refresh the cached future for registered events.
+  void _refreshRegisteredEvents() {
+    setState(() {
+      _registeredEventsFuture = _fetchRegisteredEvents();
+    });
+  }
+
+  // Single method that fetches and returns the list of future registered events.
+  Future<List<EventModel>> _fetchRegisteredEvents() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      setState(() {
-        _registeredEventIds = {};
-        _loadingRegistered = false;
-      });
-      return;
-    }
+    if (user == null) return [];
 
     try {
-      final snap = await FirebaseFirestore.instance
+      // 1. Fetch registration IDs
+      final regSnap = await FirebaseFirestore.instance
           .collection('registrations')
           .where('userId', isEqualTo: user.uid)
           .get();
 
-      final ids = snap.docs.map((doc) => doc['eventId'] as String).toSet();
+      final eventIds = regSnap.docs
+          .map((doc) => doc['eventId'] as String)
+          .toSet();
+      if (eventIds.isEmpty) return [];
 
-      debugPrint('✅ Registered event IDs: $ids');
-      debugPrint('✅ Number of registered events: ${ids.length}');
+      // 2. Fetch event documents in batches of 30
+      final idsList = eventIds.toList();
+      final allEvents = <EventModel>[];
 
-      setState(() {
-        _registeredEventIds = ids;
-        _loadingRegistered = false;
-      });
-    } catch (e) {
-      debugPrint('❌ Error loading registrations: $e');
-      setState(() {
-        _registeredEventIds = {};
-        _loadingRegistered = false;
-      });
-    }
-  }
-
-  // ⭐ GET EARLIEST REGISTERED EVENT - Only future events ⭐
-  Future<EventModel?> _getEarliestRegisteredEvent() async {
-    if (_registeredEventIds.isEmpty) {
-      debugPrint('📌 No registered events');
-      return null;
-    }
-
-    final eventIds = _registeredEventIds.toList();
-    debugPrint('📌 Event IDs count: ${eventIds.length}');
-
-    // If less than or equal to 30, query directly
-    if (eventIds.length <= 30) {
-      try {
-        final snap = await FirebaseFirestore.instance
-            .collection('events')
-            .where(FieldPath.documentId, whereIn: eventIds)
-            .where('date', isGreaterThanOrEqualTo: Timestamp.now())
-            .orderBy('date')
-            .limit(1)
-            .get();
-
-        if (snap.docs.isEmpty) {
-          debugPrint('📌 No future events found');
-          return null;
-        }
-
-        final event = EventModel.fromFirestore(snap.docs.first);
-        debugPrint(
-          '✅ Earliest future event found: ${event.title} - ${event.date}',
+      for (var i = 0; i < idsList.length; i += 30) {
+        final batch = idsList.sublist(
+          i,
+          i + 30 > idsList.length ? idsList.length : i + 30,
         );
-        debugPrint('✅ Event ID: ${event.id}');
-        return event;
-      } catch (e) {
-        debugPrint('❌ Error querying events (direct): $e');
-        // FALLBACK: Query without date filter
-        try {
-          final snap = await FirebaseFirestore.instance
-              .collection('events')
-              .where(FieldPath.documentId, whereIn: eventIds)
-              .get();
+        if (batch.isEmpty) continue;
 
-          if (snap.docs.isEmpty) return null;
-
-          final now = DateTime.now();
-          final futureEvents = snap.docs
-              .map((doc) => EventModel.fromFirestore(doc))
-              .where((event) => event.fullDateTime.isAfter(now))
-              .toList();
-
-          if (futureEvents.isEmpty) {
-            debugPrint('📌 No future events found (fallback)');
-            return null;
-          }
-
-          futureEvents.sort((a, b) => a.fullDateTime.compareTo(b.fullDateTime));
-          final event = futureEvents.first;
-          debugPrint(
-            '✅ Earliest future event (fallback): ${event.title} - ${event.date}',
-          );
-          return event;
-        } catch (e2) {
-          debugPrint('❌ Error querying events (fallback): $e2');
-          return null;
-        }
-      }
-    }
-
-    // If more than 30, query in batches
-    final allEvents = <EventModel>[];
-    for (var i = 0; i < eventIds.length; i += 30) {
-      final end = (i + 30 < eventIds.length) ? i + 30 : eventIds.length;
-      final batch = eventIds.sublist(i, end);
-
-      if (batch.isEmpty) continue;
-
-      try {
         final snap = await FirebaseFirestore.instance
             .collection('events')
             .where(FieldPath.documentId, whereIn: batch)
-            .where('date', isGreaterThanOrEqualTo: Timestamp.now())
             .get();
 
         for (final doc in snap.docs) {
           allEvents.add(EventModel.fromFirestore(doc));
         }
-      } catch (e) {
-        debugPrint('❌ Error querying batch: $e');
-        // FALLBACK: Query without date filter for this batch
-        try {
-          final snap = await FirebaseFirestore.instance
-              .collection('events')
-              .where(FieldPath.documentId, whereIn: batch)
-              .get();
-
-          for (final doc in snap.docs) {
-            allEvents.add(EventModel.fromFirestore(doc));
-          }
-        } catch (e2) {
-          debugPrint('❌ Error querying batch (fallback): $e2');
-        }
       }
+
+      // 3. Filter and sort for future events
+      final now = DateTime.now();
+      final futureEvents =
+          allEvents.where((e) => e.fullDateTime.isAfter(now)).toList()
+            ..sort((a, b) => a.fullDateTime.compareTo(b.fullDateTime));
+
+      return futureEvents;
+    } catch (e) {
+      debugPrint('❌ Error fetching registered events: $e');
+      return [];
     }
-
-    // Filter future events in code
-    final now = DateTime.now();
-    final futureEvents = allEvents
-        .where((event) => event.fullDateTime.isAfter(now))
-        .toList();
-
-    if (futureEvents.isEmpty) {
-      debugPrint('📌 No future events found in batches');
-      return null;
-    }
-
-    futureEvents.sort((a, b) => a.fullDateTime.compareTo(b.fullDateTime));
-    final earliest = futureEvents.first;
-    debugPrint('✅ Earliest future event: ${earliest.title} - ${earliest.date}');
-    return earliest;
   }
 
   void refreshData() {
+    _refreshRegisteredEvents();
+    // Also force rebuild of UI to reflect any other changes.
     setState(() {});
-    _loadRegisteredEvents();
-  }
-
-  Future<void> _loadOrgData() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      setState(() => _orgLoading = false);
-      return;
-    }
-    try {
-      final studentDoc = await FirebaseFirestore.instance
-          .collection('students')
-          .doc(user.uid)
-          .get();
-
-      if (!studentDoc.exists) {
-        setState(() => _orgLoading = false);
-        return;
-      }
-
-      String? orgId = studentDoc.data()?['orgId'] as String?;
-      if (orgId == null || orgId.isEmpty) {
-        final userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .get();
-        orgId = userDoc.data()?['orgId'] as String?;
-      }
-
-      if (orgId == null || orgId.isEmpty) {
-        setState(() => _orgLoading = false);
-        return;
-      }
-
-      final orgSnap = await FirebaseFirestore.instance
-          .collection('organizations')
-          .doc(orgId)
-          .get();
-
-      setState(() {
-        _orgData = orgSnap.exists ? orgSnap.data() : null;
-        _orgLoading = false;
-      });
-    } catch (_) {
-      setState(() => _orgLoading = false);
-    }
   }
 
   void _navigateToEventDetail(EventModel event) {
@@ -826,31 +691,39 @@ class _HomeContentState extends State<_HomeContent> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'GOOD DAY',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade500,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    userName,
-                    style: const TextStyle(
-                      fontSize: 25,
-                      fontWeight: FontWeight.w700,
-                      color: _UiTokens.headingText,
-                      letterSpacing: 0.1,
+                  RichText(
+                    text: TextSpan(
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        color: _UiTokens.headingText,
+                        height: 1.2,
+                      ),
+                      children: [
+                        TextSpan(
+                          text: 'Good day, ',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w500,
+                            fontSize: 20,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                        TextSpan(
+                          text: userName,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: _UiTokens.headingText,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     'Here\'s what\'s happening on campus today.',
                     style: TextStyle(
-                      fontSize: 13.5,
-                      color: Colors.grey.shade600,
+                      fontSize: 12.5,
+                      color: Colors.grey.shade500,
                     ),
                   ),
                 ],
@@ -858,81 +731,13 @@ class _HomeContentState extends State<_HomeContent> {
             ),
           ),
 
-          // Quick Access
+          // ⭐ COUNTDOWN SECTION – using the cached future
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
-              child: const _SectionHeader(title: 'Quick Access'),
-            ),
-          ),
-
-          // Quick Access Icons
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _QuickAccessItem(
-                    icon: Icons.calendar_today_outlined,
-                    label: 'Calendar',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              const StudentEventsScreen(initialTabIndex: 0),
-                        ),
-                      );
-                    },
-                  ),
-                  _QuickAccessItem(
-                    icon: Icons.card_membership_outlined,
-                    label: 'Certificates',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              const StudentCertificatesScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                  _QuickAccessItem(
-                    icon: Icons.groups_outlined,
-                    label: 'Orgs',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              const StudentOrganizationsScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                  _QuickAccessItem(
-                    icon: Icons.person_outline,
-                    label: 'Profile',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const StudentProfileScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // ⭐ COUNTDOWN SECTION - Only for THIS STUDENT's future registered events ⭐
-          SliverToBoxAdapter(
-            child: _loadingRegistered
-                ? Container(
+            child: FutureBuilder<List<EventModel>>(
+              future: _registeredEventsFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return Container(
                     height: 130,
                     margin: const EdgeInsets.symmetric(
                       horizontal: 20,
@@ -949,72 +754,38 @@ class _HomeContentState extends State<_HomeContent> {
                         ),
                       ),
                     ),
-                  )
-                : _registeredEventIds.isEmpty
-                ? const SizedBox.shrink()
-                : Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 10,
-                    ),
-                    child: FutureBuilder<EventModel?>(
-                      future: _getEarliestRegisteredEvent(),
-                      builder: (context, snapshot) {
-                        debugPrint(
-                          '🔍 Countdown FutureBuilder: connectionState=${snapshot.connectionState}, hasData=${snapshot.hasData}, error=${snapshot.error}',
-                        );
+                  );
+                }
 
-                        if (snapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return Container(
-                            height: 130,
-                            decoration: _UiTokens.card(),
-                            child: const Center(
-                              child: SizedBox(
-                                height: 24,
-                                width: 24,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: AppColors.primaryDark,
-                                ),
-                              ),
-                            ),
-                          );
-                        }
+                if (snapshot.hasError || !snapshot.hasData) {
+                  return const SizedBox.shrink();
+                }
 
-                        if (snapshot.hasError) {
-                          return Container(
-                            height: 130,
-                            decoration: _UiTokens.card(),
-                            child: Center(
-                              child: Text(
-                                'Error: ${snapshot.error}',
-                                style: const TextStyle(
-                                  color: Colors.red,
-                                  fontSize: 12,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                          );
-                        }
+                final events = snapshot.data!;
+                if (events.isEmpty) {
+                  return const SizedBox.shrink();
+                }
 
-                        if (snapshot.data == null) {
-                          debugPrint(
-                            '📌 No future events found - hiding countdown',
-                          );
-                          return const SizedBox.shrink();
-                        }
-
-                        final event = snapshot.data!;
-                        debugPrint(
-                          '✅ Countdown event found: ${event.title} - ${event.date}',
-                        );
-
-                        return CountdownWidget(event: event);
-                      },
-                    ),
+                return SizedBox(
+                  height: 240, // Increased from 150
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    itemCount: events.length,
+                    itemBuilder: (context, index) {
+                      final event = events[index];
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: SizedBox(
+                          width: 400,
+                          child: CountdownWidget(event: event),
+                        ),
+                      );
+                    },
                   ),
+                );
+              },
+            ),
           ),
 
           // Upcoming Events Section Header
@@ -1076,7 +847,7 @@ class _HomeContentState extends State<_HomeContent> {
                 final events = snapshot.data!.docs;
 
                 return SizedBox(
-                  height: 240, // Increased height to accommodate date
+                  height: 240,
                   child: ListView.builder(
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -1085,8 +856,6 @@ class _HomeContentState extends State<_HomeContent> {
                       final doc = events[index];
                       final eventData = EventModel.fromFirestore(doc);
                       final data = doc.data() as Map<String, dynamic>;
-
-                      // Get the banner URL (base64 data URL)
                       final bannerUrl = data['bannerUrl'] as String? ?? '';
                       final eventDate = data['date'] as Timestamp?;
                       final formattedDate = _formatDate(eventDate);
@@ -1101,7 +870,6 @@ class _HomeContentState extends State<_HomeContent> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Event Image (cover photo) - Using Base64Image widget
                               bannerUrl.isNotEmpty
                                   ? Base64Image(
                                       base64String: bannerUrl,
@@ -1137,7 +905,6 @@ class _HomeContentState extends State<_HomeContent> {
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                     const SizedBox(height: 4),
-                                    // Event Date
                                     Row(
                                       children: [
                                         Icon(
@@ -1161,7 +928,6 @@ class _HomeContentState extends State<_HomeContent> {
                                       ],
                                     ),
                                     const SizedBox(height: 3),
-                                    // Event Time
                                     Row(
                                       children: [
                                         Icon(
@@ -1184,7 +950,6 @@ class _HomeContentState extends State<_HomeContent> {
                                       ],
                                     ),
                                     const SizedBox(height: 3),
-                                    // Event Location
                                     Row(
                                       children: [
                                         Icon(
@@ -1249,55 +1014,6 @@ class _HomeContentState extends State<_HomeContent> {
           ),
 
           const SliverToBoxAdapter(child: SizedBox(height: 84)),
-        ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────
-// Quick Access Item
-// ─────────────────────────────────────────────────────────────
-class _QuickAccessItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  const _QuickAccessItem({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Column(
-        children: [
-          Container(
-            width: 58,
-            height: 58,
-            decoration: BoxDecoration(
-              color: AppColors.primaryDark.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: AppColors.primaryDark.withOpacity(0.15),
-                width: 1,
-              ),
-            ),
-            child: Icon(icon, color: AppColors.primaryDark, size: 24),
-          ),
-          const SizedBox(height: 7),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w600,
-              color: _UiTokens.mutedText,
-            ),
-          ),
         ],
       ),
     );

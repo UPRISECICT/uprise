@@ -15,10 +15,22 @@ Future<void> maybeShowFeedbackPrompt(BuildContext context) async {
   if (user == null) return;
 
   try {
-    // 1. Get all events the student attended
+    // 🔥 FIX: Get the ACTUAL student ID from the student document
+    final studentDoc = await FirebaseFirestore.instance
+        .collection('students')
+        .doc(user.uid)
+        .get();
+
+    String studentId = user.uid; // fallback
+    if (studentDoc.exists) {
+      final data = studentDoc.data() as Map<String, dynamic>;
+      studentId = data['studentId']?.toString() ?? user.uid;
+    }
+
+    // 1. Get all events the student attended – NOW WITH CORRECT studentId
     final attendanceDocs = await FirebaseFirestore.instance
         .collectionGroup('attendances')
-        .where('studentId', isEqualTo: user.uid)
+        .where('studentId', isEqualTo: studentId)
         .get();
 
     // 2. Get all feedback the student already gave
@@ -39,31 +51,25 @@ Future<void> maybeShowFeedbackPrompt(BuildContext context) async {
     // 5. Check each event the student attended
     for (final doc in attendanceDocs.docs) {
       final status = doc.data()['status']?.toString() ?? '';
-      
-      // Only care about 'present' or 'late'
+
       if (status != 'present' && status != 'late') continue;
 
-      // Get the event ID
       final eventRef = doc.reference.parent.parent;
       if (eventRef == null) continue;
       final eventId = eventRef.id;
 
-      // Skip if student already rated this
       if (ratedEventIds.contains(eventId)) continue;
 
-      // Skip if we already showed pop-up for this event
-      final alreadyPrompted = prefs.getBool('feedback_prompt_$eventId') ?? false;
+      final alreadyPrompted =
+          prefs.getBool('feedback_prompt_$eventId') ?? false;
       if (alreadyPrompted) continue;
 
-      // Get event details
       final eventDoc = await eventRef.get();
       if (!eventDoc.exists) continue;
       final eventData = eventDoc.data() as Map<String, dynamic>;
 
-      // Remember we showed this pop-up
       await prefs.setBool('feedback_prompt_$eventId', true);
 
-      // 👇 THIS SHOWS THE POP-UP
       if (!context.mounted) return;
       await showDialog(
         context: context,
@@ -73,17 +79,14 @@ Future<void> maybeShowFeedbackPrompt(BuildContext context) async {
           eventId: eventId,
         ),
       );
-      
-      // Only show ONE pop-up at a time
-      return;
+
+      return; // only one pop-up per session
     }
   } catch (e) {
-    // If something fails, just ignore it
     print('Error: $e');
   }
 }
 
-// 👇 THIS IS THE ACTUAL POP-UP WIDGET
 class _FeedbackPromptDialog extends StatelessWidget {
   final String eventTitle;
   final String eventId;
@@ -117,7 +120,7 @@ class _FeedbackPromptDialog extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 18),
-            
+
             // Title
             const Text(
               'How was the event?',
@@ -129,7 +132,7 @@ class _FeedbackPromptDialog extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 10),
-            
+
             // Description
             Text(
               'You attended "$eventTitle". Share your feedback so the organizer can issue your certificate.',
@@ -141,7 +144,7 @@ class _FeedbackPromptDialog extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 22),
-            
+
             // "Evaluate Now" button
             SizedBox(
               width: double.infinity,
@@ -171,7 +174,7 @@ class _FeedbackPromptDialog extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            
+
             // "Maybe Later" button
             TextButton(
               onPressed: () => Navigator.pop(context),

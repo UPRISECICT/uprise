@@ -14,6 +14,7 @@ import '../guest/guest_access_gateway_screen.dart';
 import '../student/student_home_screen.dart';
 import '../../widgets/student/app_colors.dart';
 import 'student_change_password_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class StudentLogin extends StatefulWidget {
   const StudentLogin({super.key});
@@ -30,11 +31,27 @@ class _StudentLoginState extends State<StudentLogin> {
   bool _obscurePassword = true;
   bool _rememberMe = false;
 
-  // ── Failed attempt tracking ──
   int _failedAttempts = 0;
   static const int _maxFailedAttempts = 3;
 
   final AuthService _auth = AuthService();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedEmail(); // ← NEW
+  }
+
+  Future<void> _loadSavedEmail() async {
+    // ← NEW METHOD
+    final prefs = await SharedPreferences.getInstance();
+    final savedEmail = prefs.getString('remembered_email');
+    final remember = prefs.getBool('remember_me') ?? false;
+    if (savedEmail != null && remember) {
+      _emailCtrl.text = savedEmail;
+      setState(() => _rememberMe = true);
+    }
+  }
 
   @override
   void dispose() {
@@ -63,8 +80,18 @@ class _StudentLoginState extends State<StudentLogin> {
       final user = await _auth.loginWithEmail(email, password);
 
       if (user != null) {
-        // ✅ Successful login — reset the failed-attempt counter
         _failedAttempts = 0;
+
+        // ✅ Remember Me logic
+        if (_rememberMe) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('remembered_email', email);
+          await prefs.setBool('remember_me', true);
+        } else {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove('remembered_email');
+          await prefs.setBool('remember_me', false);
+        }
 
         final role = await _auth.getUserRole(user.uid);
         await activity_log.ActivityLogger.log(
@@ -81,21 +108,16 @@ class _StudentLoginState extends State<StudentLogin> {
         _handleFailedAttempt(email, 'Invalid email or password');
       } else {
         final mustChange = await _auth.needsPasswordChange(user.uid);
-
         if (!mounted) return;
 
         if (mustChange) {
           Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(
-              builder: (_) => StudentChangePasswordScreen(),
-            ),
+            MaterialPageRoute(builder: (_) => StudentChangePasswordScreen()),
             (route) => false,
           );
         } else {
           Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(
-              builder: (_) => const StudentHomeScreen(),
-            ),
+            MaterialPageRoute(builder: (_) => const StudentHomeScreen()),
             (route) => false,
           );
         }
@@ -156,9 +178,7 @@ class _StudentLoginState extends State<StudentLogin> {
   void _openGuestGateway() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => const GuestAccessGatewayScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const GuestAccessGatewayScreen()),
     );
   }
 
@@ -230,7 +250,8 @@ class _StudentLoginState extends State<StudentLogin> {
                 }
                 _showSuccess('Password reset link sent to $email');
               } on FirebaseAuthException catch (e) {
-                String message = 'Could not send reset email. Please try again.';
+                String message =
+                    'Could not send reset email. Please try again.';
                 switch (e.code) {
                   case 'user-not-found':
                     message = 'No account found with this email';
@@ -569,8 +590,10 @@ class _StudentLoginState extends State<StudentLogin> {
                                   ),
                                   onPressed: () {
                                     if (!mounted) return;
-                                    setState(() => _obscurePassword =
-                                        !_obscurePassword);
+                                    setState(
+                                      () =>
+                                          _obscurePassword = !_obscurePassword,
+                                    );
                                   },
                                 ),
                                 filled: true,
@@ -619,7 +642,9 @@ class _StudentLoginState extends State<StudentLogin> {
                                   child: Checkbox(
                                     value: _rememberMe,
                                     onChanged: (value) {
-                                      setState(() => _rememberMe = value ?? false);
+                                      setState(
+                                        () => _rememberMe = value ?? false,
+                                      );
                                     },
                                     activeColor: AppColors.primaryDark,
                                     shape: RoundedRectangleBorder(
@@ -668,7 +693,9 @@ class _StudentLoginState extends State<StudentLogin> {
                               backgroundColor: AppColors.primaryDark,
                               foregroundColor: Colors.white,
                               elevation: 2,
-                              shadowColor: AppColors.primaryDark.withOpacity(0.3),
+                              shadowColor: AppColors.primaryDark.withOpacity(
+                                0.3,
+                              ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(14),
                               ),
@@ -705,7 +732,9 @@ class _StudentLoginState extends State<StudentLogin> {
                               ),
                             ),
                             Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                              ),
                               child: Text(
                                 'OR',
                                 style: GoogleFonts.beVietnamPro(

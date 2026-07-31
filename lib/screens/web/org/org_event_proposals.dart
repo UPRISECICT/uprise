@@ -2789,6 +2789,13 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
   final _startTimeCtrl = TextEditingController();
   final _endTimeCtrl = TextEditingController();
   final _otherCategoryCtrl = TextEditingController();
+  // The picked DateTime is kept directly instead of only round-tripping
+  // through _dateCtrl's "MM/dd/yyyy" text — parsing that text back with
+  // intl's DateFormat.parse() at submit time was throwing on some devices
+  // (locale-dependent parsing quirk) even though the date shown was
+  // perfectly valid, surfacing as a false "Please enter a valid event
+  // date." error. _dateCtrl now exists purely for display.
+  DateTime? _selectedDate;
 
   String _category = 'Workshop';
   String _audience = 'Public';
@@ -2846,9 +2853,8 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
       _attachmentName = e['attachmentName'];
       _attachmentSize = e['attachmentSize'];
       if (e['date'] is Timestamp) {
-        _dateCtrl.text = DateFormat(
-          'MM/dd/yyyy',
-        ).format((e['date'] as Timestamp).toDate());
+        _selectedDate = (e['date'] as Timestamp).toDate();
+        _dateCtrl.text = DateFormat('MM/dd/yyyy').format(_selectedDate!);
       }
       final cat = e['category'] ?? 'Workshop';
       _category = _categories.contains(cat) ? cat : 'Workshop';
@@ -3008,9 +3014,14 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
     final dayStart = DateTime(date.year, date.month, date.day);
     final dayEnd = dayStart.add(const Duration(days: 1));
 
+    // Deliberately just the date range here — pairing it with a `status`
+    // equality filter needs a composite index that isn't deployed for this
+    // exact combination (this query spans every org, so it can't reuse the
+    // orgId+status+date indexes the rest of this file relies on), and
+    // without it Firestore throws FAILED_PRECONDITION on every submit.
+    // `status` is filtered client-side below instead.
     final snap = await FirebaseFirestore.instance
         .collection('event_proposals')
-        .where('status', isEqualTo: 'approved')
         .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(dayStart))
         .where('date', isLessThan: Timestamp.fromDate(dayEnd))
         .get();
@@ -3018,6 +3029,7 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
     for (final doc in snap.docs) {
       if (doc.id == widget.editDocId) continue;
       final d = doc.data();
+      if ((d['status'] as String?) != 'approved') continue;
       final otherLoc = (d['location'] as String? ?? '').trim().toLowerCase();
       if (otherLoc.isEmpty || otherLoc != loc) continue;
       final otherStart = _minutesSinceMidnight(
@@ -3079,23 +3091,30 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
         'attachmentSize': _attachmentSize,
       };
 
-      try {
-        final parsed = DateFormat('MM/dd/yyyy').parse(_dateCtrl.text.trim());
-        final today = DateTime.now();
-        final todayMidnight = DateTime(today.year, today.month, today.day);
-        if (!parsed.isAfter(todayMidnight)) {
-          setState(() {
-            _errorMsg =
-                'Event date must be a future date. Today\'s date is not allowed.';
-            _isSubmitting = false;
-          });
-          return;
-        }
-        payload['date'] = Timestamp.fromDate(parsed);
+      final selectedDate = _selectedDate;
+      if (selectedDate == null) {
+        setState(() {
+          _errorMsg = 'Please select an event date.';
+          _isSubmitting = false;
+        });
+        return;
+      }
+      final today = DateTime.now();
+      final todayMidnight = DateTime(today.year, today.month, today.day);
+      if (!selectedDate.isAfter(todayMidnight)) {
+        setState(() {
+          _errorMsg =
+              'Event date must be a future date. Today\'s date is not allowed.';
+          _isSubmitting = false;
+        });
+        return;
+      }
+      payload['date'] = Timestamp.fromDate(selectedDate);
 
+      try {
         final conflict = await _findVenueConflict(
           location: payload['location'] as String,
-          date: parsed,
+          date: selectedDate,
           startTime: payload['startTime'] as String,
           endTime: payload['endTime'] as String,
         );
@@ -3110,7 +3129,7 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
         }
       } catch (_) {
         setState(() {
-          _errorMsg = 'Please enter a valid event date.';
+          _errorMsg = 'Could not verify venue availability. Please try again.';
           _isSubmitting = false;
         });
         return;
@@ -3412,10 +3431,14 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
                                     );
                                   },
                                 );
-                                if (picked != null)
-                                  _dateCtrl.text = DateFormat(
-                                    'MM/dd/yyyy',
-                                  ).format(picked);
+                                if (picked != null) {
+                                  setState(() {
+                                    _selectedDate = picked;
+                                    _dateCtrl.text = DateFormat(
+                                      'MM/dd/yyyy',
+                                    ).format(picked);
+                                  });
+                                }
                               },
                               decoration: _orgEventProposalsInputDecoration(
                                 'Date *',

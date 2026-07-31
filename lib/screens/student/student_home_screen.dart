@@ -7,7 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
 // Models
-import '../../models/event_model.dart';
+import 'package:uprise/models/event_model.dart';
 import '../../models/announcement_model.dart'; // for AnnouncementData
 
 // Providers (if still needed – remove if unused)

@@ -8,7 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../widgets/student/student_app_bar.dart';
 import '../../widgets/common/loading_widget.dart';
-import '../../models/event_model.dart';
+import 'package:uprise/models/event_model.dart';
 import 'student_broadcast_screen.dart';
 import 'student_events_screen.dart';
 import 'student_announcements_screen.dart';

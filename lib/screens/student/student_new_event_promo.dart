@@ -12,7 +12,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../models/event_model.dart';
+import 'package:uprise/models/event_model.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../widgets/student/event_image.dart';
 import 'student_events_screen.dart';

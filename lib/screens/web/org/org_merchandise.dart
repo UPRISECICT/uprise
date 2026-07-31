@@ -12,7 +12,7 @@ import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:universal_html/html.dart' as html;
 import '../../../services/activity_logger.dart' as activity_log;
-import '../../../theme/app_theme.dart';
+import '../../../theme/org_theme.dart';
 import '../../../widgets/admin_export_button.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/product_spin_viewer.dart';
@@ -754,35 +754,103 @@ class _ProductsTabState extends State<_ProductsTab> {
   Future<void> _archiveProduct(ProductModel product) async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        title: Text(
-          'Archive Product',
-          style: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w700),
-        ),
-        content: Text(
-          'Archive "${product.name}"? It will be hidden from the store.',
-          style: GoogleFonts.beVietnamPro(),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: GoogleFonts.beVietnamPro()),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: UpriseColors.warning,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+      barrierColor: Colors.black54,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          width: 420,
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF3F4F6),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.archive_outlined,
+                      color: Color(0xFF6B7280),
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      'Archive Product',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: UpriseColors.charcoal,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ),
-            child: Text(
-              'Archive',
-              style: GoogleFonts.beVietnamPro(color: Colors.white),
-            ),
+              const SizedBox(height: 16),
+              Text(
+                'Archive "${product.name}"? It will be hidden from the store.',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 14,
+                  color: UpriseColors.darkGray,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFFE5E7EB)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 11,
+                      ),
+                    ),
+                    child: Text(
+                      'Cancel',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        color: UpriseColors.charcoal,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: UpriseColors.warning,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 11,
+                      ),
+                    ),
+                    child: Text(
+                      'Archive',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
     if (confirm != true) return;
@@ -1213,7 +1281,7 @@ class _ProductCard extends StatelessWidget {
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: UpriseColors.primaryDark.withAlpha(18),
+                            color: UpriseColors.mediumGray,
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
@@ -1221,7 +1289,7 @@ class _ProductCard extends StatelessWidget {
                             style: GoogleFonts.beVietnamPro(
                               fontSize: 9,
                               fontWeight: FontWeight.w600,
-                              color: UpriseColors.primaryDark,
+                              color: UpriseColors.darkGray,
                             ),
                           ),
                         ),
@@ -1239,7 +1307,7 @@ class _ProductCard extends StatelessWidget {
                               style: GoogleFonts.beVietnamPro(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w700,
-                                color: UpriseColors.primaryDark,
+                                color: UpriseColors.charcoal,
                               ),
                             ),
                             Text(
@@ -1681,11 +1749,9 @@ class _ProductModalState extends State<_ProductModal> {
             // Header
             Container(
               padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
-              decoration: BoxDecoration(
-                color: UpriseColors.primaryDark,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(18),
-                ),
+              decoration: const BoxDecoration(
+                color: Color(0xFFF8F9FB),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
               ),
               child: Row(
                 children: [
@@ -1693,12 +1759,12 @@ class _ProductModalState extends State<_ProductModal> {
                     width: 38,
                     height: 38,
                     decoration: BoxDecoration(
-                      color: Colors.white.withAlpha(38),
+                      color: UpriseColors.primaryDark.withAlpha(26),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Icon(
                       Icons.shopping_bag_outlined,
-                      color: Colors.white,
+                      color: UpriseColors.primaryDark,
                       size: 18,
                     ),
                   ),
@@ -1712,7 +1778,6 @@ class _ProductModalState extends State<_ProductModal> {
                           style: GoogleFonts.beVietnamPro(
                             fontSize: 17,
                             fontWeight: FontWeight.w700,
-                            color: Colors.white,
                           ),
                         ),
                         if (_isEdit && widget.existingProduct != null)
@@ -1720,18 +1785,14 @@ class _ProductModalState extends State<_ProductModal> {
                             'PRODUCT ID: #${widget.existingProduct!.id.substring(0, 8).toUpperCase()}',
                             style: GoogleFonts.beVietnamPro(
                               fontSize: 10,
-                              color: Colors.white70,
+                              color: UpriseColors.darkGray,
                             ),
                           ),
                       ],
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(
-                      Icons.close_rounded,
-                      color: Colors.white,
-                      size: 20,
-                    ),
+                    icon: const Icon(Icons.close_rounded, size: 20),
                     onPressed: _submitting
                         ? null
                         : () => Navigator.pop(context),
@@ -2405,7 +2466,7 @@ class _ProductModalState extends State<_ProductModal> {
       child: Row(
         children: [
           if (icon != null) ...[
-            Icon(icon, size: 16, color: UpriseColors.primaryDark),
+            Icon(icon, size: 16, color: UpriseColors.darkGray),
             const SizedBox(width: 8),
           ],
           Text(
@@ -2413,7 +2474,7 @@ class _ProductModalState extends State<_ProductModal> {
             style: GoogleFonts.beVietnamPro(
               fontSize: 13,
               fontWeight: FontWeight.w700,
-              color: UpriseColors.primaryDark,
+              color: UpriseColors.charcoal,
               letterSpacing: 0.3,
             ),
           ),
@@ -2498,7 +2559,7 @@ class _VariantDialogState extends State<_VariantDialog> {
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: Container(
         width: 440,
         padding: const EdgeInsets.all(24),
@@ -3215,14 +3276,14 @@ class _ProductDetailsModal extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
-          Icon(icon, size: 15, color: UpriseColors.primaryDark),
+          Icon(icon, size: 15, color: UpriseColors.darkGray),
           const SizedBox(width: 6),
           Text(
             text,
             style: GoogleFonts.beVietnamPro(
               fontSize: 13,
               fontWeight: FontWeight.w700,
-              color: UpriseColors.primaryDark,
+              color: UpriseColors.charcoal,
             ),
           ),
           const SizedBox(width: 12),
@@ -3482,7 +3543,7 @@ class _OrdersTabState extends State<_OrdersTab> {
               borderRadius: BorderRadius.circular(16),
             ),
             child: Container(
-              width: 400,
+              width: 420,
               padding: const EdgeInsets.all(24),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -3499,7 +3560,7 @@ class _OrdersTabState extends State<_OrdersTab> {
                         ),
                         child: const Icon(
                           Icons.update_rounded,
-                          color: Color(0xFFBE4700),
+                          color: Color(0xFFEA580C),
                           size: 20,
                         ),
                       ),

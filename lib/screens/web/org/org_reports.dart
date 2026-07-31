@@ -18,10 +18,11 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import '../../../utils/platform_file_utils.dart' as platform_file_utils;
 import '../../../utils/school_year.dart';
-import '../../../theme/app_theme.dart';
+import '../../../theme/org_theme.dart';
 import '../../../widgets/admin_export_button.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/org_action_icon_button.dart';
+import '../../../widgets/org_attachment_preview.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens — enhanced for a more polished look
@@ -32,7 +33,7 @@ class _DS {
   static const double radiusLg = 16;
   static const double radiusPill = 100;
 
-  static const Color primary = Color(0xFFBE4700);
+  static const Color primary = Color(0xFFEA580C);
   static const Color primaryLight = Color(0xFFFFE4CC);
   static const Color primaryBg = Color(0xFFFEF3C7);
   static const Color primaryDark = Color(0xFF9A3A00);
@@ -2389,96 +2390,17 @@ class _ViewReportModal extends StatelessWidget {
       final mime = _mimeFromExt(ext);
 
       if (mime.startsWith('image/')) {
-        showDialog(
+        OrgAttachmentPreview.showImage(
           context: context,
-          builder: (_) => Dialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: _DS.primary,
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(16),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.image_rounded, color: Colors.white, size: 20),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          name,
-                          style: GoogleFonts.beVietnamPro(
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(
-                          Icons.close_rounded,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                    ],
-                  ),
-                ),
-                Flexible(child: Image.memory(bytes)),
-                Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: Text(
-                      'Close',
-                      style: GoogleFonts.beVietnamPro(
-                        fontWeight: FontWeight.w600,
-                        color: _DS.primary,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          bytes: bytes,
+          fileName: name,
         );
       } else if (mime == 'text/plain') {
         final text = utf8.decode(bytes);
-        showDialog(
+        OrgAttachmentPreview.showText(
           context: context,
-          builder: (_) => AlertDialog(
-            title: Text(
-              name,
-              style: GoogleFonts.beVietnamPro(
-                fontWeight: FontWeight.w600,
-                color: _DS.textPrimary,
-              ),
-            ),
-            content: SingleChildScrollView(
-              child: SelectableText(
-                text,
-                style: GoogleFonts.beVietnamPro(fontSize: 14, height: 1.6),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(
-                  'Close',
-                  style: GoogleFonts.beVietnamPro(
-                    fontWeight: FontWeight.w600,
-                    color: _DS.primary,
-                  ),
-                ),
-              ),
-            ],
-          ),
+          fileName: name,
+          text: text,
         );
       } else {
         await platform_file_utils.saveBytesToTempAndOpen(

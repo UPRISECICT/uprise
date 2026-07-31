@@ -19,7 +19,7 @@ import '../../../services/activity_logger.dart' as activity_log;
 // ─────────────────────────────────────────────────────────────────────────────
 class _C {
   // Primary brand
-  static const Color primaryDark = Color(0xFFBE4700);
+  static const Color primaryDark = Color(0xFFEA580C);
 
   // Surfaces
   static const Color white = Color(0xFFFFFFFF);

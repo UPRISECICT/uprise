@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../widgets/student/app_colors.dart';
+import '../../widgets/student/student_app_bar.dart';
+import '../../widgets/common/loading_widget.dart';
 import '../../widgets/product_spin_viewer.dart';
 import 'package:intl/intl.dart';
 
@@ -26,14 +28,14 @@ class ProductVariant {
   });
 
   factory ProductVariant.fromMap(Map<String, dynamic> m) => ProductVariant(
-        id: m['id'] as String? ?? '',
-        size: m['size'] as String? ?? '',
-        color: m['color'] as String? ?? '',
-        stock: ((m['stock'] ?? 0) as num).toInt(),
-        priceOffset: m['priceOffset'] != null
-            ? (m['priceOffset'] as num).toDouble()
-            : null,
-      );
+    id: m['id'] as String? ?? '',
+    size: m['size'] as String? ?? '',
+    color: m['color'] as String? ?? '',
+    stock: ((m['stock'] ?? 0) as num).toInt(),
+    priceOffset: m['priceOffset'] != null
+        ? (m['priceOffset'] as num).toDouble()
+        : null,
+  );
 }
 
 class _Product {
@@ -97,12 +99,11 @@ class _Product {
       status: d['status'] as String? ?? 'available',
       variants: (d['variants'] is List)
           ? (d['variants'] as List)
-              .whereType<Map<String, dynamic>>()
-              .map(ProductVariant.fromMap)
-              .toList()
+                .whereType<Map<String, dynamic>>()
+                .map(ProductVariant.fromMap)
+                .toList()
           : const [],
-      rotationPhotos:
-          ((d['rotationPhotos'] as List?) ?? []).cast<String>(),
+      rotationPhotos: ((d['rotationPhotos'] as List?) ?? []).cast<String>(),
     );
   }
 
@@ -122,23 +123,7 @@ class StudentMerchandiseScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        title: const Text(
-          'Merchandise',
-          style: TextStyle(
-            color: Colors.black,
-            fontWeight: FontWeight.w600,
-            fontSize: 18,
-          ),
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
+      appBar: const StudentAppBar(title: 'Merchandise'),
       body: const _ProductsTab(),
     );
   }
@@ -164,6 +149,10 @@ class _ProductsTabState extends State<_ProductsTab> {
   List<String> _orgs = ['All'];
   final Map<String, String> _orgIdMap = {};
   bool _loadingFilters = true;
+  // Null until _loadFilters() resolves — only then do we know which orgs are
+  // active, so the product grid isn't briefly emptied by filtering against
+  // an empty set on first frame.
+  Set<String>? _activeOrgIds;
 
   @override
   void initState() {
@@ -196,27 +185,30 @@ class _ProductsTabState extends State<_ProductsTab> {
           .where('isArchived', isEqualTo: false)
           .get();
 
-      final categories = productsSnap.docs
-          .map((d) => d.data()['category'] as String? ?? '')
-          .where((cat) => cat.isNotEmpty)
-          .toSet()
-          .toList()
-        ..sort();
+      final categories =
+          productsSnap.docs
+              .map((d) => d.data()['category'] as String? ?? '')
+              .where((cat) => cat.isNotEmpty)
+              .toSet()
+              .toList()
+            ..sort();
 
       final productOrgIds = productsSnap.docs
           .map((d) => d.data()['orgId'] as String? ?? '')
           .where((id) => id.isNotEmpty)
           .toSet();
 
-      final filteredOrgs = _orgIdMap.entries
-          .where((entry) => productOrgIds.contains(entry.value))
-          .map((entry) => entry.key)
-          .toList()
-        ..sort();
+      final filteredOrgs =
+          _orgIdMap.entries
+              .where((entry) => productOrgIds.contains(entry.value))
+              .map((entry) => entry.key)
+              .toList()
+            ..sort();
 
       setState(() {
         _categories = ['All', ...categories];
         _orgs = ['All', ...filteredOrgs];
+        _activeOrgIds = _orgIdMap.values.toSet();
         _loadingFilters = false;
       });
     } catch (_) {
@@ -352,10 +344,9 @@ class _ProductsTabState extends State<_ProductsTab> {
             stream: _stream,
             builder: (ctx, snap) {
               if (snap.connectionState == ConnectionState.waiting) {
-                return const Center(
-                  child: CircularProgressIndicator(
-                    color: AppColors.primaryDark,
-                  ),
+                return const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: SkeletonLoader(count: 4, height: 100),
                 );
               }
               if (snap.hasError) {
@@ -369,6 +360,16 @@ class _ProductsTabState extends State<_ProductsTab> {
               var products = (snap.data?.docs ?? [])
                   .map((d) => _Product.fromFirestore(d))
                   .toList();
+
+              final activeOrgIds = _activeOrgIds;
+              if (activeOrgIds != null) {
+                // Hide merch from organizations the admin has deactivated —
+                // otherwise a suspended org's catalog stays fully visible to
+                // students, it just becomes unreachable via the org filter.
+                products = products
+                    .where((p) => activeOrgIds.contains(p.orgId))
+                    .toList();
+              }
 
               if (_selectedCategory != 'All') {
                 products = products
@@ -401,8 +402,8 @@ class _ProductsTabState extends State<_ProductsTab> {
                   subtitle: _search.isNotEmpty
                       ? 'Try a different search term.'
                       : _hasOrgFilter
-                          ? 'No products from $_selectedOrg organization.'
-                          : 'No merchandise available yet.',
+                      ? 'No products from $_selectedOrg organization.'
+                      : 'No merchandise available yet.',
                 );
               }
 
@@ -415,9 +416,7 @@ class _ProductsTabState extends State<_ProductsTab> {
                   mainAxisSpacing: 12,
                 ),
                 itemCount: products.length,
-                itemBuilder: (ctx, i) => _ProductCard(
-                  product: products[i],
-                ),
+                itemBuilder: (ctx, i) => _ProductCard(product: products[i]),
               );
             },
           ),
@@ -754,20 +753,20 @@ class _ProductCard extends StatelessWidget {
   }
 
   Widget _imgPlaceholder(String name) => Container(
-        height: 120,
-        width: double.infinity,
-        color: AppColors.primaryDark.withOpacity(0.1),
-        child: Center(
-          child: Text(
-            name.isNotEmpty ? name[0].toUpperCase() : '?',
-            style: const TextStyle(
-              fontSize: 36,
-              color: AppColors.primaryDark,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+    height: 120,
+    width: double.infinity,
+    color: AppColors.primaryDark.withOpacity(0.1),
+    child: Center(
+      child: Text(
+        name.isNotEmpty ? name[0].toUpperCase() : '?',
+        style: const TextStyle(
+          fontSize: 36,
+          color: AppColors.primaryDark,
+          fontWeight: FontWeight.bold,
         ),
-      );
+      ),
+    ),
+  );
 
   void _showDetails(BuildContext context) {
     final fmt = NumberFormat('#,##0.00');
@@ -879,27 +878,27 @@ class _ProductCard extends StatelessWidget {
   }
 
   Widget _detailPlaceholder() => Container(
-        height: 200,
-        decoration: BoxDecoration(
-          color: AppColors.primaryDark.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
+    height: 200,
+    decoration: BoxDecoration(
+      color: AppColors.primaryDark.withOpacity(0.1),
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(
+          Icons.image_not_supported_outlined,
+          size: 48,
+          color: Colors.grey.shade400,
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.image_not_supported_outlined,
-              size: 48,
-              color: Colors.grey.shade400,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'No Image Available',
-              style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
-            ),
-          ],
+        const SizedBox(height: 8),
+        Text(
+          'No Image Available',
+          style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
         ),
-      );
+      ],
+    ),
+  );
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1021,16 +1020,16 @@ class _VariantsTable extends StatelessWidget {
   }
 
   Widget _cell(String text, {bool header = false, Color? color}) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        child: Text(
-          text,
-          style: TextStyle(
-            fontSize: header ? 11 : 12,
-            fontWeight: header ? FontWeight.w700 : FontWeight.normal,
-            color: color ?? (header ? Colors.black54 : Colors.black87),
-          ),
-        ),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+    child: Text(
+      text,
+      style: TextStyle(
+        fontSize: header ? 11 : 12,
+        fontWeight: header ? FontWeight.w700 : FontWeight.normal,
+        color: color ?? (header ? Colors.black54 : Colors.black87),
+      ),
+    ),
+  );
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1076,6 +1075,3 @@ class _EmptyHint extends StatelessWidget {
     );
   }
 }
-
-// Helper for formatting prices (used in multiple places)
-final _numberFormat = NumberFormat('#,##0.00');

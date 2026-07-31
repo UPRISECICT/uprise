@@ -46,7 +46,7 @@ class _DS {
   static const double radiusLg = 16;
   static const double radiusPill = 100;
 
-  static const Color primary = Color(0xFFBE4700);
+  static const Color primary = Color(0xFFEA580C);
   static const Color primaryBg = Color(0xFFFEF3C7);
 
   static final cardShadow = [
@@ -62,9 +62,9 @@ class _DS {
 // OrgColors (your existing theme)
 // ─────────────────────────────────────────────────────────────────────────────
 class OrgColors {
-  static const Color primaryDark = Color(0xFFBE4700);
+  static const Color primaryDark = Color(0xFFEA580C);
   static const Color primaryLight = Color(0xFFD47A00);
-  static const Color accent = Color(0xFFDA6937);
+  static const Color accent = Color(0xFFF97316);
   static const Color white = Color(0xFFFFFFFF);
   static const Color surface = Color(0xFFF8F9FB);
   static const Color lightGray = Color(0xFFF8F9FB);
@@ -1110,7 +1110,7 @@ class _OrgDashboardState extends State<OrgDashboard> {
           borderRadius: BorderRadius.circular(_DS.radiusLg),
         ),
         child: Container(
-          width: 400,
+          width: 420,
           padding: const EdgeInsets.all(28),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -3429,7 +3429,10 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
           borderRadius: BorderRadius.circular(_DS.radiusLg),
         ),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 460),
+          constraints: BoxConstraints(
+            maxWidth: 460,
+            maxHeight: MediaQuery.of(ctx).size.height * 0.85,
+          ),
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
@@ -3445,7 +3448,16 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                   ),
                 ),
                 const SizedBox(height: 18),
-                for (final f in fields) _detailRow(f.key, f.value),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (final f in fields) _detailRow(f.key, f.value),
+                      ],
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 8),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,

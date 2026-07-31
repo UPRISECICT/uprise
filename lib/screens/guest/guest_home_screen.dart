@@ -28,7 +28,7 @@ import 'guest_profile_screen.dart';
 // ─────────────────────────────────────────────────────────────
 //  THEME CONSTANTS
 // ─────────────────────────────────────────────────────────────
-const _kPrimary   = Color(0xFFBE4700);
+const _kPrimary = Color(0xFFBE4700);
 const _kPrimaryBg = Color(0xFFF5E3D9);
 
 // ─────────────────────────────────────────────────────────────
@@ -39,10 +39,7 @@ class GuestHomeScreen extends StatefulWidget {
   /// the parameter keep compiling unchanged.
   final GuestMode mode;
 
-  const GuestHomeScreen({
-    super.key,
-    this.mode = GuestMode.visitor,
-  });
+  const GuestHomeScreen({super.key, this.mode = GuestMode.visitor});
 
   @override
   State<GuestHomeScreen> createState() => _GuestHomeScreenState();
@@ -76,10 +73,7 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
-      ),
+      body: IndexedStack(index: _currentIndex, children: _screens),
       bottomNavigationBar: _GuestBottomNav(
         currentIndex: _currentIndex,
         onTap: (i) => setState(() => _currentIndex = i),
@@ -95,18 +89,23 @@ class _GuestBottomNav extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
 
-  const _GuestBottomNav({
-    required this.currentIndex,
-    required this.onTap,
-  });
+  const _GuestBottomNav({required this.currentIndex, required this.onTap});
 
   static const _items = [
-  _NavItem(Icons.home_outlined, Icons.home_rounded, 'Home'),
-  _NavItem(Icons.campaign_outlined, Icons.campaign_rounded, 'Announcement'),
-  _NavItem(Icons.calendar_today_outlined, Icons.calendar_today_rounded, 'Events'),
-  _NavItem(Icons.calendar_month_outlined, Icons.calendar_month_rounded, 'Calendar'),
-  _NavItem(Icons.person_outline, Icons.person, 'Profile'),
-];
+    _NavItem(Icons.home_outlined, Icons.home_rounded, 'Home'),
+    _NavItem(Icons.campaign_outlined, Icons.campaign_rounded, 'Announcement'),
+    _NavItem(
+      Icons.calendar_today_outlined,
+      Icons.calendar_today_rounded,
+      'Events',
+    ),
+    _NavItem(
+      Icons.calendar_month_outlined,
+      Icons.calendar_month_rounded,
+      'Calendar',
+    ),
+    _NavItem(Icons.person_outline, Icons.person, 'Profile'),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -127,7 +126,7 @@ class _GuestBottomNav extends StatelessWidget {
           height: 62,
           child: Row(
             children: List.generate(_items.length, (i) {
-              final item    = _items[i];
+              final item = _items[i];
               final isActive = currentIndex == i;
 
               return Expanded(
@@ -140,7 +139,9 @@ class _GuestBottomNav extends StatelessWidget {
                       AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 4),
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: isActive
                               ? _kPrimary.withOpacity(0.12)
@@ -179,7 +180,7 @@ class _GuestBottomNav extends StatelessWidget {
 class _NavItem {
   final IconData icon;
   final IconData activeIcon;
-  final String   label;
+  final String label;
   const _NavItem(this.icon, this.activeIcon, this.label);
 }
 
@@ -189,20 +190,20 @@ class _NavItem {
 enum _FeedType { announcement, event }
 
 class _FeedItem {
-  final String    id;
+  final String id;
   final _FeedType type;
-  final String    title;
-  final String    body;          // content / description
-  final String    orgName;
-  final String    orgInitial;
-  final String    imageBase64;   // announcement image
-  final String    category;      // event category
-  final String    audience;      // Public / CICT Only
-  final bool      isPinned;
-  final DateTime  timestamp;
+  final String title;
+  final String body; // content / description
+  final String orgName;
+  final String orgInitial;
+  final String imageBase64; // announcement image
+  final String category; // event category
+  final String audience; // Public / CICT Only
+  final bool isPinned;
+  final DateTime timestamp;
   final DateTime? eventDate;
-  final String    location;
-  final bool      isSoon;
+  final String location;
+  final bool isSoon;
 
   const _FeedItem({
     required this.id,
@@ -218,7 +219,7 @@ class _FeedItem {
     required this.timestamp,
     this.eventDate,
     this.location = '',
-    this.isSoon   = false,
+    this.isSoon = false,
   });
 }
 
@@ -226,16 +227,16 @@ class _FeedItem {
 //  CATEGORY COLOUR MAP
 // ─────────────────────────────────────────────────────────────
 const _catColors = <String, Color>{
-  'Workshop':         Color(0xFF8B5CF6),
-  'Seminar':          Color(0xFF3B82F6),
-  'Competition':      Color(0xFFEF4444),
+  'Workshop': Color(0xFF8B5CF6),
+  'Seminar': Color(0xFF3B82F6),
+  'Competition': Color(0xFFEF4444),
   'General Assembly': Color(0xFFF97316),
-  'Social':           Color(0xFFEC4899),
-  'Outreach':         Color(0xFF10B981),
-  'Sports':           Color(0xFF14B8A6),
-  'Academic':         Color(0xFF6366F1),
-  'Technical':        Color(0xFF06B6D4),
-  'Cultural':         Color(0xFFD946EF),
+  'Social': Color(0xFFEC4899),
+  'Outreach': Color(0xFF10B981),
+  'Sports': Color(0xFF14B8A6),
+  'Academic': Color(0xFF6366F1),
+  'Technical': Color(0xFF06B6D4),
+  'Cultural': Color(0xFFD946EF),
 };
 Color _catColor(String cat) => _catColors[cat] ?? const Color(0xFF6B7280);
 
@@ -317,28 +318,28 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
         .where('targetAudience', whereIn: ['Public', 'CICT Only'])
         .snapshots()
         .listen((snap) {
-      for (final doc in snap.docs) {
-        final d        = doc.data() as Map<String, dynamic>;
-        final ts       = d['timestamp'] as Timestamp?;
-        final orgName  = (d['authorName'] as String?) ?? 'UPRISE';
-        _annMap[doc.id] = _FeedItem(
-          id          : doc.id,
-          type        : _FeedType.announcement,
-          title       : (d['title']    as String?) ?? '',
-          body        : (d['content']  as String?) ?? '',
-          orgName     : orgName,
-          orgInitial  : orgName.isNotEmpty ? orgName[0].toUpperCase() : 'U',
-          imageBase64 : (d['imageBase64'] as String?) ?? '',
-          category    : '',
-          audience    : (d['targetAudience'] as String?) ?? 'Public',
-          isPinned    : (d['pinned'] as bool?) ?? false,
-          timestamp   : ts?.toDate() ?? DateTime.now(),
-        );
-      }
-      final ids = snap.docs.map((d) => d.id).toSet();
-      _annMap.removeWhere((k, _) => !ids.contains(k));
-      _rebuildFeed();
-    });
+          for (final doc in snap.docs) {
+            final d = doc.data() as Map<String, dynamic>;
+            final ts = d['timestamp'] as Timestamp?;
+            final orgName = (d['authorName'] as String?) ?? 'UPRISE';
+            _annMap[doc.id] = _FeedItem(
+              id: doc.id,
+              type: _FeedType.announcement,
+              title: (d['title'] as String?) ?? '',
+              body: (d['content'] as String?) ?? '',
+              orgName: orgName,
+              orgInitial: orgName.isNotEmpty ? orgName[0].toUpperCase() : 'U',
+              imageBase64: (d['imageBase64'] as String?) ?? '',
+              category: '',
+              audience: (d['targetAudience'] as String?) ?? 'Public',
+              isPinned: (d['pinned'] as bool?) ?? false,
+              timestamp: ts?.toDate() ?? DateTime.now(),
+            );
+          }
+          final ids = snap.docs.map((d) => d.id).toSet();
+          _annMap.removeWhere((k, _) => !ids.contains(k));
+          _rebuildFeed();
+        });
 
     // ── Events ─────────────────────────────────────────────
     _evtSub = FirebaseFirestore.instance
@@ -346,36 +347,42 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
         .where('status', isEqualTo: 'approved')
         .snapshots()
         .listen((snap) {
-      for (final doc in snap.docs) {
-        final d       = doc.data() as Map<String, dynamic>;
-        final aud     = (d['audience'] as String?) ?? 'Public';
-        if (!_audienceAllowed(aud)) { _evtMap.remove(doc.id); continue; }
-        final dateField = d['date'];
-        final evDate  = dateField is Timestamp ? dateField.toDate() : DateTime.now();
-        final created = d['createdAt'] as Timestamp?;
-        final orgName = (d['orgName'] as String?) ?? 'Organization';
-        _evtMap[doc.id] = _FeedItem(
-          id         : doc.id,
-          type       : _FeedType.event,
-          title      : (d['title']       as String?) ?? 'Untitled',
-          body       : (d['description'] as String?) ?? '',
-          orgName    : orgName,
-          orgInitial : orgName.isNotEmpty ? orgName[0].toUpperCase() : 'O',
-          imageBase64: '',
-          category   : (d['category']   as String?) ?? 'Other',
-          audience   : aud,
-          isPinned   : false,
-          timestamp  : created?.toDate() ?? evDate,
-          eventDate  : evDate,
-          location   : (d['location']   as String?) ?? 'TBA',
-          isSoon     : evDate.difference(DateTime.now()).inDays <= 7 &&
-                       evDate.isAfter(DateTime.now()),
-        );
-      }
-      final ids = snap.docs.map((d) => d.id).toSet();
-      _evtMap.removeWhere((k, _) => !ids.contains(k));
-      _rebuildFeed();
-    });
+          for (final doc in snap.docs) {
+            final d = doc.data() as Map<String, dynamic>;
+            final aud = (d['audience'] as String?) ?? 'Public';
+            if (!_audienceAllowed(aud)) {
+              _evtMap.remove(doc.id);
+              continue;
+            }
+            final dateField = d['date'];
+            final evDate = dateField is Timestamp
+                ? dateField.toDate()
+                : DateTime.now();
+            final created = d['createdAt'] as Timestamp?;
+            final orgName = (d['orgName'] as String?) ?? 'Organization';
+            _evtMap[doc.id] = _FeedItem(
+              id: doc.id,
+              type: _FeedType.event,
+              title: (d['title'] as String?) ?? 'Untitled',
+              body: (d['description'] as String?) ?? '',
+              orgName: orgName,
+              orgInitial: orgName.isNotEmpty ? orgName[0].toUpperCase() : 'O',
+              imageBase64: '',
+              category: (d['category'] as String?) ?? 'Other',
+              audience: aud,
+              isPinned: false,
+              timestamp: created?.toDate() ?? evDate,
+              eventDate: evDate,
+              location: (d['location'] as String?) ?? 'TBA',
+              isSoon:
+                  evDate.difference(DateTime.now()).inDays <= 7 &&
+                  evDate.isAfter(DateTime.now()),
+            );
+          }
+          final ids = snap.docs.map((d) => d.id).toSet();
+          _evtMap.removeWhere((k, _) => !ids.contains(k));
+          _rebuildFeed();
+        });
   }
 
   void _rebuildFeed() {
@@ -383,8 +390,10 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
 
     // Keep events and announcements separate for the two-section layout
     final evts = _evtMap.values.toList()
-      ..sort((a, b) => (a.eventDate ?? a.timestamp)
-          .compareTo(b.eventDate ?? b.timestamp)); // upcoming first
+      ..sort(
+        (a, b) =>
+            (a.eventDate ?? a.timestamp).compareTo(b.eventDate ?? b.timestamp),
+      ); // upcoming first
 
     final anns = _annMap.values.toList()
       ..sort((a, b) {
@@ -403,27 +412,27 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
     });
   }
 
-  List<_FeedItem> get _events =>
-      _evtMap.values.toList()
-        ..sort((a, b) => (a.eventDate ?? a.timestamp)
-            .compareTo(b.eventDate ?? b.timestamp));
+  List<_FeedItem> get _events => _evtMap.values.toList()
+    ..sort(
+      (a, b) =>
+          (a.eventDate ?? a.timestamp).compareTo(b.eventDate ?? b.timestamp),
+    );
 
-  List<_FeedItem> get _announcements =>
-      _annMap.values.toList()
-        ..sort((a, b) {
-          if (a.isPinned && !b.isPinned) return -1;
-          if (!a.isPinned && b.isPinned) return 1;
-          return b.timestamp.compareTo(a.timestamp);
-        });
+  List<_FeedItem> get _announcements => _annMap.values.toList()
+    ..sort((a, b) {
+      if (a.isPinned && !b.isPinned) return -1;
+      if (!a.isPinned && b.isPinned) return 1;
+      return b.timestamp.compareTo(a.timestamp);
+    });
 
   String _timeAgo(DateTime dt) {
     final diff = DateTime.now().difference(dt);
-    if (diff.inMinutes < 1)  return 'just now';
+    if (diff.inMinutes < 1) return 'just now';
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24)   return '${diff.inHours}h ago';
-    if (diff.inDays < 7)     return '${diff.inDays}d ago';
-    if (diff.inDays < 30)    return '${(diff.inDays / 7).floor()}w ago';
-    if (diff.inDays < 365)   return '${(diff.inDays / 30).floor()}mo ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    if (diff.inDays < 30) return '${(diff.inDays / 7).floor()}w ago';
+    if (diff.inDays < 365) return '${(diff.inDays / 30).floor()}mo ago';
     return '${(diff.inDays / 365).floor()}y ago';
   }
 
@@ -443,7 +452,7 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
 
   @override
   Widget build(BuildContext context) {
-    final events       = _events;
+    final events = _events;
     final announcements = _announcements;
 
     return Scaffold(
@@ -460,20 +469,28 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
             title: Row(
               children: [
                 Container(
-                  width: 32, height: 32,
+                  width: 32,
+                  height: 32,
                   decoration: const BoxDecoration(
-                      color: _kPrimary, shape: BoxShape.circle),
-                  child: const Icon(Icons.local_fire_department,
-                      color: Colors.white, size: 18),
+                    color: _kPrimary,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.local_fire_department,
+                    color: Colors.white,
+                    size: 18,
+                  ),
                 ),
                 const SizedBox(width: 8),
-                const Text('UPRISE',
-                    style: TextStyle(
-                      color: _kPrimary,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 22,
-                      letterSpacing: 1.5,
-                    )),
+                const Text(
+                  'UPRISE',
+                  style: TextStyle(
+                    color: _kPrimary,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 22,
+                    letterSpacing: 1.5,
+                  ),
+                ),
               ],
             ),
             actions: [
@@ -482,24 +499,33 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
                   padding: const EdgeInsets.only(right: 14),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 5),
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFFECFDF5),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                          color: const Color(0xFF059669).withOpacity(0.4)),
+                        color: const Color(0xFF059669).withOpacity(0.4),
+                      ),
                     ),
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.verified_rounded,
-                            size: 12, color: Color(0xFF059669)),
+                        Icon(
+                          Icons.verified_rounded,
+                          size: 12,
+                          color: Color(0xFF059669),
+                        ),
                         SizedBox(width: 4),
-                        Text('Verified',
-                            style: TextStyle(
-                                color: Color(0xFF059669),
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700)),
+                        Text(
+                          'Verified',
+                          style: TextStyle(
+                            color: Color(0xFF059669),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -511,16 +537,21 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
                     onTap: _showSignInPrompt,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 7),
+                        horizontal: 16,
+                        vertical: 7,
+                      ),
                       decoration: BoxDecoration(
                         color: _kPrimary,
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: const Text('Sign In',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700)),
+                      child: const Text(
+                        'Sign In',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -535,20 +566,18 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
           SliverToBoxAdapter(
             child: _QuickNavRow(
               isAuthenticated: _isAuthenticated,
-              onEvents:        () => _switchTab(2),
+              onEvents: () => _switchTab(2),
               onAnnouncements: () => _switchTab(1),
-              onCalendar:      () => _switchTab(3),
-              onSignIn:        _showSignInPrompt,
+              onCalendar: () => _switchTab(3),
+              onSignIn: _showSignInPrompt,
             ),
           ),
 
           if (_loadingFeed) ...[
             const SliverFillRemaining(
-              child: Center(
-                  child: CircularProgressIndicator(color: _kPrimary)),
+              child: Center(child: CircularProgressIndicator(color: _kPrimary)),
             ),
           ] else ...[
-
             // ════════════════════════════════════════════════
             //  SECTION 1 — UPCOMING EVENTS (horizontal scroll)
             // ════════════════════════════════════════════════
@@ -578,9 +607,9 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
                           child: SizedBox(
                             width: 260,
                             child: _EventCard(
-                              item:    events[i],
+                              item: events[i],
                               timeAgo: _timeAgo(events[i].timestamp),
-                              onTap:   () => _switchTab(2),
+                              onTap: () => _switchTab(2),
                             ),
                           ),
                         ),
@@ -612,8 +641,8 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
                   (_, i) => Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: _AnnouncementCard(
-                      item:     announcements[i],
-                      timeAgo:  _timeAgo(announcements[i].timestamp),
+                      item: announcements[i],
+                      timeAgo: _timeAgo(announcements[i].timestamp),
                       onOrgTap: () => _switchTab(1),
                     ),
                   ),
@@ -633,7 +662,7 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
 //  QUICK NAV ROW  (Stories-style horizontal scroll)
 // ─────────────────────────────────────────────────────────────
 class _QuickNavRow extends StatelessWidget {
-  final bool         isAuthenticated;
+  final bool isAuthenticated;
   final VoidCallback onEvents;
   final VoidCallback onAnnouncements;
   final VoidCallback onCalendar;
@@ -694,11 +723,11 @@ class _QuickNavRow extends StatelessWidget {
 }
 
 class _QuickNavChip extends StatelessWidget {
-  final IconData     icon;
-  final String       label;
-  final Color        color;
+  final IconData icon;
+  final String label;
+  final Color color;
   final VoidCallback onTap;
-  final bool         outlined;
+  final bool outlined;
 
   const _QuickNavChip({
     required this.icon,
@@ -726,11 +755,14 @@ class _QuickNavChip extends StatelessWidget {
           children: [
             Icon(icon, size: 15, color: color),
             const SizedBox(width: 6),
-            Text(label,
-                style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: color)),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
+            ),
           ],
         ),
       ),
@@ -745,11 +777,11 @@ class _QuickNavChip extends StatelessWidget {
 //  SHARED CARD IMAGE BANNER  (full-width, gradient placeholder)
 // ─────────────────────────────────────────────────────────────
 class _CardImageBanner extends StatelessWidget {
-  final String  imageBase64;   // may be empty — shows placeholder
-  final String  orgName;       // used to pick placeholder gradient
-  final String  badgeLabel;    // e.g. "NEW" / "POPULAR" / "UPCOMING"
-  final Color   badgeColor;
-  final double  height;
+  final String imageBase64; // may be empty — shows placeholder
+  final String orgName; // used to pick placeholder gradient
+  final String badgeLabel; // e.g. "NEW" / "POPULAR" / "UPCOMING"
+  final Color badgeColor;
+  final double height;
 
   const _CardImageBanner({
     required this.imageBase64,
@@ -794,17 +826,16 @@ class _CardImageBanner extends StatelessWidget {
 
           // ── Subtle bottom scrim so text below stays readable ──
           Positioned(
-            bottom: 0, left: 0, right: 0,
+            bottom: 0,
+            left: 0,
+            right: 0,
             child: Container(
               height: 60,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.bottomCenter,
                   end: Alignment.topCenter,
-                  colors: [
-                    Colors.black.withOpacity(0.35),
-                    Colors.transparent,
-                  ],
+                  colors: [Colors.black.withOpacity(0.35), Colors.transparent],
                 ),
               ),
             ),
@@ -813,10 +844,13 @@ class _CardImageBanner extends StatelessWidget {
           // ── Status badge top-left ──────────────────────────
           if (badgeLabel.isNotEmpty)
             Positioned(
-              top: 12, left: 12,
+              top: 12,
+              left: 12,
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 5),
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: badgeColor,
                   borderRadius: BorderRadius.circular(6),
@@ -862,9 +896,8 @@ class _CardImageBanner extends StatelessWidget {
 
 class _GradientPlaceholder extends StatelessWidget {
   final List<Color> colors;
-  final String      initial;
-  const _GradientPlaceholder(
-      {required this.colors, required this.initial});
+  final String initial;
+  const _GradientPlaceholder({required this.colors, required this.initial});
 
   @override
   Widget build(BuildContext context) {
@@ -894,8 +927,8 @@ class _GradientPlaceholder extends StatelessWidget {
 //  ANNOUNCEMENT FEED CARD
 // ─────────────────────────────────────────────────────────────
 class _AnnouncementCard extends StatefulWidget {
-  final _FeedItem    item;
-  final String       timeAgo;
+  final _FeedItem item;
+  final String timeAgo;
   final VoidCallback onOrgTap;
 
   const _AnnouncementCard({
@@ -936,10 +969,10 @@ class _AnnouncementCardState extends State<_AnnouncementCard> {
           // ── Full-width image / placeholder ────────────────
           _CardImageBanner(
             imageBase64: item.imageBase64,
-            orgName:     item.orgName,
-            badgeLabel:  _badgeLabel,
-            badgeColor:  _badgeColor,
-            height:      200,
+            orgName: item.orgName,
+            badgeLabel: _badgeLabel,
+            badgeColor: _badgeColor,
+            height: 200,
           ),
 
           Padding(
@@ -950,21 +983,24 @@ class _AnnouncementCardState extends State<_AnnouncementCard> {
                 // ── Org row ────────────────────────────────
                 Row(
                   children: [
-                    const Icon(Icons.campaign_outlined,
-                        size: 13, color: Colors.grey),
+                    const Icon(
+                      Icons.campaign_outlined,
+                      size: 13,
+                      color: Colors.grey,
+                    ),
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(
                         '${item.orgName} · ${widget.timeAgo}',
                         style: const TextStyle(
-                            fontSize: 12, color: Colors.grey),
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     if (item.audience == 'CICT Only')
-                      _MiniChip(
-                          label: 'CICT',
-                          color: const Color(0xFF1565C0)),
+                      _MiniChip(label: 'CICT', color: const Color(0xFF1565C0)),
                   ],
                 ),
 
@@ -974,10 +1010,11 @@ class _AnnouncementCardState extends State<_AnnouncementCard> {
                 Text(
                   item.title,
                   style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.black87,
-                      height: 1.25),
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black87,
+                    height: 1.25,
+                  ),
                 ),
 
                 if (item.body.isNotEmpty) ...[
@@ -985,9 +1022,10 @@ class _AnnouncementCardState extends State<_AnnouncementCard> {
                   Text(
                     item.body,
                     style: const TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF666666),
-                        height: 1.5),
+                      fontSize: 13,
+                      color: Color(0xFF666666),
+                      height: 1.5,
+                    ),
                     maxLines: _expanded ? null : 3,
                     overflow: _expanded
                         ? TextOverflow.visible
@@ -995,15 +1033,17 @@ class _AnnouncementCardState extends State<_AnnouncementCard> {
                   ),
                   if (!_expanded && item.body.length > 140)
                     GestureDetector(
-                      onTap: () =>
-                          setState(() => _expanded = true),
+                      onTap: () => setState(() => _expanded = true),
                       child: const Padding(
                         padding: EdgeInsets.only(top: 3),
-                        child: Text('See more',
-                            style: TextStyle(
-                                fontSize: 12,
-                                color: Color(0xFF1565C0),
-                                fontWeight: FontWeight.w600)),
+                        child: Text(
+                          'See more',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF1565C0),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                       ),
                     ),
                 ],
@@ -1026,22 +1066,28 @@ class _AnnouncementCardState extends State<_AnnouncementCard> {
                           child: const Text(
                             'View Announcement',
                             style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700),
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Container(
-                      width: 42, height: 42,
+                      width: 42,
+                      height: 42,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF0F2F5),
+                        color: _kPrimaryBg,
                         borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: _kPrimary.withAlpha(64)),
                       ),
-                      child: const Icon(Icons.share_outlined,
-                          size: 18, color: Colors.black54),
+                      child: const Icon(
+                        Icons.share_outlined,
+                        size: 18,
+                        color: _kPrimary,
+                      ),
                     ),
                   ],
                 ),
@@ -1060,8 +1106,8 @@ class _AnnouncementCardState extends State<_AnnouncementCard> {
 //  EVENT FEED CARD  (image-first, matches reference design)
 // ─────────────────────────────────────────────────────────────
 class _EventCard extends StatelessWidget {
-  final _FeedItem    item;
-  final String       timeAgo;
+  final _FeedItem item;
+  final String timeAgo;
   final VoidCallback onTap;
 
   const _EventCard({
@@ -1075,31 +1121,45 @@ class _EventCard extends StatelessWidget {
     final diff = DateTime.now().difference(item.timestamp);
     if (diff.inHours < 48) return 'NEW';
     // Rough "popular" signal: recently created events in high-traffic categories
-    if (['Competition', 'General Assembly', 'Sports']
-        .contains(item.category)) return 'POPULAR';
+    if (['Competition', 'General Assembly', 'Sports'].contains(item.category))
+      return 'POPULAR';
     return '';
   }
 
   Color get _badgeColor {
     switch (_badgeLabel) {
-      case 'UPCOMING': return const Color(0xFFF59E0B);
-      case 'NEW':      return const Color(0xFF059669);
-      case 'POPULAR':  return const Color(0xFF8B5CF6);
-      default:         return _kPrimary;
+      case 'UPCOMING':
+        return const Color(0xFFF59E0B);
+      case 'NEW':
+        return const Color(0xFF059669);
+      case 'POPULAR':
+        return const Color(0xFF8B5CF6);
+      default:
+        return _kPrimary;
     }
   }
 
   String _formatEventDate(DateTime dt) {
     const months = [
-      'Jan','Feb','Mar','Apr','May','Jun',
-      'Jul','Aug','Sep','Oct','Nov','Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
-    const wdays = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-    final h   = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    const wdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
     final min = dt.minute.toString().padLeft(2, '0');
     final ampm = dt.hour < 12 ? 'AM' : 'PM';
     return '${wdays[dt.weekday - 1]}, ${months[dt.month - 1]} ${dt.day}'
-           ' · $h:$min $ampm';
+        ' · $h:$min $ampm';
   }
 
   @override
@@ -1127,10 +1187,10 @@ class _EventCard extends StatelessWidget {
             // ── Full-width image / gradient placeholder ────
             _CardImageBanner(
               imageBase64: item.imageBase64,
-              orgName:     item.orgName,
-              badgeLabel:  _badgeLabel,
-              badgeColor:  _badgeColor,
-              height:      190,
+              orgName: item.orgName,
+              badgeLabel: _badgeLabel,
+              badgeColor: _badgeColor,
+              height: 190,
             ),
 
             Padding(
@@ -1141,8 +1201,11 @@ class _EventCard extends StatelessWidget {
                   // ── Date + time ──────────────────────────
                   Row(
                     children: [
-                      Icon(Icons.access_time_rounded,
-                          size: 13, color: catColor),
+                      Icon(
+                        Icons.access_time_rounded,
+                        size: 13,
+                        color: catColor,
+                      ),
                       const SizedBox(width: 5),
                       Expanded(
                         child: Text(
@@ -1150,15 +1213,17 @@ class _EventCard extends StatelessWidget {
                               ? _formatEventDate(item.eventDate!)
                               : 'Date TBA',
                           style: TextStyle(
-                              fontSize: 12,
-                              color: catColor,
-                              fontWeight: FontWeight.w600),
+                            fontSize: 12,
+                            color: catColor,
+                            fontWeight: FontWeight.w600,
+                          ),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       // Category dot
                       Container(
-                        width: 8, height: 8,
+                        width: 8,
+                        height: 8,
                         decoration: BoxDecoration(
                           color: catColor,
                           shape: BoxShape.circle,
@@ -1173,27 +1238,32 @@ class _EventCard extends StatelessWidget {
                   Text(
                     item.title,
                     style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.black87,
-                        height: 1.2),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.black87,
+                      height: 1.2,
+                    ),
                   ),
 
                   const SizedBox(height: 6),
 
                   // ── Location ─────────────────────────────
-                  if (item.location.isNotEmpty &&
-                      item.location != 'TBA')
+                  if (item.location.isNotEmpty && item.location != 'TBA')
                     Row(
                       children: [
-                        const Icon(Icons.location_on_outlined,
-                            size: 13, color: Colors.grey),
+                        const Icon(
+                          Icons.location_on_outlined,
+                          size: 13,
+                          color: Colors.grey,
+                        ),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
                             item.location,
                             style: const TextStyle(
-                                fontSize: 12, color: Colors.grey),
+                              fontSize: 12,
+                              color: Colors.grey,
+                            ),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -1206,9 +1276,10 @@ class _EventCard extends StatelessWidget {
                     Text(
                       item.body,
                       style: const TextStyle(
-                          fontSize: 13,
-                          color: Color(0xFF666666),
-                          height: 1.5),
+                        fontSize: 13,
+                        color: Color(0xFF666666),
+                        height: 1.5,
+                      ),
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -1230,21 +1301,27 @@ class _EventCard extends StatelessWidget {
                           child: const Text(
                             'View Details',
                             style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700),
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                       ),
                       const SizedBox(width: 10),
                       Container(
-                        width: 44, height: 44,
+                        width: 44,
+                        height: 44,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF0F2F5),
+                          color: _kPrimaryBg,
                           borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: _kPrimary.withAlpha(64)),
                         ),
-                        child: const Icon(Icons.share_outlined,
-                            size: 18, color: Colors.black54),
+                        child: const Icon(
+                          Icons.share_outlined,
+                          size: 18,
+                          color: _kPrimary,
+                        ),
                       ),
                     ],
                   ),
@@ -1260,9 +1337,9 @@ class _EventCard extends StatelessWidget {
 
 class _DetailRow extends StatelessWidget {
   final IconData icon;
-  final Color    color;
-  final String   text;
-  final int      maxLines;
+  final Color color;
+  final String text;
+  final int maxLines;
 
   const _DetailRow({
     required this.icon,
@@ -1282,11 +1359,12 @@ class _DetailRow extends StatelessWidget {
           child: Text(
             text,
             style: TextStyle(
-                fontSize: 12,
-                color: color == Colors.grey
-                    ? const Color(0xFF666666)
-                    : Colors.black87,
-                height: 1.4),
+              fontSize: 12,
+              color: color == Colors.grey
+                  ? const Color(0xFF666666)
+                  : Colors.black87,
+              height: 1.4,
+            ),
             maxLines: maxLines,
             overflow: TextOverflow.ellipsis,
           ),
@@ -1296,20 +1374,18 @@ class _DetailRow extends StatelessWidget {
   }
 }
 
-
 // ─────────────────────────────────────────────────────────────
 //  MINI CHIP  (audience badge)
 // ─────────────────────────────────────────────────────────────
 class _MiniChip extends StatelessWidget {
   final String label;
-  final Color  color;
+  final Color color;
   const _MiniChip({required this.label, required this.color});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(4),
@@ -1317,10 +1393,11 @@ class _MiniChip extends StatelessWidget {
       child: Text(
         label,
         style: TextStyle(
-            fontSize: 9,
-            fontWeight: FontWeight.w800,
-            color: color,
-            letterSpacing: 0.4),
+          fontSize: 9,
+          fontWeight: FontWeight.w800,
+          color: color,
+          letterSpacing: 0.4,
+        ),
       ),
     );
   }
@@ -1330,8 +1407,8 @@ class _MiniChip extends StatelessWidget {
 //  SECTION HEADER  (title + "View all" action)
 // ─────────────────────────────────────────────────────────────
 class _SectionHeader extends StatelessWidget {
-  final String       title;
-  final String       actionLabel;
+  final String title;
+  final String actionLabel;
   final VoidCallback onAction;
 
   const _SectionHeader({
@@ -1370,8 +1447,11 @@ class _SectionHeader extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 2),
-                const Icon(Icons.arrow_forward_ios_rounded,
-                    size: 11, color: _kPrimary),
+                const Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  size: 11,
+                  color: _kPrimary,
+                ),
               ],
             ),
           ),
@@ -1386,22 +1466,42 @@ class _SectionHeader extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────
 class _EmptySection extends StatelessWidget {
   final IconData icon;
-  final String   message;
+  final String message;
 
   const _EmptySection({required this.icon, required this.message});
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFEDEDEF)),
+      ),
+      child: Column(
         children: [
-          Icon(icon, size: 22, color: Colors.black26),
-          const SizedBox(width: 10),
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: _kPrimaryBg,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, size: 24, color: _kPrimary),
+          ),
+          const SizedBox(height: 12),
           Text(
             message,
-            style: const TextStyle(fontSize: 13, color: Colors.black38),
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Colors.black54,
+              height: 1.4,
+            ),
           ),
         ],
       ),
@@ -1428,44 +1528,53 @@ class _SignInPromptSheet extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 40, height: 4,
+            width: 40,
+            height: 4,
             margin: const EdgeInsets.only(bottom: 22),
             decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2)),
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
+            ),
           ),
           Container(
-            width: 68, height: 68,
+            width: 68,
+            height: 68,
             decoration: const BoxDecoration(
-                color: _kPrimaryBg, shape: BoxShape.circle),
-            child: const Icon(Icons.school_rounded,
-                size: 34, color: _kPrimary),
+              color: _kPrimaryBg,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.school_rounded, size: 34, color: _kPrimary),
           ),
           const SizedBox(height: 16),
-          const Text('CICT Student Access',
-              style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.black87)),
+          const Text(
+            'CICT Student Access',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: Colors.black87,
+            ),
+          ),
           const SizedBox(height: 8),
           const Text(
             'Sign in with your CICT credentials\nto unlock full access.',
             textAlign: TextAlign.center,
-            style: TextStyle(
-                fontSize: 13, color: Colors.grey, height: 1.5),
+            style: TextStyle(fontSize: 13, color: Colors.grey, height: 1.5),
           ),
           const SizedBox(height: 24),
           _SheetFeatureRow(
-              icon: Icons.badge_outlined,
-              text: 'Digital ID & Profile'),
+            icon: Icons.badge_outlined,
+            text: 'Digital ID & Profile',
+          ),
           const SizedBox(height: 8),
           _SheetFeatureRow(
-              icon: Icons.groups_outlined,
-              text: 'Organizations & Clubs'),
+            icon: Icons.groups_outlined,
+            text: 'Organizations & Clubs',
+          ),
           const SizedBox(height: 8),
           _SheetFeatureRow(
-              icon: Icons.workspace_premium_outlined,
-              text: 'Certificates & Merch'),
+            icon: Icons.workspace_premium_outlined,
+            text: 'Certificates & Merch',
+          ),
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
@@ -1474,30 +1583,36 @@ class _SignInPromptSheet extends StatelessWidget {
                 Navigator.pop(context);
                 Navigator.pushReplacement(
                   context,
-                  MaterialPageRoute(
-                      builder: (_) => const StudentLogin()),
+                  MaterialPageRoute(builder: (_) => const StudentLogin()),
                 );
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: _kPrimary,
                 foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(vertical: 16),
+                padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
+                  borderRadius: BorderRadius.circular(14),
+                ),
                 elevation: 0,
               ),
-              child: const Text('Sign In as CICT Student',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w700, fontSize: 15)),
+              child: const Text(
+                'Sign In as CICT Student',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+              ),
             ),
           ),
           const SizedBox(height: 10),
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Continue as Guest',
-                style:
-                    TextStyle(color: Colors.grey, fontSize: 13)),
+            child: const Text(
+              'Continue browsing as Guest',
+              style: TextStyle(
+                color: Colors.black87,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                decoration: TextDecoration.underline,
+              ),
+            ),
           ),
         ],
       ),
@@ -1507,7 +1622,7 @@ class _SignInPromptSheet extends StatelessWidget {
 
 class _SheetFeatureRow extends StatelessWidget {
   final IconData icon;
-  final String   text;
+  final String text;
   const _SheetFeatureRow({required this.icon, required this.text});
 
   @override
@@ -1517,19 +1632,26 @@ class _SheetFeatureRow extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(7),
           decoration: BoxDecoration(
-              color: _kPrimaryBg,
-              borderRadius: BorderRadius.circular(8)),
+            color: _kPrimaryBg,
+            borderRadius: BorderRadius.circular(8),
+          ),
           child: Icon(icon, size: 16, color: _kPrimary),
         ),
         const SizedBox(width: 12),
-        Text(text,
-            style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: Colors.black87)),
+        Text(
+          text,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: Colors.black87,
+          ),
+        ),
         const Spacer(),
-        const Icon(Icons.check_circle_rounded,
-            size: 16, color: Color(0xFF2E7D32)),
+        const Icon(
+          Icons.check_circle_rounded,
+          size: 16,
+          color: Color(0xFF2E7D32),
+        ),
       ],
     );
   }

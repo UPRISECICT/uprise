@@ -29,12 +29,14 @@ class NotificationService {
     required String body,
     String type = 'general',
     String orgId = '',
+    String orgName = '',
     Map<String, dynamic>? data,
   }) async {
     if (!await _isEnabledFor(userId)) return;
     await _db.collection('notifications').add({
       'userId': userId,
       'orgId': orgId,
+      'orgName': orgName,
       'title': title,
       'body': body,
       'type': type,

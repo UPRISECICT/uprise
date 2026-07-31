@@ -1,9 +1,10 @@
 // lib/screens/student/student_broadcast_screen.dart
-// Private messaging thread between this student and their org — replaces the
-// old org-wide broadcast/announcement channel. Each student has exactly one
-// org, so there's a single persistent thread (no inbox needed here). Mirrors
-// lib/screens/web/org/org_broadcast.dart, which renders the org side of the
-// same `conversations` collection.
+// One-way private message thread from this student's org — the org can
+// send messages here, but the student can only view them (no reply). Each
+// student has exactly one thread per org, so there's a single persistent
+// view (no inbox needed here). Mirrors lib/screens/web/org/org_broadcast.dart,
+// which renders the org side (the one that can actually send) of the same
+// `conversations` collection.
 
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -11,9 +12,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:image_picker/image_picker.dart';
-import '../../services/notification_service.dart';
-import '../../utils/profanity_filter.dart';
 import '../../widgets/student/app_colors.dart';
 
 ImageProvider _imageProviderFromBase64(String data) {
@@ -46,11 +44,7 @@ class StudentBroadcastScreen extends StatefulWidget {
 }
 
 class _StudentBroadcastScreenState extends State<StudentBroadcastScreen> {
-  final TextEditingController _textCtrl = TextEditingController();
-  final ScrollController _scrollCtrl = ScrollController();
   late final String _conversationDocId;
-  String _studentName = 'You';
-  bool _sending = false;
   bool _ready = false;
 
   @override
@@ -58,126 +52,25 @@ class _StudentBroadcastScreenState extends State<StudentBroadcastScreen> {
     super.initState();
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
     _conversationDocId = _conversationId(widget.orgId, uid);
-    _initConversation(uid);
+    _markRead();
   }
 
-  Future<void> _initConversation(String uid) async {
+  Future<void> _markRead() async {
+    // Students can't start a conversation anymore (the org does, via "New
+    // message" on its side) — so if this doc doesn't exist yet, there's
+    // simply nothing to show, and we shouldn't create one here.
     try {
-      final studentDoc = await FirebaseFirestore.instance
-          .collection('students')
-          .doc(uid)
-          .get();
-      final studentData = studentDoc.data();
-      _studentName =
-          studentData?['fullName'] ??
-          FirebaseAuth.instance.currentUser?.displayName ??
-          FirebaseAuth.instance.currentUser?.email ??
-          'You';
-
       final ref = FirebaseFirestore.instance
           .collection('conversations')
           .doc(_conversationDocId);
       final existing = await ref.get();
-      if (!existing.exists) {
-        await ref.set({
-          'orgId': widget.orgId,
-          'orgName': widget.orgName,
-          'studentId': uid,
-          'studentName': _studentName,
-          'lastMessage': '',
-          'lastMessageAt': FieldValue.serverTimestamp(),
-          'lastSenderRole': 'student',
-          'unreadForOrg': false,
-          'unreadForStudent': false,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-      } else {
+      if (existing.exists) {
         await ref.update({'unreadForStudent': false});
       }
     } catch (_) {
-      // Non-fatal — thread still renders, just won't have a doc until the
-      // first message is sent.
+      // Non-fatal — the thread still renders either way.
     } finally {
       if (mounted) setState(() => _ready = true);
-    }
-  }
-
-  @override
-  void dispose() {
-    _textCtrl.dispose();
-    _scrollCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _sendMessage({String? imageBase64}) async {
-    final rawText = _textCtrl.text.trim();
-    if (rawText.isEmpty && imageBase64 == null) return;
-    final text = ProfanityFilter.filter(rawText);
-    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
-    setState(() => _sending = true);
-    _textCtrl.clear();
-
-    final ref = FirebaseFirestore.instance
-        .collection('conversations')
-        .doc(_conversationDocId);
-    try {
-      await ref.set({
-        'orgId': widget.orgId,
-        'orgName': widget.orgName,
-        'studentId': uid,
-        'studentName': _studentName,
-        'createdAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-      await ref.collection('messages').add({
-        'senderId': uid,
-        'senderRole': 'student',
-        'senderName': _studentName,
-        'text': text,
-        'imageBase64': imageBase64,
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-      await ref.update({
-        'lastMessage': text.isEmpty ? 'Sent an image' : text,
-        'lastMessageAt': FieldValue.serverTimestamp(),
-        'lastSenderRole': 'student',
-        'unreadForOrg': true,
-      });
-      await NotificationService.sendToOrgMembers(
-        orgId: widget.orgId,
-        title: _studentName,
-        body: text.isEmpty ? 'Sent an image' : text,
-        type: 'private_message',
-      );
-      if (_scrollCtrl.hasClients) {
-        _scrollCtrl.animateTo(
-          0,
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOut,
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _sending = false);
-    }
-  }
-
-  Future<void> _pickImage() async {
-    try {
-      final picker = ImagePicker();
-      final file = await picker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1280,
-        imageQuality: 80,
-      );
-      if (file == null) return;
-      final bytes = await file.readAsBytes();
-      final b64 = 'data:image/jpeg;base64,${base64Encode(bytes)}';
-      await _sendMessage(imageBase64: b64);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Couldn\'t attach image: $e')));
-      }
     }
   }
 
@@ -205,11 +98,27 @@ class _StudentBroadcastScreenState extends State<StudentBroadcastScreen> {
               ),
             ),
             const SizedBox(width: 10),
-            Text(
-              widget.orgName,
-              style: GoogleFonts.poppins(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.orgName,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.poppins(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Text(
+                    'Announcements only · you can\'t reply here',
+                    style: GoogleFonts.poppins(
+                      fontSize: 10.5,
+                      color: Colors.grey.shade500,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -223,134 +132,72 @@ class _StudentBroadcastScreenState extends State<StudentBroadcastScreen> {
           ? const Center(
               child: CircularProgressIndicator(color: AppColors.primaryDark),
             )
-          : Column(
-              children: [
-                Expanded(
-                  child: StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('conversations')
-                        .doc(_conversationDocId)
-                        .collection('messages')
-                        .orderBy('timestamp', descending: true)
-                        .snapshots(),
-                    builder: (context, snap) {
-                      if (!snap.hasData) {
-                        return const Center(
-                          child: CircularProgressIndicator(
-                            color: AppColors.primaryDark,
+          : StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('conversations')
+                  .doc(_conversationDocId)
+                  .collection('messages')
+                  .orderBy('timestamp', descending: true)
+                  .snapshots(),
+              builder: (context, snap) {
+                if (!snap.hasData) {
+                  return const Center(
+                    child: CircularProgressIndicator(
+                      color: AppColors.primaryDark,
+                    ),
+                  );
+                }
+                final docs = snap.data!.docs;
+                if (docs.isEmpty) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.campaign_outlined,
+                            size: 40,
+                            color: Colors.grey.shade400,
                           ),
-                        );
-                      }
-                      final docs = snap.data!.docs;
-                      if (docs.isEmpty) {
-                        return Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(24),
-                            child: Text(
-                              'Message ${widget.orgName} directly — this is a private conversation.',
-                              textAlign: TextAlign.center,
-                              style: GoogleFonts.poppins(
-                                fontSize: 13,
-                                color: Colors.grey.shade600,
-                              ),
+                          const SizedBox(height: 12),
+                          Text(
+                            '${widget.orgName} hasn\'t sent you any messages yet.',
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.poppins(
+                              fontSize: 13,
+                              color: Colors.grey.shade600,
                             ),
                           ),
-                        );
-                      }
-                      return ListView.builder(
-                        controller: _scrollCtrl,
-                        reverse: true,
-                        padding: const EdgeInsets.all(16),
-                        itemCount: docs.length,
-                        itemBuilder: (context, i) {
-                          final data = docs[i].data() as Map<String, dynamic>;
-                          final isMe = data['senderRole'] == 'student';
-                          final text = (data['text'] ?? '').toString();
-                          final image = data['imageBase64'] as String?;
-                          final ts = (data['timestamp'] as Timestamp?)
-                              ?.toDate();
-                          return _MessageBubble(
-                            isMe: isMe,
-                            text: text,
-                            imageBase64: image,
-                            time: ts != null
-                                ? DateFormat('h:mm a').format(ts)
-                                : '',
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    border: Border(
-                      top: BorderSide(color: Colors.grey.shade200),
+                        ],
+                      ),
                     ),
-                  ),
-                  child: SafeArea(
-                    top: false,
-                    child: Row(
-                      children: [
-                        IconButton(
-                          onPressed: _sending ? null : _pickImage,
-                          icon: Icon(
-                            Icons.image_outlined,
-                            color: Colors.grey.shade600,
-                          ),
-                          tooltip: 'Attach image',
-                        ),
-                        Expanded(
-                          child: TextField(
-                            controller: _textCtrl,
-                            minLines: 1,
-                            maxLines: 4,
-                            textInputAction: TextInputAction.send,
-                            onSubmitted: (_) => _sendMessage(),
-                            style: GoogleFonts.poppins(fontSize: 13.5),
-                            decoration: InputDecoration(
-                              hintText: 'Message ${widget.orgName}…',
-                              hintStyle: GoogleFonts.poppins(
-                                fontSize: 13.5,
-                                color: Colors.grey.shade500,
-                              ),
-                              filled: true,
-                              fillColor: const Color(0xFFF0F2F5),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 10,
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(22),
-                                borderSide: BorderSide.none,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          onPressed: _sending ? null : () => _sendMessage(),
-                          style: IconButton.styleFrom(
-                            backgroundColor: AppColors.primaryDark,
-                            disabledBackgroundColor: AppColors.primaryDark
-                                .withAlpha(120),
-                          ),
-                          icon: const Icon(
-                            Icons.send_rounded,
-                            color: Colors.white,
-                            size: 18,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+                  );
+                }
+                return ListView.builder(
+                  reverse: true,
+                  padding: const EdgeInsets.all(16),
+                  itemCount: docs.length,
+                  itemBuilder: (context, i) {
+                    final data = docs[i].data() as Map<String, dynamic>;
+                    // Historical messages from the brief period this thread
+                    // was two-way may still have senderRole == 'student' —
+                    // kept left/right-aligned as they were sent so old
+                    // threads don't look broken, even though students can no
+                    // longer send new ones.
+                    final isFromStudent = data['senderRole'] == 'student';
+                    final text = (data['text'] ?? '').toString();
+                    final image = data['imageBase64'] as String?;
+                    final ts = (data['timestamp'] as Timestamp?)?.toDate();
+                    return _MessageBubble(
+                      isMe: isFromStudent,
+                      text: text,
+                      imageBase64: image,
+                      time: ts != null ? DateFormat('h:mm a').format(ts) : '',
+                    );
+                  },
+                );
+              },
             ),
     );
   }

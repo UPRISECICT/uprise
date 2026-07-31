@@ -12,6 +12,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:uprise/models/event_model.dart';
 import '../../widgets/student/app_colors.dart';
+import '../../widgets/student/student_app_bar.dart';
 import 'student_events_screen.dart';
 
 // ─────────────────────────────────────────────────────────────
@@ -19,7 +20,7 @@ import 'student_events_screen.dart';
 // ─────────────────────────────────────────────────────────────
 ImageProvider _studentImageProvider(String url) {
   if (url.isEmpty) return const AssetImage('assets/placeholder.png');
-  
+
   // Handle "dataimage" without colon (YOUR FORMAT)
   if (url.startsWith('dataimage')) {
     try {
@@ -30,7 +31,7 @@ ImageProvider _studentImageProvider(String url) {
       return const AssetImage('assets/placeholder.png');
     }
   }
-  
+
   // Handle "data:image" format
   if (url.startsWith('data:image')) {
     try {
@@ -41,7 +42,7 @@ ImageProvider _studentImageProvider(String url) {
       return const AssetImage('assets/placeholder.png');
     }
   }
-  
+
   // Handle raw base64
   if (!url.startsWith('http')) {
     try {
@@ -51,14 +52,17 @@ ImageProvider _studentImageProvider(String url) {
       return const AssetImage('assets/placeholder.png');
     }
   }
-  
+
   return NetworkImage(url);
 }
 
 // ─────────────────────────────────────────────────────────────
 //  NAVIGATE TO LINKED EVENT
 // ─────────────────────────────────────────────────────────────
-Future<void> _goToLinkedEvent(BuildContext context, AnnouncementData ann) async {
+Future<void> _goToLinkedEvent(
+  BuildContext context,
+  AnnouncementData ann,
+) async {
   if (ann.linkedEventId.isEmpty) return;
 
   showDialog(
@@ -100,9 +104,9 @@ Future<void> _goToLinkedEvent(BuildContext context, AnnouncementData ann) async 
   } catch (e) {
     if (!context.mounted) return;
     Navigator.of(context, rootNavigator: true).pop();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Could not open event: $e')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Could not open event: $e')));
   }
 }
 
@@ -135,42 +139,42 @@ bool shouldShowAnnouncementToStudent(Map<String, dynamic> data) {
 // ─────────────────────────────────────────────────────────────
 class OrgLogoCache {
   static final Map<String, String> _cache = {};
-  
+
   static Future<void> loadAllOrganizations() async {
     try {
       final querySnapshot = await FirebaseFirestore.instance
           .collection('organizations')
           .get();
-      
+
       for (var doc in querySnapshot.docs) {
         final data = doc.data();
         final name = (data['name'] as String? ?? '').trim().toLowerCase();
-        
+
         // Try all possible field names
         String logo = data['logouUrl'] as String? ?? '';
         if (logo.isEmpty) logo = data['logoUrl'] as String? ?? '';
         if (logo.isEmpty) logo = data['logo'] as String? ?? '';
         if (logo.isEmpty) logo = data['imageUrl'] as String? ?? '';
         if (logo.isEmpty) logo = data['profileImage'] as String? ?? '';
-        
+
         if (logo.isNotEmpty) {
           _cache[name] = logo;
         }
       }
-      
+
       print('✅ Loaded ${_cache.length} organization logos');
       print('📋 Available organizations: ${_cache.keys.join(", ")}');
     } catch (e) {
       print('❌ Error loading organizations: $e');
     }
   }
-  
+
   static String? getLogo(String orgName) {
     if (orgName.isEmpty) return null;
     final key = orgName.trim().toLowerCase();
     return _cache[key];
   }
-  
+
   static bool get isLoaded => _cache.isNotEmpty;
 }
 
@@ -184,6 +188,7 @@ class AnnouncementData {
   final String orgSub;
   final String date;
   final String time;
+  final DateTime timestamp;
   final bool isPinned;
   final String tag;
   final String imageUrl;
@@ -204,6 +209,7 @@ class AnnouncementData {
     required this.orgSub,
     required this.date,
     required this.time,
+    required this.timestamp,
     required this.isPinned,
     required this.tag,
     required this.imageUrl,
@@ -224,11 +230,12 @@ class AnnouncementData {
     final dateTime = timestamp is Timestamp
         ? timestamp.toDate()
         : timestamp is DateTime
-            ? timestamp
-            : DateTime.now();
+        ? timestamp
+        : DateTime.now();
 
-    final rawImage = d['imageBase64'] as String? ?? d['imageUrl'] as String? ?? '';
-    
+    final rawImage =
+        d['imageBase64'] as String? ?? d['imageUrl'] as String? ?? '';
+
     String logoUrl = d['logoUrl'] as String? ?? '';
 
     return AnnouncementData(
@@ -238,21 +245,26 @@ class AnnouncementData {
       orgSub: (d['category'] as String?)?.toUpperCase() ?? 'ANNOUNCEMENT',
       date: DateFormat('MMM dd, yyyy').format(dateTime),
       time: DateFormat('h:mm a').format(dateTime),
+      timestamp: dateTime,
       isPinned: d['pinned'] as bool? ?? false,
-      tag: (d['targetAudience'] as String?)?.toUpperCase() ??
-          (d['category'] as String?)?.toUpperCase() ?? 'ANNOUNCEMENT',
+      tag:
+          (d['targetAudience'] as String?)?.toUpperCase() ??
+          (d['category'] as String?)?.toUpperCase() ??
+          'ANNOUNCEMENT',
       imageUrl: rawImage,
       logoUrl: logoUrl,
       body: d['content'] as String? ?? '',
       hashtags: [],
       attachments: ((d['attachmentsBase64'] as List?) ?? [])
           .whereType<Map<String, dynamic>>()
-          .map((att) => {
-                'name': att['name'] as String? ?? '',
-                'type': _guessType(att['name'] as String? ?? ''),
-                'base64': att['base64'] as String? ?? '',
-                'size': att['size'] as String? ?? '',
-              })
+          .map(
+            (att) => {
+              'name': att['name'] as String? ?? '',
+              'type': _guessType(att['name'] as String? ?? ''),
+              'base64': att['base64'] as String? ?? '',
+              'size': att['size'] as String? ?? '',
+            },
+          )
           .toList(),
       linkedEventId: d['linkedEventId'] as String? ?? '',
       linkedProposalId: d['linkedProposalId'] as String? ?? '',
@@ -277,18 +289,20 @@ class StudentAnnouncementsScreen extends StatefulWidget {
   const StudentAnnouncementsScreen({super.key});
 
   @override
-  State<StudentAnnouncementsScreen> createState() => _StudentAnnouncementsScreenState();
+  State<StudentAnnouncementsScreen> createState() =>
+      _StudentAnnouncementsScreenState();
 }
 
-class _StudentAnnouncementsScreenState extends State<StudentAnnouncementsScreen> {
+class _StudentAnnouncementsScreenState
+    extends State<StudentAnnouncementsScreen> {
   final String? _userId = FirebaseAuth.instance.currentUser?.uid;
   bool _orgsLoaded = false;
 
-  late final Stream<QuerySnapshot> _announcementsStream =
-      FirebaseFirestore.instance
-          .collection('announcements')
-          .orderBy('timestamp', descending: true)
-          .snapshots();
+  late final Stream<QuerySnapshot> _announcementsStream = FirebaseFirestore
+      .instance
+      .collection('announcements')
+      .orderBy('timestamp', descending: true)
+      .snapshots();
 
   @override
   void initState() {
@@ -309,35 +323,14 @@ class _StudentAnnouncementsScreenState extends State<StudentAnnouncementsScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text(
-          'Announcements',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 20,
-            color: Colors.black87,
-          ),
-        ),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        elevation: 0,
-        centerTitle: true,
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(
-            height: 1,
-            color: Colors.grey.shade200,
-          ),
-        ),
-      ),
+      appBar: const StudentAppBar(title: 'Announcements'),
       body: StreamBuilder<QuerySnapshot>(
         stream: _announcementsStream,
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting || !_orgsLoaded) {
+          if (snapshot.connectionState == ConnectionState.waiting ||
+              !_orgsLoaded) {
             return const Center(
-              child: CircularProgressIndicator(
-                color: AppColors.primaryDark,
-              ),
+              child: CircularProgressIndicator(color: AppColors.primaryDark),
             );
           }
           if (snapshot.hasError) {
@@ -353,10 +346,7 @@ class _StudentAnnouncementsScreenState extends State<StudentAnnouncementsScreen>
                   const SizedBox(height: 12),
                   Text(
                     'Failed to load announcements',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.grey.shade600,
-                    ),
+                    style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
                   ),
                   const SizedBox(height: 8),
                   TextButton(
@@ -438,19 +428,36 @@ class _StudentAnnouncementsScreenState extends State<StudentAnnouncementsScreen>
 // ─────────────────────────────────────────────────────────────
 //  ANNOUNCEMENT CARD - WITH ORGANIZATION LOGO
 // ─────────────────────────────────────────────────────────────
-class _AnnouncementCard extends StatelessWidget {
+/// "x ago" — mirrors org_announcements.dart's web feed exactly, so the same
+/// post reads the same way on both platforms.
+String _timeAgo(DateTime dt) {
+  final diff = DateTime.now().difference(dt);
+  if (diff.inMinutes < 1) return 'Just now';
+  if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+  if (diff.inHours < 24) return '${diff.inHours}h ago';
+  if (diff.inDays < 7) return '${diff.inDays}d ago';
+  if (diff.inDays < 30) return '${(diff.inDays / 7).floor()}w ago';
+  return DateFormat('MMM dd, yyyy').format(dt);
+}
+
+class _AnnouncementCard extends StatefulWidget {
   final AnnouncementData ann;
 
   const _AnnouncementCard({required this.ann});
 
+  @override
+  State<_AnnouncementCard> createState() => _AnnouncementCardState();
+}
+
+class _AnnouncementCardState extends State<_AnnouncementCard> {
+  bool _expanded = false;
+
+  AnnouncementData get ann => widget.ann;
+
   String? get _logoUrl {
-    // First check if the announcement has a logo
     if (ann.logoUrl.isNotEmpty) return ann.logoUrl;
-    
-    // Then check the cache by organization name
     final cachedLogo = OrgLogoCache.getLogo(ann.org);
     if (cachedLogo != null && cachedLogo.isNotEmpty) return cachedLogo;
-    
     return null;
   }
 
@@ -465,12 +472,10 @@ class _AnnouncementCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ann = this.ann;
     final logoUrl = _logoUrl;
-    
-    print('📢 Announcement: ${ann.title}');
-    print('🏢 Organization: ${ann.org}');
-    print('🖼️ Logo URL: ${logoUrl != null ? "Found" : "Not found"}');
+    final isLong =
+        ann.body.length > 220 || '\n'.allMatches(ann.body).length > 4;
+    final truncated = isLong && !_expanded;
 
     return GestureDetector(
       onTap: () => _navigateToDetail(context),
@@ -479,10 +484,16 @@ class _AnnouncementCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: ann.isPinned
+                ? AppColors.primaryDark.withOpacity(0.35)
+                : const Color(0xFFEDEDEF),
+            width: ann.isPinned ? 1.4 : 1,
+          ),
           boxShadow: [
             BoxShadow(
-              color: AppColors.primaryDark.withOpacity(0.08),
-              blurRadius: 16,
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 12,
               offset: const Offset(0, 4),
             ),
           ],
@@ -491,326 +502,266 @@ class _AnnouncementCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Banner Image ──
-            Stack(
-              children: [
-                ann.imageUrl.isNotEmpty
-                    ? Image(
-                        image: _studentImageProvider(ann.imageUrl),
-                        height: 190,
-                        width: double.infinity,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          height: 190,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                AppColors.primaryDark,
-                                AppColors.primaryDark.withOpacity(0.7),
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                          ),
-                          child: Center(
-                            child: Icon(
-                              Icons.image_outlined,
-                              size: 48,
-                              color: Colors.white.withOpacity(0.5),
-                            ),
-                          ),
-                        ),
-                      )
-                    : Container(
-                        height: 190,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              AppColors.primaryDark,
-                              AppColors.primaryDark.withOpacity(0.7),
-                            ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                        ),
-                        child: Center(
-                          child: Icon(
-                            Icons.image_outlined,
-                            size: 48,
-                            color: Colors.white.withOpacity(0.5),
-                          ),
-                        ),
+            // ── Pinned strip ──
+            if (ann.isPinned)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 6,
+                ),
+                color: const Color(0xFFFFFBEB),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.push_pin_rounded,
+                      size: 13,
+                      color: Color(0xFFD97706),
+                    ),
+                    const SizedBox(width: 6),
+                    const Text(
+                      'Pinned Announcement',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFFD97706),
+                        letterSpacing: 0.3,
                       ),
-                
-                // ── Gradient Overlay ──
-                Container(
-                  height: 190,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.transparent,
-                        Colors.black.withOpacity(0.35),
-                      ],
                     ),
-                  ),
+                  ],
                 ),
-                
-                // ── Tag Badge ──
-                Positioned(
-                  top: 12,
-                  left: 12,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.95),
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.08),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 6,
-                          height: 6,
-                          decoration: BoxDecoration(
-                            color: AppColors.primaryDark,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          ann.tag,
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.primaryDark,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                
-                // ── Date on Image ──
-                Positioned(
-                  bottom: 12,
-                  right: 12,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.55),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.calendar_today_rounded,
-                          size: 11,
-                          color: Colors.white,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          ann.date,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: Colors.white,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Container(
-                          width: 1,
-                          height: 10,
-                          color: Colors.white.withOpacity(0.3),
-                        ),
-                        const SizedBox(width: 6),
-                        const Icon(
-                          Icons.access_time_rounded,
-                          size: 11,
-                          color: Colors.white,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          ann.time,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: Colors.white,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
+              ),
 
-            // ── Content ──
+            // ── Post header: avatar + org name + time + tag ──
             Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ── Organization Row with Logo ──
-                  Row(
-                    children: [
-                      Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppColors.primaryDark.withOpacity(0.1),
-                        ),
-                        child: ClipOval(
-                          child: (logoUrl != null && logoUrl.isNotEmpty)
-                              ? Image(
-                                  image: _studentImageProvider(logoUrl),
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => Icon(
-                                    Icons.business_center_outlined,
-                                    size: 16,
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.primaryDark.withOpacity(0.1),
+                    ),
+                    child: ClipOval(
+                      child: (logoUrl != null && logoUrl.isNotEmpty)
+                          ? Image(
+                              image: _studentImageProvider(logoUrl),
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Center(
+                                child: Text(
+                                  ann.org.isNotEmpty
+                                      ? ann.org[0].toUpperCase()
+                                      : '?',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
                                     color: AppColors.primaryDark,
                                   ),
-                                )
-                              : Icon(
-                                  Icons.business_center_outlined,
-                                  size: 16,
+                                ),
+                              ),
+                            )
+                          : Center(
+                              child: Text(
+                                ann.org.isNotEmpty
+                                    ? ann.org[0].toUpperCase()
+                                    : '?',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
                                   color: AppColors.primaryDark,
                                 ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
+                              ),
+                            ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
                           ann.org,
                           style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
                             color: Colors.black87,
                           ),
                         ),
-                      ),
-                      Text(
-                        ann.time,
-                        style: const TextStyle(
-                          fontSize: 10,
-                          color: Colors.grey,
+                        const SizedBox(height: 3),
+                        Wrap(
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 8,
+                          runSpacing: 4,
+                          children: [
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.access_time_rounded,
+                                  size: 11,
+                                  color: Colors.grey.shade500,
+                                ),
+                                const SizedBox(width: 3),
+                                Text(
+                                  _timeAgo(ann.timestamp),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey.shade500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.primaryDark.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                ann.tag,
+                                style: TextStyle(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.primaryDark,
+                                  letterSpacing: 0.3,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 10),
-
-                  // ── Title ──
-                  Text(
-                    ann.title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.black87,
-                      height: 1.3,
+                      ],
                     ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-
-                  const SizedBox(height: 6),
-
-                  // ── Body preview ──
-                  _buildRichContent(
-                    ann.body,
-                    TextStyle(fontSize: 13, color: Colors.grey.shade600, height: 1.5),
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // ── Go to Linked Event ──
-                  if (ann.linkedEventId.isNotEmpty) ...[
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: () => _goToLinkedEvent(context, ann),
-                        icon: Icon(
-                          Icons.event_available_rounded,
-                          size: 16,
-                          color: AppColors.primaryDark,
-                        ),
-                        label: Text(
-                          'View Event: ${ann.linkedEventTitle}',
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.primaryDark,
-                          side: BorderSide(
-                            color: AppColors.primaryDark.withOpacity(0.3),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 10,
-                            horizontal: 12,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-
-                  // ── Read More Indicator ──
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      const Text(
-                        'Read more',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: AppColors.primaryDark,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Icon(
-                        Icons.arrow_forward_ios_rounded,
-                        size: 10,
-                        color: AppColors.primaryDark,
-                      ),
-                    ],
                   ),
                 ],
               ),
             ),
+
+            // ── Title ──
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+              child: Text(
+                ann.title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black87,
+                  height: 1.3,
+                ),
+              ),
+            ),
+
+            // ── Body (expandable, like the web feed) ──
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildRichContent(
+                    truncated
+                        ? '${ann.body.substring(0, ann.body.length.clamp(0, 220))}…'
+                        : ann.body,
+                    TextStyle(
+                      fontSize: 13.5,
+                      color: Colors.grey.shade700,
+                      height: 1.55,
+                    ),
+                  ),
+                  if (isLong) ...[
+                    const SizedBox(height: 4),
+                    GestureDetector(
+                      onTap: () => setState(() => _expanded = !_expanded),
+                      child: Text(
+                        _expanded ? 'See less' : 'See more',
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primaryDark,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
+            // ── Go to linked event ──
+            if (ann.linkedEventId.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _goToLinkedEvent(context, ann),
+                    icon: Icon(
+                      Icons.event_available_rounded,
+                      size: 16,
+                      color: AppColors.primaryDark,
+                    ),
+                    label: Text(
+                      'View Event: ${ann.linkedEventTitle}',
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.primaryDark,
+                      side: BorderSide(
+                        color: AppColors.primaryDark.withOpacity(0.3),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 10,
+                        horizontal: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+            // ── Photo — shown in full, never cropped or covered ──
+            if (ann.imageUrl.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                constraints: const BoxConstraints(maxHeight: 420),
+                color: const Color(0xFFF8F9FB),
+                child: Image(
+                  image: _studentImageProvider(ann.imageUrl),
+                  width: double.infinity,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => Container(
+                    height: 200,
+                    color: const Color(0xFFF8F9FB),
+                    child: Icon(
+                      Icons.broken_image_outlined,
+                      color: Colors.grey.shade400,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 12),
           ],
         ),
       ),
     );
   }
 
-  /// Turns URLs in the body text into tappable links
+  /// Turns URLs in the body text into tappable links — no line-clamping so
+  /// the full (or "See more"-expanded) text always renders completely.
   Widget _buildRichContent(String text, TextStyle baseStyle) {
     final urlRegex = RegExp(r'(https?:\/\/[^\s]+)');
     final matches = urlRegex.allMatches(text);
     if (matches.isEmpty) {
-      return Text(text, maxLines: 2, overflow: TextOverflow.ellipsis, style: baseStyle);
+      return Text(text, style: baseStyle);
     }
 
     final spans = <TextSpan>[];
@@ -820,20 +771,22 @@ class _AnnouncementCard extends StatelessWidget {
         spans.add(TextSpan(text: text.substring(lastEnd, match.start)));
       }
       final url = match.group(0)!;
-      spans.add(TextSpan(
-        text: url,
-        style: baseStyle.copyWith(
-          color: AppColors.primaryDark,
-          decoration: TextDecoration.underline,
+      spans.add(
+        TextSpan(
+          text: url,
+          style: baseStyle.copyWith(
+            color: AppColors.primaryDark,
+            decoration: TextDecoration.underline,
+          ),
+          recognizer: TapGestureRecognizer()
+            ..onTap = () async {
+              final uri = Uri.tryParse(url);
+              if (uri != null && await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+            },
         ),
-        recognizer: TapGestureRecognizer()
-          ..onTap = () async {
-            final uri = Uri.tryParse(url);
-            if (uri != null && await canLaunchUrl(uri)) {
-              await launchUrl(uri, mode: LaunchMode.externalApplication);
-            }
-          },
-      ));
+      );
       lastEnd = match.end;
     }
     if (lastEnd < text.length) {
@@ -842,8 +795,6 @@ class _AnnouncementCard extends StatelessWidget {
 
     return RichText(
       text: TextSpan(style: baseStyle, children: spans),
-      maxLines: 2,
-      overflow: TextOverflow.ellipsis,
     );
   }
 }
@@ -854,10 +805,7 @@ class _AnnouncementCard extends StatelessWidget {
 class AnnouncementDetailScreen extends StatelessWidget {
   final AnnouncementData announcement;
 
-  const AnnouncementDetailScreen({
-    super.key,
-    required this.announcement,
-  });
+  const AnnouncementDetailScreen({super.key, required this.announcement});
 
   String? get _logoUrl {
     if (announcement.logoUrl.isNotEmpty) return announcement.logoUrl;
@@ -896,7 +844,11 @@ class AnnouncementDetailScreen extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: const Icon(Icons.arrow_back, size: 20, color: Colors.black),
+                child: const Icon(
+                  Icons.arrow_back,
+                  size: 20,
+                  color: Colors.black,
+                ),
               ),
               onPressed: () => Navigator.pop(context),
             ),
@@ -943,7 +895,7 @@ class AnnouncementDetailScreen extends StatelessWidget {
                             color: Colors.white,
                           ),
                         ),
-                  
+
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -956,7 +908,7 @@ class AnnouncementDetailScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-                  
+
                   // ── Tag Badge ──
                   Positioned(
                     bottom: 20,
@@ -1002,7 +954,7 @@ class AnnouncementDetailScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-                  
+
                   // ── Date on Image ──
                   Positioned(
                     bottom: 20,
@@ -1137,7 +1089,11 @@ class AnnouncementDetailScreen extends StatelessWidget {
                   // ── Body ──
                   _buildRichContent(
                     ann.body,
-                    TextStyle(fontSize: 15, color: Colors.grey.shade800, height: 1.8),
+                    TextStyle(
+                      fontSize: 15,
+                      color: Colors.grey.shade800,
+                      height: 1.8,
+                    ),
                   ),
 
                   const SizedBox(height: 24),
@@ -1187,18 +1143,21 @@ class AnnouncementDetailScreen extends StatelessWidget {
                             width: double.infinity,
                             child: ElevatedButton.icon(
                               onPressed: () => _goToLinkedEvent(context, ann),
-                              icon: const Icon(Icons.event_available_rounded, size: 18),
+                              icon: const Icon(
+                                Icons.event_available_rounded,
+                                size: 18,
+                              ),
                               label: const Text(
                                 'View Event',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                ),
+                                style: TextStyle(fontWeight: FontWeight.w600),
                               ),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppColors.primaryDark,
                                 foregroundColor: Colors.white,
                                 elevation: 0,
-                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(10),
                                 ),
@@ -1265,7 +1224,10 @@ class AnnouncementDetailScreen extends StatelessWidget {
                         ),
                         const SizedBox(width: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
                             color: AppColors.primaryDark.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(12),
@@ -1288,27 +1250,23 @@ class AnnouncementDetailScreen extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: const Color(0xFFF8FAFD),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: const Color(0xFFEEEEEE),
-                        ),
+                        border: Border.all(color: const Color(0xFFEEEEEE)),
                       ),
                       child: Column(
-                        children: ann.attachments.asMap().entries.map(
-                          (entry) {
-                            final index = entry.key;
-                            final att = entry.value;
-                            return Column(
-                              children: [
-                                _AttachmentTile(
-                                  attachment: att,
-                                  index: index,
+                        children: ann.attachments.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          final att = entry.value;
+                          return Column(
+                            children: [
+                              _AttachmentTile(attachment: att, index: index),
+                              if (index < ann.attachments.length - 1)
+                                const Divider(
+                                  height: 1,
+                                  color: Color(0xFFEEEEEE),
                                 ),
-                                if (index < ann.attachments.length - 1)
-                                  const Divider(height: 1, color: Color(0xFFEEEEEE)),
-                              ],
-                            );
-                          },
-                        ).toList(),
+                            ],
+                          );
+                        }).toList(),
                       ),
                     ),
                     const SizedBox(height: 20),
@@ -1338,20 +1296,22 @@ class AnnouncementDetailScreen extends StatelessWidget {
         spans.add(TextSpan(text: text.substring(lastEnd, match.start)));
       }
       final url = match.group(0)!;
-      spans.add(TextSpan(
-        text: url,
-        style: baseStyle.copyWith(
-          color: AppColors.primaryDark,
-          decoration: TextDecoration.underline,
+      spans.add(
+        TextSpan(
+          text: url,
+          style: baseStyle.copyWith(
+            color: AppColors.primaryDark,
+            decoration: TextDecoration.underline,
+          ),
+          recognizer: TapGestureRecognizer()
+            ..onTap = () async {
+              final uri = Uri.tryParse(url);
+              if (uri != null && await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+            },
         ),
-        recognizer: TapGestureRecognizer()
-          ..onTap = () async {
-            final uri = Uri.tryParse(url);
-            if (uri != null && await canLaunchUrl(uri)) {
-              await launchUrl(uri, mode: LaunchMode.externalApplication);
-            }
-          },
-      ));
+      );
       lastEnd = match.end;
     }
     if (lastEnd < text.length) {
@@ -1371,10 +1331,7 @@ class _AttachmentTile extends StatefulWidget {
   final Map<String, String> attachment;
   final int index;
 
-  const _AttachmentTile({
-    required this.attachment,
-    required this.index,
-  });
+  const _AttachmentTile({required this.attachment, required this.index});
 
   @override
   State<_AttachmentTile> createState() => _AttachmentTileState();
@@ -1400,10 +1357,9 @@ class _AttachmentTileState extends State<_AttachmentTile> {
       final file = File('${tempDir.path}/$fileName');
       await file.writeAsBytes(bytes);
 
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        text: 'Downloaded: $fileName',
-      );
+      await Share.shareXFiles([
+        XFile(file.path),
+      ], text: 'Downloaded: $fileName');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1522,10 +1478,7 @@ class _AttachmentTileState extends State<_AttachmentTile> {
                 const SizedBox(height: 2),
                 Text(
                   _getFileSize(),
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey,
-                  ),
+                  style: const TextStyle(fontSize: 11, color: Colors.grey),
                 ),
               ],
             ),

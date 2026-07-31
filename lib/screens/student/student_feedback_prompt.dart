@@ -15,22 +15,12 @@ Future<void> maybeShowFeedbackPrompt(BuildContext context) async {
   if (user == null) return;
 
   try {
-    // 🔥 FIX: Get the ACTUAL student ID from the student document
-    final studentDoc = await FirebaseFirestore.instance
-        .collection('students')
-        .doc(user.uid)
-        .get();
-
-    String studentId = user.uid; // fallback
-    if (studentDoc.exists) {
-      final data = studentDoc.data() as Map<String, dynamic>;
-      studentId = data['studentId']?.toString() ?? user.uid;
-    }
-
-    // 1. Get all events the student attended – NOW WITH CORRECT studentId
+    // Every attendance write (QR/manual check-in and webinar codes) stores
+    // the Firebase Auth UID in `studentId` — not the school-issued student
+    // number — so querying by anything else here silently returns nothing.
     final attendanceDocs = await FirebaseFirestore.instance
         .collectionGroup('attendances')
-        .where('studentId', isEqualTo: studentId)
+        .where('studentId', isEqualTo: user.uid)
         .get();
 
     // 2. Get all feedback the student already gave

@@ -6,7 +6,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 class OrgExportPdf {
-  static const PdfColor _accent = PdfColor.fromInt(0xFFBE4700);
+  static const PdfColor _accent = PdfColor.fromInt(0xFFEA580C);
 
   // The default PDF base font (Helvetica) has no ₱ glyph, so it silently
   // drops the peso sign — fall back to Noto Sans (which does have it) only
@@ -40,7 +40,8 @@ class OrgExportPdf {
               if (upriseLogo != null) pw.Image(upriseLogo, height: 34),
               if (upriseLogo != null && bsuLogo != null) pw.SizedBox(width: 16),
               if (bsuLogo != null) pw.Image(bsuLogo, height: 46),
-              if ((upriseLogo != null || bsuLogo != null) && cictLogo != null) pw.SizedBox(width: 16),
+              if ((upriseLogo != null || bsuLogo != null) && cictLogo != null)
+                pw.SizedBox(width: 16),
               if (cictLogo != null) pw.Image(cictLogo, height: 38),
               if (orgLogo != null) ...[
                 pw.SizedBox(width: 16),
@@ -56,7 +57,11 @@ class OrgExportPdf {
           pw.Text(
             'BULACAN STATE UNIVERSITY  |  COLLEGE OF INFORMATION AND COMMUNICATIONS TECHNOLOGY',
             textAlign: pw.TextAlign.center,
-            style: pw.TextStyle(fontSize: 7, color: PdfColors.grey600, letterSpacing: 0.6),
+            style: pw.TextStyle(
+              fontSize: 7,
+              color: PdfColors.grey600,
+              letterSpacing: 0.6,
+            ),
           ),
         ],
       ),
@@ -69,7 +74,11 @@ class OrgExportPdf {
       child: pw.Column(
         mainAxisSize: pw.MainAxisSize.min,
         children: [
-          pw.Container(height: 0.75, width: double.infinity, color: PdfColors.grey300),
+          pw.Container(
+            height: 0.75,
+            width: double.infinity,
+            color: PdfColors.grey300,
+          ),
           pw.SizedBox(height: 8),
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -80,7 +89,11 @@ class OrgExportPdf {
               ),
               pw.Text(
                 'Page ${context.pageNumber} of ${context.pagesCount}',
-                style: pw.TextStyle(fontSize: 8.5, color: PdfColors.grey600, fontWeight: pw.FontWeight.bold),
+                style: pw.TextStyle(
+                  fontSize: 8.5,
+                  color: PdfColors.grey600,
+                  fontWeight: pw.FontWeight.bold,
+                ),
               ),
             ],
           ),
@@ -105,13 +118,21 @@ class OrgExportPdf {
         pw.Text(
           eyebrow,
           style: pw.TextStyle(
-              fontSize: 9, color: _accent, fontWeight: pw.FontWeight.bold, letterSpacing: 2.2),
+            fontSize: 9,
+            color: _accent,
+            fontWeight: pw.FontWeight.bold,
+            letterSpacing: 2.2,
+          ),
         ),
         pw.SizedBox(height: 8),
         pw.Text(
           title,
           textAlign: pw.TextAlign.center,
-          style: pw.TextStyle(fontSize: 23, fontWeight: pw.FontWeight.bold, color: PdfColors.grey900),
+          style: pw.TextStyle(
+            fontSize: 23,
+            fontWeight: pw.FontWeight.bold,
+            color: PdfColors.grey900,
+          ),
         ),
         if (subtitle != null && subtitle.isNotEmpty) ...[
           pw.SizedBox(height: 5),
@@ -124,7 +145,10 @@ class OrgExportPdf {
         pw.SizedBox(height: 10),
         pw.Container(width: 64, height: 2.2, color: _accent),
         pw.SizedBox(height: 10),
-        pw.Text('Generated $generatedAt', style: pw.TextStyle(fontSize: 9, color: PdfColors.grey500)),
+        pw.Text(
+          'Generated $generatedAt',
+          style: pw.TextStyle(fontSize: 9, color: PdfColors.grey500),
+        ),
       ],
     );
   }
@@ -157,14 +181,19 @@ class OrgExportPdf {
     final orgLogo = _decodeOrgLogo(orgLogoUrl);
     final now = DateFormat('MMMM d, yyyy \'at\' h:mm a').format(DateTime.now());
 
-    final pageFormat = headers.length > 5 ? PdfPageFormat.a4.landscape : PdfPageFormat.a4;
+    final pageFormat = headers.length > 5
+        ? PdfPageFormat.a4.landscape
+        : PdfPageFormat.a4;
 
     pdf.addPage(
       pw.MultiPage(
         pageFormat: pageFormat,
         margin: const pw.EdgeInsets.fromLTRB(32, 28, 32, 28),
         header: (context) => _brandHeader(
-          upriseLogo: upriseLogo, cictLogo: cictLogo, bsuLogo: bsuLogo, orgLogo: orgLogo,
+          upriseLogo: upriseLogo,
+          cictLogo: cictLogo,
+          bsuLogo: bsuLogo,
+          orgLogo: orgLogo,
         ),
         footer: (context) => _brandFooter(context),
         build: (context) => [
@@ -186,31 +215,49 @@ class OrgExportPdf {
             ),
             child: pw.Text(
               '${rows.length} record${rows.length == 1 ? '' : 's'}',
-              style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700, fontWeight: pw.FontWeight.bold),
+              style: pw.TextStyle(
+                fontSize: 9,
+                color: PdfColors.grey700,
+                fontWeight: pw.FontWeight.bold,
+              ),
             ),
           ),
           pw.Table(
             border: const pw.TableBorder(
-              horizontalInside: pw.BorderSide(color: PdfColors.grey300, width: 0.5),
+              horizontalInside: pw.BorderSide(
+                color: PdfColors.grey300,
+                width: 0.5,
+              ),
             ),
             defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
             columnWidths: {
               for (var i = 0; i < headers.length; i++)
-                i: pw.FlexColumnWidth(headers[i].length.toDouble().clamp(8, 22)),
+                i: pw.FlexColumnWidth(
+                  headers[i].length.toDouble().clamp(8, 22),
+                ),
             },
             children: [
               pw.TableRow(
                 decoration: const pw.BoxDecoration(
                   color: _accent,
-                  borderRadius: pw.BorderRadius.vertical(top: pw.Radius.circular(4)),
+                  borderRadius: pw.BorderRadius.vertical(
+                    top: pw.Radius.circular(4),
+                  ),
                 ),
                 children: headers.map((header) {
                   return pw.Padding(
-                    padding: const pw.EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                    padding: const pw.EdgeInsets.symmetric(
+                      vertical: 10,
+                      horizontal: 8,
+                    ),
                     child: pw.Text(
                       header.toUpperCase(),
                       style: pw.TextStyle(
-                          fontWeight: pw.FontWeight.bold, fontSize: 9, color: PdfColors.white, letterSpacing: 0.4),
+                        fontWeight: pw.FontWeight.bold,
+                        fontSize: 9,
+                        color: PdfColors.white,
+                        letterSpacing: 0.4,
+                      ),
                       textAlign: pw.TextAlign.center,
                     ),
                   );
@@ -220,12 +267,23 @@ class OrgExportPdf {
                 final row = entry.value;
                 final index = entry.key;
                 return pw.TableRow(
-                  decoration: index.isEven ? const pw.BoxDecoration(color: PdfColors.orange50) : null,
+                  decoration: index.isEven
+                      ? const pw.BoxDecoration(color: PdfColors.orange50)
+                      : null,
                   children: List.generate(headers.length, (cellIndex) {
                     final value = cellIndex < row.length ? row[cellIndex] : '';
                     return pw.Padding(
-                      padding: const pw.EdgeInsets.symmetric(vertical: 9, horizontal: 8),
-                      child: pw.Text(value, style: pw.TextStyle(fontSize: 9.5, color: PdfColors.grey900)),
+                      padding: const pw.EdgeInsets.symmetric(
+                        vertical: 9,
+                        horizontal: 8,
+                      ),
+                      child: pw.Text(
+                        value,
+                        style: pw.TextStyle(
+                          fontSize: 9.5,
+                          color: PdfColors.grey900,
+                        ),
+                      ),
                     );
                   }),
                 );
@@ -236,8 +294,14 @@ class OrgExportPdf {
             pw.Padding(
               padding: const pw.EdgeInsets.symmetric(vertical: 20),
               child: pw.Center(
-                child: pw.Text('No records to display.',
-                    style: pw.TextStyle(fontSize: 10, color: PdfColors.grey500, fontStyle: pw.FontStyle.italic)),
+                child: pw.Text(
+                  'No records to display.',
+                  style: pw.TextStyle(
+                    fontSize: 10,
+                    color: PdfColors.grey500,
+                    fontStyle: pw.FontStyle.italic,
+                  ),
+                ),
               ),
             ),
         ],
@@ -273,7 +337,12 @@ class OrgExportPdf {
 
     const colHeaders = ['Date', 'Event', 'Category', 'Description', 'Amount'];
 
-    pw.Widget sectionTable(String label, PdfColor color, List<List<String>> rows, double subtotal) {
+    pw.Widget sectionTable(
+      String label,
+      PdfColor color,
+      List<List<String>> rows,
+      double subtotal,
+    ) {
       return pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
@@ -281,18 +350,29 @@ class OrgExportPdf {
             padding: const pw.EdgeInsets.symmetric(vertical: 7, horizontal: 10),
             decoration: pw.BoxDecoration(
               color: color,
-              borderRadius: const pw.BorderRadius.vertical(top: pw.Radius.circular(5)),
+              borderRadius: const pw.BorderRadius.vertical(
+                top: pw.Radius.circular(5),
+              ),
             ),
             width: double.infinity,
-            child: pw.Text(label,
-                style: pw.TextStyle(
-                    fontSize: 11.5, fontWeight: pw.FontWeight.bold, color: PdfColors.white, letterSpacing: 0.6)),
+            child: pw.Text(
+              label,
+              style: pw.TextStyle(
+                fontSize: 11.5,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.white,
+                letterSpacing: 0.6,
+              ),
+            ),
           ),
           pw.Table(
             border: pw.TableBorder(
               left: pw.BorderSide(color: PdfColors.grey300, width: 0.6),
               right: pw.BorderSide(color: PdfColors.grey300, width: 0.6),
-              horizontalInside: const pw.BorderSide(color: PdfColors.grey200, width: 0.5),
+              horizontalInside: const pw.BorderSide(
+                color: PdfColors.grey200,
+                width: 0.5,
+              ),
             ),
             defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
             columnWidths: const {
@@ -306,43 +386,90 @@ class OrgExportPdf {
               pw.TableRow(
                 decoration: const pw.BoxDecoration(color: PdfColors.grey100),
                 children: colHeaders
-                    .map((h) => pw.Padding(
-                          padding: const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-                          child: pw.Text(h.toUpperCase(),
-                              style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, letterSpacing: 0.3)),
-                        ))
+                    .map(
+                      (h) => pw.Padding(
+                        padding: const pw.EdgeInsets.symmetric(
+                          vertical: 8,
+                          horizontal: 6,
+                        ),
+                        child: pw.Text(
+                          h.toUpperCase(),
+                          style: pw.TextStyle(
+                            fontSize: 8.5,
+                            fontWeight: pw.FontWeight.bold,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ),
+                    )
                     .toList(),
               ),
               if (rows.isEmpty)
-                pw.TableRow(children: [
-                  pw.Padding(
-                    padding: const pw.EdgeInsets.symmetric(vertical: 10, horizontal: 6),
-                    child: pw.Text('No transactions for this period.',
-                        style: pw.TextStyle(fontSize: 9.5, color: PdfColors.grey500, fontStyle: pw.FontStyle.italic)),
+                pw.TableRow(
+                  children: [
+                    pw.Padding(
+                      padding: const pw.EdgeInsets.symmetric(
+                        vertical: 10,
+                        horizontal: 6,
+                      ),
+                      child: pw.Text(
+                        'No transactions for this period.',
+                        style: pw.TextStyle(
+                          fontSize: 9.5,
+                          color: PdfColors.grey500,
+                          fontStyle: pw.FontStyle.italic,
+                        ),
+                      ),
+                    ),
+                    ...List.generate(4, (_) => pw.Container()),
+                  ],
+                ),
+              ...rows.map(
+                (row) => pw.TableRow(
+                  children: List.generate(
+                    5,
+                    (i) => pw.Padding(
+                      padding: const pw.EdgeInsets.symmetric(
+                        vertical: 7,
+                        horizontal: 6,
+                      ),
+                      child: pw.Text(
+                        i < row.length ? row[i] : '',
+                        style: pw.TextStyle(fontSize: 9.5),
+                      ),
+                    ),
                   ),
-                  ...List.generate(4, (_) => pw.Container()),
-                ]),
-              ...rows.map((row) => pw.TableRow(
-                    children: List.generate(5, (i) => pw.Padding(
-                          padding: const pw.EdgeInsets.symmetric(vertical: 7, horizontal: 6),
-                          child: pw.Text(i < row.length ? row[i] : '', style: pw.TextStyle(fontSize: 9.5)),
-                        )),
-                  )),
+                ),
+              ),
             ],
           ),
           pw.Container(
             padding: const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 10),
             decoration: pw.BoxDecoration(
               border: pw.Border.all(color: PdfColors.grey300, width: 0.6),
-              borderRadius: const pw.BorderRadius.vertical(bottom: pw.Radius.circular(5)),
+              borderRadius: const pw.BorderRadius.vertical(
+                bottom: pw.Radius.circular(5),
+              ),
             ),
             width: double.infinity,
             child: pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.end,
               children: [
-                pw.Text('Subtotal: ', style: pw.TextStyle(fontSize: 10.5, fontWeight: pw.FontWeight.bold)),
-                pw.Text(currency.format(subtotal),
-                    style: pw.TextStyle(fontSize: 10.5, fontWeight: pw.FontWeight.bold, color: color)),
+                pw.Text(
+                  'Subtotal: ',
+                  style: pw.TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.Text(
+                  currency.format(subtotal),
+                  style: pw.TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: pw.FontWeight.bold,
+                    color: color,
+                  ),
+                ),
               ],
             ),
           ),
@@ -357,7 +484,10 @@ class OrgExportPdf {
         pageFormat: PdfPageFormat.a4.landscape,
         margin: const pw.EdgeInsets.fromLTRB(32, 28, 32, 28),
         header: (context) => _brandHeader(
-          upriseLogo: upriseLogo, cictLogo: cictLogo, bsuLogo: bsuLogo, orgLogo: orgLogo,
+          upriseLogo: upriseLogo,
+          cictLogo: cictLogo,
+          bsuLogo: bsuLogo,
+          orgLogo: orgLogo,
         ),
         footer: (context) => _brandFooter(context),
         build: (context) => [
@@ -370,79 +500,151 @@ class OrgExportPdf {
             ),
           ),
           pw.SizedBox(height: 20),
-          sectionTable('CASH INFLOW (Income)', PdfColors.green700, inflowRows, totalInflow),
+          sectionTable(
+            'CASH INFLOW (Income)',
+            PdfColors.green700,
+            inflowRows,
+            totalInflow,
+          ),
           pw.SizedBox(height: 16),
-          sectionTable('CASH OUTFLOW (Expenses)', PdfColors.red700, outflowRows, totalOutflow),
+          sectionTable(
+            'CASH OUTFLOW (Expenses)',
+            PdfColors.red700,
+            outflowRows,
+            totalOutflow,
+          ),
           pw.SizedBox(height: 18),
           pw.Container(
             padding: const pw.EdgeInsets.all(14),
             decoration: pw.BoxDecoration(
               color: netFlow >= 0 ? PdfColors.green50 : PdfColors.red50,
-              border: pw.Border.all(color: netFlow >= 0 ? PdfColors.green700 : PdfColors.red700, width: 1),
+              border: pw.Border.all(
+                color: netFlow >= 0 ? PdfColors.green700 : PdfColors.red700,
+                width: 1,
+              ),
               borderRadius: pw.BorderRadius.circular(8),
             ),
-            child: pw.Column(children: [
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text('Total Cash Inflow', style: pw.TextStyle(fontSize: 11)),
-                  pw.Text(currency.format(totalInflow), style: pw.TextStyle(fontSize: 11)),
-                ],
-              ),
-              pw.SizedBox(height: 4),
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text('Total Cash Outflow', style: pw.TextStyle(fontSize: 11)),
-                  pw.Text('(${currency.format(totalOutflow)})', style: pw.TextStyle(fontSize: 11)),
-                ],
-              ),
-              pw.Padding(
-                padding: const pw.EdgeInsets.symmetric(vertical: 8),
-                child: pw.Divider(color: PdfColors.grey400, thickness: 0.8),
-              ),
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text('NET CASH FLOW',
-                      style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
-                  pw.Text(currency.format(netFlow),
+            child: pw.Column(
+              children: [
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(
+                      'Total Cash Inflow',
+                      style: pw.TextStyle(fontSize: 11),
+                    ),
+                    pw.Text(
+                      currency.format(totalInflow),
+                      style: pw.TextStyle(fontSize: 11),
+                    ),
+                  ],
+                ),
+                pw.SizedBox(height: 4),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(
+                      'Total Cash Outflow',
+                      style: pw.TextStyle(fontSize: 11),
+                    ),
+                    pw.Text(
+                      '(${currency.format(totalOutflow)})',
+                      style: pw.TextStyle(fontSize: 11),
+                    ),
+                  ],
+                ),
+                pw.Padding(
+                  padding: const pw.EdgeInsets.symmetric(vertical: 8),
+                  child: pw.Divider(color: PdfColors.grey400, thickness: 0.8),
+                ),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(
+                      'NET CASH FLOW',
                       style: pw.TextStyle(
-                          fontSize: 13,
-                          fontWeight: pw.FontWeight.bold,
-                          color: netFlow >= 0 ? PdfColors.green700 : PdfColors.red700)),
-                ],
-              ),
-            ]),
+                        fontSize: 13,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                    pw.Text(
+                      currency.format(netFlow),
+                      style: pw.TextStyle(
+                        fontSize: 13,
+                        fontWeight: pw.FontWeight.bold,
+                        color: netFlow >= 0
+                            ? PdfColors.green700
+                            : PdfColors.red700,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
           pw.SizedBox(height: 16),
           pw.Container(
-            padding: const pw.EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+            padding: const pw.EdgeInsets.symmetric(
+              vertical: 10,
+              horizontal: 14,
+            ),
             decoration: pw.BoxDecoration(
               border: pw.Border.all(color: PdfColors.grey300, width: 0.6),
               borderRadius: pw.BorderRadius.circular(6),
             ),
-            child: pw.Row(children: [
-              pw.Expanded(
-                child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                  pw.Text('Prepared by', style: pw.TextStyle(fontSize: 8, color: PdfColors.grey500)),
-                  pw.SizedBox(height: 14),
-                  pw.Container(height: 0.75, color: PdfColors.grey400),
-                  pw.SizedBox(height: 3),
-                  pw.Text('Organization Treasurer / Officer', style: pw.TextStyle(fontSize: 8, color: PdfColors.grey500)),
-                ]),
-              ),
-              pw.SizedBox(width: 30),
-              pw.Expanded(
-                child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                  pw.Text('Noted by', style: pw.TextStyle(fontSize: 8, color: PdfColors.grey500)),
-                  pw.SizedBox(height: 14),
-                  pw.Container(height: 0.75, color: PdfColors.grey400),
-                  pw.SizedBox(height: 3),
-                  pw.Text('Adviser / CICT Office', style: pw.TextStyle(fontSize: 8, color: PdfColors.grey500)),
-                ]),
-              ),
-            ]),
+            child: pw.Row(
+              children: [
+                pw.Expanded(
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text(
+                        'Prepared by',
+                        style: pw.TextStyle(
+                          fontSize: 8,
+                          color: PdfColors.grey500,
+                        ),
+                      ),
+                      pw.SizedBox(height: 14),
+                      pw.Container(height: 0.75, color: PdfColors.grey400),
+                      pw.SizedBox(height: 3),
+                      pw.Text(
+                        'Organization Treasurer / Officer',
+                        style: pw.TextStyle(
+                          fontSize: 8,
+                          color: PdfColors.grey500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                pw.SizedBox(width: 30),
+                pw.Expanded(
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text(
+                        'Noted by',
+                        style: pw.TextStyle(
+                          fontSize: 8,
+                          color: PdfColors.grey500,
+                        ),
+                      ),
+                      pw.SizedBox(height: 14),
+                      pw.Container(height: 0.75, color: PdfColors.grey400),
+                      pw.SizedBox(height: 3),
+                      pw.Text(
+                        'Adviser / CICT Office',
+                        style: pw.TextStyle(
+                          fontSize: 8,
+                          color: PdfColors.grey500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

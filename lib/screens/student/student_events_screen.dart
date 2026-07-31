@@ -1,4 +1,5 @@
 // lib/screens/student/student_events_screen.dart
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -16,10 +17,12 @@ import 'package:open_file/open_file.dart';
 import 'package:uprise/models/event_model.dart';
 import '../../widgets/student/event_image.dart';
 import '../../widgets/student/app_colors.dart';
+import '../../widgets/student/student_app_bar.dart';
 import 'student_feedback_screen.dart';
 import 'student_certificates_screen.dart';
 import 'student_webinar_code_screen.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../services/webinar_attendance_service.dart';
 
 // ─── MAIN SCREEN ──────────────────────────────────────────────
 class StudentEventsScreen extends StatefulWidget {
@@ -64,18 +67,14 @@ class _StudentEventsScreenState extends State<StudentEventsScreen>
   void _openCertificates() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => const StudentCertificatesScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const StudentCertificatesScreen()),
     );
   }
 
   void _openWebinarCode() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => const StudentWebinarCodeScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const StudentWebinarCodeScreen()),
     );
   }
 
@@ -89,7 +88,10 @@ class _StudentEventsScreenState extends State<StudentEventsScreen>
         title: const Text(
           'Events',
           style: TextStyle(
-              fontSize: 18, fontWeight: FontWeight.w700, color: Colors.black87),
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textPrimary,
+          ),
         ),
         centerTitle: true,
         actions: [
@@ -133,7 +135,8 @@ class _StudentEventsScreenState extends State<StudentEventsScreen>
           CalendarTab(registeredEventIdsStream: _registeredEventIdsStream),
           UpcomingTab(registeredEventIdsStream: _registeredEventIdsStream),
           RegisteredEventsTab(
-              registeredEventIdsStream: _registeredEventIdsStream),
+            registeredEventIdsStream: _registeredEventIdsStream,
+          ),
           EvaluationsTab(registeredEventIdsStream: _registeredEventIdsStream),
         ],
       ),
@@ -160,11 +163,11 @@ class _CalendarTabState extends State<CalendarTab>
   DateTime _selectedDate = DateTime.now();
 
   void _previousMonth() => setState(() {
-        _selectedDate = DateTime(_selectedDate.year, _selectedDate.month - 1);
-      });
+    _selectedDate = DateTime(_selectedDate.year, _selectedDate.month - 1);
+  });
   void _nextMonth() => setState(() {
-        _selectedDate = DateTime(_selectedDate.year, _selectedDate.month + 1);
-      });
+    _selectedDate = DateTime(_selectedDate.year, _selectedDate.month + 1);
+  });
 
   void _openDetail(EventModel event) {
     Navigator.push(
@@ -191,18 +194,24 @@ class _CalendarTabState extends State<CalendarTab>
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               IconButton(
-                icon: const Icon(Icons.chevron_left,
-                    color: AppColors.primaryDark),
+                icon: const Icon(
+                  Icons.chevron_left,
+                  color: AppColors.primaryDark,
+                ),
                 onPressed: _previousMonth,
               ),
               Text(
                 DateFormat('MMMM yyyy').format(_selectedDate),
                 style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w600),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               IconButton(
-                icon: const Icon(Icons.chevron_right,
-                    color: AppColors.primaryDark),
+                icon: const Icon(
+                  Icons.chevron_right,
+                  color: AppColors.primaryDark,
+                ),
                 onPressed: _nextMonth,
               ),
             ],
@@ -224,9 +233,10 @@ class _CalendarTabState extends State<CalendarTab>
               Text(
                 'Events for ${DateFormat('MMM dd, yyyy').format(_selectedDate)}',
                 style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black87),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black87,
+                ),
               ),
               const Spacer(),
               StreamBuilder<Set<String>>(
@@ -243,17 +253,20 @@ class _CalendarTabState extends State<CalendarTab>
                       if (!snap.hasData) return const SizedBox.shrink();
                       final count = snap.data!.docs
                           .map((d) => EventModel.fromFirestore(d))
-                          .where((e) =>
-                              e.date.year == _selectedDate.year &&
-                              e.date.month == _selectedDate.month &&
-                              e.date.day == _selectedDate.day)
+                          .where(
+                            (e) =>
+                                e.date.year == _selectedDate.year &&
+                                e.date.month == _selectedDate.month &&
+                                e.date.day == _selectedDate.day,
+                          )
                           .length;
                       return Text(
                         '$count events',
                         style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.grey.shade600),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey.shade600,
+                        ),
                       );
                     },
                   );
@@ -278,15 +291,18 @@ class _CalendarTabState extends State<CalendarTab>
                   if (!snap.hasData) {
                     return const Center(
                       child: CircularProgressIndicator(
-                          color: AppColors.primaryDark),
+                        color: AppColors.primaryDark,
+                      ),
                     );
                   }
                   final todayEvents = snap.data!.docs
                       .map((d) => EventModel.fromFirestore(d))
-                      .where((e) =>
-                          e.date.year == _selectedDate.year &&
-                          e.date.month == _selectedDate.month &&
-                          e.date.day == _selectedDate.day)
+                      .where(
+                        (e) =>
+                            e.date.year == _selectedDate.year &&
+                            e.date.month == _selectedDate.month &&
+                            e.date.day == _selectedDate.day,
+                      )
                       .toList();
 
                   if (todayEvents.isEmpty) {
@@ -299,9 +315,10 @@ class _CalendarTabState extends State<CalendarTab>
                           Text(
                             'No events for this day',
                             style: TextStyle(
-                                fontSize: 15,
-                                color: Colors.grey,
-                                fontWeight: FontWeight.w500),
+                              fontSize: 15,
+                              color: Colors.grey,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ],
                       ),
@@ -310,7 +327,9 @@ class _CalendarTabState extends State<CalendarTab>
 
                   return ListView.builder(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 8),
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                     itemCount: todayEvents.length,
                     itemBuilder: (context, index) {
                       final event = todayEvents[index];
@@ -357,8 +376,7 @@ class _UpcomingTabState extends State<UpcomingTab>
   DateTime? _combineDateAndTime(DateTime date, String? timeStr) {
     if (timeStr == null || timeStr.trim().isEmpty) return null;
     final cleaned = timeStr.trim().toUpperCase();
-    final match =
-        RegExp(r'^(\d{1,2}):(\d{2})\s*(AM|PM)?$').firstMatch(cleaned);
+    final match = RegExp(r'^(\d{1,2}):(\d{2})\s*(AM|PM)?$').firstMatch(cleaned);
     if (match == null) return null;
     int hour = int.parse(match.group(1)!);
     final minute = int.parse(match.group(2)!);
@@ -381,23 +399,13 @@ class _UpcomingTabState extends State<UpcomingTab>
     } catch (_) {}
 
     final start = _combineDateAndTime(event.date, startTimeStr) ?? event.date;
-    final end = _combineDateAndTime(event.date, endTimeStr) ??
+    final end =
+        _combineDateAndTime(event.date, endTimeStr) ??
         DateTime(event.date.year, event.date.month, event.date.day, 23, 59);
 
     if (now.isBefore(start)) return _RegStatus.upcoming;
     if (now.isAfter(end)) return _RegStatus.completed;
     return _RegStatus.ongoing;
-  }
-
-  String get _filterLabel {
-    switch (_selectedFilter) {
-      case _RegStatus.upcoming:
-        return 'Upcoming';
-      case _RegStatus.ongoing:
-        return 'Ongoing';
-      case _RegStatus.completed:
-        return 'Past';
-    }
   }
 
   String get _emptyStateMessage {
@@ -422,48 +430,73 @@ class _UpcomingTabState extends State<UpcomingTab>
     }
   }
 
-  Widget _buildFilterDropdown() {
+  // Always-visible 3-way pill selector — replaces the old dropdown so the
+  // three event categories read as distinct sections at a glance instead of
+  // being hidden behind a menu.
+  Widget _buildSegmentedControl() {
+    const options = [
+      (_RegStatus.upcoming, 'Upcoming'),
+      (_RegStatus.ongoing, 'Ongoing'),
+      (_RegStatus.completed, 'Past'),
+    ];
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(12),
       ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<_RegStatus>(
-          value: _selectedFilter,
-          isDense: true,
-          icon: const Icon(
-            Icons.keyboard_arrow_down_rounded,
-            size: 18,
-            color: AppColors.primaryDark,
-          ),
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: Colors.black87,
-          ),
-          items: const [
-            DropdownMenuItem(
-              value: _RegStatus.upcoming,
-              child: Text('Upcoming'),
+      child: Row(
+        children: options.map((opt) {
+          final isActive = _selectedFilter == opt.$1;
+          final isOngoingPill = opt.$1 == _RegStatus.ongoing;
+          return Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _selectedFilter = opt.$1),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 9),
+                decoration: BoxDecoration(
+                  color: isActive ? AppColors.primaryDark : Colors.transparent,
+                  borderRadius: BorderRadius.circular(9),
+                  boxShadow: isActive
+                      ? [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (isOngoingPill) ...[
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: isActive ? Colors.white : Colors.green,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                    ],
+                    Text(
+                      opt.$2,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: isActive ? Colors.white : Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-            DropdownMenuItem(
-              value: _RegStatus.ongoing,
-              child: Text('Ongoing'),
-            ),
-            DropdownMenuItem(
-              value: _RegStatus.completed,
-              child: Text('Past'),
-            ),
-          ],
-          onChanged: (value) {
-            if (value != null) {
-              setState(() => _selectedFilter = value);
-            }
-          },
-        ),
+          );
+        }).toList(),
       ),
     );
   }
@@ -497,13 +530,13 @@ class _UpcomingTabState extends State<UpcomingTab>
           builder: (context, snap) {
             if (!snap.hasData) {
               return const Center(
-                child:
-                    CircularProgressIndicator(color: AppColors.primaryDark),
+                child: CircularProgressIndicator(color: AppColors.primaryDark),
               );
             }
 
-            final allApprovedEvents =
-                snap.data!.docs.map((d) => EventModel.fromFirestore(d)).toList();
+            final allApprovedEvents = snap.data!.docs
+                .map((d) => EventModel.fromFirestore(d))
+                .toList();
 
             final allEvents = allApprovedEvents
                 .where((e) => _statusFor(e) == _selectedFilter)
@@ -515,22 +548,15 @@ class _UpcomingTabState extends State<UpcomingTab>
               allEvents.sort((a, b) => b.date.compareTo(a.date));
             }
 
+            final isOngoing = _selectedFilter == _RegStatus.ongoing;
+
             return Column(
               children: [
                 Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
                   child: Row(
                     children: [
-                      Text(
-                        '$_filterLabel Events',
-                        style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.black87),
-                      ),
-                      const Spacer(),
-                      _buildFilterDropdown(),
+                      Expanded(child: _buildSegmentedControl()),
                       const SizedBox(width: 8),
                       IconButton(
                         icon: Icon(
@@ -555,22 +581,26 @@ class _UpcomingTabState extends State<UpcomingTab>
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(_emptyStateIcon,
-                                  size: 64, color: Colors.grey),
+                              Icon(
+                                _emptyStateIcon,
+                                size: 64,
+                                color: Colors.grey,
+                              ),
                               const SizedBox(height: 12),
                               Text(
                                 _emptyStateMessage,
                                 style: const TextStyle(
-                                    fontSize: 15,
-                                    color: Colors.grey,
-                                    fontWeight: FontWeight.w500),
+                                  fontSize: 15,
+                                  color: Colors.grey,
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
                             ],
                           ),
                         )
                       : (_compactView
-                          ? _buildCompactGrid(allEvents, regIds)
-                          : _buildDetailedList(allEvents, regIds)),
+                            ? _buildCompactGrid(allEvents, regIds, isOngoing)
+                            : _buildDetailedList(allEvents, regIds, isOngoing)),
                 ),
               ],
             );
@@ -581,7 +611,10 @@ class _UpcomingTabState extends State<UpcomingTab>
   }
 
   Widget _buildDetailedList(
-      List<EventModel> events, Set<String> regIds) {
+    List<EventModel> events,
+    Set<String> regIds,
+    bool isOngoing,
+  ) {
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       itemCount: events.length,
@@ -593,6 +626,7 @@ class _UpcomingTabState extends State<UpcomingTab>
           child: _UpcomingEventCard(
             event: event,
             isRegistered: isRegistered,
+            showLiveBadge: isOngoing,
             onTap: () => _openDetail(event),
           ),
         );
@@ -600,7 +634,11 @@ class _UpcomingTabState extends State<UpcomingTab>
     );
   }
 
-  Widget _buildCompactGrid(List<EventModel> events, Set<String> regIds) {
+  Widget _buildCompactGrid(
+    List<EventModel> events,
+    Set<String> regIds,
+    bool isOngoing,
+  ) {
     return GridView.builder(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -616,6 +654,7 @@ class _UpcomingTabState extends State<UpcomingTab>
         return _CompactUpcomingCard(
           event: event,
           isRegistered: isRegistered,
+          showLiveBadge: isOngoing,
           onTap: () => _openDetail(event),
         );
       },
@@ -627,11 +666,13 @@ class _UpcomingTabState extends State<UpcomingTab>
 class _CompactUpcomingCard extends StatelessWidget {
   final EventModel event;
   final bool isRegistered;
+  final bool showLiveBadge;
   final VoidCallback onTap;
 
   const _CompactUpcomingCard({
     required this.event,
     required this.isRegistered,
+    this.showLiveBadge = false,
     required this.onTap,
   });
 
@@ -655,12 +696,18 @@ class _CompactUpcomingCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            EventImage(
-              imageUrl: event.imageUrl,
-              height: 90,
-              width: double.infinity,
-              fit: BoxFit.cover,
-              showLoadingIndicator: true,
+            Stack(
+              children: [
+                EventImage(
+                  imageUrl: event.imageUrl,
+                  height: 90,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  showLoadingIndicator: true,
+                ),
+                if (showLiveBadge)
+                  const Positioned(top: 6, left: 6, child: _LiveBadge()),
+              ],
             ),
             Expanded(
               child: Padding(
@@ -681,14 +728,19 @@ class _CompactUpcomingCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        const Icon(Icons.calendar_today_outlined,
-                            size: 11, color: Colors.grey),
+                        const Icon(
+                          Icons.calendar_today_outlined,
+                          size: 11,
+                          color: Colors.grey,
+                        ),
                         const SizedBox(width: 3),
                         Expanded(
                           child: Text(
                             event.formattedDate,
                             style: const TextStyle(
-                                fontSize: 10, color: Colors.grey),
+                              fontSize: 10,
+                              color: Colors.grey,
+                            ),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -697,14 +749,19 @@ class _CompactUpcomingCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Row(
                       children: [
-                        const Icon(Icons.access_time,
-                            size: 11, color: Colors.grey),
+                        const Icon(
+                          Icons.access_time,
+                          size: 11,
+                          color: Colors.grey,
+                        ),
                         const SizedBox(width: 3),
                         Expanded(
                           child: Text(
                             event.formattedTime,
                             style: const TextStyle(
-                                fontSize: 10, color: Colors.grey),
+                              fontSize: 10,
+                              color: Colors.grey,
+                            ),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -716,8 +773,9 @@ class _CompactUpcomingCard extends StatelessWidget {
                       child: ElevatedButton(
                         onPressed: onTap,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor:
-                              isRegistered ? Colors.green : AppColors.primaryDark,
+                          backgroundColor: isRegistered
+                              ? Colors.green
+                              : AppColors.primaryDark,
                           padding: const EdgeInsets.symmetric(vertical: 4),
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           shape: RoundedRectangleBorder(
@@ -750,13 +808,17 @@ class _CompactUpcomingCard extends StatelessWidget {
 // ═══════════════════════════════════════════════════════════════
 class RegisteredEventsTab extends StatefulWidget {
   final Stream<Set<String>> registeredEventIdsStream;
-  const RegisteredEventsTab({required this.registeredEventIdsStream, super.key});
+  const RegisteredEventsTab({
+    required this.registeredEventIdsStream,
+    super.key,
+  });
 
   @override
   State<RegisteredEventsTab> createState() => _RegisteredEventsTabState();
 }
 
 enum _ViewFilter { all, active, archived }
+
 enum _RegStatus { upcoming, ongoing, completed }
 
 class _RegisteredEventsTabState extends State<RegisteredEventsTab>
@@ -782,8 +844,7 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
   DateTime? _combineDateAndTime(DateTime date, String? timeStr) {
     if (timeStr == null || timeStr.trim().isEmpty) return null;
     final cleaned = timeStr.trim().toUpperCase();
-    final match =
-        RegExp(r'^(\d{1,2}):(\d{2})\s*(AM|PM)?$').firstMatch(cleaned);
+    final match = RegExp(r'^(\d{1,2}):(\d{2})\s*(AM|PM)?$').firstMatch(cleaned);
     if (match == null) return null;
     int hour = int.parse(match.group(1)!);
     final minute = int.parse(match.group(2)!);
@@ -806,7 +867,8 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
     } catch (_) {}
 
     final start = _combineDateAndTime(event.date, startTimeStr) ?? event.date;
-    final end = _combineDateAndTime(event.date, endTimeStr) ??
+    final end =
+        _combineDateAndTime(event.date, endTimeStr) ??
         DateTime(event.date.year, event.date.month, event.date.day, 23, 59);
 
     if (now.isBefore(start)) return _RegStatus.upcoming;
@@ -876,9 +938,9 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
           .collection('registrations')
           .doc(docId)
           .update({
-        'isArchived': true,
-        'archivedAt': FieldValue.serverTimestamp(),
-      });
+            'isArchived': true,
+            'archivedAt': FieldValue.serverTimestamp(),
+          });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -937,10 +999,7 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
       await FirebaseFirestore.instance
           .collection('registrations')
           .doc(docId)
-          .update({
-        'isArchived': false,
-        'archivedAt': FieldValue.delete(),
-      });
+          .update({'isArchived': false, 'archivedAt': FieldValue.delete()});
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -968,8 +1027,10 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
 
     if (_registrationsStream == null) {
       return const Center(
-        child: Text('Please log in to see your registered events.',
-            style: TextStyle(color: Colors.grey)),
+        child: Text(
+          'Please log in to see your registered events.',
+          style: TextStyle(color: Colors.grey),
+        ),
       );
     }
 
@@ -978,19 +1039,21 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
       builder: (context, regSnap) {
         if (regSnap.connectionState == ConnectionState.waiting) {
           return const Center(
-              child:
-                  CircularProgressIndicator(color: AppColors.primaryDark));
+            child: CircularProgressIndicator(color: AppColors.primaryDark),
+          );
         }
         if (regSnap.hasError) {
           return Center(
-            child: Text('Failed to load registrations',
-                style: TextStyle(color: Colors.grey.shade600)),
+            child: Text(
+              'Failed to load registrations',
+              style: TextStyle(color: Colors.grey.shade600),
+            ),
           );
         }
 
         // Get all event IDs from registrations
         final allRegistrationData = regSnap.data?.docs ?? [];
-        
+
         // Filter based on view filter
         final filteredRegistrations = allRegistrationData.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
@@ -1006,7 +1069,9 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
         }).toList();
 
         final eventIds = filteredRegistrations
-            .map((d) => (d.data() as Map<String, dynamic>)['eventId'] as String?)
+            .map(
+              (d) => (d.data() as Map<String, dynamic>)['eventId'] as String?,
+            )
             .whereType<String>()
             .toSet()
             .toList();
@@ -1016,8 +1081,7 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
           children: [
             // ─── Filter Segmented Buttons (ALWAYS VISIBLE) ───
             Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               color: Colors.white,
               child: SegmentedButton<_ViewFilter>(
                 segments: const [
@@ -1057,18 +1121,19 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
               ),
             ),
             const Divider(height: 1, color: Color(0xFFF0F0F0)),
-            
+
             // ─── Content Area ───
-            Expanded(
-              child: _buildContent(eventIds, regSnap),
-            ),
+            Expanded(child: _buildContent(eventIds, regSnap)),
           ],
         );
       },
     );
   }
 
-  Widget _buildContent(List<String> eventIds, AsyncSnapshot<QuerySnapshot> regSnap) {
+  Widget _buildContent(
+    List<String> eventIds,
+    AsyncSnapshot<QuerySnapshot> regSnap,
+  ) {
     if (eventIds.isEmpty) {
       // ⭐ Show empty state with appropriate message based on filter
       String message;
@@ -1087,16 +1152,12 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
           icon = Icons.archive_outlined;
           break;
       }
-      
+
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              icon,
-              size: 64,
-              color: Colors.grey,
-            ),
+            Icon(icon, size: 64, color: Colors.grey),
             const SizedBox(height: 12),
             Text(
               message,
@@ -1113,26 +1174,35 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
 
     final chunks = <List<String>>[];
     for (var i = 0; i < eventIds.length; i += 30) {
-      chunks.add(eventIds.sublist(
+      chunks.add(
+        eventIds.sublist(
           i,
-          i + 30 > eventIds.length ? eventIds.length : i + 30));
+          i + 30 > eventIds.length ? eventIds.length : i + 30,
+        ),
+      );
     }
 
     return FutureBuilder<List<QuerySnapshot>>(
-      future: Future.wait(chunks.map((chunk) => FirebaseFirestore.instance
-          .collection('events')
-          .where(FieldPath.documentId, whereIn: chunk)
-          .get())),
+      future: Future.wait(
+        chunks.map(
+          (chunk) => FirebaseFirestore.instance
+              .collection('events')
+              .where(FieldPath.documentId, whereIn: chunk)
+              .get(),
+        ),
+      ),
       builder: (context, evSnap) {
         if (evSnap.connectionState == ConnectionState.waiting) {
           return const Center(
-              child: CircularProgressIndicator(
-                  color: AppColors.primaryDark));
+            child: CircularProgressIndicator(color: AppColors.primaryDark),
+          );
         }
         if (evSnap.hasError || !evSnap.hasData) {
           return Center(
-            child: Text('Failed to load events',
-                style: TextStyle(color: Colors.grey.shade600)),
+            child: Text(
+              'Failed to load events',
+              style: TextStyle(color: Colors.grey.shade600),
+            ),
           );
         }
 
@@ -1212,13 +1282,12 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
                         right: 8,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
-                            color: isArchived
-                                ? Colors.grey
-                                : style.color,
-                            borderRadius:
-                                BorderRadius.circular(12),
+                            color: isArchived ? Colors.grey : style.color,
+                            borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
                             isArchived ? 'ARCHIVED' : style.label,
@@ -1236,8 +1305,7 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
                   Padding(
                     padding: const EdgeInsets.all(12),
                     child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           event.title,
@@ -1263,26 +1331,32 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
                         Row(
                           children: [
                             const Icon(
-                                Icons.calendar_today_outlined,
-                                size: 12,
-                                color: Colors.grey),
+                              Icons.calendar_today_outlined,
+                              size: 12,
+                              color: Colors.grey,
+                            ),
                             const SizedBox(width: 4),
                             Text(
                               event.formattedDate,
                               style: const TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.grey),
+                                fontSize: 11,
+                                color: Colors.grey,
+                              ),
                             ),
                             const SizedBox(width: 12),
-                            const Icon(Icons.access_time,
-                                size: 12, color: Colors.grey),
+                            const Icon(
+                              Icons.access_time,
+                              size: 12,
+                              color: Colors.grey,
+                            ),
                             const SizedBox(width: 4),
                             Expanded(
                               child: Text(
                                 event.formattedTime,
                                 style: const TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.grey),
+                                  fontSize: 11,
+                                  color: Colors.grey,
+                                ),
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
@@ -1292,16 +1366,18 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
                         Row(
                           children: [
                             const Icon(
-                                Icons.location_on_outlined,
-                                size: 12,
-                                color: Colors.grey),
+                              Icons.location_on_outlined,
+                              size: 12,
+                              color: Colors.grey,
+                            ),
                             const SizedBox(width: 4),
                             Expanded(
                               child: Text(
                                 event.location,
                                 style: const TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.grey),
+                                  fontSize: 11,
+                                  color: Colors.grey,
+                                ),
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
@@ -1313,19 +1389,18 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
                             Expanded(
                               child: ElevatedButton(
                                 onPressed: () => _openDetail(
-                                    event,
-                                    status ==
-                                        _RegStatus.completed),
+                                  event,
+                                  status == _RegStatus.completed,
+                                ),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: isArchived
                                       ? Colors.grey
                                       : AppColors.primaryDark,
-                                  padding:
-                                      const EdgeInsets.symmetric(
-                                          vertical: 8),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 8,
+                                  ),
                                   shape: RoundedRectangleBorder(
-                                    borderRadius:
-                                        BorderRadius.circular(8),
+                                    borderRadius: BorderRadius.circular(8),
                                   ),
                                 ),
                                 child: const Text(
@@ -1341,8 +1416,7 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
                             const SizedBox(width: 8),
                             if (!isArchived)
                               IconButton(
-                                onPressed: () =>
-                                    _archiveEvent(event),
+                                onPressed: () => _archiveEvent(event),
                                 icon: Icon(
                                   Icons.archive_outlined,
                                   size: 20,
@@ -1350,18 +1424,15 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
                                 ),
                                 tooltip: 'Archive',
                                 style: IconButton.styleFrom(
-                                  backgroundColor:
-                                      Colors.grey.shade100,
+                                  backgroundColor: Colors.grey.shade100,
                                   shape: RoundedRectangleBorder(
-                                    borderRadius:
-                                        BorderRadius.circular(8),
+                                    borderRadius: BorderRadius.circular(8),
                                   ),
                                 ),
                               )
                             else
                               IconButton(
-                                onPressed: () =>
-                                    _unarchiveEvent(event),
+                                onPressed: () => _unarchiveEvent(event),
                                 icon: Icon(
                                   Icons.restore_from_trash,
                                   size: 20,
@@ -1369,11 +1440,9 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
                                 ),
                                 tooltip: 'Restore',
                                 style: IconButton.styleFrom(
-                                  backgroundColor:
-                                      Colors.green.shade50,
+                                  backgroundColor: Colors.green.shade50,
                                   shape: RoundedRectangleBorder(
-                                    borderRadius:
-                                        BorderRadius.circular(8),
+                                    borderRadius: BorderRadius.circular(8),
                                   ),
                                 ),
                               ),
@@ -1457,13 +1526,13 @@ class _EvaluationsTabState extends State<EvaluationsTab>
 
       // 2. Get evaluated event IDs - CHECK BOTH COLLECTIONS
       final allEvaluatedIds = <String>{};
-      
+
       // Check event_feedback
       final feedbackSnap1 = await FirebaseFirestore.instance
           .collection('event_feedback')
           .where('userId', isEqualTo: _userId)
           .get();
-      
+
       for (final doc in feedbackSnap1.docs) {
         final data = doc.data();
         final eventId = data['eventId']?.toString();
@@ -1471,13 +1540,13 @@ class _EvaluationsTabState extends State<EvaluationsTab>
           allEvaluatedIds.add(eventId);
         }
       }
-      
+
       // Check feedback (without event_ prefix)
       final feedbackSnap2 = await FirebaseFirestore.instance
           .collection('feedback')
           .where('userId', isEqualTo: _userId)
           .get();
-      
+
       for (final doc in feedbackSnap2.docs) {
         final data = doc.data();
         final eventId = data['eventId']?.toString();
@@ -1492,10 +1561,12 @@ class _EvaluationsTabState extends State<EvaluationsTab>
       final eventIds = registeredIds.toList();
       final chunks = <List<String>>[];
       for (var i = 0; i < eventIds.length; i += 30) {
-        chunks.add(eventIds.sublist(
-          i,
-          i + 30 > eventIds.length ? eventIds.length : i + 30,
-        ));
+        chunks.add(
+          eventIds.sublist(
+            i,
+            i + 30 > eventIds.length ? eventIds.length : i + 30,
+          ),
+        );
       }
 
       final allEvents = <EventModel>[];
@@ -1516,16 +1587,20 @@ class _EvaluationsTabState extends State<EvaluationsTab>
       // 4. Filter: Only PAST events that are NOT evaluated
       final now = DateTime.now();
       final pending = allEvents
-          .where((event) => 
-              event.date.isBefore(now) && // Past event
-              !allEvaluatedIds.contains(event.id)) // Not evaluated
+          .where(
+            (event) =>
+                event.date.isBefore(now) && // Past event
+                !allEvaluatedIds.contains(event.id),
+          ) // Not evaluated
           .toList();
 
       // Print which events are being filtered out
       for (final event in allEvents) {
         final isPast = event.date.isBefore(now);
         final isEvaluated = allEvaluatedIds.contains(event.id);
-        print('Event: ${event.title}, ID: ${event.id}, Past: $isPast, Evaluated: $isEvaluated');
+        print(
+          'Event: ${event.title}, ID: ${event.id}, Past: $isPast, Evaluated: $isEvaluated',
+        );
       }
 
       print('🔍 Pending events count: ${pending.length}');
@@ -1606,10 +1681,7 @@ class _EvaluationsTabState extends State<EvaluationsTab>
               child: const Text(
                 'Past events you attended will appear here for feedback.',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.grey,
-                ),
+                style: TextStyle(fontSize: 13, color: Colors.grey),
               ),
             ),
           ],
@@ -1625,10 +1697,7 @@ class _EvaluationsTabState extends State<EvaluationsTab>
         itemCount: _pendingEvents.length,
         itemBuilder: (context, index) {
           final event = _pendingEvents[index];
-          return _EvaluationCard(
-            event: event,
-            onTap: () => _openDetail(event),
-          );
+          return _EvaluationCard(event: event, onTap: () => _openDetail(event));
         },
       ),
     );
@@ -1640,10 +1709,7 @@ class _EvaluationCard extends StatelessWidget {
   final EventModel event;
   final VoidCallback onTap;
 
-  const _EvaluationCard({
-    required this.event,
-    required this.onTap,
-  });
+  const _EvaluationCard({required this.event, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1689,10 +1755,7 @@ class _EvaluationCard extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   event.orgName,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
-                  ),
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -1707,17 +1770,10 @@ class _EvaluationCard extends StatelessWidget {
                     const SizedBox(width: 4),
                     Text(
                       event.formattedDate,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey,
-                      ),
+                      style: const TextStyle(fontSize: 11, color: Colors.grey),
                     ),
                     const SizedBox(width: 12),
-                    const Icon(
-                      Icons.access_time,
-                      size: 12,
-                      color: Colors.grey,
-                    ),
+                    const Icon(Icons.access_time, size: 12, color: Colors.grey),
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(
@@ -1788,15 +1844,20 @@ class _CalendarGrid extends StatelessWidget {
   final DateTime selectedDate;
   final Function(DateTime) onDateSelected;
 
-  const _CalendarGrid(
-      {required this.selectedDate, required this.onDateSelected});
+  const _CalendarGrid({
+    required this.selectedDate,
+    required this.onDateSelected,
+  });
 
   @override
   Widget build(BuildContext context) {
     final firstDayOfMonth = DateTime(selectedDate.year, selectedDate.month, 1);
     final firstWeekday = firstDayOfMonth.weekday % 7;
-    final daysInMonth =
-        DateTime(selectedDate.year, selectedDate.month + 1, 0).day;
+    final daysInMonth = DateTime(
+      selectedDate.year,
+      selectedDate.month + 1,
+      0,
+    ).day;
 
     final eventsStream = FirebaseFirestore.instance
         .collection('events')
@@ -1810,29 +1871,36 @@ class _CalendarGrid extends StatelessWidget {
         if (snap.hasData) {
           final events = snap.data!.docs
               .map((d) => EventModel.fromFirestore(d))
-              .where((e) =>
-                  e.date.year == selectedDate.year &&
-                  e.date.month == selectedDate.month)
+              .where(
+                (e) =>
+                    e.date.year == selectedDate.year &&
+                    e.date.month == selectedDate.month,
+              )
               .toList();
 
           eventDates = events
-              .map((e) =>
-                  '${e.date.year}-${e.date.month.toString().padLeft(2, '0')}-${e.date.day.toString().padLeft(2, '0')}')
+              .map(
+                (e) =>
+                    '${e.date.year}-${e.date.month.toString().padLeft(2, '0')}-${e.date.day.toString().padLeft(2, '0')}',
+              )
               .toSet();
         }
 
         List<Widget> dayWidgets = [];
         const weekdays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
         for (var day in weekdays) {
-          dayWidgets.add(Center(
-            child: Text(
-              day,
-              style: TextStyle(
+          dayWidgets.add(
+            Center(
+              child: Text(
+                day,
+                style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade600),
+                  color: Colors.grey.shade600,
+                ),
+              ),
             ),
-          ));
+          );
         }
 
         for (int i = 0; i < firstWeekday; i++) {
@@ -1840,12 +1908,17 @@ class _CalendarGrid extends StatelessWidget {
         }
 
         for (int day = 1; day <= daysInMonth; day++) {
-          final currentDate =
-              DateTime(selectedDate.year, selectedDate.month, day);
-          final isSelected = currentDate.year == selectedDate.year &&
+          final currentDate = DateTime(
+            selectedDate.year,
+            selectedDate.month,
+            day,
+          );
+          final isSelected =
+              currentDate.year == selectedDate.year &&
               currentDate.month == selectedDate.month &&
               currentDate.day == selectedDate.day;
-          final isToday = currentDate.year == DateTime.now().year &&
+          final isToday =
+              currentDate.year == DateTime.now().year &&
               currentDate.month == DateTime.now().month &&
               currentDate.day == DateTime.now().day;
 
@@ -1889,8 +1962,8 @@ class _CalendarGrid extends StatelessWidget {
                         color: isSelected
                             ? AppColors.primaryDark
                             : isToday
-                                ? Colors.grey.shade200
-                                : Colors.transparent,
+                            ? Colors.grey.shade200
+                            : Colors.transparent,
                       ),
                       child: Center(
                         child: Text(
@@ -1901,8 +1974,8 @@ class _CalendarGrid extends StatelessWidget {
                             color: isSelected
                                 ? Colors.white
                                 : isToday
-                                    ? AppColors.primaryDark
-                                    : Colors.black87,
+                                ? AppColors.primaryDark
+                                : Colors.black87,
                           ),
                         ),
                       ),
@@ -1996,36 +2069,47 @@ class _CompactEventCard extends StatelessWidget {
                     Text(
                       event.title,
                       style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.black87),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.black87,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        const Icon(Icons.access_time,
-                            size: 12, color: Colors.grey),
+                        const Icon(
+                          Icons.access_time,
+                          size: 12,
+                          color: Colors.grey,
+                        ),
                         const SizedBox(width: 4),
                         Text(
                           event.formattedTime,
                           style: const TextStyle(
-                              fontSize: 11, color: Colors.grey),
+                            fontSize: 11,
+                            color: Colors.grey,
+                          ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 2),
                     Row(
                       children: [
-                        const Icon(Icons.location_on_outlined,
-                            size: 12, color: Colors.grey),
+                        const Icon(
+                          Icons.location_on_outlined,
+                          size: 12,
+                          color: Colors.grey,
+                        ),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
                             event.location,
                             style: const TextStyle(
-                                fontSize: 11, color: Colors.grey),
+                              fontSize: 11,
+                              color: Colors.grey,
+                            ),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -2041,17 +2125,21 @@ class _CompactEventCard extends StatelessWidget {
                 onPressed: onTap,
                 style: TextButton.styleFrom(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 8),
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   backgroundColor: AppColors.primaryDark,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20)),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
                 ),
                 child: const Text(
                   'View',
                   style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600),
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ),
@@ -2066,11 +2154,13 @@ class _CompactEventCard extends StatelessWidget {
 class _UpcomingEventCard extends StatelessWidget {
   final EventModel event;
   final bool isRegistered;
+  final bool showLiveBadge;
   final VoidCallback onTap;
 
   const _UpcomingEventCard({
     required this.event,
     required this.isRegistered,
+    this.showLiveBadge = false,
     required this.onTap,
   });
 
@@ -2094,12 +2184,25 @@ class _UpcomingEventCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            EventImage(
-              imageUrl: event.imageUrl,
-              height: 160,
-              width: double.infinity,
-              fit: BoxFit.cover,
-              showLoadingIndicator: true,
+            Stack(
+              children: [
+                EventImage(
+                  imageUrl: event.imageUrl,
+                  height: 160,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  showLoadingIndicator: true,
+                ),
+                if (showLiveBadge)
+                  const Positioned(top: 10, left: 10, child: _LiveBadge()),
+                if (showLiveBadge && isRegistered)
+                  Positioned(
+                    right: 10,
+                    bottom: 10,
+                    left: 10,
+                    child: _WebinarCodeBanner(eventId: event.id),
+                  ),
+              ],
             ),
             Padding(
               padding: const EdgeInsets.all(12),
@@ -2113,7 +2216,9 @@ class _UpcomingEventCard extends StatelessWidget {
                       if (isRegistered)
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.green.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(12),
@@ -2121,8 +2226,11 @@ class _UpcomingEventCard extends StatelessWidget {
                           child: const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.check_circle,
-                                  size: 12, color: Colors.green),
+                              Icon(
+                                Icons.check_circle,
+                                size: 12,
+                                color: Colors.green,
+                              ),
                               SizedBox(width: 4),
                               Text(
                                 'Registered',
@@ -2141,32 +2249,43 @@ class _UpcomingEventCard extends StatelessWidget {
                   Text(
                     event.title,
                     style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.black87),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.black87,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      const Icon(Icons.calendar_today_outlined,
-                          size: 12, color: Colors.grey),
+                      const Icon(
+                        Icons.calendar_today_outlined,
+                        size: 12,
+                        color: Colors.grey,
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         event.formattedDate,
                         style: const TextStyle(
-                            fontSize: 11, color: Colors.grey),
+                          fontSize: 11,
+                          color: Colors.grey,
+                        ),
                       ),
                       const SizedBox(width: 12),
-                      const Icon(Icons.access_time,
-                          size: 12, color: Colors.grey),
+                      const Icon(
+                        Icons.access_time,
+                        size: 12,
+                        color: Colors.grey,
+                      ),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
                           event.formattedTime,
                           style: const TextStyle(
-                              fontSize: 11, color: Colors.grey),
+                            fontSize: 11,
+                            color: Colors.grey,
+                          ),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
@@ -2175,14 +2294,19 @@ class _UpcomingEventCard extends StatelessWidget {
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      const Icon(Icons.location_on_outlined,
-                          size: 12, color: Colors.grey),
+                      const Icon(
+                        Icons.location_on_outlined,
+                        size: 12,
+                        color: Colors.grey,
+                      ),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
                           event.location,
                           style: const TextStyle(
-                              fontSize: 11, color: Colors.grey),
+                            fontSize: 11,
+                            color: Colors.grey,
+                          ),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
@@ -2199,7 +2323,8 @@ class _UpcomingEventCard extends StatelessWidget {
                             : AppColors.primaryDark,
                         padding: const EdgeInsets.symmetric(vertical: 10),
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(25)),
+                          borderRadius: BorderRadius.circular(25),
+                        ),
                       ),
                       child: Text(
                         isRegistered ? 'Registered ✓' : 'View Details',
@@ -2216,6 +2341,268 @@ class _UpcomingEventCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ─── LIVE STATUS BADGE ──────────────────────────────────────────
+class _LiveBadge extends StatelessWidget {
+  const _LiveBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.red.shade600,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 5),
+          const Text(
+            'LIVE',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+              letterSpacing: 0.6,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── LIVE WEBINAR CODE BANNER (registered students, ongoing events) ────────
+// Streams the org-side rotating code (webinar_attendance_service.dart) so a
+// registered student sees the current code — and a one-tap check-in/out
+// button — right on the event card instead of hunting for a separate entry
+// screen and retyping a code they can already see.
+class _WebinarCodeBanner extends StatelessWidget {
+  final String eventId;
+  const _WebinarCodeBanner({required this.eventId});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: WebinarAttendanceService.sessionStream(eventId),
+      builder: (context, sessionSnap) {
+        final session = sessionSnap.data?.data();
+        if (session == null || session['isActive'] != true) {
+          return const SizedBox.shrink();
+        }
+        final phase = (session['phase'] as String?) ?? 'checkin';
+        return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: WebinarAttendanceService.codeStream(eventId, phase),
+          builder: (context, codeSnap) {
+            final codeData = codeSnap.data?.data();
+            final code = codeData?['code'] as String?;
+            final expiresAt = (codeData?['expiresAt'] as Timestamp?)?.toDate();
+            if (code == null || code.isEmpty || expiresAt == null) {
+              return const SizedBox.shrink();
+            }
+            return _WebinarCodeCard(
+              eventId: eventId,
+              phase: phase,
+              code: code,
+              expiresAt: expiresAt,
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _WebinarCodeCard extends StatefulWidget {
+  final String eventId;
+  final String phase;
+  final String code;
+  final DateTime expiresAt;
+
+  const _WebinarCodeCard({
+    required this.eventId,
+    required this.phase,
+    required this.code,
+    required this.expiresAt,
+  });
+
+  @override
+  State<_WebinarCodeCard> createState() => _WebinarCodeCardState();
+}
+
+class _WebinarCodeCardState extends State<_WebinarCodeCard> {
+  Timer? _tick;
+  bool _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Just to keep the countdown text fresh — the code value itself updates
+    // via the Firestore stream in the parent, not this timer.
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _checkIn() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || _submitting) return;
+    setState(() => _submitting = true);
+    final result = await WebinarAttendanceService.submitCode(
+      eventDocId: widget.eventId,
+      studentUid: user.uid,
+      submittedCode: widget.code,
+      type: widget.phase,
+    );
+    if (!mounted) return;
+    setState(() => _submitting = false);
+
+    final isCheckout = widget.phase == 'checkout';
+    String message;
+    switch (result) {
+      case 'success':
+        message = isCheckout
+            ? 'Checked out successfully!'
+            : 'Attendance recorded!';
+        break;
+      case 'duplicate':
+        message = isCheckout ? 'Already checked out.' : 'Already checked in.';
+        break;
+      case 'expired':
+        message = 'That code just expired — wait for the next one.';
+        break;
+      case 'not_checked_in':
+        message = 'Check in first before checking out.';
+        break;
+      case 'not_registered':
+        message = 'You need to register for this event before checking in.';
+        break;
+      case 'session_inactive':
+        message = 'Attendance is not open right now.';
+        break;
+      default:
+        message = 'Something went wrong. Please try again.';
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: result == 'success'
+            ? Colors.green.shade700
+            : Colors.red.shade700,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final remaining = widget.expiresAt.difference(DateTime.now());
+    if (remaining.isNegative) return const SizedBox.shrink();
+    final seconds = remaining.inSeconds.clamp(0, 999);
+    final isCheckout = widget.phase == 'checkout';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.74),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.wifi_tethering_rounded,
+            color: Colors.greenAccent,
+            size: 18,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  isCheckout
+                      ? 'CHECK-OUT CODE · ${seconds}s'
+                      : 'CHECK-IN CODE · ${seconds}s',
+                  style: const TextStyle(
+                    fontSize: 9,
+                    color: Colors.white70,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                Text(
+                  widget.code,
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    letterSpacing: 3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            height: 32,
+            child: ElevatedButton(
+              onPressed: _submitting ? null : _checkIn,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green.shade600,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: _submitting
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Text(
+                      isCheckout ? 'Check Out' : 'Check In',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2318,8 +2705,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
   DateTime? _combineDateAndTimeString(DateTime date, String timeStr) {
     final cleaned = timeStr.trim().toUpperCase();
-    final match =
-        RegExp(r'^(\d{1,2}):(\d{2})\s*(AM|PM)?$').firstMatch(cleaned);
+    final match = RegExp(r'^(\d{1,2}):(\d{2})\s*(AM|PM)?$').firstMatch(cleaned);
     if (match == null) return null;
 
     int hour = int.parse(match.group(1)!);
@@ -2392,29 +2778,35 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _checkingFeedback = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Could not load  k status: $e'),
-          backgroundColor: Colors.orange,
-          duration: const Duration(seconds: 4),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not load  k status: $e'),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 4),
+          ),
+        );
       }
     }
   }
 
   Future<void> _submitFeedback() async {
     if (_rating == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Please select a star rating'),
-        backgroundColor: Colors.red,
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select a star rating'),
+          backgroundColor: Colors.red,
+        ),
+      );
       return;
     }
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Please login to submit feedback'),
-        backgroundColor: Colors.red,
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please login to submit feedback'),
+          backgroundColor: Colors.red,
+        ),
+      );
       return;
     }
     setState(() => _submittingFeedback = true);
@@ -2433,10 +2825,12 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           _feedbackSubmitted = true;
           _submittingFeedback = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Thanks for your feedback!'),
-          backgroundColor: Colors.green,
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Thanks for your feedback!'),
+            backgroundColor: Colors.green,
+          ),
+        );
         // Return to previous screen
         Navigator.pop(context);
       }
@@ -2446,11 +2840,13 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         final msg = e.toString().toLowerCase().contains('permission')
             ? 'Failed to submit: missing Firestore permission for "feedback" collection. Check your security rules.'
             : 'Failed to submit feedback: $e';
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(msg),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 6),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 6),
+          ),
+        );
       }
     }
   }
@@ -2551,7 +2947,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
                 borderSide: const BorderSide(
-                    color: AppColors.primaryDark, width: 1.5),
+                  color: AppColors.primaryDark,
+                  width: 1.5,
+                ),
               ),
             ),
           ),
@@ -2565,21 +2963,25 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   backgroundColor: AppColors.primaryDark,
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
                 child: _submittingFeedback
                     ? const SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(
-                            color: Colors.white, strokeWidth: 2.5),
+                          color: Colors.white,
+                          strokeWidth: 2.5,
+                        ),
                       )
                     : const Text(
                         'Submit Feedback',
                         style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700),
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
               ),
             ),
@@ -2630,8 +3032,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
   String? _validateDynamicFields() {
     if (_formDef == null) return null;
-    final fields =
-        (_formDef!['fields'] as List).cast<Map<String, dynamic>>();
+    final fields = (_formDef!['fields'] as List).cast<Map<String, dynamic>>();
     for (final f in fields) {
       if (f['required'] != true) continue;
       final id = f['id'] as String;
@@ -2652,8 +3053,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
   Map<String, dynamic> _collectFormResponses() {
     if (_formDef == null) return {};
-    final fields =
-        (_formDef!['fields'] as List).cast<Map<String, dynamic>>();
+    final fields = (_formDef!['fields'] as List).cast<Map<String, dynamic>>();
     final out = <String, dynamic>{};
     for (final f in fields) {
       final id = f['id'] as String;
@@ -2662,14 +3062,11 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       if (type == 'multiple_choice' || type == 'dropdown') {
         out[id] = {'label': label, 'value': _singleChoice[id]};
       } else if (type == 'checkboxes') {
-        out[id] = {
-          'label': label,
-          'value': (_multiChoice[id] ?? {}).toList()
-        };
+        out[id] = {'label': label, 'value': (_multiChoice[id] ?? {}).toList()};
       } else {
         out[id] = {
           'label': label,
-          'value': _fieldControllers[id]?.text.trim() ?? ''
+          'value': _fieldControllers[id]?.text.trim() ?? '',
         };
       }
     }
@@ -2678,26 +3075,27 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
   Future<void> _registerForEvent() async {
     if (widget.isPastEvent) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Cannot register for past events'),
-        backgroundColor: Colors.red,
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cannot register for past events'),
+          backgroundColor: Colors.red,
+        ),
+      );
       return;
     }
     final formError = _validateDynamicFields();
     if (formError != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(formError),
-        backgroundColor: Colors.red,
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(formError), backgroundColor: Colors.red),
+      );
       return;
     }
     setState(() => _isLoading = true);
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please login to register')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please login to register')));
       setState(() => _isLoading = false);
       return;
     }
@@ -2726,18 +3124,22 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       setState(() => _isRegistered = true);
       widget.onRegistered();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Successfully registered for event!'),
-          backgroundColor: Colors.green,
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Successfully registered for event!'),
+            backgroundColor: Colors.green,
+          ),
+        );
         Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(e.toString().replaceAll('Exception: ', '')),
-          backgroundColor: Colors.red,
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceAll('Exception: ', '')),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -2745,37 +3147,35 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 
   InputDecoration _fieldDecoration(String hint) => InputDecoration(
-        hintText: hint,
-        filled: true,
-        fillColor: Colors.grey.shade50,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide:
-              const BorderSide(color: AppColors.primaryDark, width: 1.5),
-        ),
-      );
+    hintText: hint,
+    filled: true,
+    fillColor: Colors.grey.shade50,
+    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(10),
+      borderSide: BorderSide(color: Colors.grey.shade300),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(10),
+      borderSide: BorderSide(color: Colors.grey.shade300),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(10),
+      borderSide: const BorderSide(color: AppColors.primaryDark, width: 1.5),
+    ),
+  );
 
-  Widget _buildDynamicField(Map<String, dynamic> field,
-      {VoidCallback? onStateChanged}) {
+  Widget _buildDynamicField(
+    Map<String, dynamic> field, {
+    VoidCallback? onStateChanged,
+  }) {
     final id = field['id'] as String;
     final type = (field['type'] ?? 'short_text') as String;
     final label = (field['label'] ?? '').toString();
     final desc = (field['description'] ?? '').toString();
     final required = field['required'] == true;
-    final options = (field['options'] as List?)
-            ?.map((o) => o.toString())
-            .toList() ??
-        [];
+    final options =
+        (field['options'] as List?)?.map((o) => o.toString()).toList() ?? [];
 
     Widget input;
     switch (type) {
@@ -2805,8 +3205,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           controller: _fieldControllers[id],
           readOnly: true,
           decoration: _fieldDecoration('Select date').copyWith(
-            suffixIcon:
-                const Icon(Icons.calendar_today_outlined, size: 18),
+            suffixIcon: const Icon(Icons.calendar_today_outlined, size: 18),
           ),
           onTap: () async {
             final picked = await showDatePicker(
@@ -2816,8 +3215,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               lastDate: DateTime(2100),
             );
             if (picked != null) {
-              _fieldControllers[id]!.text =
-                  DateFormat('MMM dd, yyyy').format(picked);
+              _fieldControllers[id]!.text = DateFormat(
+                'MMM dd, yyyy',
+              ).format(picked);
               if (onStateChanged != null) onStateChanged();
             }
           },
@@ -2827,21 +3227,23 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         input = Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: options
-              .map((o) => RadioListTile<String>(
-                    value: o,
-                    groupValue: _singleChoice[id],
-                    title: Text(o, style: const TextStyle(fontSize: 13)),
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    onChanged: (v) {
-                      _singleChoice[id] = v;
-                      if (onStateChanged != null) {
-                        onStateChanged();
-                      } else {
-                        setState(() {});
-                      }
-                    },
-                  ))
+              .map(
+                (o) => RadioListTile<String>(
+                  value: o,
+                  groupValue: _singleChoice[id],
+                  title: Text(o, style: const TextStyle(fontSize: 13)),
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  onChanged: (v) {
+                    _singleChoice[id] = v;
+                    if (onStateChanged != null) {
+                      onStateChanged();
+                    } else {
+                      setState(() {});
+                    }
+                  },
+                ),
+              )
               .toList(),
         );
         break;
@@ -2850,10 +3252,12 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           initialValue: _singleChoice[id],
           decoration: _fieldDecoration('Select an option'),
           items: options
-              .map((o) => DropdownMenuItem(
-                    value: o,
-                    child: Text(o, style: const TextStyle(fontSize: 13)),
-                  ))
+              .map(
+                (o) => DropdownMenuItem(
+                  value: o,
+                  child: Text(o, style: const TextStyle(fontSize: 13)),
+                ),
+              )
               .toList(),
           onChanged: (v) {
             _singleChoice[id] = v;
@@ -2869,26 +3273,28 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         input = Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: options
-              .map((o) => CheckboxListTile(
-                    value: _multiChoice[id]?.contains(o) ?? false,
-                    title: Text(o, style: const TextStyle(fontSize: 13)),
-                    controlAffinity: ListTileControlAffinity.leading,
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    onChanged: (v) {
-                      _multiChoice.putIfAbsent(id, () => {});
-                      if (v == true) {
-                        _multiChoice[id]!.add(o);
-                      } else {
-                        _multiChoice[id]!.remove(o);
-                      }
-                      if (onStateChanged != null) {
-                        onStateChanged();
-                      } else {
-                        setState(() {});
-                      }
-                    },
-                  ))
+              .map(
+                (o) => CheckboxListTile(
+                  value: _multiChoice[id]?.contains(o) ?? false,
+                  title: Text(o, style: const TextStyle(fontSize: 13)),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  onChanged: (v) {
+                    _multiChoice.putIfAbsent(id, () => {});
+                    if (v == true) {
+                      _multiChoice[id]!.add(o);
+                    } else {
+                      _multiChoice[id]!.remove(o);
+                    }
+                    if (onStateChanged != null) {
+                      onStateChanged();
+                    } else {
+                      setState(() {});
+                    }
+                  },
+                ),
+              )
               .toList(),
         );
         break;
@@ -2905,30 +3311,33 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           RichText(
-            text: TextSpan(children: [
-              TextSpan(
-                text: label,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black87,
+            text: TextSpan(
+              children: [
+                TextSpan(
+                  text: label,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
                 ),
-              ),
-              if (required)
-                const TextSpan(
-                  text: ' *',
-                  style: TextStyle(
-                      color: Colors.red, fontWeight: FontWeight.w700),
-                ),
-            ]),
+                if (required)
+                  const TextSpan(
+                    text: ' *',
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+              ],
+            ),
           ),
           if (desc.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 2, bottom: 6),
               child: Text(
                 desc,
-                style:
-                    TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),
             )
           else
@@ -2941,28 +3350,27 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
   List<Widget> _buildDialogFields(VoidCallback setDialogState) {
     if (_formDef == null) return [];
-    final fields =
-        (_formDef!['fields'] as List).cast<Map<String, dynamic>>();
-    final title =
-        (_formDef!['title'] ?? 'Registration Form').toString();
+    final fields = (_formDef!['fields'] as List).cast<Map<String, dynamic>>();
+    final title = (_formDef!['title'] ?? 'Registration Form').toString();
     final desc = (_formDef!['description'] ?? '').toString();
 
     return [
-      Text(title,
-          style: const TextStyle(
-              fontSize: 18, fontWeight: FontWeight.w700)),
+      Text(
+        title,
+        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+      ),
       if (desc.isNotEmpty)
         Padding(
           padding: const EdgeInsets.only(top: 4),
           child: Text(
             desc,
-            style:
-                TextStyle(fontSize: 13, color: Colors.grey.shade600),
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
           ),
         ),
       const SizedBox(height: 16),
-      ...fields
-          .map((f) => _buildDynamicField(f, onStateChanged: setDialogState)),
+      ...fields.map(
+        (f) => _buildDynamicField(f, onStateChanged: setDialogState),
+      ),
     ];
   }
 
@@ -2996,8 +3404,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
-                    children:
-                        _buildDialogFields(() => setDialogState(() {})),
+                    children: _buildDialogFields(() => setDialogState(() {})),
                   ),
                 ),
               ),
@@ -3041,17 +3448,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black87),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text('Event Details',
-            style: TextStyle(color: Colors.black87)),
-        centerTitle: true,
-      ),
+      appBar: const StudentAppBar(title: 'Event Details'),
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -3073,13 +3470,14 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   Text(
                     widget.event.title,
                     style: const TextStyle(
-                        fontSize: 24, fontWeight: FontWeight.w800),
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     'Hosted by ${widget.event.orgName}',
-                    style:
-                        const TextStyle(fontSize: 14, color: Colors.grey),
+                    style: const TextStyle(fontSize: 14, color: Colors.grey),
                   ),
                   const SizedBox(height: 20),
                   _InfoRow(
@@ -3099,16 +3497,16 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   const SizedBox(height: 20),
                   const Text(
                     'Description',
-                    style: TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.w700),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     widget.event.description,
                     style: const TextStyle(
-                        fontSize: 14,
-                        color: Colors.black87,
-                        height: 1.4),
+                      fontSize: 14,
+                      color: Colors.black87,
+                      height: 1.4,
+                    ),
                   ),
                   const SizedBox(height: 10),
 
@@ -3117,8 +3515,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                       const Center(
                         child: Padding(
                           padding: EdgeInsets.symmetric(vertical: 12),
-                          child:
-                              CircularProgressIndicator(strokeWidth: 2),
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         ),
                       )
                     else
@@ -3128,8 +3525,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                           onPressed: _showRegistrationDialog,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.primaryDark,
-                            padding:
-                                const EdgeInsets.symmetric(vertical: 14),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -3137,8 +3533,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                           child: const Text(
                             'Register Now',
                             style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700),
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                       ),
@@ -3147,13 +3544,11 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   if (_isRegistered && !_isEventReallyOver)
                     Container(
                       width: double.infinity,
-                      padding:
-                          const EdgeInsets.symmetric(vertical: 14),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
                       decoration: BoxDecoration(
                         color: Colors.green.shade50,
                         borderRadius: BorderRadius.circular(12),
-                        border:
-                            Border.all(color: Colors.green.shade200),
+                        border: Border.all(color: Colors.green.shade200),
                       ),
                       child: const Center(
                         child: Text(
@@ -3196,8 +3591,7 @@ class _InfoRow extends StatelessWidget {
         Expanded(
           child: Text(
             text,
-            style:
-                const TextStyle(fontSize: 14, color: Colors.black87),
+            style: const TextStyle(fontSize: 14, color: Colors.black87),
           ),
         ),
       ],

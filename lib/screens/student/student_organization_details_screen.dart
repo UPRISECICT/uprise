@@ -6,6 +6,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../widgets/student/app_colors.dart';
+import '../../widgets/student/student_app_bar.dart';
+import '../../widgets/common/loading_widget.dart';
+import '../../models/event_model.dart';
 import 'student_broadcast_screen.dart';
 import 'student_events_screen.dart';
 import 'student_announcements_screen.dart';
@@ -109,22 +112,90 @@ class _StudentOrganizationsDetailsScreenState
     );
   }
 
-  // ⭐ SIMPLIFIED: Go to Events tab
-  void _navigateToEventDetail(String eventId) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const StudentEventsScreen(initialTabIndex: 1),
-      ),
+  Future<void> _navigateToEventDetail(String eventId) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) =>
+          const Center(child: CircularProgressIndicator(color: Colors.white)),
     );
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('events')
+          .doc(eventId)
+          .get();
+
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+
+      if (!doc.exists) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('This event is no longer available.')),
+        );
+        return;
+      }
+
+      final event = EventModel.fromFirestore(doc);
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => EventDetailScreen(
+            event: event,
+            onRegistered: () {},
+            isPastEvent: event.isPast,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not open event: $e')));
+    }
   }
 
-  // ⭐ SIMPLIFIED: Go to Announcements screen
-  void _navigateToAnnouncementDetail(String announcementId) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const StudentAnnouncementsScreen()),
+  Future<void> _navigateToAnnouncementDetail(String announcementId) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) =>
+          const Center(child: CircularProgressIndicator(color: Colors.white)),
     );
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('announcements')
+          .doc(announcementId)
+          .get();
+
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+
+      if (!doc.exists) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('This announcement is no longer available.'),
+          ),
+        );
+        return;
+      }
+
+      final announcement = AnnouncementData.fromFirestore(doc);
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => AnnouncementDetailScreen(announcement: announcement),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open announcement: $e')),
+      );
+    }
   }
 
   @override
@@ -138,9 +209,7 @@ class _StudentOrganizationsDetailsScreenState
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(color: AppColors.primaryDark),
-            );
+            return const UpriseLoader();
           }
 
           if (!snapshot.hasData || !snapshot.data!.exists) {
@@ -172,23 +241,8 @@ class _StudentOrganizationsDetailsScreenState
 
           return Scaffold(
             backgroundColor: AppColors.background,
-            appBar: AppBar(
-              title: const Text(
-                'Organization',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 20,
-                  color: Colors.black87,
-                ),
-              ),
-              backgroundColor: Colors.white,
-              foregroundColor: Colors.black,
-              elevation: 0,
-              centerTitle: true,
-              bottom: PreferredSize(
-                preferredSize: const Size.fromHeight(1),
-                child: Container(height: 1, color: Colors.grey.shade200),
-              ),
+            appBar: StudentAppBar(
+              title: 'Organization',
               actions: [
                 IconButton(
                   onPressed: () {

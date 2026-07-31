@@ -15,6 +15,7 @@ import '../student/student_home_screen.dart';
 import '../../widgets/student/app_colors.dart';
 import 'student_change_password_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class StudentLogin extends StatefulWidget {
   const StudentLogin({super.key});
@@ -35,21 +36,49 @@ class _StudentLoginState extends State<StudentLogin> {
   static const int _maxFailedAttempts = 3;
 
   final AuthService _auth = AuthService();
+  // Credentials are kept in the platform Keychain/Keystore (encrypted at
+  // rest) rather than SharedPreferences — SharedPreferences is plain text,
+  // which isn't a safe place to hold a real password even locally.
+  static const _secureStorage = FlutterSecureStorage();
+  static const _kRememberedEmailKey = 'student_remembered_email';
+  static const _kRememberedPasswordKey = 'student_remembered_password';
 
   @override
   void initState() {
     super.initState();
-    _loadSavedEmail(); // ← NEW
+    _loadSavedCredentials();
   }
 
-  Future<void> _loadSavedEmail() async {
-    // ← NEW METHOD
+  Future<void> _loadSavedCredentials() async {
     final prefs = await SharedPreferences.getInstance();
-    final savedEmail = prefs.getString('remembered_email');
     final remember = prefs.getBool('remember_me') ?? false;
-    if (savedEmail != null && remember) {
-      _emailCtrl.text = savedEmail;
-      setState(() => _rememberMe = true);
+    if (!remember) return;
+    final savedEmail = await _secureStorage.read(key: _kRememberedEmailKey);
+    final savedPassword = await _secureStorage.read(
+      key: _kRememberedPasswordKey,
+    );
+    if (savedEmail != null && savedPassword != null && mounted) {
+      setState(() {
+        _emailCtrl.text = savedEmail;
+        _passwordCtrl.text = savedPassword;
+        _rememberMe = true;
+      });
+    }
+  }
+
+  Future<void> _persistRememberedCredentials(
+    String email,
+    String password,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (_rememberMe) {
+      await _secureStorage.write(key: _kRememberedEmailKey, value: email);
+      await _secureStorage.write(key: _kRememberedPasswordKey, value: password);
+      await prefs.setBool('remember_me', true);
+    } else {
+      await _secureStorage.delete(key: _kRememberedEmailKey);
+      await _secureStorage.delete(key: _kRememberedPasswordKey);
+      await prefs.setBool('remember_me', false);
     }
   }
 
@@ -83,15 +112,7 @@ class _StudentLoginState extends State<StudentLogin> {
         _failedAttempts = 0;
 
         // ✅ Remember Me logic
-        if (_rememberMe) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('remembered_email', email);
-          await prefs.setBool('remember_me', true);
-        } else {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.remove('remembered_email');
-          await prefs.setBool('remember_me', false);
-        }
+        await _persistRememberedCredentials(email, password);
 
         final role = await _auth.getUserRole(user.uid);
         await activity_log.ActivityLogger.log(
@@ -390,7 +411,7 @@ class _StudentLoginState extends State<StudentLogin> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -442,17 +463,22 @@ class _StudentLoginState extends State<StudentLogin> {
 
                   const SizedBox(height: 36),
 
-                  // ── Login Card (Gray Background) ──
+                  // ── Login Card ──
                   Container(
                     padding: const EdgeInsets.all(28),
                     decoration: BoxDecoration(
-                      color: const Color.fromARGB(255, 241, 241, 241),
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.06),
-                          blurRadius: 25,
-                          offset: const Offset(0, 10),
+                          color: Colors.black.withOpacity(0.08),
+                          blurRadius: 30,
+                          offset: const Offset(0, 12),
+                        ),
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.03),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
                         ),
                       ],
                     ),
@@ -516,7 +542,7 @@ class _StudentLoginState extends State<StudentLogin> {
                                   size: 20,
                                 ),
                                 filled: true,
-                                fillColor: Colors.white,
+                                fillColor: AppColors.background,
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
                                   borderSide: BorderSide(
@@ -597,7 +623,7 @@ class _StudentLoginState extends State<StudentLogin> {
                                   },
                                 ),
                                 filled: true,
-                                fillColor: Colors.white,
+                                fillColor: AppColors.background,
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
                                   borderSide: BorderSide(

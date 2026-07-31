@@ -29,6 +29,7 @@ import 'student_announcements_screen.dart';
 import 'student_notifications_screen.dart';
 import 'student_merchandise_screen.dart';
 import 'student_feedback_prompt.dart';
+import 'student_new_event_promo.dart';
 import 'student_events_screen.dart'; // adjust if needed
 import 'student_announcements_screen.dart'; // adjust if needed
 
@@ -36,11 +37,14 @@ import 'student_announcements_screen.dart'; // adjust if needed
 // Shared style tokens
 // ─────────────────────────────────────────────────────────────
 class _UiTokens {
+  // Thin aliases onto the shared AppColors scale — see the same pattern in
+  // student_organizations_screen.dart; keeps this file's existing call sites
+  // working while the actual values live in one place.
   static const double radius = 12;
-  static const Color divider = Color(0xFFE7E7E9);
-  static const Color cardBorder = Color(0xFFEDEDEF);
-  static const Color mutedText = Color(0xFF6B6B70);
-  static const Color headingText = Color(0xFF1B1B1D);
+  static const Color divider = AppColors.divider;
+  static const Color cardBorder = AppColors.divider;
+  static const Color mutedText = AppColors.textSecondary;
+  static const Color headingText = AppColors.textPrimary;
 
   static List<BoxShadow> get subtleShadow => [
     BoxShadow(
@@ -158,9 +162,9 @@ class _SectionHeader extends StatelessWidget {
             onPressed: onAction,
             style: TextButton.styleFrom(
               foregroundColor: AppColors.primaryDark,
-              padding: EdgeInsets.zero,
-              minimumSize: const Size(0, 0),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+              minimumSize: const Size(44, 44),
+              tapTargetSize: MaterialTapTargetSize.padded,
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -292,7 +296,15 @@ class StudentHomeScreen extends StatefulWidget {
 
 class _StudentHomeScreenState extends State<StudentHomeScreen> {
   int _currentIndex = 0;
+  int _eventsSubTab = 0;
   String _userName = '';
+
+  void _goToTab(int index, {int? eventsSubTab}) {
+    setState(() {
+      _currentIndex = index;
+      if (eventsSubTab != null) _eventsSubTab = eventsSubTab;
+    });
+  }
 
   final GlobalKey<_HomeContentState> _homeKey = GlobalKey<_HomeContentState>();
 
@@ -300,8 +312,11 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   void initState() {
     super.initState();
     _loadUserName();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) maybeShowFeedbackPrompt(context);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await maybeShowFeedbackPrompt(context);
+      if (!mounted) return;
+      await maybeShowNewEventPromo(context);
     });
   }
 
@@ -383,18 +398,25 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   }
 
   List<Widget> get _screens => [
-    _HomeContent(key: _homeKey, userName: _userName),
+    _HomeContent(key: _homeKey, userName: _userName, onNavigateToTab: _goToTab),
     const StudentAnnouncementsScreen(),
-    const StudentEventsScreen(),
+    StudentEventsScreen(initialTabIndex: _eventsSubTab),
     const StudentOrganizationsScreen(),
-    const StudentProfileScreen(),
+    StudentProfileScreen(
+      onViewAllRegistrations: () => _goToTab(2, eventsSubTab: 1),
+    ),
   ];
 }
 
 class _HomeContent extends StatefulWidget {
   final String userName;
+  final void Function(int tabIndex, {int? eventsSubTab}) onNavigateToTab;
 
-  const _HomeContent({super.key, required this.userName});
+  const _HomeContent({
+    super.key,
+    required this.userName,
+    required this.onNavigateToTab,
+  });
 
   @override
   State<_HomeContent> createState() => _HomeContentState();
@@ -700,12 +722,11 @@ class _HomeContentState extends State<_HomeContent> {
                         height: 1.2,
                       ),
                       children: [
-                        TextSpan(
+                        const TextSpan(
                           text: 'Good day, ',
                           style: TextStyle(
                             fontWeight: FontWeight.w500,
-                            fontSize: 20,
-                            color: Colors.grey.shade600,
+                            color: _UiTokens.mutedText,
                           ),
                         ),
                         TextSpan(
@@ -719,11 +740,11 @@ class _HomeContentState extends State<_HomeContent> {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  Text(
+                  const Text(
                     'Here\'s what\'s happening on campus today.',
                     style: TextStyle(
                       fontSize: 12.5,
-                      color: Colors.grey.shade500,
+                      color: _UiTokens.mutedText,
                     ),
                   ),
                 ],
@@ -737,23 +758,11 @@ class _HomeContentState extends State<_HomeContent> {
               future: _registeredEventsFuture,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return Container(
-                    height: 130,
-                    margin: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 10,
-                    ),
-                    decoration: _UiTokens.card(),
-                    child: const Center(
-                      child: SizedBox(
-                        height: 24,
-                        width: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: AppColors.primaryDark,
-                        ),
-                      ),
-                    ),
+                  // Matches the loaded state's 240px height so this section
+                  // doesn't visibly jump/reflow once data arrives.
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    child: SkeletonLoader(count: 1, height: 220),
                   );
                 }
 
@@ -795,15 +804,7 @@ class _HomeContentState extends State<_HomeContent> {
               child: _SectionHeader(
                 title: 'Upcoming Events',
                 actionLabel: 'View all',
-                onAction: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          const StudentEventsScreen(initialTabIndex: 1),
-                    ),
-                  );
-                },
+                onAction: () => widget.onNavigateToTab(2, eventsSubTab: 1),
               ),
             ),
           ),
@@ -992,14 +993,7 @@ class _HomeContentState extends State<_HomeContent> {
               child: _SectionHeader(
                 title: 'Announcements',
                 actionLabel: 'See all',
-                onAction: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const StudentAnnouncementsScreen(),
-                    ),
-                  );
-                },
+                onAction: () => widget.onNavigateToTab(1),
               ),
             ),
           ),

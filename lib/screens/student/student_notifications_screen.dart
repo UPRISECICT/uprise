@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../widgets/student/app_colors.dart';
+import '../../widgets/student/student_app_bar.dart';
+import '../../widgets/common/loading_widget.dart';
+import 'student_broadcast_screen.dart';
+import 'student_certificates_screen.dart';
 import 'student_feedback_screen.dart';
 
 class AppNotification {
@@ -64,20 +68,54 @@ class _StudentNotificationsScreenState
   ({IconData icon, Color bg, Color fg}) _typeStyle(String type) {
     switch (type) {
       case 'event':
-        return (icon: Icons.calendar_today_rounded, bg: AppColors.primaryDark.withOpacity(0.1), fg: AppColors.primaryDark);
+        return (
+          icon: Icons.calendar_today_rounded,
+          bg: AppColors.primaryDark.withOpacity(0.1),
+          fg: AppColors.primaryDark,
+        );
       case 'org':
-        return (icon: Icons.business_center_rounded, bg: AppColors.primaryDark.withOpacity(0.1), fg: AppColors.primaryDark);
+        return (
+          icon: Icons.business_center_rounded,
+          bg: AppColors.primaryDark.withOpacity(0.1),
+          fg: AppColors.primaryDark,
+        );
       case 'schedule':
-        return (icon: Icons.access_time_rounded, bg: AppColors.primaryDark.withOpacity(0.1), fg: AppColors.primaryDark);
+        return (
+          icon: Icons.access_time_rounded,
+          bg: AppColors.primaryDark.withOpacity(0.1),
+          fg: AppColors.primaryDark,
+        );
       case 'booth':
-        return (icon: Icons.storefront_rounded, bg: AppColors.primaryDark.withOpacity(0.1), fg: AppColors.primaryDark);
+        return (
+          icon: Icons.storefront_rounded,
+          bg: AppColors.primaryDark.withOpacity(0.1),
+          fg: AppColors.primaryDark,
+        );
       case 'order':
-        return (icon: Icons.shopping_bag_rounded, bg: AppColors.primaryDark.withOpacity(0.1), fg: AppColors.primaryDark);
+        return (
+          icon: Icons.shopping_bag_rounded,
+          bg: AppColors.primaryDark.withOpacity(0.1),
+          fg: AppColors.primaryDark,
+        );
       case 'evaluation':
       case 'feedback_required':
-        return (icon: Icons.rate_review_rounded, bg: AppColors.primaryDark.withOpacity(0.1), fg: AppColors.primaryDark);
+        return (
+          icon: Icons.rate_review_rounded,
+          bg: AppColors.primaryDark.withOpacity(0.1),
+          fg: AppColors.primaryDark,
+        );
+      case 'private_message':
+        return (
+          icon: Icons.chat_bubble_rounded,
+          bg: AppColors.primaryDark.withOpacity(0.1),
+          fg: AppColors.primaryDark,
+        );
       default:
-        return (icon: Icons.campaign_rounded, bg: AppColors.primaryDark.withOpacity(0.1), fg: AppColors.primaryDark);
+        return (
+          icon: Icons.campaign_rounded,
+          bg: AppColors.primaryDark.withOpacity(0.1),
+          fg: AppColors.primaryDark,
+        );
     }
   }
 
@@ -130,7 +168,30 @@ class _StudentNotificationsScreenState
 
   void _onNotificationTap(AppNotification notif) {
     _markAsRead(notif.id);
-    
+
+    if (notif.type == 'private_message') {
+      if (notif.orgId.isNotEmpty) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => StudentBroadcastScreen(
+              orgId: notif.orgId,
+              orgName: notif.title.isNotEmpty ? notif.title : notif.orgName,
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    if (notif.type == 'certificate') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const StudentCertificatesScreen()),
+      );
+      return;
+    }
+
     // Handle feedback/evaluation notifications
     if (notif.type == 'evaluation' || notif.type == 'feedback_required') {
       // Extract event data from notification
@@ -141,7 +202,7 @@ class _StudentNotificationsScreenState
       final eventImage = notif.data?['eventImage'] as String?;
       final eventDescription = notif.data?['eventDescription'] as String?;
       final orgName = notif.orgName;
-      
+
       if (eventId != null) {
         // Navigate to event-specific feedback screen
         Navigator.push(
@@ -168,8 +229,10 @@ class _StudentNotificationsScreenState
                 backgroundColor: Colors.white,
                 elevation: 0,
                 foregroundColor: Colors.black87,
-                title: const Text('Evaluate Events',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                title: const Text(
+                  'Evaluate Events',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                ),
               ),
               body: const StudentFeedbackScreen(),
             ),
@@ -183,17 +246,9 @@ class _StudentNotificationsScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          'Notifications',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-        ),
+      appBar: StudentAppBar(
+        title: 'Notifications',
+        centerTitle: false,
         actions: [
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
@@ -206,7 +261,9 @@ class _StudentNotificationsScreenState
               if (!hasUnread) return const SizedBox.shrink();
               return TextButton(
                 onPressed: _markAllAsRead,
-                style: TextButton.styleFrom(foregroundColor: AppColors.primaryDark),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.primaryDark,
+                ),
                 child: const Text('Mark all read'),
               );
             },
@@ -232,7 +289,7 @@ class _StudentNotificationsScreenState
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Padding(
             padding: EdgeInsets.all(16),
-            child: Center(child: CircularProgressIndicator(color: AppColors.primaryDark)),
+            child: SkeletonLoader(count: 6, height: 72),
           );
         }
 
@@ -243,11 +300,17 @@ class _StudentNotificationsScreenState
               children: [
                 Icon(Icons.error_outline, size: 48, color: Colors.grey),
                 const SizedBox(height: 12),
-                Text('Could not load notifications.', style: TextStyle(color: Colors.grey[600])),
+                Text(
+                  'Could not load notifications.',
+                  style: TextStyle(color: Colors.grey[600]),
+                ),
                 const SizedBox(height: 12),
                 ElevatedButton(
                   onPressed: () => setState(() {}),
-                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryDark, foregroundColor: Colors.white),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryDark,
+                    foregroundColor: Colors.white,
+                  ),
                   child: const Text('Retry'),
                 ),
               ],
@@ -259,48 +322,65 @@ class _StudentNotificationsScreenState
           return _EmptyState();
         }
 
-        final all = snapshot.data!.docs
-            .map((d) => AppNotification.fromFirestore(d))
-            .toList()
-          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        final all =
+            snapshot.data!.docs
+                .map((d) => AppNotification.fromFirestore(d))
+                .toList()
+              ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
         final visible = all.take(50).toList();
 
         final now = DateTime.now();
         final todayStart = DateTime(now.year, now.month, now.day);
         final yesterdayStart = todayStart.subtract(const Duration(days: 1));
 
-        final today = visible.where((n) => n.createdAt.isAfter(todayStart)).toList();
-        final yesterday = visible.where((n) => n.createdAt.isAfter(yesterdayStart) && !n.createdAt.isAfter(todayStart)).toList();
-        final earlier = visible.where((n) => !n.createdAt.isAfter(yesterdayStart)).toList();
+        final today = visible
+            .where((n) => n.createdAt.isAfter(todayStart))
+            .toList();
+        final yesterday = visible
+            .where(
+              (n) =>
+                  n.createdAt.isAfter(yesterdayStart) &&
+                  !n.createdAt.isAfter(todayStart),
+            )
+            .toList();
+        final earlier = visible
+            .where((n) => !n.createdAt.isAfter(yesterdayStart))
+            .toList();
 
         return ListView(
           children: [
             if (today.isNotEmpty) ...[
               _SectionHeader(label: 'Today'),
-              ...today.map((n) => _NotifTile(
-                    notif: n,
-                    style: _typeStyle(n.type),
-                    timeLabel: _formatTime(n.createdAt),
-                    onTap: () => _onNotificationTap(n),
-                  )),
+              ...today.map(
+                (n) => _NotifTile(
+                  notif: n,
+                  style: _typeStyle(n.type),
+                  timeLabel: _formatTime(n.createdAt),
+                  onTap: () => _onNotificationTap(n),
+                ),
+              ),
             ],
             if (yesterday.isNotEmpty) ...[
               _SectionHeader(label: 'Yesterday'),
-              ...yesterday.map((n) => _NotifTile(
-                    notif: n,
-                    style: _typeStyle(n.type),
-                    timeLabel: _formatTime(n.createdAt),
-                    onTap: () => _onNotificationTap(n),
-                  )),
+              ...yesterday.map(
+                (n) => _NotifTile(
+                  notif: n,
+                  style: _typeStyle(n.type),
+                  timeLabel: _formatTime(n.createdAt),
+                  onTap: () => _onNotificationTap(n),
+                ),
+              ),
             ],
             if (earlier.isNotEmpty) ...[
               _SectionHeader(label: 'Earlier'),
-              ...earlier.map((n) => _NotifTile(
-                    notif: n,
-                    style: _typeStyle(n.type),
-                    timeLabel: _formatTime(n.createdAt),
-                    onTap: () => _onNotificationTap(n),
-                  )),
+              ...earlier.map(
+                (n) => _NotifTile(
+                  notif: n,
+                  style: _typeStyle(n.type),
+                  timeLabel: _formatTime(n.createdAt),
+                  onTap: () => _onNotificationTap(n),
+                ),
+              ),
             ],
             const SizedBox(height: 24),
           ],
@@ -323,7 +403,12 @@ class _SectionHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
       child: Text(
         label.toUpperCase(),
-        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.grey, letterSpacing: 0.6),
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: Colors.grey,
+          letterSpacing: 0.6,
+        ),
       ),
     );
   }
@@ -336,14 +421,28 @@ class _NotifTile extends StatelessWidget {
   final String timeLabel;
   final VoidCallback onTap;
 
-  const _NotifTile({required this.notif, required this.style, required this.timeLabel, required this.onTap});
+  const _NotifTile({
+    required this.notif,
+    required this.style,
+    required this.timeLabel,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
       child: Container(
-        color: notif.isRead ? Colors.white : AppColors.primaryDark.withOpacity(0.05),
+        decoration: BoxDecoration(
+          color: notif.isRead
+              ? Colors.white
+              : AppColors.primaryDark.withOpacity(0.07),
+          border: notif.isRead
+              ? null
+              : const Border(
+                  left: BorderSide(color: AppColors.primaryDark, width: 3),
+                ),
+        ),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -369,20 +468,29 @@ class _NotifTile extends StatelessWidget {
                           notif.title,
                           style: TextStyle(
                             fontSize: 13,
-                            fontWeight: notif.isRead ? FontWeight.w400 : FontWeight.w600,
+                            fontWeight: notif.isRead
+                                ? FontWeight.w400
+                                : FontWeight.w600,
                             color: Colors.black87,
                           ),
                         ),
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: AppColors.primaryDark.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
                           notif.orgName,
-                          style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w500, color: AppColors.primaryDark),
+                          style: const TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w500,
+                            color: AppColors.primaryDark,
+                          ),
                         ),
                       ),
                     ],
@@ -392,21 +500,31 @@ class _NotifTile extends StatelessWidget {
                     notif.body,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12, color: Colors.black54, height: 1.4),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.black54,
+                      height: 1.4,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Row(
                     children: [
                       Text(
                         timeLabel,
-                        style: const TextStyle(fontSize: 11, color: Colors.grey),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey,
+                        ),
                       ),
                       if (!notif.isRead) ...[
                         const SizedBox(width: 6),
                         Container(
                           width: 6,
                           height: 6,
-                          decoration: const BoxDecoration(color: AppColors.primaryDark, shape: BoxShape.circle),
+                          decoration: const BoxDecoration(
+                            color: AppColors.primaryDark,
+                            shape: BoxShape.circle,
+                          ),
                         ),
                       ],
                     ],
@@ -429,11 +547,19 @@ class _EmptyState extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.notifications_off_outlined, size: 64, color: Colors.grey.shade300),
+          Icon(
+            Icons.notifications_off_outlined,
+            size: 64,
+            color: Colors.grey.shade300,
+          ),
           const SizedBox(height: 16),
           Text(
             'No notifications yet',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.grey.shade500),
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+              color: Colors.grey.shade500,
+            ),
           ),
           const SizedBox(height: 6),
           Text(
@@ -515,29 +641,35 @@ class _EventFeedbackWrapperState extends State<_EventFeedbackWrapper> {
     } catch (e) {
       if (mounted) {
         setState(() => _checkingFeedback = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Could not load feedback status: $e'),
-          backgroundColor: Colors.orange,
-          duration: const Duration(seconds: 4),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not load feedback status: $e'),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 4),
+          ),
+        );
       }
     }
   }
 
   Future<void> _submitFeedback() async {
     if (_rating == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Please select a star rating'),
-        backgroundColor: Colors.red,
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select a star rating'),
+          backgroundColor: Colors.red,
+        ),
+      );
       return;
     }
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Please login to submit feedback'),
-        backgroundColor: Colors.red,
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please login to submit feedback'),
+          backgroundColor: Colors.red,
+        ),
+      );
       return;
     }
     setState(() => _submittingFeedback = true);
@@ -556,19 +688,23 @@ class _EventFeedbackWrapperState extends State<_EventFeedbackWrapper> {
           _feedbackSubmitted = true;
           _submittingFeedback = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Thanks for your feedback!'),
-          backgroundColor: Colors.green,
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Thanks for your feedback!'),
+            backgroundColor: Colors.green,
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
         setState(() => _submittingFeedback = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Failed to submit feedback: $e'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 6),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to submit feedback: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 6),
+          ),
+        );
       }
     }
   }
@@ -642,16 +778,17 @@ class _EventFeedbackWrapperState extends State<_EventFeedbackWrapper> {
                   const SizedBox(height: 4),
                   Text(
                     'Hosted by ${widget.orgName}',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey.shade600,
-                    ),
+                    style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
                   ),
                   if (widget.eventDate != null) ...[
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        Icon(Icons.calendar_today_outlined, size: 16, color: Colors.grey.shade600),
+                        Icon(
+                          Icons.calendar_today_outlined,
+                          size: 16,
+                          color: Colors.grey.shade600,
+                        ),
                         const SizedBox(width: 8),
                         Text(
                           widget.eventDate!,
@@ -667,7 +804,11 @@ class _EventFeedbackWrapperState extends State<_EventFeedbackWrapper> {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        Icon(Icons.location_on_outlined, size: 16, color: Colors.grey.shade600),
+                        Icon(
+                          Icons.location_on_outlined,
+                          size: 16,
+                          color: Colors.grey.shade600,
+                        ),
                         const SizedBox(width: 8),
                         Text(
                           widget.eventLocation!,
@@ -682,9 +823,9 @@ class _EventFeedbackWrapperState extends State<_EventFeedbackWrapper> {
                 ],
               ),
             ),
-            
+
             const SizedBox(height: 24),
-            
+
             // Feedback Section
             if (_checkingFeedback)
               const Center(
@@ -698,10 +839,14 @@ class _EventFeedbackWrapperState extends State<_EventFeedbackWrapper> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: _feedbackSubmitted ? Colors.green.shade50 : Colors.grey.shade50,
+                  color: _feedbackSubmitted
+                      ? Colors.green.shade50
+                      : Colors.grey.shade50,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: _feedbackSubmitted ? Colors.green.shade200 : Colors.grey.shade200,
+                    color: _feedbackSubmitted
+                        ? Colors.green.shade200
+                        : Colors.grey.shade200,
                   ),
                 ),
                 child: Column(
@@ -710,17 +855,25 @@ class _EventFeedbackWrapperState extends State<_EventFeedbackWrapper> {
                     Row(
                       children: [
                         Icon(
-                          _feedbackSubmitted ? Icons.check_circle_rounded : Icons.rate_review_rounded,
-                          color: _feedbackSubmitted ? Colors.green : AppColors.primaryDark,
+                          _feedbackSubmitted
+                              ? Icons.check_circle_rounded
+                              : Icons.rate_review_rounded,
+                          color: _feedbackSubmitted
+                              ? Colors.green
+                              : AppColors.primaryDark,
                           size: 20,
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          _feedbackSubmitted ? 'Feedback Submitted' : 'Rate this event',
+                          _feedbackSubmitted
+                              ? 'Feedback Submitted'
+                              : 'Rate this event',
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w700,
-                            color: _feedbackSubmitted ? Colors.green.shade700 : Colors.black87,
+                            color: _feedbackSubmitted
+                                ? Colors.green.shade700
+                                : Colors.black87,
                           ),
                         ),
                       ],
@@ -733,7 +886,8 @@ class _EventFeedbackWrapperState extends State<_EventFeedbackWrapper> {
                       readOnly: _feedbackSubmitted,
                       maxLines: 3,
                       decoration: InputDecoration(
-                        hintText: 'Share your thoughts about this event (optional)',
+                        hintText:
+                            'Share your thoughts about this event (optional)',
                         hintStyle: const TextStyle(fontSize: 13),
                         filled: true,
                         fillColor: Colors.white,
@@ -748,7 +902,10 @@ class _EventFeedbackWrapperState extends State<_EventFeedbackWrapper> {
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(color: AppColors.primaryDark, width: 1.5),
+                          borderSide: const BorderSide(
+                            color: AppColors.primaryDark,
+                            width: 1.5,
+                          ),
                         ),
                       ),
                     ),
@@ -757,7 +914,9 @@ class _EventFeedbackWrapperState extends State<_EventFeedbackWrapper> {
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
-                          onPressed: _submittingFeedback ? null : _submitFeedback,
+                          onPressed: _submittingFeedback
+                              ? null
+                              : _submitFeedback,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.primaryDark,
                             padding: const EdgeInsets.symmetric(vertical: 12),
@@ -788,7 +947,7 @@ class _EventFeedbackWrapperState extends State<_EventFeedbackWrapper> {
                   ],
                 ),
               ),
-            
+
             const SizedBox(height: 30),
           ],
         ),

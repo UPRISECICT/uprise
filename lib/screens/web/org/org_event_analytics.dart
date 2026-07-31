@@ -12,7 +12,7 @@ import '../../../widgets/admin_export_button.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import 'export_util.dart';
 import 'export_pdf.dart';
-import '../../../theme/app_theme.dart';
+import '../../../theme/org_theme.dart';
 
 // ── Design tokens ────────────────────────────────────────────────────────────
 class _DS {
@@ -483,7 +483,9 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Container(
           width: 640,
-          constraints: const BoxConstraints(maxHeight: 640),
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(ctx).size.height * 0.85,
+          ),
           padding: const EdgeInsets.all(24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -528,7 +530,7 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                     .snapshots(),
                 builder: (ctx, attSnap) {
                   final attDocs = attSnap.data?.docs ?? [];
-                  final totalAttendees = attDocs.length;
+                  final checkedIn = attDocs.length;
                   final present = attDocs.where((d) {
                     final data = d.data() as Map<String, dynamic>;
                     return data['status'] == 'present';
@@ -537,269 +539,296 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                     final data = d.data() as Map<String, dynamic>;
                     return data['status'] == 'late';
                   }).length;
-                  final absent = totalAttendees - present - late;
 
                   return StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance
-                        .collection('feedback')
+                        .collection('registrations')
                         .where('eventId', isEqualTo: eventId)
                         .snapshots(),
-                    builder: (ctx, feedbackSnap) {
-                      final feedbackDocs = feedbackSnap.data?.docs ?? [];
-                      final feedbackCount = feedbackDocs.length;
-                      final notYetFeedback = totalAttendees - feedbackCount;
+                    builder: (ctx, regSnap) {
+                      final regCount = regSnap.data?.docs.length;
+                      // Attendance docs are only created on check-in, so
+                      // regCount (real registrants) — not checkedIn — is the
+                      // correct denominator for a true "Absent" tally.
+                      final totalAttendees = regCount != null
+                          ? (regCount > checkedIn ? regCount : checkedIn)
+                          : checkedIn;
+                      final absent = (totalAttendees - present - late).clamp(
+                        0,
+                        totalAttendees,
+                      );
 
-                      final studentIdsWithFeedback = feedbackDocs
-                          .map(
-                            (d) =>
-                                (d.data() as Map<String, dynamic>)['userId']
-                                    ?.toString() ??
-                                '',
-                          )
-                          .where((id) => id.isNotEmpty)
-                          .toSet();
+                      return StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance
+                            .collection('feedback')
+                            .where('eventId', isEqualTo: eventId)
+                            .snapshots(),
+                        builder: (ctx, feedbackSnap) {
+                          final feedbackDocs = feedbackSnap.data?.docs ?? [];
+                          final feedbackCount = feedbackDocs.length;
+                          final notYetFeedback = checkedIn - feedbackCount;
 
-                      return FutureBuilder<List<Map<String, dynamic>>>(
-                        future: _getAttendeesWithNames(attDocs),
-                        builder: (ctx, attendeeSnap) {
-                          final attendees = attendeeSnap.data ?? [];
+                          final studentIdsWithFeedback = feedbackDocs
+                              .map(
+                                (d) =>
+                                    (d.data() as Map<String, dynamic>)['userId']
+                                        ?.toString() ??
+                                    '',
+                              )
+                              .where((id) => id.isNotEmpty)
+                              .toSet();
 
-                          return Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    _buildSummaryStat(
-                                      'Total',
-                                      '$totalAttendees',
-                                      Icons.people_alt_rounded,
-                                      _C.blue,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    _buildSummaryStat(
-                                      'Present',
-                                      '$present',
-                                      Icons.check_circle_rounded,
-                                      _C.green,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    _buildSummaryStat(
-                                      'Late',
-                                      '$late',
-                                      Icons.access_time_rounded,
-                                      _C.amber,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    _buildSummaryStat(
-                                      'Absent',
-                                      '$absent',
-                                      Icons.cancel_rounded,
-                                      _C.red,
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                Container(
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: _C.surface,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Row(
+                          return FutureBuilder<List<Map<String, dynamic>>>(
+                            future: _getAttendeesWithNames(attDocs),
+                            builder: (ctx, attendeeSnap) {
+                              final attendees = attendeeSnap.data ?? [];
+
+                              return Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
                                     children: [
-                                      Icon(
-                                        Icons.feedback_rounded,
-                                        size: 16,
-                                        color: _C.blue,
+                                      _buildSummaryStat(
+                                        'Registrants',
+                                        '$totalAttendees',
+                                        Icons.people_alt_rounded,
+                                        _C.blue,
                                       ),
                                       const SizedBox(width: 8),
+                                      _buildSummaryStat(
+                                        'Present',
+                                        '$present',
+                                        Icons.check_circle_rounded,
+                                        _C.green,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      _buildSummaryStat(
+                                        'Late',
+                                        '$late',
+                                        Icons.access_time_rounded,
+                                        _C.amber,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      _buildSummaryStat(
+                                        'Absent',
+                                        '$absent',
+                                        Icons.cancel_rounded,
+                                        _C.red,
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: _C.surface,
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.feedback_rounded,
+                                          size: 16,
+                                          color: _C.blue,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          '$feedbackCount gave feedback',
+                                          style: GoogleFonts.inter(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w500,
+                                            color: _C.charcoal,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 16),
+                                        Icon(
+                                          Icons.pending_rounded,
+                                          size: 16,
+                                          color: _C.amber,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          '$notYetFeedback pending',
+                                          style: GoogleFonts.inter(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w500,
+                                            color: _C.charcoal,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Row(
+                                    children: [
                                       Text(
-                                        '$feedbackCount gave feedback',
+                                        'Attendees',
                                         style: GoogleFonts.inter(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w500,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
                                           color: _C.charcoal,
                                         ),
                                       ),
-                                      const SizedBox(width: 16),
-                                      Icon(
-                                        Icons.pending_rounded,
-                                        size: 16,
-                                        color: _C.amber,
-                                      ),
-                                      const SizedBox(width: 8),
+                                      const Spacer(),
                                       Text(
-                                        '$notYetFeedback pending',
+                                        '${attendees.length} total',
                                         style: GoogleFonts.inter(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w500,
-                                          color: _C.charcoal,
+                                          fontSize: 11,
+                                          color: _C.muted,
                                         ),
                                       ),
                                     ],
                                   ),
-                                ),
-                                const SizedBox(height: 12),
-                                Row(
-                                  children: [
-                                    Text(
-                                      'Attendees',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                        color: _C.charcoal,
+                                  const SizedBox(height: 8),
+                                  Flexible(
+                                    child: Container(
+                                      constraints: const BoxConstraints(
+                                        maxHeight: 280,
                                       ),
-                                    ),
-                                    const Spacer(),
-                                    Text(
-                                      '${attendees.length} total',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 11,
-                                        color: _C.muted,
+                                      decoration: BoxDecoration(
+                                        border: Border.all(
+                                          color: _C.border.withOpacity(0.4),
+                                        ),
+                                        borderRadius: BorderRadius.circular(10),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Expanded(
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      border: Border.all(
-                                        color: _C.border.withOpacity(0.4),
-                                      ),
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: SingleChildScrollView(
-                                      child: attendees.isEmpty
-                                          ? Padding(
-                                              padding: const EdgeInsets.all(32),
-                                              child: Center(
-                                                child: Column(
-                                                  children: [
-                                                    Icon(
-                                                      Icons.people_outline,
-                                                      size: 40,
-                                                      color: _C.border,
-                                                    ),
-                                                    const SizedBox(height: 8),
-                                                    Text(
-                                                      'No attendees yet',
-                                                      style: GoogleFonts.inter(
-                                                        fontSize: 13,
-                                                        color: _C.muted,
-                                                      ),
-                                                    ),
-                                                  ],
+                                      child: SingleChildScrollView(
+                                        child: attendees.isEmpty
+                                            ? Padding(
+                                                padding: const EdgeInsets.all(
+                                                  32,
                                                 ),
-                                              ),
-                                            )
-                                          : Column(
-                                              children: attendees.map((
-                                                attendee,
-                                              ) {
-                                                final studentName =
-                                                    attendee['studentName'] ??
-                                                    'Unknown';
-                                                final uid =
-                                                    attendee['studentId']
-                                                        ?.toString() ??
-                                                    '';
-                                                final isPresent =
-                                                    attendee['status'] ==
-                                                    'present';
-                                                final hasFeedback =
-                                                    uid.isNotEmpty &&
-                                                    studentIdsWithFeedback
-                                                        .contains(uid);
-
-                                                return Container(
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
-                                                        horizontal: 12,
-                                                        vertical: 10,
-                                                      ),
-                                                  decoration: BoxDecoration(
-                                                    border: Border(
-                                                      bottom: BorderSide(
-                                                        color: _C.border
-                                                            .withOpacity(0.3),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  child: Row(
+                                                child: Center(
+                                                  child: Column(
                                                     children: [
                                                       Icon(
-                                                        isPresent
-                                                            ? Icons
-                                                                  .check_circle_rounded
-                                                            : Icons
-                                                                  .access_time_rounded,
-                                                        color: isPresent
-                                                            ? _C.green
-                                                            : _C.amber,
-                                                        size: 16,
+                                                        Icons.people_outline,
+                                                        size: 40,
+                                                        color: _C.border,
                                                       ),
-                                                      const SizedBox(width: 10),
-                                                      Expanded(
-                                                        child: Text(
-                                                          studentName,
-                                                          style:
-                                                              GoogleFonts.inter(
-                                                                fontSize: 13,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .w500,
-                                                                color:
-                                                                    _C.charcoal,
-                                                              ),
-                                                        ),
-                                                      ),
-                                                      Container(
-                                                        padding:
-                                                            const EdgeInsets.symmetric(
-                                                              horizontal: 8,
-                                                              vertical: 3,
+                                                      const SizedBox(height: 8),
+                                                      Text(
+                                                        'No attendees yet',
+                                                        style:
+                                                            GoogleFonts.inter(
+                                                              fontSize: 13,
+                                                              color: _C.muted,
                                                             ),
-                                                        decoration: BoxDecoration(
-                                                          color: hasFeedback
-                                                              ? const Color(
-                                                                  0xFFECFDF5,
-                                                                )
-                                                              : const Color(
-                                                                  0xFFF1F5F9,
-                                                                ),
-                                                          borderRadius:
-                                                              BorderRadius.circular(
-                                                                12,
-                                                              ),
-                                                        ),
-                                                        child: Text(
-                                                          hasFeedback
-                                                              ? '✓ Feedback'
-                                                              : 'Pending',
-                                                          style: GoogleFonts.inter(
-                                                            fontSize: 10,
-                                                            fontWeight:
-                                                                FontWeight.w600,
-                                                            color: hasFeedback
-                                                                ? const Color(
-                                                                    0xFF166534,
-                                                                  )
-                                                                : _C.muted,
-                                                          ),
-                                                        ),
                                                       ),
                                                     ],
                                                   ),
-                                                );
-                                              }).toList(),
-                                            ),
+                                                ),
+                                              )
+                                            : Column(
+                                                children: attendees.map((
+                                                  attendee,
+                                                ) {
+                                                  final studentName =
+                                                      attendee['studentName'] ??
+                                                      'Unknown';
+                                                  final uid =
+                                                      attendee['studentId']
+                                                          ?.toString() ??
+                                                      '';
+                                                  final isPresent =
+                                                      attendee['status'] ==
+                                                      'present';
+                                                  final hasFeedback =
+                                                      uid.isNotEmpty &&
+                                                      studentIdsWithFeedback
+                                                          .contains(uid);
+
+                                                  return Container(
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 12,
+                                                          vertical: 10,
+                                                        ),
+                                                    decoration: BoxDecoration(
+                                                      border: Border(
+                                                        bottom: BorderSide(
+                                                          color: _C.border
+                                                              .withOpacity(0.3),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    child: Row(
+                                                      children: [
+                                                        Icon(
+                                                          isPresent
+                                                              ? Icons
+                                                                    .check_circle_rounded
+                                                              : Icons
+                                                                    .access_time_rounded,
+                                                          color: isPresent
+                                                              ? _C.green
+                                                              : _C.amber,
+                                                          size: 16,
+                                                        ),
+                                                        const SizedBox(
+                                                          width: 10,
+                                                        ),
+                                                        Expanded(
+                                                          child: Text(
+                                                            studentName,
+                                                            style:
+                                                                GoogleFonts.inter(
+                                                                  fontSize: 13,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w500,
+                                                                  color: _C
+                                                                      .charcoal,
+                                                                ),
+                                                          ),
+                                                        ),
+                                                        Container(
+                                                          padding:
+                                                              const EdgeInsets.symmetric(
+                                                                horizontal: 8,
+                                                                vertical: 3,
+                                                              ),
+                                                          decoration: BoxDecoration(
+                                                            color: hasFeedback
+                                                                ? const Color(
+                                                                    0xFFECFDF5,
+                                                                  )
+                                                                : const Color(
+                                                                    0xFFF1F5F9,
+                                                                  ),
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  12,
+                                                                ),
+                                                          ),
+                                                          child: Text(
+                                                            hasFeedback
+                                                                ? '✓ Feedback'
+                                                                : 'Pending',
+                                                            style: GoogleFonts.inter(
+                                                              fontSize: 10,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w600,
+                                                              color: hasFeedback
+                                                                  ? const Color(
+                                                                      0xFF166534,
+                                                                    )
+                                                                  : _C.muted,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  );
+                                                }).toList(),
+                                              ),
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ],
-                            ),
+                                ],
+                              );
+                            },
                           );
                         },
                       );
@@ -929,9 +958,12 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Container(
           width: 640,
-          constraints: const BoxConstraints(maxHeight: 560),
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(ctx).size.height * 0.85,
+          ),
           padding: const EdgeInsets.all(24),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
@@ -966,111 +998,114 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                 ],
               ),
               const Divider(height: 20, color: _C.border),
-              Expanded(
-                child: FutureBuilder<Map<String, String>>(
-                  future: _resolveFeedbackNames(feedbacks),
-                  builder: (context, nameSnap) {
-                    final names = nameSnap.data ?? const {};
-                    return SingleChildScrollView(
-                      child: Column(
-                        children: feedbacks.map((f) {
-                          final rating = f['rating'] as int? ?? 0;
-                          final comment = f['comment'] as String? ?? '';
-                          final createdAt =
-                              (f['submittedAt'] as Timestamp?)?.toDate() ??
-                              DateTime.now();
-                          final isAnonymous = f['isAnonymous'] == true;
-                          final uid = f['userId']?.toString() ?? '';
-                          final displayName = isAnonymous
-                              ? 'Anonymous Student'
-                              : (names[uid] ?? 'Unknown Student');
+              Flexible(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 420),
+                  child: FutureBuilder<Map<String, String>>(
+                    future: _resolveFeedbackNames(feedbacks),
+                    builder: (context, nameSnap) {
+                      final names = nameSnap.data ?? const {};
+                      return SingleChildScrollView(
+                        child: Column(
+                          children: feedbacks.map((f) {
+                            final rating = f['rating'] as int? ?? 0;
+                            final comment = f['comment'] as String? ?? '';
+                            final createdAt =
+                                (f['submittedAt'] as Timestamp?)?.toDate() ??
+                                DateTime.now();
+                            final isAnonymous = f['isAnonymous'] == true;
+                            final uid = f['userId']?.toString() ?? '';
+                            final displayName = isAnonymous
+                                ? 'Anonymous Student'
+                                : (names[uid] ?? 'Unknown Student');
 
-                          return Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 4,
-                              vertical: 12,
-                            ),
-                            decoration: BoxDecoration(
-                              border: Border(
-                                bottom: BorderSide(
-                                  color: _C.border.withOpacity(0.4),
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                border: Border(
+                                  bottom: BorderSide(
+                                    color: _C.border.withOpacity(0.4),
+                                  ),
                                 ),
                               ),
-                            ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFEFF6FF),
-                                    shape: BoxShape.circle,
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFEFF6FF),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.person_outline,
+                                      size: 18,
+                                      color: _C.blue,
+                                    ),
                                   ),
-                                  child: const Icon(
-                                    Icons.person_outline,
-                                    size: 18,
-                                    color: _C.blue,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Text(
-                                            displayName,
-                                            style: GoogleFonts.inter(
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w600,
-                                              color: _C.muted,
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Text(
+                                              displayName,
+                                              style: GoogleFonts.inter(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                                color: _C.muted,
+                                              ),
                                             ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          _buildRatingStarsSmall(rating),
-                                          const Spacer(),
-                                          Text(
-                                            DateFormat(
-                                              'MMM dd, yyyy',
-                                            ).format(createdAt),
-                                            style: GoogleFonts.inter(
-                                              fontSize: 11,
-                                              color: _C.muted,
+                                            const SizedBox(width: 8),
+                                            _buildRatingStarsSmall(rating),
+                                            const Spacer(),
+                                            Text(
+                                              DateFormat(
+                                                'MMM dd, yyyy',
+                                              ).format(createdAt),
+                                              style: GoogleFonts.inter(
+                                                fontSize: 11,
+                                                color: _C.muted,
+                                              ),
                                             ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 6),
-                                      if (comment.isNotEmpty)
-                                        Text(
-                                          comment,
-                                          style: GoogleFonts.inter(
-                                            fontSize: 14,
-                                            color: _C.charcoal,
-                                            height: 1.5,
-                                          ),
-                                        )
-                                      else
-                                        Text(
-                                          'No comment provided',
-                                          style: GoogleFonts.inter(
-                                            fontSize: 13,
-                                            color: _C.muted,
-                                            fontStyle: FontStyle.italic,
-                                          ),
+                                          ],
                                         ),
-                                    ],
+                                        const SizedBox(height: 6),
+                                        if (comment.isNotEmpty)
+                                          Text(
+                                            comment,
+                                            style: GoogleFonts.inter(
+                                              fontSize: 14,
+                                              color: _C.charcoal,
+                                              height: 1.5,
+                                            ),
+                                          )
+                                        else
+                                          Text(
+                                            'No comment provided',
+                                            style: GoogleFonts.inter(
+                                              fontSize: 13,
+                                              color: _C.muted,
+                                              fontStyle: FontStyle.italic,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
                                   ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    );
-                  },
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ),
             ],
@@ -1615,12 +1650,8 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                               ),
                             ),
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: UpriseColors.primaryDark,
-                              side: BorderSide(
-                                color: UpriseColors.primaryDark.withOpacity(
-                                  0.3,
-                                ),
-                              ),
+                              foregroundColor: _C.blue,
+                              side: BorderSide(color: _C.blue.withOpacity(0.3)),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
                               ),
@@ -1744,10 +1775,8 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                     ),
                   ),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: UpriseColors.primaryDark,
-                    side: BorderSide(
-                      color: UpriseColors.primaryDark.withOpacity(0.3),
-                    ),
+                    foregroundColor: UpriseColors.darkGray,
+                    side: const BorderSide(color: UpriseColors.mediumGray),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -2938,17 +2967,17 @@ class _RefreshButton extends StatelessWidget {
     icon: const Icon(
       Icons.refresh_rounded,
       size: 15,
-      color: UpriseColors.primaryDark,
+      color: UpriseColors.darkGray,
     ),
     label: Text(
       'Refresh',
       style: GoogleFonts.beVietnamPro(
         fontSize: 12.5,
-        color: UpriseColors.primaryDark,
+        color: UpriseColors.darkGray,
       ),
     ),
     style: OutlinedButton.styleFrom(
-      side: BorderSide(color: UpriseColors.primaryDark.withOpacity(0.35)),
+      side: const BorderSide(color: UpriseColors.mediumGray),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       minimumSize: Size.zero,
       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -3660,9 +3689,9 @@ class _Chip extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
     decoration: BoxDecoration(
-      color: UpriseColors.primaryDark.withOpacity(0.08),
+      color: UpriseColors.mediumGray,
       borderRadius: BorderRadius.circular(99),
-      border: Border.all(color: UpriseColors.primaryDark.withOpacity(0.2)),
+      border: Border.all(color: UpriseColors.mediumGray),
     ),
     child: Row(
       mainAxisSize: MainAxisSize.min,
@@ -3671,7 +3700,7 @@ class _Chip extends StatelessWidget {
           label,
           style: GoogleFonts.beVietnamPro(
             fontSize: 11,
-            color: UpriseColors.primaryDark,
+            color: UpriseColors.darkGray,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -3681,7 +3710,7 @@ class _Chip extends StatelessWidget {
           child: const Icon(
             Icons.close,
             size: 11,
-            color: UpriseColors.primaryDark,
+            color: UpriseColors.darkGray,
           ),
         ),
       ],

@@ -17,6 +17,7 @@ import '../student/student_events_screen.dart';
 import '../../models/profile_model.dart';
 import '../../widgets/shared/app_support.dart';
 import '../../widgets/student/app_colors.dart';
+import '../../widgets/student/student_app_bar.dart';
 
 // ─────────────────────────────────────────────────────────────
 // Shared constants - brand palette
@@ -497,7 +498,9 @@ class _QuickActionCard extends StatelessWidget {
 // language: gradient hero, shadowed cards, uppercase section labels.
 // ─────────────────────────────────────────────────────────────
 class StudentProfileScreen extends StatefulWidget {
-  const StudentProfileScreen({super.key});
+  final VoidCallback? onViewAllRegistrations;
+
+  const StudentProfileScreen({super.key, this.onViewAllRegistrations});
 
   @override
   State<StudentProfileScreen> createState() => _StudentProfileScreenState();
@@ -539,24 +542,9 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
       builder: (context, _) {
         return Scaffold(
           backgroundColor: kBg,
-          appBar: AppBar(
-            backgroundColor: Colors.white,
-            elevation: 0,
-            centerTitle: true,
-            leadingWidth: 48,
+          appBar: StudentAppBar(
+            title: 'Profile',
             leading: const SizedBox.shrink(),
-            title: const Text(
-              'Profile',
-              style: TextStyle(
-                color: Colors.black87,
-                fontWeight: FontWeight.w700,
-                fontSize: 18,
-              ),
-            ),
-            bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(1),
-              child: Container(height: 1, color: Colors.grey.shade100),
-            ),
             actions: [
               IconButton(
                 icon: const Icon(Icons.settings_outlined, color: kOrange),
@@ -880,14 +868,18 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                           ),
                           GestureDetector(
                             onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => const StudentEventsScreen(
-                                    initialTabIndex: 1,
+                              if (widget.onViewAllRegistrations != null) {
+                                widget.onViewAllRegistrations!();
+                              } else {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const StudentEventsScreen(
+                                      initialTabIndex: 1,
+                                    ),
                                   ),
-                                ),
-                              );
+                                );
+                              }
                             },
                             child: const Text(
                               'See All',
@@ -1081,23 +1073,7 @@ class PersonalIdentityScreen extends StatelessWidget {
       builder: (context, _) {
         return Scaffold(
           backgroundColor: kBg,
-          appBar: AppBar(
-            backgroundColor: Colors.white,
-            elevation: 0,
-            centerTitle: true,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.black),
-              onPressed: () => Navigator.pop(context),
-            ),
-            title: const Text(
-              'Personal Identity',
-              style: TextStyle(
-                color: Colors.black,
-                fontWeight: FontWeight.w600,
-                fontSize: 18,
-              ),
-            ),
-          ),
+          appBar: const StudentAppBar(title: 'Personal Identity'),
           body: SingleChildScrollView(
             padding: const EdgeInsets.all(20),
             child: Column(
@@ -2168,23 +2144,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kBg,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          'Profile',
-          style: TextStyle(
-            color: Colors.black,
-            fontWeight: FontWeight.w600,
-            fontSize: 18,
-          ),
-        ),
-      ),
+      appBar: const StudentAppBar(title: 'Profile'),
       body: SingleChildScrollView(
         child: Column(
           children: [
@@ -2508,28 +2468,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kBg,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black87),
-          onPressed: () => Navigator.pop(context),
-          padding: const EdgeInsets.all(8),
-        ),
-        title: const Text(
-          'Settings',
-          style: TextStyle(
-            color: Colors.black87,
-            fontWeight: FontWeight.w700,
-            fontSize: 18,
-          ),
-        ),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: Colors.grey.shade100),
-        ),
-      ),
+      appBar: StudentAppBar(title: 'Settings'),
       body: AnimatedBuilder(
         animation: widget.profile,
         builder: (context, _) {

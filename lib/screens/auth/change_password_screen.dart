@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../utils/theme.dart';
+import '../../widgets/common/terms_and_conditions.dart';
 import '../web/org/org_login.dart';
 import '../web/admin/admin_login.dart';
 
@@ -27,6 +28,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   bool _isLoading = false;
   bool _showNewPassword = false;
   bool _showConfirmPassword = false;
+  bool _agreedToTerms = false;
 
   @override
   void dispose() {
@@ -56,6 +58,11 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       return;
     }
 
+    if (widget.isFirstLogin && !_agreedToTerms) {
+      _showError('Please agree to the Terms and Conditions to continue.');
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -65,15 +72,21 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       await user.updatePassword(newPass);
       print('Password updated for uid=${user.uid}');
 
-      await FirebaseFirestore.instance.collection('users').doc(widget.userId).update({
-        'isFirstLogin': false,
-        'mustChangePassword': false,
-        'needsPasswordChange': false,
-        'firstLogin': false,
-      });
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.userId)
+          .update({
+            'isFirstLogin': false,
+            'mustChangePassword': false,
+            'needsPasswordChange': false,
+            'firstLogin': false,
+          });
       print('Firestore password flags cleared for uid=${widget.userId}');
 
-      final userDoc = await FirebaseFirestore.instance.collection('users').doc(widget.userId).get();
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.userId)
+          .get();
       final role = (userDoc.data()?['role'] as String?)?.toLowerCase() ?? '';
       print('ChangePassword success uid=${widget.userId} role=$role');
 
@@ -125,10 +138,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Change Password'),
-        elevation: 0,
-      ),
+      appBar: AppBar(title: const Text('Change Password'), elevation: 0),
       backgroundColor: backgroundColor,
       body: Center(
         child: SingleChildScrollView(
@@ -162,7 +172,11 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                           color: primaryOrange.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(16),
                         ),
-                        child: const Icon(Icons.lock_outline, color: primaryOrange, size: 32),
+                        child: const Icon(
+                          Icons.lock_outline,
+                          color: primaryOrange,
+                          size: 32,
+                        ),
                       ),
                     ],
                   ),
@@ -194,10 +208,14 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                       labelText: 'New Password',
                       suffixIcon: IconButton(
                         icon: Icon(
-                          _showNewPassword ? Icons.visibility : Icons.visibility_off,
+                          _showNewPassword
+                              ? Icons.visibility
+                              : Icons.visibility_off,
                           color: Colors.grey[600],
                         ),
-                        onPressed: () => setState(() => _showNewPassword = !_showNewPassword),
+                        onPressed: () => setState(
+                          () => _showNewPassword = !_showNewPassword,
+                        ),
                       ),
                     ),
                   ),
@@ -209,24 +227,44 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                       labelText: 'Confirm Password',
                       suffixIcon: IconButton(
                         icon: Icon(
-                          _showConfirmPassword ? Icons.visibility : Icons.visibility_off,
+                          _showConfirmPassword
+                              ? Icons.visibility
+                              : Icons.visibility_off,
                           color: Colors.grey[600],
                         ),
-                        onPressed: () => setState(() => _showConfirmPassword = !_showConfirmPassword),
+                        onPressed: () => setState(
+                          () => _showConfirmPassword = !_showConfirmPassword,
+                        ),
                       ),
                     ),
                   ),
+                  if (widget.isFirstLogin) ...[
+                    const SizedBox(height: 20),
+                    TermsAgreementCheckbox(
+                      value: _agreedToTerms,
+                      onChanged: (v) => setState(() => _agreedToTerms = v),
+                      accent: const Color(0xFF2563EB),
+                      textColor: Colors.grey[700]!,
+                    ),
+                  ],
                   const SizedBox(height: 28),
                   SizedBox(
                     width: double.infinity,
                     height: 52,
                     child: ElevatedButton(
-                      onPressed: _isLoading ? null : _submit,
+                      onPressed: _isLoading
+                          ? null
+                          : (widget.isFirstLogin && !_agreedToTerms)
+                          ? null
+                          : _submit,
                       child: _isLoading
                           ? const SizedBox(
                               width: 22,
                               height: 22,
-                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.2),
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2.2,
+                              ),
                             )
                           : const Text('Save New Password'),
                     ),

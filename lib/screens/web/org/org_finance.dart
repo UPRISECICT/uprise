@@ -10,14 +10,14 @@ import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/org_action_icon_button.dart';
 import 'export_util.dart';
 import 'export_pdf.dart';
-import '../../../theme/app_theme.dart';
+import '../../../theme/org_theme.dart';
 import '../../../utils/school_year.dart';
 
 // ============ COLOR SCHEME ============
 class OrgColors {
-  static const Color primaryDark = Color(0xFFBE4700);
+  static const Color primaryDark = Color(0xFFEA580C);
   static const Color primaryLight = Color(0xFFD47A00);
-  static const Color accent = Color(0xFFDA6937);
+  static const Color accent = Color(0xFFF97316);
   static const Color white = Color(0xFFFFFFFF);
   static const Color lightGray = Color(0xFFF8F9FB);
   static const Color mediumGray = Color(0xFFE8ECF0);
@@ -691,6 +691,9 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
               backgroundColor: Colors.transparent,
               child: Container(
                 width: 520,
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(dialogContext).size.height * 0.85,
+                ),
                 decoration: BoxDecoration(
                   color: OrgColors.white,
                   borderRadius: BorderRadius.circular(18),
@@ -746,247 +749,255 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
                       ),
                     ),
                     // Body
-                    Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _FieldLabel('REPORT BY'),
-                          const SizedBox(height: 8),
-                          Row(
+                    Flexible(
+                      child: SingleChildScrollView(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _FormatChip(
-                                label: 'Specific Event',
-                                icon: Icons.event_outlined,
-                                selected: reportMode == 'event',
-                                onTap: () => setDialogState(() {
-                                  reportMode = 'event';
-                                  startDate = null;
-                                  endDate = null;
-                                }),
+                              _FieldLabel('REPORT BY'),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  _FormatChip(
+                                    label: 'Specific Event',
+                                    icon: Icons.event_outlined,
+                                    selected: reportMode == 'event',
+                                    onTap: () => setDialogState(() {
+                                      reportMode = 'event';
+                                      startDate = null;
+                                      endDate = null;
+                                    }),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  _FormatChip(
+                                    label: 'Date Range',
+                                    icon: Icons.date_range_outlined,
+                                    selected: reportMode == 'dateRange',
+                                    onTap: () => setDialogState(() {
+                                      reportMode = 'dateRange';
+                                      selectedEvent = 'All Events';
+                                    }),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  _FormatChip(
+                                    label: 'School Year',
+                                    icon: Icons.school_outlined,
+                                    selected: reportMode == 'semester',
+                                    onTap: () => setDialogState(() {
+                                      reportMode = 'semester';
+                                      selectedEvent = 'All Events';
+                                    }),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 10),
-                              _FormatChip(
-                                label: 'Date Range',
-                                icon: Icons.date_range_outlined,
-                                selected: reportMode == 'dateRange',
-                                onTap: () => setDialogState(() {
-                                  reportMode = 'dateRange';
-                                  selectedEvent = 'All Events';
-                                }),
-                              ),
-                              const SizedBox(width: 10),
-                              _FormatChip(
-                                label: 'School Year',
-                                icon: Icons.school_outlined,
-                                selected: reportMode == 'semester',
-                                onTap: () => setDialogState(() {
-                                  reportMode = 'semester';
-                                  selectedEvent = 'All Events';
-                                }),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          if (reportMode == 'semester') ...[
-                            _FieldLabel('SCHOOL YEAR'),
-                            const SizedBox(height: 6),
-                            _StyledDropdown<String>(
-                              value: selectedSchoolYear,
-                              items: SchoolYearUtil.schoolYears()
-                                  .map(
-                                    (y) => DropdownMenuItem(
-                                      value: y,
-                                      child: Text(y),
-                                    ),
-                                  )
-                                  .toList(),
-                              onChanged: (v) => setDialogState(
-                                () => selectedSchoolYear =
-                                    v ?? SchoolYearUtil.currentSchoolYear(),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            _FieldLabel('SEMESTER'),
-                            const SizedBox(height: 6),
-                            _StyledDropdown<String>(
-                              value: selectedSemester,
-                              items:
-                                  [
-                                        SchoolYearUtil.wholeYear,
-                                        ...SchoolYearUtil.semesters,
-                                      ]
+                              const SizedBox(height: 16),
+                              if (reportMode == 'semester') ...[
+                                _FieldLabel('SCHOOL YEAR'),
+                                const SizedBox(height: 6),
+                                _StyledDropdown<String>(
+                                  value: selectedSchoolYear,
+                                  items: SchoolYearUtil.schoolYears()
                                       .map(
-                                        (s) => DropdownMenuItem(
-                                          value: s,
-                                          child: Text(s),
+                                        (y) => DropdownMenuItem(
+                                          value: y,
+                                          child: Text(y),
                                         ),
                                       )
                                       .toList(),
-                              onChanged: (v) => setDialogState(
-                                () => selectedSemester =
-                                    v ?? SchoolYearUtil.wholeYear,
-                              ),
-                            ),
-                          ] else if (reportMode == 'event') ...[
-                            _FieldLabel('FILTER BY EVENT'),
-                            const SizedBox(height: 6),
-                            _StyledDropdown<String>(
-                              value: selectedEvent,
-                              items: events
-                                  .map(
-                                    (e) => DropdownMenuItem(
-                                      value: e,
-                                      child: Text(e),
-                                    ),
-                                  )
-                                  .toList(),
-                              onChanged: (v) => setDialogState(
-                                () => selectedEvent = v ?? 'All Events',
-                              ),
-                            ),
-                          ] else ...[
-                            _FieldLabel('FILTER BY DATE'),
-                            const SizedBox(height: 6),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: OutlinedButton(
-                                    onPressed: () => pickDate(true),
-                                    style: OutlinedButton.styleFrom(
-                                      backgroundColor: OrgColors.lightGray,
-                                      side: const BorderSide(
-                                        color: OrgColors.mediumGray,
-                                      ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 12,
-                                      ),
-                                    ),
-                                    child: Text(
-                                      startDate == null
-                                          ? 'Start date'
-                                          : DateFormat(
-                                              'MMM d, yyyy',
-                                            ).format(startDate!),
-                                      style: GoogleFonts.beVietnamPro(
-                                        color: OrgColors.charcoal,
-                                        fontSize: 13,
-                                      ),
-                                    ),
+                                  onChanged: (v) => setDialogState(
+                                    () => selectedSchoolYear =
+                                        v ?? SchoolYearUtil.currentSchoolYear(),
                                   ),
                                 ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: OutlinedButton(
-                                    onPressed: () => pickDate(false),
-                                    style: OutlinedButton.styleFrom(
-                                      backgroundColor: OrgColors.lightGray,
-                                      side: const BorderSide(
-                                        color: OrgColors.mediumGray,
-                                      ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 12,
-                                      ),
-                                    ),
-                                    child: Text(
-                                      endDate == null
-                                          ? 'End date'
-                                          : DateFormat(
-                                              'MMM d, yyyy',
-                                            ).format(endDate!),
-                                      style: GoogleFonts.beVietnamPro(
-                                        color: OrgColors.charcoal,
-                                        fontSize: 13,
-                                      ),
-                                    ),
+                                const SizedBox(height: 12),
+                                _FieldLabel('SEMESTER'),
+                                const SizedBox(height: 6),
+                                _StyledDropdown<String>(
+                                  value: selectedSemester,
+                                  items:
+                                      [
+                                            SchoolYearUtil.wholeYear,
+                                            ...SchoolYearUtil.semesters,
+                                          ]
+                                          .map(
+                                            (s) => DropdownMenuItem(
+                                              value: s,
+                                              child: Text(s),
+                                            ),
+                                          )
+                                          .toList(),
+                                  onChanged: (v) => setDialogState(
+                                    () => selectedSemester =
+                                        v ?? SchoolYearUtil.wholeYear,
                                   ),
                                 ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            Row(
-                              children: [
-                                const Icon(
-                                  Icons.inventory_2_outlined,
-                                  size: 13,
-                                  color: OrgColors.darkGray,
+                              ] else if (reportMode == 'event') ...[
+                                _FieldLabel('FILTER BY EVENT'),
+                                const SizedBox(height: 6),
+                                _StyledDropdown<String>(
+                                  value: selectedEvent,
+                                  items: events
+                                      .map(
+                                        (e) => DropdownMenuItem(
+                                          value: e,
+                                          child: Text(e),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (v) => setDialogState(
+                                    () => selectedEvent = v ?? 'All Events',
+                                  ),
                                 ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    'Includes archived transactions that fall within this range.',
-                                    style: GoogleFonts.beVietnamPro(
-                                      fontSize: 11,
+                              ] else ...[
+                                _FieldLabel('FILTER BY DATE'),
+                                const SizedBox(height: 6),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: OutlinedButton(
+                                        onPressed: () => pickDate(true),
+                                        style: OutlinedButton.styleFrom(
+                                          backgroundColor: OrgColors.lightGray,
+                                          side: const BorderSide(
+                                            color: OrgColors.mediumGray,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                          ),
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 12,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          startDate == null
+                                              ? 'Start date'
+                                              : DateFormat(
+                                                  'MMM d, yyyy',
+                                                ).format(startDate!),
+                                          style: GoogleFonts.beVietnamPro(
+                                            color: OrgColors.charcoal,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: OutlinedButton(
+                                        onPressed: () => pickDate(false),
+                                        style: OutlinedButton.styleFrom(
+                                          backgroundColor: OrgColors.lightGray,
+                                          side: const BorderSide(
+                                            color: OrgColors.mediumGray,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                          ),
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 12,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          endDate == null
+                                              ? 'End date'
+                                              : DateFormat(
+                                                  'MMM d, yyyy',
+                                                ).format(endDate!),
+                                          style: GoogleFonts.beVietnamPro(
+                                            color: OrgColors.charcoal,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.inventory_2_outlined,
+                                      size: 13,
                                       color: OrgColors.darkGray,
                                     ),
-                                  ),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        'Includes archived transactions that fall within this range.',
+                                        style: GoogleFonts.beVietnamPro(
+                                          fontSize: 11,
+                                          color: OrgColors.darkGray,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
-                            ),
-                          ],
-                          const SizedBox(height: 16),
-                          _FieldLabel('FORMAT'),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              _FormatChip(
-                                label: 'PDF',
-                                icon: Icons.picture_as_pdf_outlined,
-                                selected: selectedFormat == 'pdf',
-                                onTap: () => setDialogState(
-                                  () => selectedFormat = 'pdf',
-                                ),
+                              const SizedBox(height: 16),
+                              _FieldLabel('FORMAT'),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  _FormatChip(
+                                    label: 'PDF',
+                                    icon: Icons.picture_as_pdf_outlined,
+                                    selected: selectedFormat == 'pdf',
+                                    onTap: () => setDialogState(
+                                      () => selectedFormat = 'pdf',
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  _FormatChip(
+                                    label: 'CSV',
+                                    icon: Icons.table_chart_outlined,
+                                    selected: selectedFormat == 'csv',
+                                    onTap: () => setDialogState(
+                                      () => selectedFormat = 'csv',
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 10),
-                              _FormatChip(
-                                label: 'CSV',
-                                icon: Icons.table_chart_outlined,
-                                selected: selectedFormat == 'csv',
-                                onTap: () => setDialogState(
-                                  () => selectedFormat = 'csv',
+                              const SizedBox(height: 14),
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF0F6FF),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: const Color(0xFFBFD7FF),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.info_outline_rounded,
+                                      size: 15,
+                                      color: Color(0xFF2563EB),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        archivedIncluded > 0
+                                            ? '${filtered.length} transaction(s) will be included ($archivedIncluded archived)'
+                                            : '${filtered.length} transaction(s) will be included',
+                                        style: GoogleFonts.beVietnamPro(
+                                          fontSize: 12,
+                                          color: const Color(0xFF1D4ED8),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 14),
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF0F6FF),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: const Color(0xFFBFD7FF),
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.info_outline_rounded,
-                                  size: 15,
-                                  color: Color(0xFF2563EB),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    archivedIncluded > 0
-                                        ? '${filtered.length} transaction(s) will be included ($archivedIncluded archived)'
-                                        : '${filtered.length} transaction(s) will be included',
-                                    style: GoogleFonts.beVietnamPro(
-                                      fontSize: 12,
-                                      color: const Color(0xFF1D4ED8),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ),
                     // Footer
@@ -1342,9 +1353,14 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
       stream: _statsStream,
       builder: (context, snapshot) {
         double income = 0, expense = 0;
+        int activeCount = 0;
         if (snapshot.hasData) {
           for (final doc in snapshot.data!.docs) {
             final data = doc.data() as Map<String, dynamic>;
+            // Keep these cards reconciled with the table below, which only
+            // shows archived OR active transactions depending on the toggle.
+            if ((data['isArchived'] == true) != _showArchived) continue;
+            activeCount++;
             final amount = (data['amount'] ?? 0).toDouble();
             if (data['type'] == 'income') {
               income += amount;
@@ -1402,7 +1418,7 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
               const SizedBox(width: 14),
               _StatCard(
                 label: 'Transactions',
-                value: '${snapshot.data?.docs.length ?? 0}',
+                value: '$activeCount',
                 icon: Icons.receipt_long_outlined,
                 color: UpriseColors.primaryDark,
                 isSelected: _selectedStatCard == 3,

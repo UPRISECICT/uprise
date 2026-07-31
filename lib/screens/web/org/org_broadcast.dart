@@ -15,7 +15,7 @@ import '../../../services/notification_service.dart';
 import '../../../utils/profanity_filter.dart';
 
 class _C {
-  static const Color primaryDark = Color(0xFFBE4700);
+  static const Color primaryDark = Color(0xFFEA580C);
   static const Color white = Color(0xFFFFFFFF);
   static const Color surface = Color(0xFFF8F9FB);
   static const Color pageBg = Color(0xFFFBFCFE);
@@ -125,24 +125,32 @@ class _OrgBroadcastScreenState extends State<OrgBroadcastScreen> {
     final studentName = picked['name'] as String;
     final id = _conversationId(widget.orgId, studentId);
     final ref = FirebaseFirestore.instance.collection('conversations').doc(id);
-    final existing = await ref.get();
-    if (!existing.exists) {
-      await ref.set({
-        'orgId': widget.orgId,
-        'orgName': _orgName.isEmpty ? widget.orgName : _orgName,
-        'studentId': studentId,
-        'studentName': studentName,
-        'lastMessage': '',
-        'lastMessageAt': FieldValue.serverTimestamp(),
-        'lastSenderRole': 'org',
-        'unreadForOrg': false,
-        'unreadForStudent': false,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+    try {
+      final existing = await ref.get();
+      if (!existing.exists) {
+        await ref.set({
+          'orgId': widget.orgId,
+          'orgName': _orgName.isEmpty ? widget.orgName : _orgName,
+          'studentId': studentId,
+          'studentName': studentName,
+          'lastMessage': '',
+          'lastMessageAt': FieldValue.serverTimestamp(),
+          'lastSenderRole': 'org',
+          'unreadForOrg': false,
+          'unreadForStudent': false,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+      final fresh = await ref.get();
+      if (!mounted) return;
+      _openConversation(id, fresh.data() ?? {});
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Couldn\'t start conversation: $e')),
+        );
+      }
     }
-    final fresh = await ref.get();
-    if (!mounted) return;
-    _openConversation(id, fresh.data() ?? {});
   }
 
   @override
@@ -269,6 +277,10 @@ class _ConversationsList extends StatelessWidget {
                 .snapshots(),
             builder: (context, snap) {
               if (snap.hasError) {
+                // Logged (not just swallowed) because the most common cause
+                // on first deploy is a missing Firestore composite index —
+                // the thrown error includes a direct link to auto-create it.
+                debugPrint('conversations query error: ${snap.error}');
                 return Center(
                   child: Text(
                     'Couldn\'t load conversations',
@@ -462,7 +474,9 @@ class _EmptyThreadState extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Private messages between your org and students',
+            'Send announcements straight to a student — they can\n'
+            'view them here but can\'t reply.',
+            textAlign: TextAlign.center,
             style: GoogleFonts.beVietnamPro(
               fontSize: 12.5,
               color: _C.textFaint,
@@ -492,12 +506,12 @@ class _StudentPickerDialogState extends State<_StudentPickerDialog> {
   Widget build(BuildContext context) {
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: SizedBox(
-        width: 420,
-        height: 520,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480, maxHeight: 560),
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
@@ -526,72 +540,87 @@ class _StudentPickerDialogState extends State<_StudentPickerDialog> {
                 ),
               ),
               const SizedBox(height: 12),
-              Expanded(
-                child: StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection('students')
-                      .where('orgId', isEqualTo: widget.orgId)
-                      .snapshots(),
-                  builder: (context, snap) {
-                    if (!snap.hasData) {
-                      return const Center(
-                        child: CircularProgressIndicator(color: _C.primaryDark),
-                      );
-                    }
-                    var docs = snap.data!.docs;
-                    docs = docs.where((d) {
-                      final data = d.data() as Map<String, dynamic>;
-                      final name = (data['fullName'] ?? '')
-                          .toString()
-                          .toLowerCase();
-                      return _query.isEmpty || name.contains(_query);
-                    }).toList();
-                    if (docs.isEmpty) {
-                      return Center(
-                        child: Text(
-                          'No students found',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13,
-                            color: _C.textFaint,
+              Flexible(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 380),
+                  child: StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('students')
+                        .where('orgId', isEqualTo: widget.orgId)
+                        .snapshots(),
+                    builder: (context, snap) {
+                      if (!snap.hasData) {
+                        return const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(32),
+                            child: CircularProgressIndicator(
+                              color: _C.primaryDark,
+                            ),
                           ),
-                        ),
-                      );
-                    }
-                    return ListView.builder(
-                      itemCount: docs.length,
-                      itemBuilder: (context, i) {
-                        final data = docs[i].data() as Map<String, dynamic>;
-                        final name = (data['fullName'] ?? 'Student').toString();
-                        final uid = (data['uid'] ?? docs[i].id).toString();
-                        return ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: _C.primaryDark.withAlpha(28),
+                        );
+                      }
+                      var docs = snap.data!.docs;
+                      docs = docs.where((d) {
+                        final data = d.data() as Map<String, dynamic>;
+                        final name = (data['fullName'] ?? '')
+                            .toString()
+                            .toLowerCase();
+                        return _query.isEmpty || name.contains(_query);
+                      }).toList();
+                      if (docs.isEmpty) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(32),
                             child: Text(
-                              _initials(name),
+                              'No students found',
                               style: GoogleFonts.beVietnamPro(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: _C.primaryDark,
+                                fontSize: 13,
+                                color: _C.textFaint,
                               ),
                             ),
                           ),
-                          title: Text(
-                            name,
-                            style: GoogleFonts.beVietnamPro(fontSize: 13.5),
-                          ),
-                          subtitle: Text(
-                            (data['course'] ?? '').toString(),
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 11.5,
-                              color: _C.textFaint,
-                            ),
-                          ),
-                          onTap: () =>
-                              Navigator.pop(context, {'id': uid, 'name': name}),
                         );
-                      },
-                    );
-                  },
+                      }
+                      return ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: docs.length,
+                        itemBuilder: (context, i) {
+                          final data = docs[i].data() as Map<String, dynamic>;
+                          final name = (data['fullName'] ?? 'Student')
+                              .toString();
+                          final uid = (data['uid'] ?? docs[i].id).toString();
+                          return ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: _C.primaryDark.withAlpha(28),
+                              child: Text(
+                                _initials(name),
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: _C.primaryDark,
+                                ),
+                              ),
+                            ),
+                            title: Text(
+                              name,
+                              style: GoogleFonts.beVietnamPro(fontSize: 13.5),
+                            ),
+                            subtitle: Text(
+                              (data['course'] ?? '').toString(),
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 11.5,
+                                color: _C.textFaint,
+                              ),
+                            ),
+                            onTap: () => Navigator.pop(context, {
+                              'id': uid,
+                              'name': name,
+                            }),
+                          );
+                        },
+                      );
+                    },
+                  ),
                 ),
               ),
             ],
@@ -672,6 +701,7 @@ class _ChatThreadState extends State<_ChatThread> {
           body: text.isEmpty ? 'Sent you an image' : text,
           type: 'private_message',
           orgId: widget.orgId,
+          orgName: widget.orgName,
         );
       }
       if (_scrollCtrl.hasClients) {
@@ -680,6 +710,13 @@ class _ChatThreadState extends State<_ChatThread> {
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeOut,
         );
+      }
+    } catch (e) {
+      if (mounted) {
+        _textCtrl.text = rawText;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Message failed to send: $e')));
       }
     } finally {
       if (mounted) setState(() => _sending = false);
@@ -696,6 +733,21 @@ class _ChatThreadState extends State<_ChatThread> {
       );
       if (file == null) return;
       final bytes = await file.readAsBytes();
+      // Firestore caps a single document at ~1MiB; base64 inflates the raw
+      // bytes by ~33%, so keep a safety margin well under that ceiling
+      // rather than let a large photo fail with a raw Firestore error.
+      if (bytes.length > 700 * 1024) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'That image is too large to send. Please choose a smaller photo.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
       final b64 = 'data:image/jpeg;base64,${base64Encode(bytes)}';
       await _sendMessage(imageBase64: b64);
     } catch (e) {
@@ -877,9 +929,7 @@ class _MessageBubble extends StatelessWidget {
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.5,
-        ),
+        constraints: const BoxConstraints(maxWidth: 460),
         child: Column(
           crossAxisAlignment: isMe
               ? CrossAxisAlignment.end

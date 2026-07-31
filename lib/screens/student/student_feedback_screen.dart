@@ -35,28 +35,13 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen> {
         return;
       }
 
-      // 👇 KUNIN ANG STUDENT DOCUMENT PARA MAKUHA ANG STUDENT ID
-      final studentDoc = await FirebaseFirestore.instance
-          .collection('students')
-          .doc(user.uid)
-          .get();
-
-      String studentId = user.uid;
-      if (studentDoc.exists) {
-        final data = studentDoc.data() as Map<String, dynamic>;
-        studentId = data['studentId']?.toString() ?? user.uid;
-        print('✅ Using studentId: $studentId');
-      } else {
-        print('⚠️ No student document found, using UID: $studentId');
-      }
-
-      // 👇 GAMITIN ANG STUDENT ID SA PAGHAHANAP NG ATTENDANCE
+      // Every attendance write (QR/manual check-in and webinar codes) stores
+      // the Firebase Auth UID in `studentId` — not the school-issued student
+      // number — so querying by anything else here silently returns nothing.
       final attendanceSnap = await FirebaseFirestore.instance
           .collectionGroup('attendances')
-          .where('studentId', isEqualTo: studentId)
+          .where('studentId', isEqualTo: user.uid)
           .get();
-
-      print('📋 Attendance records found: ${attendanceSnap.docs.length}');
 
       // Get existing feedback
       final feedbackSnap = await FirebaseFirestore.instance

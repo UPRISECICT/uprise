@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../services/activity_logger.dart' as activity_log;
+import '../../widgets/common/terms_and_conditions.dart';
 import '../../widgets/student/app_colors.dart';
 import 'student_login.dart';
 
@@ -19,6 +20,7 @@ class _StudentChangePasswordScreenState
   final TextEditingController _confirmPasswordController =
       TextEditingController();
   bool _isLoading = false;
+  bool _agreedToTerms = false;
 
   // UI-only state — does not affect the change-password logic below.
   bool _obscureNew = true;
@@ -50,6 +52,10 @@ class _StudentChangePasswordScreenState
       _showError('Password must be at least 6 characters');
       return;
     }
+    if (!_agreedToTerms) {
+      _showError('Please agree to the Terms and Conditions to continue');
+      return;
+    }
 
     setState(() => _isLoading = true);
 
@@ -64,11 +70,9 @@ class _StudentChangePasswordScreenState
         }),
         // Clear temp password and flag in students collection — doc ID is
         // the uid itself, so this is a direct lookup, not a query.
-        FirebaseFirestore.instance
-            .collection('students')
-            .doc(uid)
-            .get()
-            .then((doc) {
+        FirebaseFirestore.instance.collection('students').doc(uid).get().then((
+          doc,
+        ) {
           if (doc.exists) {
             return doc.reference.update({
               'mustChangePassword': false,
@@ -192,7 +196,10 @@ class _StudentChangePasswordScreenState
                   decoration: BoxDecoration(
                     color: Colors.white,
                     shape: BoxShape.circle,
-                    border: Border.all(color: const Color(0xFFE7E7E9), width: 1),
+                    border: Border.all(
+                      color: const Color(0xFFE7E7E9),
+                      width: 1,
+                    ),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withOpacity(0.05),
@@ -263,7 +270,8 @@ class _StudentChangePasswordScreenState
                         label: 'New Password',
                         icon: Icons.lock_outline,
                         obscure: _obscureNew,
-                        onToggle: () => setState(() => _obscureNew = !_obscureNew),
+                        onToggle: () =>
+                            setState(() => _obscureNew = !_obscureNew),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -284,12 +292,19 @@ class _StudentChangePasswordScreenState
                       padding: const EdgeInsets.only(top: 10),
                       child: Row(
                         children: [
-                          Icon(Icons.info_outline, size: 14, color: Colors.grey.shade500),
+                          Icon(
+                            Icons.info_outline,
+                            size: 14,
+                            color: Colors.grey.shade500,
+                          ),
                           const SizedBox(width: 6),
                           Expanded(
                             child: Text(
                               'Must be at least 6 characters.',
-                              style: TextStyle(fontSize: 11.5, color: Colors.grey.shade500),
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: Colors.grey.shade500,
+                              ),
                             ),
                           ),
                         ],
@@ -299,15 +314,28 @@ class _StudentChangePasswordScreenState
                 ),
               ),
 
-              const SizedBox(height: 28),
+              const SizedBox(height: 20),
+
+              TermsAgreementCheckbox(
+                value: _agreedToTerms,
+                onChanged: (v) => setState(() => _agreedToTerms = v),
+                accent: AppColors.primaryDark,
+                textColor: Colors.grey.shade700,
+              ),
+
+              const SizedBox(height: 20),
 
               SizedBox(
                 height: 50,
                 child: ElevatedButton(
-                  onPressed: _isLoading ? null : _changePassword,
+                  onPressed: (_isLoading || !_agreedToTerms)
+                      ? null
+                      : _changePassword,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primaryDark,
-                    disabledBackgroundColor: AppColors.primaryDark.withOpacity(0.6),
+                    disabledBackgroundColor: AppColors.primaryDark.withOpacity(
+                      0.6,
+                    ),
                     foregroundColor: Colors.white,
                     elevation: 0,
                     shape: RoundedRectangleBorder(

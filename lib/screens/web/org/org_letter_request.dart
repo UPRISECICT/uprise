@@ -15,7 +15,8 @@ import '../../../utils/school_year.dart';
 import '../../../widgets/admin_export_button.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/org_action_icon_button.dart';
-import '../../../theme/app_theme.dart';
+import '../../../widgets/org_attachment_preview.dart';
+import '../../../theme/org_theme.dart';
 import 'export_util.dart';
 import 'export_pdf.dart';
 
@@ -1192,89 +1193,28 @@ class _RequestDetailsDialog extends StatelessWidget {
 
       if (mime.startsWith('text/')) {
         final content = utf8.decode(bytes);
-        showDialog(
+        OrgAttachmentPreview.showText(
           context: context,
-          builder: (ctx) => AlertDialog(
-            title: Text(fileName),
-            content: Container(
-              width: 500,
-              constraints: const BoxConstraints(maxHeight: 400),
-              child: SingleChildScrollView(
-                child: SelectableText(
-                  content,
-                  style: GoogleFonts.beVietnamPro(fontSize: 12),
-                ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Close'),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  platform_file_utils.saveBytesToTempAndOpen(
-                    bytes,
-                    fileName,
-                    mimeType: mime,
-                  );
-                },
-                child: const Text('Download'),
-              ),
-            ],
+          fileName: fileName,
+          text: content,
+          onDownload: () => platform_file_utils.saveBytesToTempAndOpen(
+            bytes,
+            fileName,
+            mimeType: mime,
           ),
         );
         return;
       }
 
       if (mime.startsWith('image/')) {
-        showDialog(
+        OrgAttachmentPreview.showImage(
           context: context,
-          builder: (ctx) => Dialog(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Text(
-                    fileName,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                Flexible(
-                  child: InteractiveViewer(
-                    minScale: 0.5,
-                    maxScale: 4.0,
-                    child: Image.memory(bytes),
-                  ),
-                ),
-                OverflowBar(
-                  spacing: 8,
-                  alignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text('Close'),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        platform_file_utils.saveBytesToTempAndOpen(
-                          bytes,
-                          fileName,
-                          mimeType: mime,
-                        );
-                      },
-                      child: const Text('Download'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+          bytes: bytes,
+          fileName: fileName,
+          onDownload: () => platform_file_utils.saveBytesToTempAndOpen(
+            bytes,
+            fileName,
+            mimeType: mime,
           ),
         );
         return;
@@ -1372,8 +1312,11 @@ class _RequestDetailsDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      child: SizedBox(
-        width: 540,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 540,
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1434,220 +1377,226 @@ class _RequestDetailsDialog extends StatelessWidget {
                 ],
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+            Flexible(
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: _detailItem(
-                          'Letter ID',
-                          request.letterId,
-                          Icons.badge_outlined,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _detailItem(
-                          'Status',
-                          request.status.toUpperCase(),
-                          Icons.circle_outlined,
-                          valueColor: _statusColor(request.status),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _detailItem(
-                          'Type',
-                          request.letterType,
-                          Icons.label_outlined,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _detailItem(
-                          'Date Submitted',
-                          DateFormat(
-                            'MMM dd, yyyy',
-                          ).format(request.timestamp.toDate()),
-                          Icons.calendar_today_outlined,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _detailItem(
-                          'School Year',
-                          request.schoolYear.isNotEmpty
-                              ? request.schoolYear
-                              : '—',
-                          Icons.school_outlined,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _detailItem(
-                          'Semester',
-                          request.semester.isNotEmpty ? request.semester : '—',
-                          Icons.date_range_outlined,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  _detailItem(
-                    'Subject',
-                    request.subject,
-                    Icons.subject_rounded,
-                  ),
-                  if (request.message != null &&
-                      request.message!.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    _detailItem(
-                      'Message',
-                      request.message!,
-                      Icons.message_outlined,
-                    ),
-                  ],
-                  if (request.attachmentName != null &&
-                      request.attachmentBase64 != null) ...[
-                    const SizedBox(height: 14),
-                    _buildAttachmentViewer(context),
-                  ] else if (request.attachmentName != null) ...[
-                    const SizedBox(height: 14),
-                    _detailItem(
-                      'Attachment',
-                      '${request.attachmentName}${request.attachmentSize != null ? ' (${request.attachmentSize})' : ''}',
-                      Icons.attach_file_rounded,
-                    ),
-                  ],
-                  if (request.signedDocumentBase64 != null &&
-                      request.signedDocumentBase64!.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF059669).withAlpha(15),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: const Color(0xFF059669).withAlpha(38),
-                        ),
-                      ),
-                      child: Row(
+                      Row(
                         children: [
-                          Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF059669).withAlpha(26),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(
-                              Icons.verified_rounded,
-                              color: Color(0xFF059669),
-                              size: 20,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
                           Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Digitally Signed Copy',
-                                  style: GoogleFonts.beVietnamPro(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: const Color(0xFF1A202C),
-                                  ),
-                                ),
-                                if (request.signedBy != null)
-                                  Text(
-                                    'Signed by ${request.signedBy}',
-                                    style: GoogleFonts.beVietnamPro(
-                                      fontSize: 11,
-                                      color: const Color(0xFF64748B),
-                                    ),
-                                  ),
-                              ],
+                            child: _detailItem(
+                              'Letter ID',
+                              request.letterId,
+                              Icons.badge_outlined,
                             ),
                           ),
-                          ElevatedButton.icon(
-                            onPressed: () => _openSignedDocument(context),
-                            icon: const Icon(Icons.visibility, size: 16),
-                            label: const Text('View'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF059669),
-                              foregroundColor: Colors.white,
-                              elevation: 0,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(6),
-                              ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _detailItem(
+                              'Status',
+                              request.status.toUpperCase(),
+                              Icons.circle_outlined,
+                              valueColor: _statusColor(request.status),
                             ),
                           ),
                         ],
                       ),
-                    ),
-                  ],
-                  if (request.revisionNote != null) ...[
-                    const SizedBox(height: 14),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFEFF6FF),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: const Color(0xFFBFDBFE)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      const SizedBox(height: 14),
+                      Row(
                         children: [
-                          Row(
+                          Expanded(
+                            child: _detailItem(
+                              'Type',
+                              request.letterType,
+                              Icons.label_outlined,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _detailItem(
+                              'Date Submitted',
+                              DateFormat(
+                                'MMM dd, yyyy',
+                              ).format(request.timestamp.toDate()),
+                              Icons.calendar_today_outlined,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _detailItem(
+                              'School Year',
+                              request.schoolYear.isNotEmpty
+                                  ? request.schoolYear
+                                  : '—',
+                              Icons.school_outlined,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _detailItem(
+                              'Semester',
+                              request.semester.isNotEmpty
+                                  ? request.semester
+                                  : '—',
+                              Icons.date_range_outlined,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      _detailItem(
+                        'Subject',
+                        request.subject,
+                        Icons.subject_rounded,
+                      ),
+                      if (request.message != null &&
+                          request.message!.isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        _detailItem(
+                          'Message',
+                          request.message!,
+                          Icons.message_outlined,
+                        ),
+                      ],
+                      if (request.attachmentName != null &&
+                          request.attachmentBase64 != null) ...[
+                        const SizedBox(height: 14),
+                        _buildAttachmentViewer(context),
+                      ] else if (request.attachmentName != null) ...[
+                        const SizedBox(height: 14),
+                        _detailItem(
+                          'Attachment',
+                          '${request.attachmentName}${request.attachmentSize != null ? ' (${request.attachmentSize})' : ''}',
+                          Icons.attach_file_rounded,
+                        ),
+                      ],
+                      if (request.signedDocumentBase64 != null &&
+                          request.signedDocumentBase64!.isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF059669).withAlpha(15),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: const Color(0xFF059669).withAlpha(38),
+                            ),
+                          ),
+                          child: Row(
                             children: [
-                              const Icon(
-                                Icons.info_outline_rounded,
-                                size: 14,
-                                color: Color(0xFF2563EB),
+                              Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF059669).withAlpha(26),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(
+                                  Icons.verified_rounded,
+                                  color: Color(0xFF059669),
+                                  size: 20,
+                                ),
                               ),
-                              const SizedBox(width: 6),
-                              Text(
-                                'REVISION NOTE FROM ADMIN',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: const Color(0xFF2563EB),
-                                  letterSpacing: 0.5,
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Digitally Signed Copy',
+                                      style: GoogleFonts.beVietnamPro(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: const Color(0xFF1A202C),
+                                      ),
+                                    ),
+                                    if (request.signedBy != null)
+                                      Text(
+                                        'Signed by ${request.signedBy}',
+                                        style: GoogleFonts.beVietnamPro(
+                                          fontSize: 11,
+                                          color: const Color(0xFF64748B),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              ElevatedButton.icon(
+                                onPressed: () => _openSignedDocument(context),
+                                icon: const Icon(Icons.visibility, size: 16),
+                                label: const Text('View'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF059669),
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            request.revisionNote!,
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 13,
-                              color: const Color(0xFF1A202C),
-                            ),
+                        ),
+                      ],
+                      if (request.revisionNote != null) ...[
+                        const SizedBox(height: 14),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEFF6FF),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFBFDBFE)),
                           ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(
+                                    Icons.info_outline_rounded,
+                                    size: 14,
+                                    color: Color(0xFF2563EB),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'REVISION NOTE FROM ADMIN',
+                                    style: GoogleFonts.beVietnamPro(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: const Color(0xFF2563EB),
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                request.revisionNote!,
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 13,
+                                  color: const Color(0xFF1A202C),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
               ),
             ),
             Container(

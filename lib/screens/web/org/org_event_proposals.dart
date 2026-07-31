@@ -13,9 +13,10 @@ import '../../../services/notification_service.dart';
 import '../../../widgets/admin_export_button.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/org_action_icon_button.dart';
+import '../../../widgets/org_attachment_preview.dart';
 import 'export_util.dart';
 import 'export_pdf.dart';
-import '../../../theme/app_theme.dart';
+import '../../../theme/org_theme.dart';
 import '../../../utils/school_year.dart';
 import 'org_form_builder.dart';
 
@@ -152,7 +153,7 @@ Widget _sectionLabel(String text, {IconData? icon}) {
     child: Row(
       children: [
         if (icon != null) ...[
-          Icon(icon, size: 16, color: UpriseColors.primaryDark),
+          Icon(icon, size: 16, color: UpriseColors.darkGray),
           const SizedBox(width: 8),
         ],
         Text(
@@ -160,7 +161,7 @@ Widget _sectionLabel(String text, {IconData? icon}) {
           style: GoogleFonts.beVietnamPro(
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: UpriseColors.primaryDark,
+            color: UpriseColors.charcoal,
             letterSpacing: 0.3,
           ),
         ),
@@ -4698,47 +4699,17 @@ class _ViewProposalModal extends StatelessWidget {
       final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
       final mime = _mimeFromExt(ext);
       if (mime.startsWith('image/')) {
-        showDialog(
+        OrgAttachmentPreview.showImage(
           context: context,
-          builder: (_) => Dialog(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Text(
-                    name,
-                    style: GoogleFonts.beVietnamPro(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                Flexible(child: Image.memory(bytes)),
-                Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Close'),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          bytes: bytes,
+          fileName: name,
         );
       } else if (mime == 'text/plain') {
         final text = utf8.decode(bytes);
-        showDialog(
+        OrgAttachmentPreview.showText(
           context: context,
-          builder: (_) => AlertDialog(
-            title: Text(name),
-            content: SingleChildScrollView(child: SelectableText(text)),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Close'),
-              ),
-            ],
-          ),
+          fileName: name,
+          text: text,
         );
       } else {
         await platform_file_utils.saveBytesToTempAndOpen(

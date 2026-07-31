@@ -10,7 +10,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
 import 'dart:math' as math;
-import '../../../theme/app_theme.dart';
+import '../../../theme/org_theme.dart';
 import '../../../widgets/certificate_preview.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/org_action_icon_button.dart';
@@ -285,7 +285,7 @@ Widget _sectionLabel(String text, {IconData? icon}) {
     child: Row(
       children: [
         if (icon != null) ...[
-          Icon(icon, size: 16, color: UpriseColors.primaryDark),
+          Icon(icon, size: 16, color: UpriseColors.darkGray),
           const SizedBox(width: 8),
         ],
         Text(
@@ -293,7 +293,7 @@ Widget _sectionLabel(String text, {IconData? icon}) {
           style: GoogleFonts.beVietnamPro(
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: UpriseColors.primaryDark,
+            color: UpriseColors.charcoal,
             letterSpacing: 0.3,
           ),
         ),
@@ -2027,11 +2027,9 @@ class _BatchDetailModalState extends State<_BatchDetailModal> {
             // Header
             Container(
               padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
-              decoration: BoxDecoration(
-                color: UpriseColors.primaryDark,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(18),
-                ),
+              decoration: const BoxDecoration(
+                color: Color(0xFFF8F9FB),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
               ),
               child: Row(
                 children: [
@@ -2039,12 +2037,12 @@ class _BatchDetailModalState extends State<_BatchDetailModal> {
                     width: 38,
                     height: 38,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.15),
+                      color: UpriseColors.primaryDark.withAlpha(26),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Icon(
                       Icons.card_membership_outlined,
-                      color: Colors.white,
+                      color: UpriseColors.primaryDark,
                       size: 18,
                     ),
                   ),
@@ -2058,7 +2056,6 @@ class _BatchDetailModalState extends State<_BatchDetailModal> {
                           style: GoogleFonts.beVietnamPro(
                             fontSize: 17,
                             fontWeight: FontWeight.w700,
-                            color: Colors.white,
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -2066,7 +2063,7 @@ class _BatchDetailModalState extends State<_BatchDetailModal> {
                           '${b.totalRecipients} recipient(s) · ${b.sentCount} sent',
                           style: GoogleFonts.beVietnamPro(
                             fontSize: 11,
-                            color: Colors.white.withOpacity(0.7),
+                            color: UpriseColors.darkGray,
                           ),
                         ),
                       ],
@@ -2075,11 +2072,7 @@ class _BatchDetailModalState extends State<_BatchDetailModal> {
                   _batchBadge(b.batchStatus),
                   const SizedBox(width: 8),
                   IconButton(
-                    icon: const Icon(
-                      Icons.close_rounded,
-                      color: Colors.white,
-                      size: 20,
-                    ),
+                    icon: const Icon(Icons.close_rounded, size: 20),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
@@ -3056,14 +3049,12 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // ── Header — unchanged ──────────────────────────────────
+              // ── Header ───────────────────────────────────────────────
               Container(
                 padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
-                decoration: BoxDecoration(
-                  color: UpriseColors.primaryDark,
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(18),
-                  ),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF8F9FB),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
                 ),
                 child: Row(
                   children: [
@@ -3071,12 +3062,12 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
                       width: 38,
                       height: 38,
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.15),
+                        color: UpriseColors.primaryDark.withAlpha(26),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(
                         Icons.workspace_premium_outlined,
-                        color: Colors.white,
+                        color: UpriseColors.primaryDark,
                         size: 18,
                       ),
                     ),
@@ -3092,25 +3083,20 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
                             style: GoogleFonts.beVietnamPro(
                               fontSize: 17,
                               fontWeight: FontWeight.w700,
-                              color: Colors.white,
                             ),
                           ),
                           Text(
                             'Create certificates only for approved events that issue certificates',
                             style: GoogleFonts.beVietnamPro(
                               fontSize: 11,
-                              color: Colors.white.withOpacity(0.7),
+                              color: UpriseColors.darkGray,
                             ),
                           ),
                         ],
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(
-                        Icons.close_rounded,
-                        color: Colors.white,
-                        size: 20,
-                      ),
+                      icon: const Icon(Icons.close_rounded, size: 20),
                       tooltip: 'Close',
                       onPressed: _isSubmitting
                           ? null
@@ -3666,11 +3652,9 @@ class _CertPreviewDialog extends StatelessWidget {
           children: [
             Container(
               padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
-              decoration: BoxDecoration(
-                color: UpriseColors.primaryDark,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(18),
-                ),
+              decoration: const BoxDecoration(
+                color: Color(0xFFF8F9FB),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
               ),
               child: Row(
                 children: [
@@ -3678,12 +3662,12 @@ class _CertPreviewDialog extends StatelessWidget {
                     width: 38,
                     height: 38,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.15),
+                      color: UpriseColors.primaryDark.withAlpha(26),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Icon(
                       Icons.card_membership_outlined,
-                      color: Colors.white,
+                      color: UpriseColors.primaryDark,
                       size: 18,
                     ),
                   ),
@@ -3697,14 +3681,13 @@ class _CertPreviewDialog extends StatelessWidget {
                           style: GoogleFonts.beVietnamPro(
                             fontSize: 17,
                             fontWeight: FontWeight.w700,
-                            color: Colors.white,
                           ),
                         ),
                         Text(
                           record.eventName,
                           style: GoogleFonts.beVietnamPro(
                             fontSize: 11,
-                            color: Colors.white.withOpacity(0.7),
+                            color: UpriseColors.darkGray,
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -3714,11 +3697,7 @@ class _CertPreviewDialog extends StatelessWidget {
                   _certBadge(record.status),
                   const SizedBox(width: 8),
                   IconButton(
-                    icon: const Icon(
-                      Icons.close_rounded,
-                      color: Colors.white,
-                      size: 20,
-                    ),
+                    icon: const Icon(Icons.close_rounded, size: 20),
                     tooltip: 'Close',
                     onPressed: () => Navigator.pop(context),
                   ),
@@ -4420,11 +4399,9 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
             children: [
               Container(
                 padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
-                decoration: BoxDecoration(
-                  color: UpriseColors.primaryDark,
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(18),
-                  ),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF8F9FB),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
                 ),
                 child: Row(
                   children: [
@@ -4432,12 +4409,12 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
                       width: 38,
                       height: 38,
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.15),
+                        color: UpriseColors.primaryDark.withAlpha(26),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(
                         Icons.upload_file_outlined,
-                        color: Colors.white,
+                        color: UpriseColors.primaryDark,
                         size: 18,
                       ),
                     ),
@@ -4451,25 +4428,20 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
                             style: GoogleFonts.beVietnamPro(
                               fontSize: 17,
                               fontWeight: FontWeight.w700,
-                              color: Colors.white,
                             ),
                           ),
                           Text(
                             'Bring in a design from outside Uprise',
                             style: GoogleFonts.beVietnamPro(
                               fontSize: 11,
-                              color: Colors.white.withOpacity(0.7),
+                              color: UpriseColors.darkGray,
                             ),
                           ),
                         ],
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(
-                        Icons.close_rounded,
-                        color: Colors.white,
-                        size: 20,
-                      ),
+                      icon: const Icon(Icons.close_rounded, size: 20),
                       tooltip: 'Close',
                       onPressed: () => Navigator.pop(context),
                     ),

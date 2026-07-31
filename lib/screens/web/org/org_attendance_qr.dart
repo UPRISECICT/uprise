@@ -12,7 +12,7 @@ import 'package:csv/csv.dart';
 import 'package:file_saver/file_saver.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../../../theme/app_theme.dart';
+import '../../../theme/org_theme.dart';
 import '../../../widgets/admin_export_button.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/org_action_icon_button.dart';
@@ -282,6 +282,40 @@ class EventModel {
   }
 }
 
+// Handles both "7:30 PM" and 24-hour "19:30" startTime/endTime strings —
+// DateFormat.jm().parse() only understands the former and throws on the
+// latter, which org_event_proposals.dart's time picker can produce when the
+// organizer's device is set to 24-hour format (mirrors the same dual-format
+// logic as EventModel.fullDateTime in lib/models/event_model.dart).
+DateTime _timeOfDay(DateTime date, String timeStr) {
+  try {
+    int hour = 0;
+    int minute = 0;
+    if (timeStr.isNotEmpty) {
+      if (timeStr.toLowerCase().contains('am') ||
+          timeStr.toLowerCase().contains('pm')) {
+        final clean = timeStr
+            .replaceAll(RegExp(r'[AP]M', caseSensitive: false), '')
+            .trim();
+        final parts = clean.split(':');
+        hour = int.parse(parts[0].trim());
+        minute = int.parse(parts.length > 1 ? parts[1].trim() : '0');
+        if (timeStr.toLowerCase().contains('pm') && hour < 12) hour += 12;
+        if (timeStr.toLowerCase().contains('am') && hour == 12) hour = 0;
+      } else {
+        final parts = timeStr.split(':');
+        hour = int.parse(parts[0]);
+        minute = int.parse(
+          parts.length > 1 ? parts[1].replaceAll(RegExp(r'[^0-9]'), '') : '0',
+        );
+      }
+    }
+    return DateTime(date.year, date.month, date.day, hour, minute);
+  } catch (_) {
+    return date;
+  }
+}
+
 enum _EState { future, todayInactive, active, ended }
 
 _EState _eventState(EventModel e, {bool? activeOverride}) {
@@ -292,22 +326,8 @@ _EState _eventState(EventModel e, {bool? activeOverride}) {
   if (eDay.isAfter(today)) return _EState.future;
   if (eDay.isBefore(today)) return _EState.ended;
   try {
-    final s = DateFormat.jm().parse(e.startTime);
-    final en = DateFormat.jm().parse(e.endTime);
-    final startDt = DateTime(
-      e.date.year,
-      e.date.month,
-      e.date.day,
-      s.hour,
-      s.minute,
-    );
-    var endDt = DateTime(
-      e.date.year,
-      e.date.month,
-      e.date.day,
-      en.hour,
-      en.minute,
-    );
+    final startDt = _timeOfDay(e.date, e.startTime);
+    var endDt = _timeOfDay(e.date, e.endTime);
     if (endDt.isBefore(startDt)) endDt = endDt.add(const Duration(days: 1));
     if (now.isAfter(endDt.add(const Duration(minutes: 15))))
       return _EState.ended;
@@ -781,13 +801,33 @@ class _AttendanceTabState extends State<AttendanceTab>
 
       if (userDoc == null) throw Exception('Student not found');
 
-      final existing = await FirebaseFirestore.instance
+      // Registration docs are keyed deterministically as `${uid}_${eventId}`
+      // (see student_events_screen.dart's register flow). Without this,
+      // anyone whose QR code gets scanned — or any manually-entered ID —
+      // could be marked present for an event they never registered for.
+      final regDoc = await FirebaseFirestore.instance
+          .collection('registrations')
+          .doc('${userDoc.id}_${widget.eventDocId}')
+          .get();
+      if (!regDoc.exists) {
+        throw Exception(
+          '${(userDoc.data() as Map)['fullName'] ?? 'Student'} is not registered for this event',
+        );
+      }
+
+      // Deterministic doc ID (one attendance record per student per event)
+      // instead of an auto-generated one — a get-then-add on an auto ID
+      // leaves a race window where two near-simultaneous scans/taps can both
+      // pass the "not yet marked" check before either write commits,
+      // producing duplicate attendance rows. Keying by student UID makes a
+      // second attempt land on the exact same document instead.
+      final attRef = FirebaseFirestore.instance
           .collection('events')
           .doc(widget.eventDocId)
           .collection('attendances')
-          .where('studentId', isEqualTo: userDoc.id)
-          .get();
-      if (existing.docs.isNotEmpty) {
+          .doc(userDoc.id);
+      final existingAtt = await attRef.get();
+      if (existingAtt.exists) {
         throw Exception(
           '${(userDoc.data() as Map)['fullName'] ?? 'Student'} already marked',
         );
@@ -795,33 +835,22 @@ class _AttendanceTabState extends State<AttendanceTab>
 
       String status = 'present';
       try {
-        final s = DateFormat.jm().parse(widget.event!.startTime);
-        final startDt = DateTime(
-          widget.event!.date.year,
-          widget.event!.date.month,
-          widget.event!.date.day,
-          s.hour,
-          s.minute,
-        );
+        final startDt = _timeOfDay(widget.event!.date, widget.event!.startTime);
         if (DateTime.now().isAfter(startDt.add(const Duration(minutes: 15))))
           status = 'late';
       } catch (_) {}
 
       final data = userDoc.data() as Map<String, dynamic>;
-      await FirebaseFirestore.instance
-          .collection('events')
-          .doc(widget.eventDocId)
-          .collection('attendances')
-          .add({
-            'studentId': userDoc.id,
-            'studentName': data['fullName'] ?? data['email'] ?? 'Unknown',
-            'studentEmail': data['email'] ?? '',
-            'program': data['course'] ?? 'N/A',
-            'yearLevel': data['yearLevel'] ?? '',
-            'timestamp': FieldValue.serverTimestamp(),
-            'status': status,
-            'method': isManual ? 'manual' : 'qr',
-          });
+      await attRef.set({
+        'studentId': userDoc.id,
+        'studentName': data['fullName'] ?? data['email'] ?? 'Unknown',
+        'studentEmail': data['email'] ?? '',
+        'program': data['course'] ?? 'N/A',
+        'yearLevel': data['yearLevel'] ?? '',
+        'timestamp': FieldValue.serverTimestamp(),
+        'status': status,
+        'method': isManual ? 'manual' : 'qr',
+      });
 
       await activity_log.ActivityLogger.log(
         action: 'mark_attendance',
@@ -935,14 +964,7 @@ class _AttendanceTabState extends State<AttendanceTab>
 
       String status = 'present';
       try {
-        final s = DateFormat.jm().parse(widget.event!.startTime);
-        final startDt = DateTime(
-          widget.event!.date.year,
-          widget.event!.date.month,
-          widget.event!.date.day,
-          s.hour,
-          s.minute,
-        );
+        final startDt = _timeOfDay(widget.event!.date, widget.event!.startTime);
         if (DateTime.now().isAfter(startDt.add(const Duration(minutes: 15))))
           status = 'late';
       } catch (_) {}
@@ -1349,7 +1371,21 @@ class _AttendanceTabState extends State<AttendanceTab>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildStatsRow(attDocs.length, present, late),
+                  StreamBuilder<QuerySnapshot>(
+                    stream: _regStream,
+                    builder: (ctx, regSnap) {
+                      final regCount = regSnap.data?.docs.length;
+                      // Registrations load separately from attendances; fall
+                      // back to check-ins so the row doesn't show 0/0/0
+                      // while the registrants query is still in flight.
+                      final total = regCount != null
+                          ? (regCount > attDocs.length
+                                ? regCount
+                                : attDocs.length)
+                          : attDocs.length;
+                      return _buildStatsRow(total, present, late);
+                    },
+                  ),
                   const SizedBox(height: 20),
                   if (widget.event != null) ...[
                     _buildEventBanner(active, evSnap.data, attDocs.cast()),
@@ -1402,7 +1438,7 @@ class _AttendanceTabState extends State<AttendanceTab>
     return Row(
       children: [
         _StatCard(
-          label: 'Total Check-ins',
+          label: 'Total Registrants',
           value: '$total',
           icon: Icons.people_alt_rounded,
           color: UpriseColors.primaryDark,
@@ -1433,7 +1469,7 @@ class _AttendanceTabState extends State<AttendanceTab>
         const SizedBox(width: 14),
         _StatCard(
           label: 'Absent',
-          value: '${total - present - late}',
+          value: '${(total - present - late).clamp(0, total)}',
           icon: Icons.cancel_rounded,
           color: const Color(0xFFDC2626),
           isSelected: _statusFilter == 'absent',
@@ -2560,7 +2596,7 @@ void _showRegistrationAnswers(
                                   const Icon(
                                     Icons.attach_file_rounded,
                                     size: 14,
-                                    color: UpriseColors.primaryDark,
+                                    color: UpriseColors.info,
                                   ),
                                   const SizedBox(width: 4),
                                   Text(
@@ -2568,7 +2604,7 @@ void _showRegistrationAnswers(
                                     style: GoogleFonts.beVietnamPro(
                                       fontSize: 13,
                                       fontWeight: FontWeight.w600,
-                                      color: UpriseColors.primaryDark,
+                                      color: UpriseColors.info,
                                       decoration: TextDecoration.underline,
                                     ),
                                   ),
@@ -3091,7 +3127,7 @@ class _ModeChip extends StatelessWidget {
             Icon(
               icon,
               size: 14,
-              color: selected ? Colors.white : UpriseColors.primaryDark,
+              color: selected ? Colors.white : UpriseColors.darkGray,
             ),
             const SizedBox(width: 6),
           ],
@@ -3100,7 +3136,7 @@ class _ModeChip extends StatelessWidget {
             style: GoogleFonts.beVietnamPro(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: selected ? Colors.white : UpriseColors.primaryDark,
+              color: selected ? Colors.white : UpriseColors.darkGray,
             ),
           ),
         ],

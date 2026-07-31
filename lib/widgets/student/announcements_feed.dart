@@ -1,7 +1,8 @@
-﻿// lib/widgets/student/announcements_feed.dart
+// lib/widgets/student/announcements_feed.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../../screens/student/student_announcements_screen.dart';
+import '../common/loading_widget.dart';
 import 'app_colors.dart';
 
 class AnnouncementsFeed extends StatefulWidget {
@@ -23,12 +24,12 @@ class _AnnouncementsFeedState extends State<AnnouncementsFeed> {
   // without it deployed the query fails outright. Scheduled/draft
   // announcements (isPublished: false) are filtered out client-side below
   // instead; fetches a few extra so there's still room for 4 after that.
-  late final Stream<QuerySnapshot> _announcementsStream =
-      FirebaseFirestore.instance
-          .collection('announcements')
-          .orderBy('timestamp', descending: true)
-          .limit(10)
-          .snapshots();
+  late final Stream<QuerySnapshot> _announcementsStream = FirebaseFirestore
+      .instance
+      .collection('announcements')
+      .orderBy('timestamp', descending: true)
+      .limit(10)
+      .snapshots();
 
   String _formatTime(dynamic timestamp) {
     if (timestamp is Timestamp) {
@@ -47,18 +48,21 @@ class _AnnouncementsFeedState extends State<AnnouncementsFeed> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Center(child: CircularProgressIndicator()),
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: SkeletonLoader(count: 2, height: 76),
           );
         }
         if (snapshot.hasError) {
           return const SizedBox();
         }
 
-        final docs = (snapshot.data?.docs ?? []).where((d) {
-          final data = d.data() as Map<String, dynamic>;
-          return data['isPublished'] != false;
-        }).take(4).toList();
+        final docs = (snapshot.data?.docs ?? [])
+            .where((d) {
+              final data = d.data() as Map<String, dynamic>;
+              return data['isPublished'] != false;
+            })
+            .take(4)
+            .toList();
         if (docs.isEmpty) {
           return const SizedBox();
         }
@@ -71,10 +75,10 @@ class _AnnouncementsFeedState extends State<AnnouncementsFeed> {
           itemBuilder: (context, index) {
             final doc = docs[index];
             final data = doc.data() as Map<String, dynamic>? ?? {};
-            
+
             // Convert to AnnouncementData
             final announcement = AnnouncementData.fromFirestore(doc);
-            
+
             final title = data['title'] as String? ?? 'Untitled announcement';
             final content = data['content'] as String? ?? '';
             final timestamp = data['timestamp'];
@@ -124,14 +128,20 @@ class _AnnouncementsFeedState extends State<AnnouncementsFeed> {
                           const SizedBox(height: 4),
                           Text(
                             content,
-                            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 4),
                           Text(
                             _formatTime(timestamp),
-                            style: TextStyle(fontSize: 10, color: Colors.grey[400]),
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.grey[400],
+                            ),
                           ),
                         ],
                       ),

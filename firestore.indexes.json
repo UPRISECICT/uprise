@@ -84,11 +84,11 @@
       ]
     },
     {
-      "collectionGroup": "broadcasts",
+      "collectionGroup": "conversations",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "orgId", "order": "ASCENDING" },
-        { "fieldPath": "timestamp", "order": "DESCENDING" }
+        { "fieldPath": "lastMessageAt", "order": "DESCENDING" }
       ]
     },
     {

@@ -1,12 +1,21 @@
-﻿import 'dart:ui';
+// lib/screens/web/org/org_login.dart
+//
+// Split-card layout matching admin_login.dart's structure (floating white
+// card, sign-in form on one side, illustrated showcase carousel on the
+// other) but themed with the org side's own orange/gray/white/blue palette
+// (theme/org_theme.dart) instead of admin's amber/gray scheme, so the two
+// portals stay visually distinct at a glance.
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../auth_service.dart';
+import '../../../main_web.dart';
+import '../../../theme/org_theme.dart';
+import '../../../widgets/app_toast.dart';
 import '../../auth/change_password_screen.dart';
 import 'org_dashboard.dart';
+import 'org_forgot_password.dart';
 
 class OrganizationLogin extends StatefulWidget {
   const OrganizationLogin({super.key});
@@ -15,31 +24,41 @@ class OrganizationLogin extends StatefulWidget {
 }
 
 class _OrganizationLoginState extends State<OrganizationLogin>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
+  final _formKey = GlobalKey<FormState>();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _rememberMe = false;
+  // After 3 straight failed attempts, nudge toward resetting the password
+  // instead of letting the org keep guessing indefinitely — same rule as
+  // the admin login flow.
+  int _failedAttempts = 0;
+  static const int _maxAttemptsBeforePrompt = 3;
   late AnimationController _animController;
   late Animation<double> _fadeIn;
   late Animation<Offset> _slideUp;
   final AuthService _auth = AuthService();
 
-  // ── Palette — shared with the Admin portal, plus a green accent to keep
-  //    the Org portal visually distinct at a glance. ─────────────────────────
-  static const Color _rust = Color(0xFFB6430E);
-  static const Color _rustDeep = Color(0xFF7A2B08);
-  static const Color _accent = Color(0xFFF97316);
-  static const Color _accentDeep = Color(0xFFEA580C);
-  static const Color _orgGreen = Color(0xFF059669);
-  static const Color _orgGreenLt = Color(0xFF34D399);
-  static const Color _navy = Color(0xFF0F172A);
-  static const Color _slateDark = Color(0xFF1E1B16);
-  static const Color _slateMid = Color(0xFF6B7280);
-  static const Color _slateSoft = Color(0xFFAEB4C4);
-  static const Color _fieldFill = Color(0xFFFAF6F2);
-  static const Color _fieldBorder = Color(0xFFEDE4DC);
+  // Showcase carousel — swipeable, auto-advancing every 5s, with the active
+  // indicator dot filling like a progress bar, mirroring admin_login.dart.
+  final PageController _showcaseController = PageController();
+  int _showcasePage = 0;
+  static const int _showcaseSlideCount = 3;
+  late final AnimationController _showcaseProgress;
+
+  // ── Palette — the org side's own theme (org_theme.dart): orange is the
+  //    primary brand color, blue carries links/interactive accents, gray
+  //    and white make up the neutral structure. ───────────────────────────
+  static const Color _primary = UpriseColors.primaryDark;
+  static const Color _blue = UpriseColors.info;
+  static const Color _orange = UpriseColors.accent;
+  static const Color _slateDark = UpriseColors.charcoal;
+  static const Color _slateMid = UpriseColors.darkGray;
+  static const Color _slateSoft = Color(0xFFC9B8AC);
+  static const Color _fieldFill = UpriseColors.lightGray;
+  static const Color _fieldBorder = UpriseColors.mediumGray;
 
   @override
   void initState() {
@@ -55,6 +74,13 @@ class _OrganizationLoginState extends State<OrganizationLogin>
     ).animate(CurvedAnimation(parent: _animController, curve: Curves.easeOut));
     _animController.forward();
     _loadSavedEmail();
+
+    _showcaseProgress =
+        AnimationController(vsync: this, duration: const Duration(seconds: 5))
+          ..addStatusListener((status) {
+            if (status == AnimationStatus.completed) _advanceShowcase();
+          })
+          ..forward();
   }
 
   @override
@@ -62,7 +88,26 @@ class _OrganizationLoginState extends State<OrganizationLogin>
     _animController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _showcaseController.dispose();
+    _showcaseProgress.dispose();
     super.dispose();
+  }
+
+  void _advanceShowcase() {
+    final next = (_showcasePage + 1) % _showcaseSlideCount;
+    _showcaseController.animateToPage(
+      next,
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  void _onShowcasePageChanged(int index) {
+    setState(() => _showcasePage = index);
+    _showcaseProgress
+      ..stop()
+      ..reset()
+      ..forward();
   }
 
   Future<SharedPreferences?> _getPrefs() async {
@@ -96,38 +141,27 @@ class _OrganizationLoginState extends State<OrganizationLogin>
   }
 
   Future<void> _login() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isLoading = true);
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
-    if (email.isEmpty) {
-      _showError('Please enter your email address');
-      return;
-    }
-    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
-      _showError('Please enter a valid email address');
-      return;
-    }
-    if (password.isEmpty) {
-      _showError('Please enter your password');
-      return;
-    }
-
-    setState(() => _isLoading = true);
     try {
       final user = await _auth.loginWithEmail(email, password);
       if (user == null) {
-        _showError('Invalid email or password');
+        _registerFailedAttempt('Invalid email or password');
         if (mounted) setState(() => _isLoading = false);
         return;
       }
       final role = await _auth.getUserRole(user.uid) ?? '';
       if (role != 'org') {
         await FirebaseAuth.instance.signOut();
-        _showError(
+        _registerFailedAttempt(
           'This account is not authorized for the Organization Portal',
         );
         if (mounted) setState(() => _isLoading = false);
         return;
       }
+      _failedAttempts = 0;
       AuthService.cacheRole(user.uid, role);
       await _saveEmail(email);
       final needsChange = await _auth.needsPasswordChange(user.uid);
@@ -136,7 +170,6 @@ class _OrganizationLoginState extends State<OrganizationLogin>
           ? ChangePasswordScreen(userId: user.uid, isFirstLogin: true)
           : OrgDashboard();
 
-      // Proceed directly to destination — 2FA enforcement removed.
       if (mounted) {
         setState(() => _isLoading = false);
         Navigator.of(
@@ -162,102 +195,40 @@ class _OrganizationLoginState extends State<OrganizationLogin>
         default:
           msg = e.message ?? 'Login failed';
       }
-      _showError(msg);
+      _registerFailedAttempt(msg);
       if (mounted) setState(() => _isLoading = false);
     } on FirebaseException catch (e) {
       await FirebaseAuth.instance.signOut();
-      _showError('Database error: ${e.message ?? e.code}');
+      _registerFailedAttempt('Database error: ${e.message ?? e.code}');
       if (mounted) setState(() => _isLoading = false);
     } catch (e) {
-      _showError('Login failed: ${e.toString()}');
+      _registerFailedAttempt('Login failed: ${e.toString()}');
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _resetPassword() async {
-    final email = _emailController.text.trim();
-    if (email.isEmpty) {
-      _showError('Please enter your email address first');
-      return;
-    }
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        backgroundColor: Colors.white,
-        title: Text(
-          'Reset Password',
-          style: GoogleFonts.beVietnamPro(
-            fontWeight: FontWeight.w700,
-            color: _slateDark,
-          ),
-        ),
-        content: Text(
-          'Send a password reset link to\n$email',
-          style: GoogleFonts.beVietnamPro(color: _slateMid),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(
-              'Cancel',
-              style: GoogleFonts.beVietnamPro(color: _slateSoft),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _rust,
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: Text(
-              'Send Link',
-              style: GoogleFonts.beVietnamPro(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (confirm != true) return;
-    setState(() => _isLoading = true);
-    try {
-      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Reset link sent! Check your inbox.',
-              style: GoogleFonts.beVietnamPro(),
-            ),
-            backgroundColor: const Color(0xFF3FA672),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      _showError('Failed to send reset email: ${e.toString()}');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  void _showError(String message) {
+  // Not infinite tries — after 3 straight failures, nudge toward resetting
+  // the password instead of just repeating the same generic error forever.
+  void _registerFailedAttempt(String message) {
+    _failedAttempts++;
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message, style: GoogleFonts.beVietnamPro()),
-        backgroundColor: const Color(0xFFDC2626),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    if (_failedAttempts >= _maxAttemptsBeforePrompt) {
+      _failedAttempts = 0;
+      AppToast.warning(
+        context,
+        "Still can't sign in after several tries. Let's reset your password.",
+      );
+      _openForgotPassword();
+    } else {
+      AppToast.error(context, message);
+    }
+  }
+
+  void _openForgotPassword() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) =>
+            OrgForgotPassword(initialEmail: _emailController.text.trim()),
       ),
     );
   }
@@ -267,393 +238,212 @@ class _OrganizationLoginState extends State<OrganizationLogin>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _navy,
-      body: LayoutBuilder(
-        builder: (_, c) {
-          return Stack(
-            fit: StackFit.expand,
-            children: [
-              Image.asset(
-                'assets/images/bg_pattern.png',
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [_rustDeep, _navy],
+      backgroundColor: const Color(0xFFF6F0EA),
+      body: Stack(
+        children: [
+          Positioned(
+            top: -160,
+            left: -160,
+            child: _softGlow(380, _primary.withAlpha(24)),
+          ),
+          Positioned(
+            bottom: -180,
+            right: -140,
+            child: _softGlow(420, _blue.withAlpha(16)),
+          ),
+          Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
+              child: FadeTransition(
+                opacity: _fadeIn,
+                child: SlideTransition(
+                  position: _slideUp,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1040),
+                    child: Container(
+                      clipBehavior: Clip.antiAlias,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(28),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withAlpha(35),
+                            blurRadius: 60,
+                            offset: const Offset(0, 24),
+                          ),
+                        ],
+                      ),
+                      child: LayoutBuilder(
+                        builder: (layoutContext, c) {
+                          final wide = c.maxWidth > 760;
+                          if (!wide) {
+                            return ConstrainedBox(
+                              constraints: BoxConstraints(
+                                minHeight:
+                                    MediaQuery.of(layoutContext).size.height *
+                                    0.75,
+                              ),
+                              child: _buildFormSide(compact: true),
+                            );
+                          }
+                          return IntrinsicHeight(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Expanded(
+                                  flex: 5,
+                                  child: _buildFormSide(compact: false),
+                                ),
+                                Expanded(flex: 5, child: _buildShowcaseSide()),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
                     ),
                   ),
                 ),
               ),
-              // Vignette overlay — darker at the edges (for text/card contrast),
-              // lighter in the middle so the building photo stays visible.
-              Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    colors: [
-                      Color(0xE07A2B08),
-                      Color(0x996B2A08),
-                      Color(0x99B6430E),
-                      Color(0xD2551F07),
-                    ],
-                    stops: [0.0, 0.38, 0.62, 1.0],
-                  ),
-                ),
-              ),
-              Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Color(0x4D0F172A),
-                      Colors.transparent,
-                      Color(0x660F172A),
-                    ],
-                    stops: [0.0, 0.4, 1.0],
-                  ),
-                ),
-              ),
-              SafeArea(
-                child: c.maxWidth > 900
-                    ? _buildWideHero()
-                    : _buildCompactHero(),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  // ── Wide: branding on the photo, form card floating on the right ──────────
-
-  Widget _buildWideHero() {
-    return Center(
-      child: ConstrainedBox(
-        // Caps the content width on ultra-wide screens so branding and the
-        // card sit close enough together instead of stretching apart with a
-        // dead gap of photo between them.
-        constraints: const BoxConstraints(maxWidth: 1240),
-        child: FadeTransition(
-          opacity: _fadeIn,
-          child: SlideTransition(
-            position: _slideUp,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 56, vertical: 48),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(flex: 5, child: _buildHeroBranding()),
-                  const SizedBox(width: 56),
-                  SizedBox(width: 420, child: _buildFormCard()),
-                ],
-              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
 
-  Widget _buildHeroBranding() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 152,
-          height: 152,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withAlpha(70),
-                blurRadius: 24,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          padding: const EdgeInsets.all(12),
-          child: Image.asset(
-            'assets/images/logo.png',
-            fit: BoxFit.contain,
-            filterQuality: FilterQuality.high,
-            errorBuilder: (_, __, ___) =>
-                const Icon(Icons.business_outlined, size: 64, color: _rust),
-          ),
-        ),
-        const SizedBox(height: 26),
-        Row(
+  Widget _softGlow(double size, Color color) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(colors: [color, color.withAlpha(0)]),
+      ),
+    );
+  }
+
+  // ── Left: the sign-in form ───────────────────────────────────────────────
+
+  Widget _buildFormSide({required bool compact}) {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(compact ? 32 : 48),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              'UP',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 56,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-                letterSpacing: 1.5,
-                height: 1,
-              ),
-            ),
-            Text(
-              'RISE',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 56,
-                fontWeight: FontWeight.w800,
-                color: const Color(0xFFFFC79A),
-                letterSpacing: 1.5,
-                height: 1,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-          decoration: BoxDecoration(
-            color: Colors.white.withAlpha(40),
-            borderRadius: BorderRadius.circular(100),
-          ),
-          child: Text(
-            'ORGANIZATION PORTAL',
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 10.5,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-              letterSpacing: 2.6,
-            ),
-          ),
-        ),
-        const SizedBox(height: 22),
-
-        // Green accent bar — keeps the org portal visually distinct
-        Container(
-          width: 40,
-          height: 3,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(colors: [_orgGreen, _orgGreenLt]),
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-        const SizedBox(height: 20),
-
-        Text(
-          'Manage your organization\'s\nevents, reports, and members\nfrom one unified dashboard.',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 17,
-            fontWeight: FontWeight.w400,
-            color: Colors.white.withAlpha(235),
-            height: 1.7,
-            shadows: [
-              Shadow(color: Colors.black.withAlpha(90), blurRadius: 12),
-            ],
-          ),
-        ),
-        const SizedBox(height: 40),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Container(
-                width: 6,
-                height: 6,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _orgGreenLt,
+            Row(
+              children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: _fieldBorder, width: 1.5),
+                  ),
+                  padding: const EdgeInsets.all(7),
+                  child: Image.asset(
+                    'assets/images/logo.png',
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.high,
+                    errorBuilder: (_, __, ___) => const Icon(
+                      Icons.business_outlined,
+                      size: 38,
+                      color: _primary,
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 16),
+                Text(
+                  'UPRISE',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 34,
+                    fontWeight: FontWeight.w800,
+                    color: _slateDark,
+                    letterSpacing: 1.8,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 10),
+            SizedBox(height: compact ? 32 : 48),
             Text(
-              'College of Information and\nCommunications Technology',
+              'Welcome back',
               style: GoogleFonts.beVietnamPro(
-                fontSize: 12,
-                color: Colors.white.withAlpha(220),
-                height: 1.6,
+                fontSize: 26,
+                fontWeight: FontWeight.w800,
+                color: _slateDark,
+                letterSpacing: -0.4,
               ),
             ),
-          ],
-        ),
-      ],
-    );
-  }
+            const SizedBox(height: 6),
+            Text(
+              'Sign in to access the organization portal.',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                color: _slateMid,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 28),
 
-  // ── Narrow: photo backdrop, everything in one centered card ────────────────
-
-  Widget _buildCompactHero() {
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
-        child: FadeTransition(
-          opacity: _fadeIn,
-          child: SlideTransition(
-            position: _slideUp,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
+            Form(
+              key: _formKey,
               child: Column(
-                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 120,
-                    height: 120,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withAlpha(70),
-                          blurRadius: 20,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    padding: const EdgeInsets.all(10),
-                    child: Image.asset(
-                      'assets/images/logo.png',
-                      fit: BoxFit.contain,
-                      filterQuality: FilterQuality.high,
-                      errorBuilder: (_, __, ___) => const Icon(
-                        Icons.business_outlined,
-                        size: 52,
-                        color: _rust,
-                      ),
-                    ),
+                  _buildField(
+                    controller: _emailController,
+                    label: 'Email Address *',
+                    hint: 'org@uprise.org',
+                    icon: Icons.mail_outline_rounded,
+                    type: TextInputType.emailAddress,
+                    validator: (v) {
+                      final value = v?.trim() ?? '';
+                      if (value.isEmpty) {
+                        return 'Please enter your email address';
+                      }
+                      if (!RegExp(
+                        r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                      ).hasMatch(value)) {
+                        return 'Please enter a valid email address';
+                      }
+                      return null;
+                    },
                   ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        'UP',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 32,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          letterSpacing: 1,
-                          height: 1,
-                        ),
+                  const SizedBox(height: 13),
+
+                  _buildField(
+                    controller: _passwordController,
+                    label: 'Password *',
+                    hint: '••••••••',
+                    icon: Icons.lock_outline_rounded,
+                    obscure: _obscurePassword,
+                    suffix: IconButton(
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                        color: _slateSoft,
+                        size: 18,
                       ),
-                      Text(
-                        'RISE',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 32,
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0xFFFFC79A),
-                          letterSpacing: 1,
-                          height: 1,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'ORGANIZATION PORTAL',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white.withAlpha(215),
-                      letterSpacing: 2.6,
+                      onPressed: () =>
+                          setState(() => _obscurePassword = !_obscurePassword),
                     ),
+                    onSubmit: (_) => _login(),
+                    validator: (v) => (v == null || v.trim().isEmpty)
+                        ? 'Please enter your password'
+                        : null,
                   ),
-                  const SizedBox(height: 22),
-                  _buildFormCard(),
                 ],
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
+            const SizedBox(height: 13),
 
-  // ── Shared form card ────────────────────────────────────────────────────────
-
-  Widget _buildFormCard() {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: BackdropFilter(
-        // Frosted-glass effect: blurs the campus photo behind the card so
-        // the panel feels like part of the scene rather than a flat sticker
-        // pasted on top of it.
-        filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white.withAlpha(232),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.white.withAlpha(90), width: 1),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withAlpha(120),
-                blurRadius: 50,
-                offset: const Offset(0, 20),
-              ),
-            ],
-          ),
-          padding: const EdgeInsets.fromLTRB(32, 34, 32, 30),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Sign in',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: _slateDark,
-                  letterSpacing: -0.3,
-                ),
-              ),
-              const SizedBox(height: 5),
-              Text(
-                'Enter your credentials to access the organization portal.',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 12.5,
-                  color: _slateMid,
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              _buildField(
-                controller: _emailController,
-                label: 'Email Address',
-                hint: 'org@example.com',
-                icon: Icons.mail_outline_rounded,
-                type: TextInputType.emailAddress,
-              ),
-              const SizedBox(height: 13),
-
-              _buildField(
-                controller: _passwordController,
-                label: 'Password',
-                hint: '••••••••',
-                icon: Icons.lock_outline_rounded,
-                obscure: _obscurePassword,
-                suffix: IconButton(
-                  icon: Icon(
-                    _obscurePassword
-                        ? Icons.visibility_off_outlined
-                        : Icons.visibility_outlined,
-                    color: _slateSoft,
-                    size: 18,
-                  ),
-                  onPressed: () =>
-                      setState(() => _obscurePassword = !_obscurePassword),
-                ),
-                onSubmit: (_) => _login(),
-              ),
-              const SizedBox(height: 13),
-
-              Row(
-                children: [
-                  GestureDetector(
+            Row(
+              children: [
+                MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
                     onTap: () {
                       setState(() => _rememberMe = !_rememberMe);
                       if (!_rememberMe) _saveEmail('');
@@ -665,11 +455,11 @@ class _OrganizationLoginState extends State<OrganizationLogin>
                           width: 17,
                           height: 17,
                           decoration: BoxDecoration(
-                            color: _rememberMe ? _rust : Colors.white,
+                            color: _rememberMe ? _blue : Colors.white,
                             borderRadius: BorderRadius.circular(5),
                             border: Border.all(
                               color: _rememberMe
-                                  ? _rust
+                                  ? _blue
                                   : const Color(0xFFC7CDD6),
                               width: 1.5,
                             ),
@@ -693,155 +483,595 @@ class _OrganizationLoginState extends State<OrganizationLogin>
                       ],
                     ),
                   ),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: _isLoading ? null : _resetPassword,
+                ),
+                const Spacer(),
+                TextButton(
+                  onPressed: _openForgotPassword,
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(
+                    'Forgot password?',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 12,
+                      color: _blue,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            AnimatedOpacity(
+              opacity: _isLoading ? 0.7 : 1.0,
+              duration: const Duration(milliseconds: 200),
+              child: Container(
+                width: double.infinity,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: _primary,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: _primary.withAlpha(70),
+                      blurRadius: 16,
+                      offset: const Offset(0, 7),
+                    ),
+                  ],
+                ),
+                child: TextButton(
+                  onPressed: _isLoading ? null : _login,
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    disabledForegroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Text(
+                          'Sign In to Organization Portal',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.1,
+                          ),
+                        ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+
+            Row(
+              children: [
+                Expanded(
+                  child: Divider(color: const Color(0xFFE2E8F0), thickness: 1),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(
+                    'or',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11.5,
+                      color: _slateSoft,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Divider(color: const Color(0xFFE2E8F0), thickness: 1),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    "Don't have an organization account?",
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 12,
+                      color: _slateSoft,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Contact CICT Administrator',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 12,
+                      color: _slateDark,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextButton.icon(
+                    onPressed: () => Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (_) => const LandingPage()),
+                    ),
+                    icon: const Icon(
+                      Icons.arrow_back_ios_new_rounded,
+                      size: 10.5,
+                      color: _blue,
+                    ),
+                    label: Text(
+                      'Back to Portal Selection',
+                      style: GoogleFonts.beVietnamPro(
+                        color: _blue,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                    ),
                     style: TextButton.styleFrom(
                       padding: EdgeInsets.zero,
                       minimumSize: Size.zero,
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                    child: Text(
-                      'Forgot password?',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 12,
-                        color: _rust,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-              // Login button
-              AnimatedOpacity(
-                opacity: _isLoading ? 0.7 : 1.0,
-                duration: const Duration(milliseconds: 200),
-                child: Container(
-                  width: double.infinity,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [_accentDeep, _accent],
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: _accent.withAlpha(80),
-                        blurRadius: 16,
-                        offset: const Offset(0, 7),
-                      ),
-                    ],
-                  ),
-                  child: TextButton(
-                    onPressed: _isLoading ? null : _login,
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      disabledForegroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: _isLoading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.5,
+  // ── Right: illustrated showcase panel ───────────────────────────────────
+
+  Widget _buildShowcaseSide() {
+    final slides = [
+      (
+        visual: _buildMockProposals(),
+        title: 'Submit & Track Event Proposals',
+        subtitle:
+            'Propose events, follow their approval status, and\npublish them to students the moment they\'re\ngreenlit — all from one place.',
+      ),
+      (
+        visual: _buildMockMembers(),
+        title: 'Manage Officers & Members',
+        subtitle:
+            'Keep your org chart, officer roles, and member\nroster up to date so the right people always\nhave access.',
+      ),
+      (
+        visual: _buildMockFinanceChart(),
+        title: 'Track Finance & Reports',
+        subtitle:
+            'Log income and expenses, and stay ahead of\nfinancial and accomplishment report deadlines\nbefore they become overdue.',
+      ),
+    ];
+
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [_primary, _orange],
+        ),
+      ),
+      child: Stack(
+        clipBehavior: Clip.hardEdge,
+        children: [
+          Positioned(
+            top: -60,
+            right: -60,
+            child: _softGlow(220, _blue.withAlpha(60)),
+          ),
+          Positioned(
+            bottom: -80,
+            left: -80,
+            child: _softGlow(240, Colors.white.withAlpha(12)),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(40),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  height: 320,
+                  child: PageView.builder(
+                    controller: _showcaseController,
+                    itemCount: slides.length,
+                    onPageChanged: _onShowcasePageChanged,
+                    itemBuilder: (context, i) {
+                      final slide = slides[i];
+                      return Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          slide.visual,
+                          const SizedBox(height: 28),
+                          Text(
+                            slide.title,
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
                               color: Colors.white,
                             ),
-                          )
-                        : Text(
-                            'Sign In to Organization Portal',
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            slide.subtitle,
+                            textAlign: TextAlign.center,
                             style: GoogleFonts.beVietnamPro(
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.1,
+                              fontSize: 12.5,
+                              color: Colors.white.withAlpha(200),
+                              height: 1.6,
                             ),
                           ),
+                        ],
+                      );
+                    },
                   ),
                 ),
-              ),
-              const SizedBox(height: 18),
-
-              Row(
-                children: [
-                  Expanded(
-                    child: Divider(
-                      color: const Color(0xFFF1EAE3),
-                      thickness: 1,
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Text(
-                      'or',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 11.5,
-                        color: _slateSoft,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Divider(
-                      color: const Color(0xFFF1EAE3),
-                      thickness: 1,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+                const SizedBox(height: 22),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(
-                      "Don't have an organization account?",
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 12,
-                        color: _slateSoft,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Contact CICT Administrator',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 12,
-                        color: _slateDark,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextButton.icon(
-                      onPressed: () =>
-                          Navigator.of(context).popUntil((r) => r.isFirst),
-                      icon: const Icon(
-                        Icons.arrow_back_ios_new_rounded,
-                        size: 10.5,
-                        color: _rust,
-                      ),
-                      label: Text(
-                        'Back to Portal Selection',
-                        style: GoogleFonts.beVietnamPro(
-                          color: _rust,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 12,
+                    for (var i = 0; i < slides.length; i++) ...[
+                      if (i > 0) const SizedBox(width: 6),
+                      MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          onTap: () => _showcaseController.animateToPage(
+                            i,
+                            duration: const Duration(milliseconds: 320),
+                            curve: Curves.easeOut,
+                          ),
+                          child: _pageDot(active: i == _showcasePage),
                         ),
                       ),
-                      style: TextButton.styleFrom(
-                        padding: EdgeInsets.zero,
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                    ),
+                    ],
                   ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _pageDot({required bool active}) {
+    if (!active) {
+      return Container(
+        width: 6,
+        height: 6,
+        decoration: BoxDecoration(
+          color: Colors.white.withAlpha(60),
+          borderRadius: BorderRadius.circular(3),
+        ),
+      );
+    }
+    return AnimatedBuilder(
+      animation: _showcaseProgress,
+      builder: (context, _) {
+        return Container(
+          width: 22,
+          height: 6,
+          decoration: BoxDecoration(
+            color: Colors.white.withAlpha(35),
+            borderRadius: BorderRadius.circular(3),
+          ),
+          child: FractionallySizedBox(
+            alignment: Alignment.centerLeft,
+            widthFactor: _showcaseProgress.value.clamp(0.0, 1.0),
+            child: Container(
+              decoration: BoxDecoration(
+                color: _orange,
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildMockProposals() {
+    return Container(
+      width: 260,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(90),
+            blurRadius: 30,
+            offset: const Offset(0, 16),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              _mockDot(const Color(0xFFEF4444)),
+              const SizedBox(width: 4),
+              _mockDot(const Color(0xFFF59E0B)),
+              const SizedBox(width: 4),
+              _mockDot(const Color(0xFF10B981)),
+              const Spacer(),
+              Text(
+                'Proposals',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 9,
+                  color: _slateSoft,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
           ),
-        ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(child: _mockStat(_primary)),
+              const SizedBox(width: 6),
+              Expanded(child: _mockStat(_orange)),
+              const SizedBox(width: 6),
+              Expanded(child: _mockStat(_blue)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          for (final w in [1.0, 0.8, 0.9])
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                children: [
+                  Container(
+                    width: 20,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      color: _fieldFill,
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FractionallySizedBox(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: w,
+                      child: Container(
+                        height: 7,
+                        decoration: BoxDecoration(
+                          color: _fieldFill,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMockMembers() {
+    return Container(
+      width: 260,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(90),
+            blurRadius: 30,
+            offset: const Offset(0, 16),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              _mockDot(const Color(0xFFEF4444)),
+              const SizedBox(width: 4),
+              _mockDot(const Color(0xFFF59E0B)),
+              const SizedBox(width: 4),
+              _mockDot(const Color(0xFF10B981)),
+              const Spacer(),
+              Text(
+                'Members',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 9,
+                  color: _slateSoft,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          for (final c in [_primary, _orange, _blue])
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                children: [
+                  Container(
+                    width: 22,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      color: c.withAlpha(30),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.person_rounded, size: 12, color: c),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          height: 6,
+                          width: 90,
+                          decoration: BoxDecoration(
+                            color: _fieldFill,
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Container(
+                          height: 5,
+                          width: 50,
+                          decoration: BoxDecoration(
+                            color: _fieldFill,
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10B981).withAlpha(30),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      'Active',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 7,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF10B981),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMockFinanceChart() {
+    return Container(
+      width: 260,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(90),
+            blurRadius: 30,
+            offset: const Offset(0, 16),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              _mockDot(const Color(0xFFEF4444)),
+              const SizedBox(width: 4),
+              _mockDot(const Color(0xFFF59E0B)),
+              const SizedBox(width: 4),
+              _mockDot(const Color(0xFF10B981)),
+              const Spacer(),
+              Text(
+                'Finance',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 9,
+                  color: _slateSoft,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          SizedBox(
+            height: 70,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                for (final h in [0.4, 0.7, 0.5, 0.9, 0.6, 0.8])
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 3),
+                      child: FractionallySizedBox(
+                        heightFactor: h,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: h > 0.75 ? _orange : _primary.withAlpha(190),
+                            borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(3),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _mockDot(Color c) {
+    return Container(
+      width: 6,
+      height: 6,
+      decoration: BoxDecoration(color: c, shape: BoxShape.circle),
+    );
+  }
+
+  Widget _mockStat(Color c) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
+      decoration: BoxDecoration(
+        color: c.withAlpha(20),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 16,
+            height: 4,
+            decoration: BoxDecoration(
+              color: c,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Container(
+            width: 24,
+            height: 6,
+            decoration: BoxDecoration(
+              color: c.withAlpha(150),
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -855,22 +1085,24 @@ class _OrganizationLoginState extends State<OrganizationLogin>
     bool obscure = false,
     Widget? suffix,
     void Function(String)? onSubmit,
+    String? Function(String?)? validator,
   }) {
-    return TextField(
+    return TextFormField(
       controller: controller,
       keyboardType: type,
       obscureText: obscure,
-      onSubmitted: onSubmit,
+      onFieldSubmitted: onSubmit,
+      validator: validator,
       style: GoogleFonts.beVietnamPro(fontSize: 13.5, color: _slateDark),
       decoration: InputDecoration(
         labelText: label,
         labelStyle: GoogleFonts.beVietnamPro(color: _slateSoft, fontSize: 12.5),
         hintText: hint,
         hintStyle: GoogleFonts.beVietnamPro(
-          color: const Color(0xFFD8D2C8),
+          color: const Color(0xFFCBD5E1),
           fontSize: 12.5,
         ),
-        prefixIcon: Icon(icon, color: _rust, size: 18),
+        prefixIcon: Icon(icon, color: _primary, size: 18),
         suffixIcon: suffix,
         filled: true,
         fillColor: _fieldFill,
@@ -884,7 +1116,7 @@ class _OrganizationLoginState extends State<OrganizationLogin>
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: _rust, width: 1.6),
+          borderSide: const BorderSide(color: _blue, width: 1.6),
         ),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 15,

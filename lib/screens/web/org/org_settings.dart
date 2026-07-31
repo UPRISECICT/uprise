@@ -9,7 +9,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../services/activity_logger.dart' as activity_log;
-import '../../../theme/app_theme.dart';
+import '../../../theme/org_theme.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens (mirrors merchandise & student accounts)

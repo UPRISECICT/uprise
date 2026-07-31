@@ -3,24 +3,29 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../widgets/student/app_colors.dart';
+import '../../widgets/student/student_app_bar.dart';
+import '../../widgets/common/loading_widget.dart';
 import 'student_organization_details_screen.dart';
 
 // ─────────────────────────────────────────────────────────────
 // Shared style tokens (kept consistent with the rest of the app)
 // ─────────────────────────────────────────────────────────────
 class _UiTokens {
-  static const Color divider = Color(0xFFE7E7E9);
-  static const Color cardBorder = Color(0xFFEDEDEF);
-  static const Color mutedText = Color(0xFF6B6B70);
-  static const Color headingText = Color(0xFF1B1B1D);
+  // Thin aliases onto the shared AppColors scale — kept so existing call
+  // sites in this file don't all need renaming, but the actual values now
+  // come from one place instead of drifting independently.
+  static const Color divider = AppColors.divider;
+  static const Color cardBorder = AppColors.divider;
+  static const Color mutedText = AppColors.textSecondary;
+  static const Color headingText = AppColors.textPrimary;
 
   static List<BoxShadow> get subtleShadow => [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.05),
-          blurRadius: 12,
-          offset: const Offset(0, 4),
-        ),
-      ];
+    BoxShadow(
+      color: Colors.black.withOpacity(0.05),
+      blurRadius: 12,
+      offset: const Offset(0, 4),
+    ),
+  ];
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -34,7 +39,8 @@ class StudentOrganizationsScreen extends StatefulWidget {
       _StudentOrganizationsScreenState();
 }
 
-class _StudentOrganizationsScreenState extends State<StudentOrganizationsScreen> {
+class _StudentOrganizationsScreenState
+    extends State<StudentOrganizationsScreen> {
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
 
@@ -66,27 +72,7 @@ class _StudentOrganizationsScreenState extends State<StudentOrganizationsScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text(
-          'Organizations',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 17,
-            color: _UiTokens.headingText,
-          ),
-        ),
-        backgroundColor: Colors.white,
-        foregroundColor: _UiTokens.headingText,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        surfaceTintColor: Colors.transparent,
-        centerTitle: true,
-        iconTheme: const IconThemeData(color: AppColors.primaryDark),
-        bottom: const PreferredSize(
-          preferredSize: Size.fromHeight(1),
-          child: Divider(height: 1, thickness: 1, color: _UiTokens.divider),
-        ),
-      ),
+      appBar: const StudentAppBar(title: 'Organizations'),
       body: _buildDiscoverTab(),
     );
   }
@@ -123,11 +109,17 @@ class _StudentOrganizationsScreenState extends State<StudentOrganizationsScreen>
                 prefixIcon: Icon(
                   Icons.search_rounded,
                   size: 20,
-                  color: _searchQuery.isNotEmpty ? AppColors.primaryDark : Colors.grey.shade500,
+                  color: _searchQuery.isNotEmpty
+                      ? AppColors.primaryDark
+                      : Colors.grey.shade500,
                 ),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
-                        icon: const Icon(Icons.clear_rounded, size: 18, color: AppColors.primaryDark),
+                        icon: const Icon(
+                          Icons.clear_rounded,
+                          size: 18,
+                          color: AppColors.primaryDark,
+                        ),
                         onPressed: () {
                           _searchController.clear();
                           setState(() {
@@ -138,7 +130,10 @@ class _StudentOrganizationsScreenState extends State<StudentOrganizationsScreen>
                     : null,
                 filled: true,
                 fillColor: Colors.transparent,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -164,21 +159,11 @@ class _StudentOrganizationsScreenState extends State<StudentOrganizationsScreen>
                 .where('status', isEqualTo: 'active')
                 .snapshots(),
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(
-                  child: CircularProgressIndicator(
-                    color: AppColors.primaryDark,
-                    strokeWidth: 2.2,
-                  ),
-                );
-              }
-
-              if (!snapshot.hasData) {
-                return const Center(
-                  child: CircularProgressIndicator(
-                    color: AppColors.primaryDark,
-                    strokeWidth: 2.2,
-                  ),
+              if (snapshot.connectionState == ConnectionState.waiting ||
+                  !snapshot.hasData) {
+                return const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: SkeletonLoader(count: 4, height: 96),
                 );
               }
 
@@ -208,7 +193,9 @@ class _StudentOrganizationsScreenState extends State<StudentOrganizationsScreen>
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
-                            _searchQuery.isNotEmpty ? Icons.search_off_rounded : Icons.business_outlined,
+                            _searchQuery.isNotEmpty
+                                ? Icons.search_off_rounded
+                                : Icons.business_outlined,
                             size: 42,
                             color: AppColors.primaryDark.withOpacity(0.45),
                           ),
@@ -274,9 +261,7 @@ class _StudentOrganizationsScreenState extends State<StudentOrganizationsScreen>
                     ),
                   ),
                   Expanded(
-                    child: _gridView
-                        ? _buildGrid(docs)
-                        : _buildList(docs),
+                    child: _gridView ? _buildGrid(docs) : _buildList(docs),
                   ),
                 ],
               );
@@ -391,10 +376,7 @@ class _OrganizationCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: _UiTokens.cardBorder,
-            width: 1,
-          ),
+          border: Border.all(color: _UiTokens.cardBorder, width: 1),
           boxShadow: _UiTokens.subtleShadow,
         ),
         clipBehavior: Clip.antiAlias,
@@ -569,10 +551,7 @@ class _OrganizationListCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: _UiTokens.cardBorder,
-            width: 1,
-          ),
+          border: Border.all(color: _UiTokens.cardBorder, width: 1),
           boxShadow: _UiTokens.subtleShadow,
         ),
         clipBehavior: Clip.antiAlias,

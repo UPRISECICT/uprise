@@ -10,12 +10,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../auth_service.dart';
-import '../../../main_web.dart';
 import '../../../theme/org_theme.dart';
 import '../../../widgets/app_toast.dart';
 import '../../auth/change_password_screen.dart';
 import 'org_dashboard.dart';
 import 'org_forgot_password.dart';
+import 'org_landing_page.dart';
 
 class OrganizationLogin extends StatefulWidget {
   const OrganizationLogin({super.key});
@@ -597,17 +597,30 @@ class _OrganizationLoginState extends State<OrganizationLogin>
                   ),
                   const SizedBox(height: 12),
                   TextButton.icon(
-                    onPressed: () => Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (_) => const LandingPage()),
-                    ),
+                    onPressed: () {
+                      // Ordinary back — returns to the Organization landing
+                      // page this login screen was pushed from. Only falls
+                      // back to opening that landing page fresh if there's
+                      // nothing to pop to (e.g. reached directly as the
+                      // app's root route, with no prior screen at all).
+                      final nav = Navigator.of(context);
+                      if (nav.canPop()) {
+                        nav.pop();
+                      } else {
+                        nav.pushReplacement(
+                          MaterialPageRoute(
+                            builder: (_) => const OrgLandingPage(),
+                          ),
+                        );
+                      }
+                    },
                     icon: const Icon(
                       Icons.arrow_back_ios_new_rounded,
                       size: 10.5,
                       color: _blue,
                     ),
                     label: Text(
-                      'Back to Portal Selection',
+                      'Back',
                       style: GoogleFonts.beVietnamPro(
                         color: _blue,
                         fontWeight: FontWeight.w600,

@@ -61,7 +61,11 @@ class _OrgLandingPageState extends State<OrgLandingPage>
   }
 
   void _goToLogin() {
-    Navigator.pushReplacement(
+    // A plain push (not pushReplacement) so this landing page stays on the
+    // stack underneath — that's what lets the login page's own "Back"
+    // button return here with a normal Navigator.pop() instead of jumping
+    // to the separate portal-selector screen.
+    Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const OrganizationLogin()),
     );

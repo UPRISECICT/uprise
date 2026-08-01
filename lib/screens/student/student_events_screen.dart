@@ -28,7 +28,18 @@ import '../../services/certificate_auto_issue_service.dart';
 // ─── MAIN SCREEN ──────────────────────────────────────────────
 class StudentEventsScreen extends StatefulWidget {
   final int initialTabIndex;
-  const StudentEventsScreen({super.key, this.initialTabIndex = 0});
+  // Bumped by the caller on every explicit "jump to sub-tab" request (e.g.
+  // Profile's "See All Registrations"). Comparing this instead of
+  // initialTabIndex directly means a second jump to the *same* sub-tab
+  // still animates there even if the student manually swiped elsewhere in
+  // between — comparing initialTabIndex alone would see no change and
+  // silently no-op.
+  final int jumpToken;
+  const StudentEventsScreen({
+    super.key,
+    this.initialTabIndex = 0,
+    this.jumpToken = 0,
+  });
 
   @override
   State<StudentEventsScreen> createState() => _StudentEventsScreenState();
@@ -57,6 +68,20 @@ class _StudentEventsScreenState extends State<StudentEventsScreen>
       vsync: this,
       initialIndex: widget.initialTabIndex.clamp(0, 3),
     );
+  }
+
+  @override
+  void didUpdateWidget(covariant StudentEventsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Now that student_home_screen.dart keeps this screen alive in an
+    // IndexedStack instead of recreating it per tab switch, initialIndex
+    // alone (read only in initState) would no longer respond to a fresh
+    // "jump to sub-tab N" request — e.g. Profile's "See All Registrations"
+    // passing eventsSubTab: 1 — since the widget is only ever constructed
+    // once now.
+    if (widget.jumpToken != oldWidget.jumpToken) {
+      _tabController.animateTo(widget.initialTabIndex.clamp(0, 3));
+    }
   }
 
   @override

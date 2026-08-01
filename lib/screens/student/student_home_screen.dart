@@ -307,12 +307,16 @@ class StudentHomeScreen extends StatefulWidget {
 class _StudentHomeScreenState extends State<StudentHomeScreen> {
   int _currentIndex = 0;
   int _eventsSubTab = 0;
+  int _eventsJumpToken = 0;
   String _userName = '';
 
   void _goToTab(int index, {int? eventsSubTab}) {
     setState(() {
       _currentIndex = index;
-      if (eventsSubTab != null) _eventsSubTab = eventsSubTab;
+      if (eventsSubTab != null) {
+        _eventsSubTab = eventsSubTab;
+        _eventsJumpToken++;
+      }
     });
   }
 
@@ -376,7 +380,15 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: _screens[_currentIndex],
+      // IndexedStack (not a direct index-swap) so every tab's State — most
+      // importantly Profile's ProfileModel — is built once and kept alive
+      // for the rest of the session instead of being torn down and
+      // recreated (re-fetching from Firestore, briefly showing blank
+      // placeholders) every single time the student switches away and
+      // back. It also means Profile's fetch starts immediately alongside
+      // Home's on login, so by the time the student actually taps the
+      // Profile tab the data has usually already arrived.
+      body: IndexedStack(index: _currentIndex, children: _screens),
       bottomNavigationBar: BottomNavBar(
         currentIndex: _currentIndex,
         onTap: (index) {
@@ -410,7 +422,10 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   List<Widget> get _screens => [
     _HomeContent(key: _homeKey, userName: _userName, onNavigateToTab: _goToTab),
     const StudentAnnouncementsScreen(),
-    StudentEventsScreen(initialTabIndex: _eventsSubTab),
+    StudentEventsScreen(
+      initialTabIndex: _eventsSubTab,
+      jumpToken: _eventsJumpToken,
+    ),
     const StudentOrganizationsScreen(),
     StudentProfileScreen(
       onViewAllRegistrations: () => _goToTab(2, eventsSubTab: 1),

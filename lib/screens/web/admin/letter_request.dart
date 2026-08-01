@@ -110,6 +110,119 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     super.dispose();
   }
 
+  // Shared icon+heading confirm dialog — mirrors the polished look
+  // event_proposals.dart's _confirmSetStatus already uses, replacing the
+  // plain stock AlertDialog every archive/restore/reject confirm here used
+  // to fall back on (title/body/buttons with no icon or accent color).
+  Future<bool> _showActionConfirm({
+    required IconData icon,
+    required Color iconBg,
+    required Color iconColor,
+    required String heading,
+    required String body,
+    required String actionLabel,
+    required Color actionColor,
+  }) async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          width: 420,
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: iconBg,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(icon, color: iconColor, size: 20),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      heading,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF1A202C),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                body,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 14,
+                  color: const Color(0xFF64748B),
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF374151),
+                      side: const BorderSide(color: Color(0xFFE2E6EA)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 11,
+                      ),
+                    ),
+                    child: Text(
+                      'Cancel',
+                      style: GoogleFonts.beVietnamPro(fontSize: 13),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: actionColor,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 11,
+                      ),
+                    ),
+                    child: Text(
+                      actionLabel,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    return result == true;
+  }
+
   Future<String> _fetchOrgLogo(String orgId) async {
     if (_orgLogoCache.containsKey(orgId)) {
       return _orgLogoCache[orgId]!;
@@ -189,14 +302,31 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     return StreamBuilder<QuerySnapshot>(
       stream: FirestoreCollections.letterRequests.snapshots(),
       builder: (context, snapshot) {
-        int total = 0, pending = 0, approved = 0, rejected = 0;
+        int total = 0,
+            pending = 0,
+            approved = 0,
+            rejected = 0,
+            revision = 0,
+            resubmitted = 0,
+            archived = 0;
         if (snapshot.hasData) {
           for (final doc in snapshot.data!.docs) {
+            final data = doc.data() as Map;
+            // Archived requests are excluded from every other bucket, same
+            // as the list filtering below (hidden unless viewing Archived
+            // directly) — otherwise "Total Requests" wouldn't match what
+            // clicking it actually shows.
+            if (data['isArchived'] == true) {
+              archived++;
+              continue;
+            }
             total++;
-            final s = (doc.data() as Map)['status'] ?? 'pending';
+            final s = (data['status'] ?? 'pending').toString().toLowerCase();
             if (s == 'pending') pending++;
             if (s == 'approved') approved++;
             if (s == 'rejected') rejected++;
+            if (s == 'revision') revision++;
+            if (s == 'resubmitted') resubmitted++;
           }
         }
 
@@ -241,11 +371,46 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
               _currentPage = 1;
             }),
           ),
+          _StatCard(
+            label: 'Needs Revision',
+            value: '$revision',
+            icon: Icons.rate_review_rounded,
+            color: AdminColors.purple,
+            onTap: () => setState(() {
+              _statusFilter = 'Needs Revision';
+              _currentPage = 1;
+            }),
+          ),
+          _StatCard(
+            label: 'Resubmitted',
+            value: '$resubmitted',
+            icon: Icons.autorenew_rounded,
+            color: AdminColors.info,
+            onTap: () => setState(() {
+              _statusFilter = 'Resubmitted';
+              _currentPage = 1;
+            }),
+          ),
+          _StatCard(
+            label: 'Archived',
+            value: '$archived',
+            icon: Icons.archive_rounded,
+            color: AdminColors.darkGray,
+            onTap: () => setState(() {
+              _statusFilter = 'Archived';
+              _currentPage = 1;
+            }),
+          ),
         ];
 
         return Padding(
           padding: const EdgeInsets.fromLTRB(28, 24, 28, 0),
-          child: StatCardsRow(cards: cards, isMobile: isMobile),
+          child: StatCardsRow(
+            cards: cards,
+            isMobile: isMobile,
+            maxPerRow: 7,
+            gap: 10,
+          ),
         );
       },
     );
@@ -469,8 +634,11 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
           Expanded(flex: 2, child: _headerCell('REQUESTOR')),
           const SizedBox(width: 16),
           Expanded(flex: 3, child: _headerCell('SUBJECT')),
+          const SizedBox(width: 16),
           Expanded(flex: 1, child: _headerCell('DATE SUBMITTED')),
+          const SizedBox(width: 16),
           Expanded(flex: 1, child: _headerCell('E-SIGNED')),
+          const SizedBox(width: 16),
           Expanded(
             flex: 1,
             child: Align(
@@ -478,6 +646,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
               child: _headerCell('STATUS'),
             ),
           ),
+          const SizedBox(width: 16),
           Expanded(
             flex: 2,
             child: Align(
@@ -615,6 +784,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                     ],
                   ),
                 ),
+                const SizedBox(width: 16),
                 Expanded(
                   flex: 1,
                   child: Text(
@@ -628,6 +798,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                const SizedBox(width: 16),
                 Expanded(
                   flex: 1,
                   child: hasSigningDate
@@ -667,6 +838,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                           ),
                         ),
                 ),
+                const SizedBox(width: 16),
                 Expanded(
                   flex: 1,
                   child: Align(
@@ -674,6 +846,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                     child: _buildStatusBadge(status),
                   ),
                 ),
+                const SizedBox(width: 16),
                 // ============ ACTIONS ============
                 // "Request Revision" lives in the View dialog only (matches
                 // admin/event_proposals.dart) — keeping it out of the row
@@ -1013,48 +1186,18 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     String orgName,
     String subject,
   ) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
-          'Archive Request',
-          style: GoogleFonts.beVietnamPro(
-            fontWeight: FontWeight.w700,
-            color: const Color(0xFF1A202C),
-          ),
-        ),
-        content: Text(
+    final confirm = await _showActionConfirm(
+      icon: Icons.archive_outlined,
+      iconBg: const Color(0xFFF3F4F6),
+      iconColor: const Color(0xFF6B7280),
+      heading: 'Archive Request',
+      body:
           'Archive request from "$orgName" about "$subject"? You can still view it in the archived section.',
-          style: GoogleFonts.beVietnamPro(color: const Color(0xFF374151)),
-        ),
-        actions: [
-          OutlinedButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFF374151),
-              side: const BorderSide(color: Color(0xFFE2E6EA)),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: Text('Cancel', style: GoogleFonts.beVietnamPro()),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AdminColors.warning,
-            ),
-            child: Text(
-              'Archive',
-              style: GoogleFonts.beVietnamPro(color: Colors.white),
-            ),
-          ),
-        ],
-      ),
+      actionLabel: 'Archive',
+      actionColor: AdminColors.warning,
     );
 
-    if (confirm != true) return;
+    if (!confirm) return;
 
     try {
       await FirestoreCollections.letterRequests.doc(docId).update({
@@ -1082,48 +1225,18 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     String orgName,
     String subject,
   ) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
-          'Restore Request',
-          style: GoogleFonts.beVietnamPro(
-            fontWeight: FontWeight.w700,
-            color: const Color(0xFF1A202C),
-          ),
-        ),
-        content: Text(
+    final confirm = await _showActionConfirm(
+      icon: Icons.restore_rounded,
+      iconBg: const Color(0xFFECFDF5),
+      iconColor: AdminColors.success,
+      heading: 'Restore Request',
+      body:
           'Restore request from "$orgName" about "$subject" out of the archive?',
-          style: GoogleFonts.beVietnamPro(color: const Color(0xFF374151)),
-        ),
-        actions: [
-          OutlinedButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFF374151),
-              side: const BorderSide(color: Color(0xFFE2E6EA)),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: Text('Cancel', style: GoogleFonts.beVietnamPro()),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AdminColors.success,
-            ),
-            child: Text(
-              'Restore',
-              style: GoogleFonts.beVietnamPro(color: Colors.white),
-            ),
-          ),
-        ],
-      ),
+      actionLabel: 'Restore',
+      actionColor: AdminColors.success,
     );
 
-    if (confirm != true) return;
+    if (!confirm) return;
 
     try {
       await FirestoreCollections.letterRequests.doc(docId).update({
@@ -1147,53 +1260,17 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
   }
 
   Future<void> _confirmRejectLetter(String docId, String orgName) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      barrierColor: Colors.black54,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
-          'Reject Letter Request',
-          style: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w700),
-        ),
-        content: Text(
+    final confirmed = await _showActionConfirm(
+      icon: Icons.cancel_outlined,
+      iconBg: const Color(0xFFFEF2F2),
+      iconColor: AdminColors.error,
+      heading: 'Reject Letter Request',
+      body:
           'Reject the letter request from "$orgName"? The organization will be notified.',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 14,
-            color: const Color(0xFF64748B),
-            height: 1.5,
-          ),
-        ),
-        actions: [
-          OutlinedButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFF374151),
-              side: const BorderSide(color: Color(0xFFE2E6EA)),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: Text(
-              'Cancel',
-              style: GoogleFonts.beVietnamPro(color: const Color(0xFF374151)),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AdminColors.error,
-              foregroundColor: Colors.white,
-            ),
-            child: Text(
-              'Reject',
-              style: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
-      ),
+      actionLabel: 'Reject',
+      actionColor: AdminColors.error,
     );
-    if (confirmed == true) {
+    if (confirmed) {
       await _updateStatus(docId, 'rejected', orgName);
     }
   }
@@ -1281,6 +1358,27 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     }
   }
 
+  // Prefers the Firestore profile's fullName (kept current via My Profile)
+  // over the bare email the signature used to fall back to — a certificate
+  // signed "juan.delacruz@cict.edu.ph" instead of "Juan Dela Cruz" read
+  // wrong wherever `signedBy` shows up (saved-signature label, the
+  // certificate PDF, the request detail's "By {name}" line).
+  Future<String> _resolveCurrentAdminName() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return 'Admin';
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      final fullName = (doc.data()?['fullName'] as String?)?.trim();
+      if (fullName != null && fullName.isNotEmpty) return fullName;
+    } catch (_) {}
+    final displayName = user.displayName?.trim();
+    if (displayName != null && displayName.isNotEmpty) return displayName;
+    return user.email ?? 'Admin';
+  }
+
   // ── Approve + e-sign. Replaces the old wet-sign appointment scheduling —
   // the admin draws a signature here and now, and a signed approval
   // certificate PDF is generated immediately instead of booking an
@@ -1294,7 +1392,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     final subject = (data['subject'] ?? 'No subject').toString();
     final requestorName =
         (data['requestedBy'] ?? data['submittedBy'] ?? orgName).toString();
-    final signedByName = FirebaseAuth.instance.currentUser?.email ?? 'Admin';
+    final signedByName = await _resolveCurrentAdminName();
 
     final savedSignatures = await _loadSavedSignatures();
     final remarkCtrl = TextEditingController();
@@ -3079,8 +3177,12 @@ class _StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Sized to hold 7 cards on one line (single row, not the 4+3 wrap the
+    // default card size forced) — smaller icon box, tighter padding, and
+    // maxLines/ellipsis on both label and value so a narrower card clips
+    // gracefully instead of overflowing.
     final card = Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
@@ -3096,15 +3198,15 @@ class _StatCard extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 44,
-            height: 44,
+            width: 34,
+            height: 34,
             decoration: BoxDecoration(
               color: color.withAlpha(26),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, color: color, size: 22),
+            child: Icon(icon, color: color, size: 17),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -3112,19 +3214,23 @@ class _StatCard extends StatelessWidget {
                 Text(
                   label,
                   style: GoogleFonts.beVietnamPro(
-                    fontSize: 11,
+                    fontSize: 10,
                     color: const Color(0xFF64748B),
                     fontWeight: FontWeight.w500,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
                 Text(
                   value,
                   style: GoogleFonts.beVietnamPro(
-                    fontSize: 28,
+                    fontSize: 20,
                     fontWeight: FontWeight.w700,
                     color: const Color(0xFF1A202C),
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),

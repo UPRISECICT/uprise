@@ -114,6 +114,29 @@ class _DS {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Category colors — matches the palette already used in event_calendar.dart
+// / the student & org calendars, so a "Workshop" reads the same color
+// everywhere. Previously every category badge here used the same flat
+// AdminColors.primaryDark tint regardless of category.
+// ─────────────────────────────────────────────────────────────────────────────
+const Map<String, Color> _categoryBadgeColors = {
+  'Workshop': Color(0xFF8B5CF6),
+  'Seminar': Color(0xFF3B82F6),
+  'Competition': Color(0xFFEF4444),
+  'General Assembly': Color(0xFFF97316),
+  'Social': Color(0xFFEC4899),
+  'Outreach': Color(0xFF10B981),
+  'Sports': Color(0xFF14B8A6),
+  'Academic': Color(0xFF6366F1),
+  'Technical': Color(0xFF06B6D4),
+  'Cultural': Color(0xFFD946EF),
+  'Other': Color(0xFF6B7280),
+};
+
+Color _categoryBadgeColor(String category) =>
+    _categoryBadgeColors[category] ?? const Color(0xFF6B7280);
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Shared helpers
 // ─────────────────────────────────────────────────────────────────────────────
 Widget _sectionLabel(String text, {IconData? icon}) {
@@ -759,7 +782,9 @@ class _EventProposalsState extends State<EventProposals> {
                         vertical: 3,
                       ),
                       decoration: BoxDecoration(
-                        color: AdminColors.primaryDark.withAlpha(18),
+                        color: _categoryBadgeColor(
+                          data['category'] ?? 'Other',
+                        ).withAlpha(28),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
@@ -772,7 +797,9 @@ class _EventProposalsState extends State<EventProposals> {
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: AdminColors.primaryDark,
+                          color: _categoryBadgeColor(
+                            data['category'] ?? 'Other',
+                          ),
                         ),
                         maxLines: 1,
                         softWrap: false,
@@ -2100,8 +2127,6 @@ class _EventProposalsState extends State<EventProposals> {
                       ],
 
                       // ── Event Details Section ──
-                      // Plain inline grid, no boxed card — avoids the
-                      // dashboard-template look of a grey box around everything.
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -2115,8 +2140,12 @@ class _EventProposalsState extends State<EventProposals> {
                                   ? data['otherCategory']
                                   : (data['category'] ?? '—'),
                               Icons.category_outlined,
+                              valueColor: _categoryBadgeColor(
+                                data['category'] ?? 'Other',
+                              ),
                             ),
                           ),
+                          const SizedBox(width: 12),
                           Expanded(
                             child: _detailItem(
                               'Audience',
@@ -2126,7 +2155,7 @@ class _EventProposalsState extends State<EventProposals> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 12),
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -2137,6 +2166,7 @@ class _EventProposalsState extends State<EventProposals> {
                               Icons.calendar_today_outlined,
                             ),
                           ),
+                          const SizedBox(width: 12),
                           Expanded(
                             child: _detailItem(
                               'Time',
@@ -2146,7 +2176,7 @@ class _EventProposalsState extends State<EventProposals> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 12),
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -2157,6 +2187,7 @@ class _EventProposalsState extends State<EventProposals> {
                               Icons.school_outlined,
                             ),
                           ),
+                          const SizedBox(width: 12),
                           Expanded(
                             child: _detailItem(
                               'Semester',
@@ -2166,7 +2197,7 @@ class _EventProposalsState extends State<EventProposals> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 12),
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -2177,6 +2208,7 @@ class _EventProposalsState extends State<EventProposals> {
                               Icons.location_on_outlined,
                             ),
                           ),
+                          const SizedBox(width: 12),
                           Expanded(
                             child: _detailItem(
                               'Issues Certificate',
@@ -2223,6 +2255,7 @@ class _EventProposalsState extends State<EventProposals> {
                                   Icons.email_outlined,
                                 ),
                               ),
+                              const SizedBox(width: 12),
                               Expanded(
                                 child: _detailItem(
                                   'Submitted At',
@@ -2254,6 +2287,7 @@ class _EventProposalsState extends State<EventProposals> {
                                     },
                                   ),
                                 ),
+                                const SizedBox(width: 12),
                                 Expanded(
                                   child: _detailItem(
                                     'Reviewed At',
@@ -2277,6 +2311,7 @@ class _EventProposalsState extends State<EventProposals> {
                                     valueColor: const Color(0xFF2563EB),
                                   ),
                                 ),
+                                const SizedBox(width: 12),
                                 const Expanded(child: SizedBox()),
                               ],
                             ),
@@ -2660,40 +2695,68 @@ class _EventProposalsState extends State<EventProposals> {
     );
   }
 
+  // Boxed icon-card instead of plain floating icon+label+value — the
+  // "plain inline grid" this used to be read flat next to the rest of the
+  // dialog's now-boxed sections (Feedback, Attachment).
   Widget _detailItem(
     String label,
     String value,
     IconData icon, {
     Color? valueColor,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(icon, size: 12, color: AdminColors.primaryDark.withAlpha(150)),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                color: const Color(0xFF64748B),
-                letterSpacing: 0.3,
-              ),
+    final accent = valueColor ?? const Color(0xFF64748B);
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8F9FB),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFEEF1F4)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: accent.withAlpha(28),
+              shape: BoxShape.circle,
             ),
-          ],
-        ),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-            color: valueColor ?? const Color(0xFF1A202C),
+            child: Icon(icon, size: 14, color: accent),
           ),
-        ),
-      ],
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label.toUpperCase(),
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF9AA5B4),
+                    letterSpacing: 0.4,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  value,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: valueColor ?? const Color(0xFF1A202C),
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 

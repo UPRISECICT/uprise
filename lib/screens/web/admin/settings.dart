@@ -273,10 +273,19 @@ class _AdminSettingsState extends State<AdminSettings>
   User? _currentUser;
 
   // Password
+  final _currentPasswordController = TextEditingController();
   final _newPasswordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  bool _showCurrentPassword = false;
   bool _showNewPassword = false;
   bool _showConfirmPassword = false;
+
+  // Email
+  final _emailFormKey = GlobalKey<FormState>();
+  final _newEmailController = TextEditingController();
+  final _emailCurrentPasswordController = TextEditingController();
+  bool _showEmailCurrentPassword = false;
+  bool _isChangingEmail = false;
 
   @override
   void initState() {
@@ -339,16 +348,61 @@ class _AdminSettingsState extends State<AdminSettings>
   @override
   void dispose() {
     _tabController.dispose();
+    _currentPasswordController.dispose();
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
+    _newEmailController.dispose();
+    _emailCurrentPasswordController.dispose();
     super.dispose();
+  }
+
+  // Both password and email changes are "sensitive" operations that Firebase
+  // rejects with `requires-recent-login` if the session is more than a few
+  // minutes old — reauthenticating with the current password up front means
+  // the form actually succeeds on the first try instead of failing opaquely
+  // partway through.
+  Future<void> _reauthenticate(String currentPassword) async {
+    final email = _currentUser?.email;
+    if (email == null || email.isEmpty) {
+      throw FirebaseAuthException(
+        code: 'no-current-email',
+        message: 'No email on this account to reauthenticate with.',
+      );
+    }
+    final credential = EmailAuthProvider.credential(
+      email: email,
+      password: currentPassword,
+    );
+    await _currentUser!.reauthenticateWithCredential(credential);
+  }
+
+  String _authErrorMessage(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'wrong-password':
+      case 'invalid-credential':
+        return 'Current password is incorrect.';
+      case 'requires-recent-login':
+        return 'Please sign out and sign back in, then try again.';
+      case 'email-already-in-use':
+        return 'That email is already in use by another account.';
+      case 'invalid-email':
+        return 'Enter a valid email address.';
+      case 'weak-password':
+        return 'Password is too weak.';
+      case 'too-many-requests':
+        return 'Too many attempts. Please wait a moment and try again.';
+      default:
+        return e.message ?? 'Something went wrong (${e.code}).';
+    }
   }
 
   Future<void> _changePassword() async {
     if (!_passwordFormKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
     try {
+      await _reauthenticate(_currentPasswordController.text);
       await _currentUser!.updatePassword(_newPasswordController.text);
+      _currentPasswordController.clear();
       _newPasswordController.clear();
       _confirmPasswordController.clear();
       await ActivityLogger.log(
@@ -356,10 +410,44 @@ class _AdminSettingsState extends State<AdminSettings>
         module: 'Admin Settings',
       );
       _showSnack('Password changed successfully', success: true);
+    } on FirebaseAuthException catch (e) {
+      _showSnack(_authErrorMessage(e), success: false);
     } catch (e) {
       _showSnack('Error: $e', success: false);
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // Uses verifyBeforeUpdateEmail (not the deprecated updateEmail) — Firebase
+  // now requires the new address to be verified via an emailed link before
+  // the account's email actually changes, so the auth email and the address
+  // typed here diverge until that link is clicked. Firestore's `users.email`
+  // mirror is deliberately left untouched until then, to avoid it pointing
+  // at an email the auth record doesn't actually have yet.
+  Future<void> _changeEmail() async {
+    if (!_emailFormKey.currentState!.validate()) return;
+    final newEmail = _newEmailController.text.trim();
+    setState(() => _isChangingEmail = true);
+    try {
+      await _reauthenticate(_emailCurrentPasswordController.text);
+      await _currentUser!.verifyBeforeUpdateEmail(newEmail);
+      _emailCurrentPasswordController.clear();
+      _newEmailController.clear();
+      await ActivityLogger.log(
+        action: 'Requested email change to $newEmail',
+        module: 'Admin Settings',
+      );
+      _showSnack(
+        'Verification link sent to $newEmail. Your login email updates once you confirm it there.',
+        success: true,
+      );
+    } on FirebaseAuthException catch (e) {
+      _showSnack(_authErrorMessage(e), success: false);
+    } catch (e) {
+      _showSnack('Error: $e', success: false);
+    } finally {
+      if (mounted) setState(() => _isChangingEmail = false);
     }
   }
 
@@ -518,6 +606,146 @@ class _AdminSettingsState extends State<AdminSettings>
                   boxShadow: _DS.cardShadow,
                 ),
                 child: Form(
+                  key: _emailFormKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _sectionLabel(
+                        'Change Email',
+                        icon: Icons.alternate_email_rounded,
+                      ),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF0F6FF),
+                          borderRadius: BorderRadius.circular(_DS.radiusSm),
+                          border: Border.all(color: const Color(0xFFBFD7FF)),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(
+                              Icons.info_outline_rounded,
+                              size: 15,
+                              color: Color(0xFF2563EB),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Current email: ${_currentUser?.email ?? '—'}. '
+                                'We\'ll send a verification link to the new '
+                                'address — your login email only changes '
+                                'once you confirm it there.',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 12,
+                                  color: const Color(0xFF1D4ED8),
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _newEmailController,
+                        keyboardType: TextInputType.emailAddress,
+                        style: GoogleFonts.beVietnamPro(fontSize: 13),
+                        decoration: _DS.inputDecoration(
+                          'New Email',
+                          hint: 'e.g., admin@cict.edu.ph',
+                          icon: Icons.alternate_email_rounded,
+                          required: true,
+                        ),
+                        validator: (v) {
+                          final value = v?.trim() ?? '';
+                          if (value.isEmpty) return 'Required';
+                          if (!RegExp(
+                            r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                          ).hasMatch(value)) {
+                            return 'Enter a valid email address';
+                          }
+                          if (value.toLowerCase() ==
+                              (_currentUser?.email ?? '').toLowerCase()) {
+                            return 'This is already your current email';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _emailCurrentPasswordController,
+                        obscureText: !_showEmailCurrentPassword,
+                        style: GoogleFonts.beVietnamPro(fontSize: 13),
+                        decoration: _DS
+                            .inputDecoration(
+                              'Current Password',
+                              icon: Icons.password_rounded,
+                              required: true,
+                            )
+                            .copyWith(
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _showEmailCurrentPassword
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  size: 18,
+                                  color: const Color(0xFF9AA5B4),
+                                ),
+                                onPressed: () => setState(
+                                  () => _showEmailCurrentPassword =
+                                      !_showEmailCurrentPassword,
+                                ),
+                              ),
+                            ),
+                        validator: (v) =>
+                            (v == null || v.isEmpty) ? 'Required' : null,
+                      ),
+                      const SizedBox(height: 20),
+                      ElevatedButton.icon(
+                        onPressed: _isChangingEmail ? null : _changeEmail,
+                        icon: _isChangingEmail
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.send_rounded, size: 16),
+                        label: Text(
+                          'Send Verification Link',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AdminColors.primaryDark,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          minimumSize: const Size(double.infinity, 44),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(_DS.radiusSm),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(_DS.radiusLg),
+                  border: Border.all(color: const Color(0xFFE8ECF0)),
+                  boxShadow: _DS.cardShadow,
+                ),
+                child: Form(
                   key: _passwordFormKey,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -555,6 +783,35 @@ class _AdminSettingsState extends State<AdminSettings>
                         ),
                       ),
                       const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _currentPasswordController,
+                        obscureText: !_showCurrentPassword,
+                        style: GoogleFonts.beVietnamPro(fontSize: 13),
+                        decoration: _DS
+                            .inputDecoration(
+                              'Current Password',
+                              icon: Icons.password_rounded,
+                              required: true,
+                            )
+                            .copyWith(
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _showCurrentPassword
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  size: 18,
+                                  color: const Color(0xFF9AA5B4),
+                                ),
+                                onPressed: () => setState(
+                                  () => _showCurrentPassword =
+                                      !_showCurrentPassword,
+                                ),
+                              ),
+                            ),
+                        validator: (v) =>
+                            (v == null || v.isEmpty) ? 'Required' : null,
+                      ),
+                      const SizedBox(height: 12),
                       TextFormField(
                         controller: _newPasswordController,
                         obscureText: !_showNewPassword,

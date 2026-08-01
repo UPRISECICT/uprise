@@ -492,6 +492,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
                             docId: pageDocs[i].id,
                             data: data,
                             isLast: i == pageDocs.length - 1,
+                            alternate: i.isOdd,
                           );
                         },
                       ),
@@ -549,174 +550,208 @@ class _StudentAccountsState extends State<StudentAccounts> {
     ),
   );
 
+  // StatefulBuilder (not a plain function-built widget) so the row can
+  // track its own hover flag and animate the same left accent bar used on
+  // the admin dashboard's tables — this used to be a flat InkWell hoverColor
+  // with no zebra striping, which read noticeably plainer once the
+  // dashboard tables picked up that treatment.
   Widget _buildStudentRow({
     required String docId,
     required Map<String, dynamic> data,
     required bool isLast,
+    bool alternate = false,
   }) {
     final isArchived = data['archived'] == true;
+    var hovering = false;
 
-    return InkWell(
-      hoverColor: const Color(0xFFF8F9FB),
-      onTap: () => _showStudentDetailDialog(docId, data),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        decoration: BoxDecoration(
-          color: isArchived ? const Color(0xFFF9FAFB) : null,
-          border: isLast
-              ? null
-              : const Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              flex: 2,
-              child: Text(
-                data['studentId'] ?? '—',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: isArchived
-                      ? const Color(0xFF9AA5B4)
-                      : AdminColors.primaryDark,
+    return StatefulBuilder(
+      builder: (context, setLocalState) {
+        return MouseRegion(
+          cursor: SystemMouseCursors.click,
+          onEnter: (_) => setLocalState(() => hovering = true),
+          onExit: (_) => setLocalState(() => hovering = false),
+          child: GestureDetector(
+            onTap: () => _showStudentDetailDialog(docId, data),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 120),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              decoration: BoxDecoration(
+                color: hovering
+                    ? const Color(0xFFF8F9FB)
+                    : isArchived
+                    ? const Color(0xFFF9FAFB)
+                    : (alternate ? const Color(0xFFFBFCFE) : Colors.white),
+                border: Border(
+                  left: BorderSide(
+                    color: hovering
+                        ? AdminColors.primaryDark
+                        : Colors.transparent,
+                    width: 3,
+                  ),
+                  bottom: isLast
+                      ? BorderSide.none
+                      : const BorderSide(color: Color(0xFFF1F5F9)),
                 ),
-                overflow: TextOverflow.ellipsis,
               ),
-            ),
-            Expanded(
-              flex: 3,
               child: Row(
                 children: [
-                  _StudentAvatar(
-                    name: data['fullName'] ?? '',
-                    isArchived: isArchived,
-                  ),
-                  const SizedBox(width: 10),
                   Expanded(
+                    flex: 2,
                     child: Text(
-                      data['fullName'] ?? '—',
+                      data['studentId'] ?? '—',
                       style: GoogleFonts.beVietnamPro(
                         fontSize: 13,
-                        fontWeight: FontWeight.w500,
+                        fontWeight: FontWeight.w600,
                         color: isArchived
                             ? const Color(0xFF9AA5B4)
-                            : const Color(0xFF1A202C),
+                            : AdminColors.primaryDark,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                ],
-              ),
-            ),
-            Expanded(
-              flex: 2,
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isArchived
-                        ? const Color(0xFFF3F4F6)
-                        : AdminColors.primaryDark.withAlpha(18),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    data['course'] ?? '—',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: isArchived
-                          ? const Color(0xFF6B7280)
-                          : AdminColors.primaryDark,
+                  Expanded(
+                    flex: 3,
+                    child: Row(
+                      children: [
+                        _StudentAvatar(
+                          name: data['fullName'] ?? '',
+                          isArchived: isArchived,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            data['fullName'] ?? '—',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: isArchived
+                                  ? const Color(0xFF9AA5B4)
+                                  : const Color(0xFF1A202C),
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (isArchived) ...[
+                          const SizedBox(width: 6),
+                          _archivedBadge(),
+                        ],
+                      ],
                     ),
-                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-              ),
-            ),
-            Expanded(
-              flex: 1,
-              child: Text(
-                data['yearLevel'] ?? '—',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 12,
-                  color: isArchived
-                      ? const Color(0xFF9AA5B4)
-                      : const Color(0xFF64748B),
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            // NEW: Section column
-            Expanded(
-              flex: 1,
-              child: Text(
-                data['section'] ?? '—',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 12,
-                  color: isArchived
-                      ? const Color(0xFF9AA5B4)
-                      : const Color(0xFF64748B),
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            Expanded(
-              flex: 3,
-              child: Text(
-                data['email'] ?? '—',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 12,
-                  color: isArchived
-                      ? const Color(0xFF9AA5B4)
-                      : const Color(0xFF374151),
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            Expanded(
-              flex: 2,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  if (!isArchived) ...[
-                    _ActionIconButton(
-                      icon: Icons.email_outlined,
-                      tooltip: 'Resend Credentials',
-                      color: const Color(0xFF7C3AED),
-                      onTap: () => _confirmResendCredentials(
-                        docId,
-                        data['email'] ?? '',
-                        data['studentId'] ?? '',
-                        data['tempPassword'],
+                  Expanded(
+                    flex: 2,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isArchived
+                              ? const Color(0xFFF3F4F6)
+                              : AdminColors.primaryDark.withAlpha(18),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          data['course'] ?? '—',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: isArchived
+                                ? const Color(0xFF6B7280)
+                                : AdminColors.primaryDark,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 4),
-                  ],
-                  // Archive/Restore button
-                  _ActionIconButton(
-                    icon: isArchived
-                        ? Icons.restore_rounded
-                        : Icons.archive_rounded,
-                    tooltip: isArchived ? 'Restore Student' : 'Archive Student',
-                    color: isArchived
-                        ? const Color(0xFF059669)
-                        : const Color(0xFF6B7280),
-                    onTap: () => _confirmArchiveStudent(
-                      docId,
-                      data['fullName'] ?? 'this student',
-                      isArchived,
+                  ),
+                  Expanded(
+                    flex: 1,
+                    child: Text(
+                      data['yearLevel'] ?? '—',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12,
+                        color: isArchived
+                            ? const Color(0xFF9AA5B4)
+                            : const Color(0xFF64748B),
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  // NEW: Section column
+                  Expanded(
+                    flex: 1,
+                    child: Text(
+                      data['section'] ?? '—',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12,
+                        color: isArchived
+                            ? const Color(0xFF9AA5B4)
+                            : const Color(0xFF64748B),
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Expanded(
+                    flex: 3,
+                    child: Text(
+                      data['email'] ?? '—',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12,
+                        color: isArchived
+                            ? const Color(0xFF9AA5B4)
+                            : const Color(0xFF374151),
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Expanded(
+                    flex: 2,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        if (!isArchived) ...[
+                          _ActionIconButton(
+                            icon: Icons.email_outlined,
+                            tooltip: 'Resend Credentials',
+                            color: const Color(0xFF7C3AED),
+                            onTap: () => _confirmResendCredentials(
+                              docId,
+                              data['email'] ?? '',
+                              data['studentId'] ?? '',
+                              data['tempPassword'],
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                        ],
+                        // Archive/Restore button
+                        _ActionIconButton(
+                          icon: isArchived
+                              ? Icons.restore_rounded
+                              : Icons.archive_rounded,
+                          tooltip: isArchived
+                              ? 'Restore Student'
+                              : 'Archive Student',
+                          color: isArchived
+                              ? const Color(0xFF059669)
+                              : const Color(0xFF6B7280),
+                          onTap: () => _confirmArchiveStudent(
+                            docId,
+                            data['fullName'] ?? 'this student',
+                            isArchived,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -1487,6 +1522,31 @@ class _StudentAccountsState extends State<StudentAccounts> {
     }
   }
 
+  // Downloadable starter CSV — header row matches the exact column order
+  // the parser expects, plus one example row using the real student number
+  // (no dash) and section (digit+letter-G+digit) formats, so admins don't
+  // have to guess at either from prose alone.
+  Future<void> _downloadImportTemplate() async {
+    const csv =
+        'Student ID,Full Name,Course,Year Level,Section,Email\n'
+        '2023100467,Juan Dela Cruz,BSIT,3,4H-G1,juan.delacruz@outlook.com';
+    await AdminExportUtil.saveText(
+      csv,
+      'student_import_template.csv',
+      mimeType: 'text/csv',
+    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Template downloaded.'),
+          backgroundColor: const Color(0xFF059669),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      );
+    }
+  }
+
   // ── Batch Import Dialog ────────────────────────────────────────────
   void _showBatchImportDialog() {
     XFile? pickedFile;
@@ -1572,9 +1632,45 @@ class _StudentAccountsState extends State<StudentAccounts> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _sectionLabel(
-                          'Select File',
-                          icon: Icons.attach_file_rounded,
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            _sectionLabel(
+                              'Select File',
+                              icon: Icons.attach_file_rounded,
+                            ),
+                            MouseRegion(
+                              cursor: SystemMouseCursors.click,
+                              child: InkWell(
+                                onTap: _downloadImportTemplate,
+                                borderRadius: BorderRadius.circular(6),
+                                child: Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.download_rounded,
+                                        size: 14,
+                                        color: AdminColors.info,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'Download CSV template',
+                                        style: GoogleFonts.beVietnamPro(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: AdminColors.info,
+                                          decoration: TextDecoration.underline,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         MouseRegion(
                           cursor: isUploading
@@ -1695,7 +1791,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
-                                  'Required columns (in order):\nStudent ID · Full Name · Course · Year Level · Section · Email\n\nEmail must be an Outlook/Microsoft account (outlook.com, hotmail.com, live.com, or msn.com) — other domains will be skipped.',
+                                  'Required columns (in order):\nStudent ID · Full Name · Course · Year Level · Section · Email\n\nStudent ID: 10 digits, no dash (e.g. 2023100467). Section: 4H-G1 format.\n\nEmail must be an Outlook/Microsoft account (outlook.com, hotmail.com, live.com, or msn.com) — other domains will be skipped.',
                                   style: GoogleFonts.beVietnamPro(
                                     fontSize: 12,
                                     color: const Color(0xFF1D4ED8),
@@ -2043,7 +2139,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
                                   controller: idCtrl,
                                   decoration: _DS.inputDecoration(
                                     'Student ID',
-                                    hint: 'e.g., 2021-00001',
+                                    hint: 'e.g., 2023100467',
                                     icon: Icons.badge_outlined,
                                     required: true,
                                   ),
@@ -2136,7 +2232,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
                             controller: sectionCtrl,
                             decoration: _DS.inputDecoration(
                               'Section',
-                              hint: 'e.g., 3H-G1',
+                              hint: 'e.g., 4H-G1',
                               icon: Icons.groups_outlined,
                               required: true,
                             ),
@@ -2625,17 +2721,23 @@ class _StudentAccountsState extends State<StudentAccounts> {
     return _microsoftEmailDomains.contains(email.substring(at + 1));
   }
 
-  static final RegExp _studentIdPattern = RegExp(r'^[0-9]{2,4}-[0-9]{3,8}$');
+  // No dash — the school's actual student number format is a plain
+  // 10-digit number (e.g. 2023100467), not 2021-00001.
+  static final RegExp _studentIdPattern = RegExp(r'^[0-9]{10}$');
   static final RegExp _fullNamePattern = RegExp(
     r"^[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'.-]*(?: [A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'.-]*)+$",
   );
-  static final RegExp _sectionPattern = RegExp(r'^[0-9][A-Za-z0-9-]{1,9}$');
+  // Previously `^[0-9][A-Za-z0-9-]{1,9}$` — loose enough to accept almost
+  // any digit+junk string. The school's actual section format is a year
+  // level digit + one section letter + "-G" + group digit (e.g. 4H-G1,
+  // 4H-G2), so this now matches that shape specifically.
+  static final RegExp _sectionPattern = RegExp(r'^[1-6][A-Za-z]-G[1-9]$');
 
   String? _validateStudentId(String? v) {
     final value = v?.trim() ?? '';
     if (value.isEmpty) return 'Required';
     if (!_studentIdPattern.hasMatch(value)) {
-      return 'Use the format 2021-00001';
+      return 'Use the format 2023100467 (10 digits, no dash)';
     }
     return null;
   }
@@ -2653,7 +2755,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
     final value = v?.trim() ?? '';
     if (value.isEmpty) return 'Required';
     if (!_sectionPattern.hasMatch(value)) {
-      return 'Use the format 3H-G1';
+      return 'Use the format 4H-G1';
     }
     return null;
   }

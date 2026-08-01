@@ -4821,6 +4821,60 @@ class _ReportsManagementState extends State<ReportsManagement>
     );
   }
 
+  // Single income/expense row (name, amount, progress bar) — pulled out of
+  // _breakdownCard so it can be reused both in the capped inline preview
+  // and in the "View all" modal below.
+  Widget _breakdownItemTile(
+    Map<String, dynamic> item,
+    double maxVal,
+    Color color,
+  ) {
+    final amt = (item['amount'] as num?)?.toDouble() ?? 0;
+    final ratio = maxVal > 0 ? amt / maxVal : 0.0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Text(
+                item['name']?.toString() ?? '',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: const Color(0xFF64748B),
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '₱${_fmt(amt)}',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 5),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(3),
+          child: LinearProgressIndicator(
+            value: ratio.toDouble(),
+            backgroundColor: const Color(0xFFE8ECF0),
+            color: color,
+            minHeight: 5,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Capped at 5 rows + a "View all" link into the shared scrollable modal —
+  // previously rendered every income/expense entry inline with no limit,
+  // which made this card (and the page under it) grow as long as however
+  // many transactions the event had.
   Widget _breakdownCard(
     String title,
     List<Map<String, dynamic>> items,
@@ -4848,48 +4902,43 @@ class _ReportsManagementState extends State<ReportsManagement>
                 fontSize: 13,
               ),
             )
-          else
-            ...items.map((item) {
-              final amt = (item['amount'] as num?)?.toDouble() ?? 0;
-              final ratio = maxVal > 0 ? amt / maxVal : 0.0;
-              return Padding(
+          else ...[
+            ...items.take(5).map(
+              (item) => Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          item['name']?.toString() ?? '',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13,
-                            color: const Color(0xFF64748B),
-                          ),
-                        ),
-                        Text(
-                          '₱${_fmt(amt)}',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
+                child: _breakdownItemTile(item, maxVal, color),
+              ),
+            ),
+            if (items.length > 5)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: () => _showListModal(
+                    title: title,
+                    subtitle: '${items.length} entries',
+                    icon: icon,
+                    count: items.length,
+                    itemBuilder: (context, i) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: _breakdownItemTile(items[i], maxVal, color),
                     ),
-                    const SizedBox(height: 5),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(3),
-                      child: LinearProgressIndicator(
-                        value: ratio.toDouble(),
-                        backgroundColor: const Color(0xFFE8ECF0),
-                        color: color,
-                        minHeight: 5,
-                      ),
+                  ),
+                  style: TextButton.styleFrom(
+                    foregroundColor: UpriseColors.primaryDark,
+                    padding: EdgeInsets.zero,
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(
+                    'View all ${items.length} entries',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
                     ),
-                  ],
+                  ),
                 ),
-              );
-            }),
+              ),
+          ],
         ],
       ),
     );

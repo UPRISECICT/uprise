@@ -407,12 +407,22 @@ class _StudentAnnouncementsScreenState
             );
           }
 
-          final items = docs
-              .map((doc) => AnnouncementData.fromFirestore(doc))
-              .toList();
+          // Pinned first, each group keeping the query's existing
+          // timestamp-descending order — a manual partition instead of
+          // .sort() because List.sort() isn't guaranteed stable, and an
+          // unstable sort here would shuffle same-pin-status posts out of
+          // date order. Mirrors the pin-to-top behavior org_announcements.dart
+          // (web) already does for the org's own view of this same data.
+          final pinned = <AnnouncementData>[];
+          final unpinned = <AnnouncementData>[];
+          for (final doc in docs) {
+            final ann = AnnouncementData.fromFirestore(doc);
+            (ann.isPinned ? pinned : unpinned).add(ann);
+          }
+          final items = [...pinned, ...unpinned];
 
           return ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             itemCount: items.length,
             itemBuilder: (context, index) {
               final ann = items[index];
@@ -480,7 +490,7 @@ class _AnnouncementCardState extends State<_AnnouncementCard> {
     return GestureDetector(
       onTap: () => _navigateToDetail(context),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 14),
+        margin: const EdgeInsets.only(bottom: 16),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
@@ -534,7 +544,7 @@ class _AnnouncementCardState extends State<_AnnouncementCard> {
 
             // ── Post header: avatar + org name + time + tag ──
             Padding(
-              padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -644,7 +654,7 @@ class _AnnouncementCardState extends State<_AnnouncementCard> {
 
             // ── Title ──
             Padding(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
               child: Text(
                 ann.title,
                 style: const TextStyle(
@@ -658,7 +668,7 @@ class _AnnouncementCardState extends State<_AnnouncementCard> {
 
             // ── Body (expandable, like the web feed) ──
             Padding(
-              padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -693,7 +703,7 @@ class _AnnouncementCardState extends State<_AnnouncementCard> {
             // ── Go to linked event ──
             if (ann.linkedEventId.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 child: SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(

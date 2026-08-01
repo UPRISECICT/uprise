@@ -11,6 +11,7 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../auth/role_router.dart';
 import '../student/student_login.dart';
 import '../student/student_events_screen.dart';
@@ -112,11 +113,52 @@ class ProfileModel extends ChangeNotifier {
     _loadUserData();
   }
 
+  String _cacheKey(String uid) => 'profile_cache_$uid';
+
+  void _applyFields(Map<String, dynamic> data) {
+    firstName = data['firstName'] ?? firstName;
+    middleName = data['middleName'] ?? middleName;
+    lastName = data['lastName'] ?? lastName;
+    studentId = data['studentId'] ?? studentId;
+    mobile = data['mobile'] ?? mobile;
+    address = data['address'] ?? address;
+    photoUrl = data['photoUrl'] ?? photoUrl;
+    course = data['course'] ?? course;
+    major = data['major'] ?? major;
+    yearLevel = data['yearLevel'] ?? yearLevel;
+    department = data['department'] ?? department;
+    orgId = data['orgId'] ?? orgId;
+  }
+
+  // Cache-first: a fresh ProfileModel is created every time the student
+  // switches to the Profile tab (student_home_screen.dart rebuilds
+  // `_screens` from scratch on every tab change, so State isn't preserved
+  // across tabs) — without a local cache, that meant a Firestore round trip
+  // and a blank "Student Name / No student ID / No email" flash on every
+  // single visit, not just right after login.
   Future<void> _loadUserData() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      email = user.email ?? '';
+    if (user == null) return;
+    email = user.email ?? '';
 
+    final prefs = await SharedPreferences.getInstance();
+    final cacheKey = _cacheKey(user.uid);
+
+    // 1. Show cached values immediately, before the network round trip.
+    final cached = prefs.getString(cacheKey);
+    if (cached != null) {
+      try {
+        final cachedData = jsonDecode(cached) as Map<String, dynamic>;
+        _applyFields(cachedData);
+        orgName = cachedData['orgName'] ?? '';
+        notifyListeners();
+      } catch (_) {
+        // Corrupt/old cache shape — ignore and fall through to the fetch.
+      }
+    }
+
+    // 2. Refresh from Firestore in the background and re-cache the result.
+    try {
       final doc = await FirebaseFirestore.instance
           .collection('students')
           .doc(user.uid)
@@ -124,18 +166,7 @@ class ProfileModel extends ChangeNotifier {
 
       if (doc.exists) {
         final data = doc.data()!;
-        firstName = data['firstName'] ?? '';
-        middleName = data['middleName'] ?? '';
-        lastName = data['lastName'] ?? '';
-        studentId = data['studentId'] ?? '';
-        mobile = data['mobile'] ?? '';
-        address = data['address'] ?? '';
-        photoUrl = data['photoUrl'] ?? '';
-        course = data['course'] ?? '';
-        major = data['major'] ?? '';
-        yearLevel = data['yearLevel'] ?? '';
-        department = data['department'] ?? '';
-        orgId = data['orgId'] ?? '';
+        _applyFields(data);
 
         if (orgId.isNotEmpty) {
           final orgSnap = await FirebaseFirestore.instance
@@ -147,10 +178,37 @@ class ProfileModel extends ChangeNotifier {
                 orgSnap.data()?['orgName'] ?? orgSnap.data()?['name'] ?? '';
           }
         }
-      }
 
-      notifyListeners();
+        await _saveCache(user.uid);
+      }
+    } catch (_) {
+      // Offline or the fetch failed — whatever the cache already applied
+      // above (if any) stays on screen instead of reverting to blank.
     }
+
+    notifyListeners();
+  }
+
+  Future<void> _saveCache(String uid) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _cacheKey(uid),
+      jsonEncode({
+        'firstName': firstName,
+        'middleName': middleName,
+        'lastName': lastName,
+        'studentId': studentId,
+        'mobile': mobile,
+        'address': address,
+        'photoUrl': photoUrl,
+        'course': course,
+        'major': major,
+        'yearLevel': yearLevel,
+        'department': department,
+        'orgId': orgId,
+        'orgName': orgName,
+      }),
+    );
   }
 
   Future<void> update({
@@ -203,6 +261,7 @@ class ProfileModel extends ChangeNotifier {
           'department': this.department,
         }, SetOptions(merge: true));
       }
+      await _saveCache(user.uid);
     }
 
     // 🔥 Update all registrations with the new name (automatic sync)
@@ -222,6 +281,7 @@ class ProfileModel extends ChangeNotifier {
       if ((await docRef.get()).exists) {
         await docRef.set({'photoUrl': url}, SetOptions(merge: true));
       }
+      await _saveCache(user.uid);
     }
 
     notifyListeners();

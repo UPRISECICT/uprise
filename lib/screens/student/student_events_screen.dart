@@ -23,6 +23,7 @@ import 'student_certificates_screen.dart';
 import 'student_webinar_code_screen.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../services/webinar_attendance_service.dart';
+import '../../services/certificate_auto_issue_service.dart';
 
 // ─── MAIN SCREEN ──────────────────────────────────────────────
 class StudentEventsScreen extends StatefulWidget {
@@ -1524,6 +1525,23 @@ class _EvaluationsTabState extends State<EvaluationsTab>
         return;
       }
 
+      // 1.5 Get attended event IDs — being registered isn't being present;
+      // only events actually checked into (QR/manual, status present/late)
+      // belong in a feedback queue. Same collectionGroup query
+      // student_feedback_prompt.dart / student_feedback_screen.dart already
+      // use for this exact purpose.
+      final attendanceSnap = await FirebaseFirestore.instance
+          .collectionGroup('attendances')
+          .where('studentId', isEqualTo: _userId)
+          .get();
+      final attendedIds = <String>{};
+      for (final doc in attendanceSnap.docs) {
+        final status = doc.data()['status']?.toString() ?? '';
+        if (status != 'present' && status != 'late') continue;
+        final eventRef = doc.reference.parent.parent;
+        if (eventRef != null) attendedIds.add(eventRef.id);
+      }
+
       // 2. Get evaluated event IDs - CHECK BOTH COLLECTIONS
       final allEvaluatedIds = <String>{};
 
@@ -1584,14 +1602,16 @@ class _EvaluationsTabState extends State<EvaluationsTab>
 
       print('🔍 All registered events: ${allEvents.length}');
 
-      // 4. Filter: Only PAST events that are NOT evaluated
+      // 4. Filter: only PAST events the student actually ATTENDED and
+      // hasn't evaluated yet — registered-but-absent no longer qualifies.
       final now = DateTime.now();
       final pending = allEvents
           .where(
             (event) =>
                 event.date.isBefore(now) && // Past event
-                !allEvaluatedIds.contains(event.id),
-          ) // Not evaluated
+                attendedIds.contains(event.id) && // Actually attended
+                !allEvaluatedIds.contains(event.id), // Not evaluated
+          )
           .toList();
 
       // Print which events are being filtered out
@@ -2673,8 +2693,14 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   final Map<String, String?> _singleChoice = {};
   final Map<String, Set<String>> _multiChoice = {};
 
+  // Whether this student has actually been marked present/late for this
+  // event (via QR/manual check-in) — separate from _isRegistered, since
+  // registering for an event doesn't mean you showed up to it.
+  bool _hasAttended = false;
+
   int _rating = 0;
   final TextEditingController _feedbackCtrl = TextEditingController();
+  String? _existingFeedbackDocId;
   bool _feedbackSubmitted = false;
   bool _checkingFeedback = true;
   bool _submittingFeedback = false;
@@ -2723,6 +2749,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     super.initState();
     _loadRegistrationForm();
     _checkRegistrationStatus();
+    _checkAttendanceStatus();
     if (_isEventReallyOver) {
       _checkFeedbackStatus();
     } else {
@@ -2752,6 +2779,36 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     }
   }
 
+  // Attendance is per-event-per-student, keyed by uid, under
+  // events/{eventId}/attendances/{uid} — written by org_attendance_qr.dart
+  // on QR scan or manual check-in. Only 'present' or 'late' count as
+  // actually attended; a doc simply existing isn't enough on its own since
+  // nothing else writes to this subcollection with another status today,
+  // but checking the value explicitly keeps this correct if that changes.
+  Future<void> _checkAttendanceStatus() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('events')
+          .doc(widget.event.id)
+          .collection('attendances')
+          .doc(user.uid)
+          .get();
+      final status = doc.data()?['status']?.toString() ?? '';
+      if (mounted) {
+        setState(() => _hasAttended = status == 'present' || status == 'late');
+      }
+    } catch (_) {
+      // Leave _hasAttended false — the feedback section just stays hidden.
+    }
+  }
+
+  // Reads from `event_feedback` (not the unrelated `feedback` collection
+  // this used to write to) — org_certificates.dart's auto-certificate gate
+  // and manual "Generate & Distribute" both check event_feedback for
+  // `userId`, so feedback submitted here now actually counts toward the
+  // student's certificate eligibility instead of going nowhere.
   Future<void> _checkFeedbackStatus() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -2759,15 +2816,18 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       return;
     }
     try {
-      final docId = '${user.uid}_${widget.event.id}';
-      final doc = await FirebaseFirestore.instance
-          .collection('feedback')
-          .doc(docId)
+      final snap = await FirebaseFirestore.instance
+          .collection('event_feedback')
+          .where('eventId', isEqualTo: widget.event.id)
+          .where('userId', isEqualTo: user.uid)
+          .limit(1)
           .get();
       if (mounted) {
         setState(() {
-          if (doc.exists) {
-            final d = doc.data()!;
+          if (snap.docs.isNotEmpty) {
+            final doc = snap.docs.first;
+            final d = doc.data();
+            _existingFeedbackDocId = doc.id;
             _feedbackSubmitted = true;
             _rating = (d['rating'] ?? 0) as int;
             _feedbackCtrl.text = (d['comment'] ?? '').toString();
@@ -2780,7 +2840,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         setState(() => _checkingFeedback = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Could not load  k status: $e'),
+            content: Text('Could not load feedback status: $e'),
             backgroundColor: Colors.orange,
             duration: const Duration(seconds: 4),
           ),
@@ -2811,15 +2871,38 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     }
     setState(() => _submittingFeedback = true);
     try {
-      final docId = '${user.uid}_${widget.event.id}';
-      await FirebaseFirestore.instance.collection('feedback').doc(docId).set({
-        'userId': user.uid,
+      final data = {
         'eventId': widget.event.id,
-        'eventTitle': widget.event.title,
+        'eventName': widget.event.title,
+        'organization': widget.event.orgName,
+        'orgId': widget.event.orgId,
         'rating': _rating,
         'comment': _feedbackCtrl.text.trim(),
+        'userId': user.uid,
+        'isAnonymous': false,
         'submittedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      };
+      final feedbackCol = FirebaseFirestore.instance.collection(
+        'event_feedback',
+      );
+      if (_existingFeedbackDocId != null) {
+        await feedbackCol
+            .doc(_existingFeedbackDocId)
+            .set(data, SetOptions(merge: true));
+      } else {
+        final ref = await feedbackCol.add(data);
+        _existingFeedbackDocId = ref.id;
+      }
+
+      // If the org already distributed certificates for this event before
+      // this feedback came in, issue this student's certificate right now
+      // instead of leaving them waiting for the org to re-run it.
+      await CertificateAutoIssueService.tryIssueForFeedback(
+        eventDocId: widget.event.id,
+        recipientKey: user.uid,
+        isGuest: false,
+      );
+
       if (mounted) {
         setState(() {
           _feedbackSubmitted = true;
@@ -2838,7 +2921,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       if (mounted) {
         setState(() => _submittingFeedback = false);
         final msg = e.toString().toLowerCase().contains('permission')
-            ? 'Failed to submit: missing Firestore permission for "feedback" collection. Check your security rules.'
+            ? 'Failed to submit: missing Firestore permission for "event_feedback" collection. Check your security rules.'
             : 'Failed to submit feedback: $e';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -3562,7 +3645,43 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                       ),
                     ),
 
-                  if (_isEventReallyOver) _buildFeedbackSection(),
+                  // Feedback only for students who registered AND were
+                  // actually marked present/late — a past event you never
+                  // attended shouldn't offer a feedback form, since
+                  // org_certificates.dart's certificate gate reads this
+                  // exact combination (attendance + event_feedback).
+                  if (_isEventReallyOver && _isRegistered && _hasAttended)
+                    _buildFeedbackSection()
+                  else if (_isEventReallyOver && _isRegistered)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline_rounded,
+                            size: 18,
+                            color: Colors.grey.shade500,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Feedback is only available for events you attended. No attendance was recorded for you at this event.',
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                color: Colors.grey.shade600,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
 
                   const SizedBox(height: 30),
                 ],

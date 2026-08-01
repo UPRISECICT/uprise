@@ -256,20 +256,30 @@ class BottomNavBar extends StatelessWidget {
                           size: 22,
                         ),
                         const SizedBox(height: 4),
-                        Text(
-                          item.label,
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: isSelected
-                                ? FontWeight.w700
-                                : FontWeight.w500,
-                            color: isSelected
-                                ? AppColors.primaryDark
-                                : _UiTokens.mutedText,
+                        // FittedBox instead of overflow:visible — a label
+                        // longer than "Announce" (e.g. "Announcements")
+                        // would otherwise spill past its Expanded slot and
+                        // overlap the neighboring tab instead of shrinking
+                        // to fit.
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 2),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              item.label,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: isSelected
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                                color: isSelected
+                                    ? AppColors.primaryDark
+                                    : _UiTokens.mutedText,
+                              ),
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                            ),
                           ),
-                          textAlign: TextAlign.center,
-                          overflow: TextOverflow.visible,
-                          softWrap: false,
                         ),
                       ],
                     ),
@@ -383,7 +393,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
           BottomNavItem(
             Icons.announcement_outlined,
             Icons.announcement,
-            'Announce',
+            'Announcements',
           ),
           BottomNavItem(
             Icons.calendar_today_outlined,

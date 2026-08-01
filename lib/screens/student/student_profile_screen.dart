@@ -79,13 +79,24 @@ class ProfileModel extends ChangeNotifier {
   String middleName = '';
   String lastName = '';
 
+  // Admin-created accounts (student_accounts.dart, both the single-add form
+  // and batch import) only ever write a single `fullName` field to the
+  // `students` doc — firstName/middleName/lastName don't exist there until
+  // the student edits their own profile on mobile. Without this fallback,
+  // fullName below would stay empty (and the header would keep showing the
+  // static "Student Name" placeholder) for every student who hasn't done
+  // that yet, which in practice is almost everyone right after account
+  // creation.
+  String rawFullName = '';
+
   String get fullName {
     final parts = [
       firstName,
       middleName,
       lastName,
     ].where((p) => p.trim().isNotEmpty);
-    return parts.join(' ');
+    final joined = parts.join(' ');
+    return joined.isNotEmpty ? joined : rawFullName;
   }
 
   String get fullNameLastFirst {
@@ -119,6 +130,7 @@ class ProfileModel extends ChangeNotifier {
     firstName = data['firstName'] ?? firstName;
     middleName = data['middleName'] ?? middleName;
     lastName = data['lastName'] ?? lastName;
+    rawFullName = data['fullName'] ?? rawFullName;
     studentId = data['studentId'] ?? studentId;
     mobile = data['mobile'] ?? mobile;
     address = data['address'] ?? address;
@@ -197,6 +209,7 @@ class ProfileModel extends ChangeNotifier {
         'firstName': firstName,
         'middleName': middleName,
         'lastName': lastName,
+        'fullName': rawFullName,
         'studentId': studentId,
         'mobile': mobile,
         'address': address,
@@ -227,6 +240,7 @@ class ProfileModel extends ChangeNotifier {
     this.firstName = firstName;
     this.middleName = middleName;
     this.lastName = lastName;
+    rawFullName = fullName; // keep the fallback in sync too
     this.email = email;
     this.mobile = mobile;
     this.address = address;
@@ -2115,9 +2129,23 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _firstNameCtrl = TextEditingController(text: widget.profile.firstName);
-    _middleNameCtrl = TextEditingController(text: widget.profile.middleName);
-    _lastNameCtrl = TextEditingController(text: widget.profile.lastName);
+    final p = widget.profile;
+    // Admin-created accounts only ever have a combined `fullName` on file
+    // (see student_accounts.dart) — firstName/middleName/lastName stay
+    // empty until the student edits here. Pre-fill a best-effort split of
+    // rawFullName so opening this form the first time doesn't present a
+    // blank slate for a name that's already on record.
+    String first = p.firstName;
+    String middle = p.middleName;
+    String last = p.lastName;
+    if (first.isEmpty && last.isEmpty && p.rawFullName.trim().isNotEmpty) {
+      final parts = p.rawFullName.trim().split(RegExp(r'\s+'));
+      first = parts.first;
+      last = parts.length > 1 ? parts.sublist(1).join(' ') : '';
+    }
+    _firstNameCtrl = TextEditingController(text: first);
+    _middleNameCtrl = TextEditingController(text: middle);
+    _lastNameCtrl = TextEditingController(text: last);
     _emailCtrl = TextEditingController(text: widget.profile.email);
     _mobileCtrl = TextEditingController(text: widget.profile.mobile);
     _addressCtrl = TextEditingController(text: widget.profile.address);

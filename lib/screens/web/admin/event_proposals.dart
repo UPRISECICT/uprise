@@ -137,6 +137,40 @@ const Map<String, Color> _categoryBadgeColors = {
 Color _categoryBadgeColor(String category) =>
     _categoryBadgeColors[category] ?? const Color(0xFF6B7280);
 
+// Pastel bg / solid fg pair per category — same values as
+// event_calendar.dart's CategoryColors, so a category's table badge here
+// reads as the same color as its calendar chip.
+class CategoryColors {
+  static const Map<String, Color> bg = {
+    'Workshop': Color(0xFFEDE9FE),
+    'Seminar': Color(0xFFDBEAFE),
+    'Competition': Color(0xFFFEE2E2),
+    'General Assembly': Color(0xFFFFEDD5),
+    'Social': Color(0xFFFCE7F3),
+    'Outreach': Color(0xFFD1FAE5),
+    'Sports': Color(0xFFCCFBF1),
+    'Academic': Color(0xFFE0E7FF),
+    'Technical': Color(0xFFCFFAFE),
+    'Cultural': Color(0xFFFAE8FF),
+    'Other': Color(0xFFF3F4F6),
+  };
+  static const Map<String, Color> fg = {
+    'Workshop': Color(0xFF6D28D9),
+    'Seminar': Color(0xFF1D4ED8),
+    'Competition': Color(0xFFB91C1C),
+    'General Assembly': Color(0xFFC2410C),
+    'Social': Color(0xFFBE185D),
+    'Outreach': Color(0xFF047857),
+    'Sports': Color(0xFF0F766E),
+    'Academic': Color(0xFF4338CA),
+    'Technical': Color(0xFF0E7490),
+    'Cultural': Color(0xFFA21CAF),
+    'Other': Color(0xFF374151),
+  };
+  static Color getBg(String cat) => bg[cat] ?? bg['Other']!;
+  static Color getFg(String cat) => fg[cat] ?? fg['Other']!;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared helpers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -783,9 +817,9 @@ class _EventProposalsState extends State<EventProposals> {
                         vertical: 3,
                       ),
                       decoration: BoxDecoration(
-                        color: _categoryBadgeColor(
+                        color: CategoryColors.getBg(
                           data['category'] ?? 'Other',
-                        ).withAlpha(28),
+                        ),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
@@ -798,7 +832,7 @@ class _EventProposalsState extends State<EventProposals> {
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: _categoryBadgeColor(
+                          color: CategoryColors.getFg(
                             data['category'] ?? 'Other',
                           ),
                         ),

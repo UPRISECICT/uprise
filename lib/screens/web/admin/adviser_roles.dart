@@ -2930,21 +2930,29 @@ class _TabToggle extends StatelessWidget {
       child: Row(
         children: options.map((opt) {
           final isActive = opt == selected;
-          return GestureDetector(
-            onTap: () => onChanged(opt),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-              decoration: BoxDecoration(
-                color: isActive ? AdminColors.primaryDark : Colors.transparent,
-                borderRadius: BorderRadius.circular(7),
-              ),
-              child: Text(
-                opt,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: isActive ? Colors.white : const Color(0xFF64748B),
+          return MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              onTap: () => onChanged(opt),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 5,
+                ),
+                decoration: BoxDecoration(
+                  color: isActive
+                      ? AdminColors.primaryDark
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: Text(
+                  opt,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: isActive ? Colors.white : const Color(0xFF64748B),
+                  ),
                 ),
               ),
             ),

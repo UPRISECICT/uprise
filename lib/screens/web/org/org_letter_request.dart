@@ -578,14 +578,15 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
         border: Border(bottom: BorderSide(color: _DS.primary.withAlpha(60))),
       ),
       child: Row(
+        // Every column below is a fixed width now (not Expanded) — with
+        // spaceBetween, any extra room on a wide screen becomes equal gaps
+        // between columns instead of one column (SUBJECT) swallowing all of
+        // it while the rest cluster together on the right.
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Expanded(flex: 5, child: _headerCell('SUBJECT')),
-          Expanded(flex: 2, child: _headerCell('DATE SUBMITTED')),
-          Expanded(flex: 2, child: _headerCell('E-SIGNED')),
-          // Fixed widths, not flex — a status pill and two icon buttons
-          // never need more room on a wide screen, so letting them stretch
-          // with an Expanded flex left a huge dead gap between the status
-          // badge and the action icons on anything wider than a laptop.
+          SizedBox(width: 340, child: _headerCell('SUBJECT')),
+          SizedBox(width: 130, child: _headerCell('DATE SUBMITTED')),
+          SizedBox(width: 150, child: _headerCell('E-SIGNED')),
           SizedBox(width: 130, child: _headerCell('STATUS')),
           SizedBox(
             width: 110,
@@ -629,9 +630,10 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
               : const Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
         ),
         child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Expanded(
-              flex: 5,
+            SizedBox(
+              width: 340,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
@@ -662,8 +664,8 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
                 ],
               ),
             ),
-            Expanded(
-              flex: 2,
+            SizedBox(
+              width: 130,
               child: Text(
                 DateFormat('MMM dd, yyyy').format(submittedAt),
                 style: GoogleFonts.beVietnamPro(
@@ -673,8 +675,8 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            Expanded(
-              flex: 2,
+            SizedBox(
+              width: 150,
               child: request.signedAt != null
                   ? Row(
                       mainAxisSize: MainAxisSize.min,

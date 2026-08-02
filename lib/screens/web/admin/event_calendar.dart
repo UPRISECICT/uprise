@@ -32,21 +32,37 @@ Color _getCategoryColor(String category) {
 }
 
 // ─── Category chip colors (matching org version) ────────────────
+// Pastel bg / solid fg pair per category, derived from the same canonical
+// hue each category uses in `_categoryColors` above (Tailwind -100/-700 of
+// that hue) — kept in sync with org_events_schedule.dart's CategoryColors
+// value-for-value. Previously this only covered 6 of the 11 categories and
+// gave Sports and Workshop the exact same foreground color, making them
+// indistinguishable on the calendar.
 class CategoryColors {
   static const Map<String, Color> bg = {
-    'Academic': Color(0xFFDCFCE7),
-    'Technical': Color(0xFFDBEAFE),
-    'Cultural': Color(0xFFFCE7F3),
-    'Sports': Color(0xFFFFEDD5),
-    'Workshop': Color(0xFFFEF3C7),
+    'Workshop': Color(0xFFEDE9FE),
+    'Seminar': Color(0xFFDBEAFE),
+    'Competition': Color(0xFFFEE2E2),
+    'General Assembly': Color(0xFFFFEDD5),
+    'Social': Color(0xFFFCE7F3),
+    'Outreach': Color(0xFFD1FAE5),
+    'Sports': Color(0xFFCCFBF1),
+    'Academic': Color(0xFFE0E7FF),
+    'Technical': Color(0xFFCFFAFE),
+    'Cultural': Color(0xFFFAE8FF),
     'Other': Color(0xFFF3F4F6),
   };
   static const Map<String, Color> fg = {
-    'Academic': Color(0xFF15803D),
-    'Technical': Color(0xFF1D4ED8),
-    'Cultural': Color(0xFFBE185D),
-    'Sports': Color(0xFFEA580C),
-    'Workshop': Color(0xFFEA580C),
+    'Workshop': Color(0xFF6D28D9),
+    'Seminar': Color(0xFF1D4ED8),
+    'Competition': Color(0xFFB91C1C),
+    'General Assembly': Color(0xFFC2410C),
+    'Social': Color(0xFFBE185D),
+    'Outreach': Color(0xFF047857),
+    'Sports': Color(0xFF0F766E),
+    'Academic': Color(0xFF4338CA),
+    'Technical': Color(0xFF0E7490),
+    'Cultural': Color(0xFFA21CAF),
     'Other': Color(0xFF374151),
   };
   static Color getBg(String cat) => bg[cat] ?? bg['Other']!;
@@ -857,6 +873,15 @@ class _EventCalendarState extends State<EventCalendar> {
               final chipColor = isPending
                   ? _statusColor(e.status)
                   : _getCategoryColor(e.category);
+              // Pending chips stay status-colored (alpha-tinted); category
+              // chips use the same pastel bg / solid fg pair as the org
+              // calendar's chips, instead of an alpha-tint of the raw hue.
+              final chipBg = isPending
+                  ? chipColor.withAlpha(20)
+                  : CategoryColors.getBg(e.category);
+              final chipFg = isPending
+                  ? chipColor
+                  : CategoryColors.getFg(e.category);
               return Padding(
                 padding: const EdgeInsets.only(bottom: 2.0),
                 child: Container(
@@ -866,7 +891,7 @@ class _EventCalendarState extends State<EventCalendar> {
                     vertical: 2,
                   ),
                   decoration: BoxDecoration(
-                    color: chipColor.withAlpha(20),
+                    color: chipBg,
                     borderRadius: BorderRadius.circular(4),
                     border: isPending
                         ? Border.all(color: chipColor.withAlpha(140), width: 1)
@@ -880,7 +905,7 @@ class _EventCalendarState extends State<EventCalendar> {
                           child: Icon(
                             Icons.schedule_rounded,
                             size: 9,
-                            color: chipColor,
+                            color: chipFg,
                           ),
                         )
                       else
@@ -889,7 +914,7 @@ class _EventCalendarState extends State<EventCalendar> {
                           height: 4,
                           margin: const EdgeInsets.only(right: 4),
                           decoration: BoxDecoration(
-                            color: chipColor,
+                            color: chipFg,
                             shape: BoxShape.circle,
                           ),
                         ),
@@ -899,7 +924,7 @@ class _EventCalendarState extends State<EventCalendar> {
                           style: GoogleFonts.beVietnamPro(
                             fontSize: 10,
                             fontWeight: FontWeight.w600,
-                            color: chipColor,
+                            color: chipFg,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,

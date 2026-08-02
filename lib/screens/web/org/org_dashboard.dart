@@ -1842,6 +1842,40 @@ class _OrgDashboardState extends State<OrgDashboard> {
   }
 }
 
+// Pastel bg / solid fg pair per category — same values as
+// event_calendar.dart / org_events_schedule.dart's CategoryColors, so a
+// category's table badge here reads as the same color as its calendar chip.
+class CategoryColors {
+  static const Map<String, Color> bg = {
+    'Workshop': Color(0xFFEDE9FE),
+    'Seminar': Color(0xFFDBEAFE),
+    'Competition': Color(0xFFFEE2E2),
+    'General Assembly': Color(0xFFFFEDD5),
+    'Social': Color(0xFFFCE7F3),
+    'Outreach': Color(0xFFD1FAE5),
+    'Sports': Color(0xFFCCFBF1),
+    'Academic': Color(0xFFE0E7FF),
+    'Technical': Color(0xFFCFFAFE),
+    'Cultural': Color(0xFFFAE8FF),
+    'Other': Color(0xFFF3F4F6),
+  };
+  static const Map<String, Color> fg = {
+    'Workshop': Color(0xFF6D28D9),
+    'Seminar': Color(0xFF1D4ED8),
+    'Competition': Color(0xFFB91C1C),
+    'General Assembly': Color(0xFFC2410C),
+    'Social': Color(0xFFBE185D),
+    'Outreach': Color(0xFF047857),
+    'Sports': Color(0xFF0F766E),
+    'Academic': Color(0xFF4338CA),
+    'Technical': Color(0xFF0E7490),
+    'Cultural': Color(0xFFA21CAF),
+    'Other': Color(0xFF374151),
+  };
+  static Color getBg(String cat) => bg[cat] ?? bg['Other']!;
+  static Color getFg(String cat) => fg[cat] ?? fg['Other']!;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Org Dashboard Home (with countdown – no timer updates here)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2709,7 +2743,8 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                     _cellText(rows[i]['title'] as String, bold: true),
                     _cellBadge(
                       rows[i]['category'] as String,
-                      _categoryBadgeColor(rows[i]['category'] as String),
+                      CategoryColors.getFg(rows[i]['category'] as String),
+                      bg: CategoryColors.getBg(rows[i]['category'] as String),
                     ),
                     _cellText(_fmtDate(rows[i]['date'] as DateTime?)),
                     _cellText(rows[i]['location'] as String),
@@ -2815,7 +2850,8 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                     _cellText(rows[i]['title'] as String, bold: true),
                     _cellBadge(
                       rows[i]['category'] as String,
-                      _categoryBadgeColor(rows[i]['category'] as String),
+                      CategoryColors.getFg(rows[i]['category'] as String),
+                      bg: CategoryColors.getBg(rows[i]['category'] as String),
                     ),
                     _cellText(_fmtDate(rows[i]['eventDate'] as DateTime?)),
                     _cellText(_fmtDate(rows[i]['submittedAt'] as DateTime?)),
@@ -3166,27 +3202,6 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
     );
   }
 
-  // Same palette as admin_dashboard.dart's _categoryBadgeColors — kept
-  // identical value-for-value (not just similarly-themed) so an event
-  // category reads as the same color whether an admin or the org is
-  // looking at it, instead of two different color systems for one concept.
-  static const Map<String, Color> _categoryBadgeColors = {
-    'Workshop': Color(0xFF8B5CF6),
-    'Seminar': Color(0xFF3B82F6),
-    'Competition': Color(0xFFEF4444),
-    'General Assembly': Color(0xFFF97316),
-    'Social': Color(0xFFEC4899),
-    'Outreach': Color(0xFF10B981),
-    'Sports': Color(0xFF14B8A6),
-    'Academic': Color(0xFF6366F1),
-    'Technical': Color(0xFF06B6D4),
-    'Cultural': Color(0xFFD946EF),
-  };
-
-  Color _categoryBadgeColor(String category) {
-    return _categoryBadgeColors[category] ?? const Color(0xFF6B7280);
-  }
-
   // Merchandise categories are a separate domain from event categories
   // (admin has no merchandise feature to match colors against), so this is
   // its own small fixed palette rather than reusing the event map above.
@@ -3202,13 +3217,16 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
     return _merchCategoryBadgeColors[category] ?? const Color(0xFF6B7280);
   }
 
-  Widget _cellBadge(String text, Color color) {
+  // [bg] overrides the default alpha-tinted background with a fixed color
+  // — used for category badges, which use the same pastel bg / solid fg
+  // pair as the calendar's category chips instead of a tint of [color].
+  Widget _cellBadge(String text, Color color, {Color? bg}) {
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
-          color: color.withAlpha(24),
+          color: bg ?? color.withAlpha(24),
           borderRadius: BorderRadius.circular(6),
         ),
         child: Text(

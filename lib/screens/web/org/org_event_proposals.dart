@@ -171,12 +171,45 @@ Color _categoryBadgeColor(String category) {
   return _categoryBadgeColors[category] ?? const Color(0xFF6B7280);
 }
 
+// Pastel bg / solid fg pair per category — same values as
+// event_calendar.dart / org_events_schedule.dart's CategoryColors, so a
+// category's table badge here reads as the same color as its calendar chip.
+class CategoryColors {
+  static const Map<String, Color> bg = {
+    'Workshop': Color(0xFFEDE9FE),
+    'Seminar': Color(0xFFDBEAFE),
+    'Competition': Color(0xFFFEE2E2),
+    'General Assembly': Color(0xFFFFEDD5),
+    'Social': Color(0xFFFCE7F3),
+    'Outreach': Color(0xFFD1FAE5),
+    'Sports': Color(0xFFCCFBF1),
+    'Academic': Color(0xFFE0E7FF),
+    'Technical': Color(0xFFCFFAFE),
+    'Cultural': Color(0xFFFAE8FF),
+    'Other': Color(0xFFF3F4F6),
+  };
+  static const Map<String, Color> fg = {
+    'Workshop': Color(0xFF6D28D9),
+    'Seminar': Color(0xFF1D4ED8),
+    'Competition': Color(0xFFB91C1C),
+    'General Assembly': Color(0xFFC2410C),
+    'Social': Color(0xFFBE185D),
+    'Outreach': Color(0xFF047857),
+    'Sports': Color(0xFF0F766E),
+    'Academic': Color(0xFF4338CA),
+    'Technical': Color(0xFF0E7490),
+    'Cultural': Color(0xFFA21CAF),
+    'Other': Color(0xFF374151),
+  };
+  static Color getBg(String cat) => bg[cat] ?? bg['Other']!;
+  static Color getFg(String cat) => fg[cat] ?? fg['Other']!;
+}
+
 Widget _categoryBadge(String category) {
-  final color = _categoryBadgeColor(category);
   return Container(
     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
     decoration: BoxDecoration(
-      color: color.withAlpha(24),
+      color: CategoryColors.getBg(category),
       borderRadius: BorderRadius.circular(6),
     ),
     child: Text(
@@ -185,7 +218,7 @@ Widget _categoryBadge(String category) {
       style: GoogleFonts.beVietnamPro(
         fontSize: 11,
         fontWeight: FontWeight.w700,
-        color: color,
+        color: CategoryColors.getFg(category),
         letterSpacing: 0.2,
       ),
     ),
@@ -461,12 +494,16 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
   void _openLiveTrackerModal(Map<String, dynamic> data) {
     final eventDocId = (data['publishedEventId'] ?? '').toString();
     if (eventDocId.isEmpty) return;
+    final eventDate = data['date'];
+    final isPast =
+        eventDate is Timestamp && !eventDate.toDate().isAfter(DateTime.now());
     showDialog(
       context: context,
       barrierColor: Colors.black54,
       builder: (_) => _LiveTrackerModal(
         eventDocId: eventDocId,
         eventTitle: (data['title'] ?? 'Event').toString(),
+        isPast: isPast,
       ),
     );
   }
@@ -766,6 +803,14 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
       if (description.isEmpty) throw Exception('Missing description.');
       if (location.isEmpty) throw Exception('Missing location.');
       if (proposalDate == null) throw Exception('Missing event date.');
+      // Backstop for the button-hiding in _buildProposalRow — a stale UI
+      // (e.g. a dialog left open across midnight) could otherwise still
+      // reach this call after the event date has passed.
+      if (!proposalDate.toDate().isAfter(DateTime.now())) {
+        throw Exception(
+          'This event\'s date has already passed and can no longer be published.',
+        );
+      }
 
       // Get org details
       String orgName = (data['orgName'] ?? '').toString();
@@ -1444,7 +1489,10 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
       ),
       child: Row(
         children: [
-          Expanded(flex: 5, child: _headerCell('EVENT TITLE')),
+          // Flex values here must match _buildProposalRow's Row exactly
+          // (4, 2, 2, 2, 2, 2) or the header text drifts out of alignment
+          // with its column's actual content.
+          Expanded(flex: 4, child: _headerCell('EVENT TITLE')),
           Expanded(flex: 2, child: _headerCell('CATEGORY')),
           Expanded(flex: 2, child: _headerCell('EVENT DATE')),
           Expanded(flex: 2, child: _headerCell('STATUS')),
@@ -1482,6 +1530,12 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
     final dateStr = date is Timestamp
         ? DateFormat('MMM dd, yyyy').format(date.toDate())
         : '—';
+    // Once the event date has passed there's nothing left to edit, form, or
+    // publish — the only things that still make sense are viewing what
+    // happened (participants/attendance, if it was published) and
+    // archiving it out of the active list.
+    final isPastEvent =
+        date is Timestamp && !date.toDate().isAfter(DateTime.now());
     final submittedAt = data['submittedAt'];
     final submittedStr = submittedAt is Timestamp
         ? DateFormat('MMM dd, yyyy').format(submittedAt.toDate())
@@ -1505,7 +1559,9 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
 
     return InkWell(
       hoverColor: const Color(0xFFF8F9FB),
-      onTap: () => _openViewModal(docId, data),
+      onTap: (isPastEvent && isPublished)
+          ? () => _openLiveTrackerModal(data)
+          : () => _openViewModal(docId, data),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         decoration: BoxDecoration(
@@ -1629,23 +1685,36 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
               child: Align(
                 alignment: Alignment.centerRight,
                 child: _ActionPopupButton(
-                  onView: () => _openViewModal(docId, data),
-                  onEdit: status == 'pending'
+                  // Past events: "View" absorbs the live tracker's
+                  // participants/attendance view when the event was
+                  // actually published; otherwise it's just the plain
+                  // proposal details (nothing was ever published to view
+                  // attendance for).
+                  onView: (isPastEvent && isPublished)
+                      ? () => _openLiveTrackerModal(data)
+                      : () => _openViewModal(docId, data),
+                  viewIsAttendance: isPastEvent && isPublished,
+                  onEdit: (!isPastEvent && status == 'pending')
                       ? () => _openEditModal(docId, data)
                       : null,
-                  onRevise: status == 'for_review'
+                  onRevise: (!isPastEvent && status == 'for_review')
                       ? () => _openEditModal(docId, data)
                       : null,
-                  onFormBuilder: status == 'approved'
+                  onFormBuilder: (!isPastEvent && status == 'approved')
                       ? () => _openFormBuilder(docId, data)
                       : null,
-                  onPublish: (status == 'approved' && !isPublished)
+                  onPublish:
+                      (!isPastEvent && status == 'approved' && !isPublished)
                       ? () => _confirmPublish(docId, data)
                       : null,
-                  onLiveTracker: isPublished
+                  // Folded into "View" above once the event is past.
+                  onLiveTracker: (!isPastEvent && isPublished)
                       ? () => _openLiveTrackerModal(data)
                       : null,
-                  onArchive: (status == 'approved' || status == 'rejected')
+                  onArchive:
+                      (isPastEvent ||
+                          status == 'approved' ||
+                          status == 'rejected')
                       ? () =>
                             _confirmArchive(docId, data['title'] ?? 'Proposal')
                       : null,
@@ -2002,6 +2071,10 @@ class _ToolbarButton extends StatelessWidget {
 
 class _ActionPopupButton extends StatelessWidget {
   final VoidCallback onView;
+  // True when "View" has been rerouted to the participants/attendance
+  // tracker for a past, published event — swaps the icon/tooltip so the
+  // button doesn't silently do something different than it usually does.
+  final bool viewIsAttendance;
   final VoidCallback? onEdit;
   final VoidCallback? onRevise;
   final VoidCallback? onFormBuilder;
@@ -2010,6 +2083,7 @@ class _ActionPopupButton extends StatelessWidget {
   final VoidCallback? onArchive;
   const _ActionPopupButton({
     required this.onView,
+    this.viewIsAttendance = false,
     this.onEdit,
     this.onRevise,
     this.onFormBuilder,
@@ -2024,9 +2098,15 @@ class _ActionPopupButton extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         OrgActionIconButton(
-          icon: Icons.visibility_outlined,
-          color: const Color(0xFF3B82F6),
-          tooltip: 'View Details',
+          icon: viewIsAttendance
+              ? Icons.insights_outlined
+              : Icons.visibility_outlined,
+          color: viewIsAttendance
+              ? const Color(0xFF059669)
+              : const Color(0xFF3B82F6),
+          tooltip: viewIsAttendance
+              ? 'View Participants & Attendance'
+              : 'View Details',
           onTap: onView,
         ),
         if (onEdit != null) ...[
@@ -2097,7 +2177,15 @@ class _ActionPopupButton extends StatelessWidget {
 class _LiveTrackerModal extends StatefulWidget {
   final String eventDocId;
   final String eventTitle;
-  const _LiveTrackerModal({required this.eventDocId, required this.eventTitle});
+  // Set when opened for an event whose date has already passed — swaps the
+  // "LIVE" badge for a neutral "ENDED" one since nothing is actually live
+  // anymore, just a record of who registered and who checked in.
+  final bool isPast;
+  const _LiveTrackerModal({
+    required this.eventDocId,
+    required this.eventTitle,
+    this.isPast = false,
+  });
 
   @override
   State<_LiveTrackerModal> createState() => _LiveTrackerModalState();
@@ -2211,14 +2299,16 @@ class _LiveTrackerModalState extends State<_LiveTrackerModal> {
           Container(
             width: 7,
             height: 7,
-            decoration: const BoxDecoration(
-              color: Color(0xFF4ADE80),
+            decoration: BoxDecoration(
+              color: widget.isPast
+                  ? Colors.white.withAlpha(140)
+                  : const Color(0xFF4ADE80),
               shape: BoxShape.circle,
             ),
           ),
           const SizedBox(width: 6),
           Text(
-            'LIVE',
+            widget.isPast ? 'ENDED' : 'LIVE',
             style: GoogleFonts.beVietnamPro(
               fontSize: 11,
               fontWeight: FontWeight.w700,
@@ -3216,6 +3306,66 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
     } catch (_) {}
   }
 
+  Widget _audienceChip(String a) {
+    final selected = _selectedAudiences.contains(a);
+    return GestureDetector(
+      onTap: () => setState(() {
+        if (selected) {
+          if (_selectedAudiences.length > 1) {
+            _selectedAudiences.remove(a);
+          }
+        } else {
+          _selectedAudiences.add(a);
+        }
+      }),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+        decoration: BoxDecoration(
+          color: selected
+              ? UpriseColors.primaryDark.withAlpha(20)
+              : Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selected
+                ? UpriseColors.primaryDark
+                : const Color(0xFFE2E6EA),
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              selected
+                  ? Icons.check_box_rounded
+                  : Icons.check_box_outline_blank_rounded,
+              size: 18,
+              color: selected
+                  ? UpriseColors.primaryDark
+                  : const Color(0xFF9AA5B4),
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                a,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                  color: selected
+                      ? const Color(0xFF1A202C)
+                      : const Color(0xFF64748B),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isEdit = widget.editDocId != null;
@@ -3377,69 +3527,19 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: _audiences.map((a) {
-                        final selected = _selectedAudiences.contains(a);
-                        return GestureDetector(
-                          onTap: () => setState(() {
-                            if (selected) {
-                              if (_selectedAudiences.length > 1) {
-                                _selectedAudiences.remove(a);
-                              }
-                            } else {
-                              _selectedAudiences.add(a);
-                            }
-                          }),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 150),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 9,
-                            ),
-                            decoration: BoxDecoration(
-                              color: selected
-                                  ? UpriseColors.primaryDark.withAlpha(20)
-                                  : Colors.white,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: selected
-                                    ? UpriseColors.primaryDark
-                                    : const Color(0xFFE2E6EA),
-                                width: selected ? 1.5 : 1,
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  selected
-                                      ? Icons.check_box_rounded
-                                      : Icons.check_box_outline_blank_rounded,
-                                  size: 18,
-                                  color: selected
-                                      ? UpriseColors.primaryDark
-                                      : const Color(0xFF9AA5B4),
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  a,
-                                  style: GoogleFonts.beVietnamPro(
-                                    fontSize: 13,
-                                    fontWeight: selected
-                                        ? FontWeight.w600
-                                        : FontWeight.w400,
-                                    color: selected
-                                        ? const Color(0xFF1A202C)
-                                        : const Color(0xFF64748B),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }).toList(),
+                    // A Wrap here would drop whichever chip doesn't fit onto
+                    // its own row below the rest once the label list grows
+                    // (e.g. adding "BulSUan" made the 4th chip wrap alone).
+                    // Splitting the row's own width evenly across every chip
+                    // keeps them on one line regardless of how many there
+                    // are or how long their labels get.
+                    Row(
+                      children: [
+                        for (int i = 0; i < _audiences.length; i++) ...[
+                          if (i > 0) const SizedBox(width: 8),
+                          Expanded(child: _audienceChip(_audiences[i])),
+                        ],
+                      ],
                     ),
                     const SizedBox(height: 12),
                     TextFormField(

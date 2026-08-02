@@ -3916,25 +3916,28 @@ class _ReportsManagementState extends State<ReportsManagement>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                GestureDetector(
-                  onTap: () => setState(() => _detailEvent = null),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.arrow_back_rounded,
-                        size: 16,
-                        color: Color(0xFF64748B),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Back to Reports List',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 13,
-                          color: const Color(0xFF64748B),
-                          fontWeight: FontWeight.w500,
+                MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: () => setState(() => _detailEvent = null),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.arrow_back_rounded,
+                          size: 16,
+                          color: Color(0xFF64748B),
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 6),
+                        Text(
+                          'Back to Reports List',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 13,
+                            color: const Color(0xFF64748B),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -5035,69 +5038,72 @@ class _ReportsManagementState extends State<ReportsManagement>
               final name = att['name']?.toString() ?? 'File';
               final size = att['size']?.toString() ?? '';
               final fileUrl = att['fileUrl']?.toString() ?? '';
-              return GestureDetector(
-                onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Opening: $fileUrl'),
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(_DS.radiusSm),
+              return MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Opening: $fileUrl'),
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(_DS.radiusSm),
+                      ),
                     ),
                   ),
-                ),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8F9FB),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFFE2E6EA)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: UpriseColors.infoBg,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(
-                          Icons.insert_drive_file_outlined,
-                          color: UpriseColors.info,
-                          size: 20,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            name,
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8F9FB),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFE2E6EA)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: UpriseColors.infoBg,
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                          Text(
-                            size,
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 11,
-                              color: const Color(0xFF64748B),
-                            ),
+                          child: const Icon(
+                            Icons.insert_drive_file_outlined,
+                            color: UpriseColors.info,
+                            size: 20,
                           ),
-                        ],
-                      ),
-                      const SizedBox(width: 10),
-                      const Icon(
-                        Icons.download_outlined,
-                        size: 16,
-                        color: Color(0xFF64748B),
-                      ),
-                    ],
+                        ),
+                        const SizedBox(width: 10),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              name,
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            Text(
+                              size,
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 11,
+                                color: const Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(width: 10),
+                        const Icon(
+                          Icons.download_outlined,
+                          size: 16,
+                          color: Color(0xFF64748B),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               );

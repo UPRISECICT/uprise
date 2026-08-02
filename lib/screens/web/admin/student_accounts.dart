@@ -575,7 +575,11 @@ class _StudentAccountsState extends State<StudentAccounts> {
             onTap: () => _showStudentDetailDialog(docId, data),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 120),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              // Left padding is 3px less than the header's 20 because the
+              // always-present (just transparent-when-not-hovering) 3px
+              // left border below reserves that space itself — otherwise
+              // every cell here sits 3px right of its column header.
+              padding: const EdgeInsets.fromLTRB(17, 14, 20, 14),
               decoration: BoxDecoration(
                 color: hovering
                     ? const Color(0xFFF8F9FB)

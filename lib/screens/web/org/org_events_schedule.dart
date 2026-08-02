@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../admin/export_util.dart';
 import '../admin/export_pdf.dart';
+import '../../../theme/org_theme.dart';
 
 // ==================== CATEGORY COLORS ====================
 Map<String, Color> _categoryColors = {
@@ -40,49 +41,46 @@ class _DS {
   ];
 }
 
-class UpriseColors {
-  static const Color primaryDark = Color(0xFFEA580C);
-  static const Color primaryLight = Color(0xFFD47A00);
-  static const Color error = Color(0xFFDC2626);
-  static const Color success = Color(0xFF059669);
-  static const Color warning = Color(0xFFFB923C);
-  static const Color info = Color(0xFF3B82F6);
-  static const Color greyText = Color(0xFF64748B);
-  static const Color darkText = Color(0xFF1A202C);
-}
-
 class CategoryColors {
-  // Each category gets its own distinct hue — Sports and Workshop used to
-  // both fall back to the exact brand orange (0xFFEA580C/0xFFF97316),
-  // making them indistinguishable from each other and from "this is the
-  // org's brand color" UI elsewhere on the page.
+  // Pastel bg / solid fg pair per category, derived from the same canonical
+  // hue each category uses in `_categoryColors` above (Tailwind -100/-700
+  // of that hue) — kept in sync with admin/event_calendar.dart's
+  // CategoryColors value-for-value. This used to only cover 6 of the 11
+  // categories, with hues picked independently of `_categoryColors` (e.g.
+  // Academic was green here but indigo everywhere else it's badged), so a
+  // category didn't reliably read as the same color across the page.
   static const Map<String, Color> bg = {
-    'Academic': Color(0xFFDCFCE7),
-    'Technical': Color(0xFFDBEAFE),
-    'Cultural': Color(0xFFFCE7F3),
+    'Workshop': Color(0xFFEDE9FE),
+    'Seminar': Color(0xFFDBEAFE),
+    'Competition': Color(0xFFFEE2E2),
+    'General Assembly': Color(0xFFFFEDD5),
+    'Social': Color(0xFFFCE7F3),
+    'Outreach': Color(0xFFD1FAE5),
     'Sports': Color(0xFFCCFBF1),
-    'Workshop': Color(0xFFE0E7FF),
+    'Academic': Color(0xFFE0E7FF),
+    'Technical': Color(0xFFCFFAFE),
+    'Cultural': Color(0xFFFAE8FF),
     'Other': Color(0xFFF3F4F6),
   };
   static const Map<String, Color> fg = {
-    'Academic': Color(0xFF15803D),
-    'Technical': Color(0xFF1D4ED8),
-    'Cultural': Color(0xFFBE185D),
-    'Sports': Color(0xFF0D9488),
-    'Workshop': Color(0xFF4F46E5),
+    'Workshop': Color(0xFF6D28D9),
+    'Seminar': Color(0xFF1D4ED8),
+    'Competition': Color(0xFFB91C1C),
+    'General Assembly': Color(0xFFC2410C),
+    'Social': Color(0xFFBE185D),
+    'Outreach': Color(0xFF047857),
+    'Sports': Color(0xFF0F766E),
+    'Academic': Color(0xFF4338CA),
+    'Technical': Color(0xFF0E7490),
+    'Cultural': Color(0xFFA21CAF),
     'Other': Color(0xFF374151),
-  };
-  static const Map<String, Color> dot = {
-    'Academic': Color(0xFF22C55E),
-    'Technical': Color(0xFF3B82F6),
-    'Cultural': Color(0xFFEC4899),
-    'Sports': Color(0xFF14B8A6),
-    'Workshop': Color(0xFF818CF8),
-    'Other': Color(0xFF9CA3AF),
   };
   static Color getBg(String cat) => bg[cat] ?? bg['Other']!;
   static Color getFg(String cat) => fg[cat] ?? fg['Other']!;
-  static Color getDot(String cat) => dot[cat] ?? dot['Other']!;
+  // Dot color is just the canonical single hue for the category, so the
+  // small dot always matches whatever accent color the rest of the page
+  // uses for that category.
+  static Color getDot(String cat) => _getCategoryColor(cat);
 }
 
 // ==================== HELPER WIDGETS ====================

@@ -133,6 +133,7 @@ class _AdminProfileState extends State<AdminProfile> {
   final _emailController = TextEditingController();
   final _profileFormKey = GlobalKey<FormState>();
   bool _isLoading = false;
+  bool _avatarHovering = false;
   User? _currentUser;
   String? _profileImageBase64;
 
@@ -349,33 +350,94 @@ class _AdminProfileState extends State<AdminProfile> {
                               offset: const Offset(0, -48),
                               child: Stack(
                                 children: [
-                                  Container(
-                                    width: 96,
-                                    height: 96,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: Colors.white,
-                                        width: 4,
+                                  MouseRegion(
+                                    cursor: _isLoading
+                                        ? MouseCursor.defer
+                                        : SystemMouseCursors.click,
+                                    onEnter: (_) =>
+                                        setState(() => _avatarHovering = true),
+                                    onExit: (_) =>
+                                        setState(() => _avatarHovering = false),
+                                    child: GestureDetector(
+                                      onTap: _isLoading
+                                          ? null
+                                          : _pickAndUploadImage,
+                                      child: Container(
+                                        width: 96,
+                                        height: 96,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: Colors.white,
+                                            width: 4,
+                                          ),
+                                          boxShadow: _DS.cardShadow,
+                                        ),
+                                        child: ClipOval(
+                                          child: Stack(
+                                            fit: StackFit.expand,
+                                            children: [
+                                              imageProvider != null
+                                                  ? Image(
+                                                      image: imageProvider,
+                                                      fit: BoxFit.cover,
+                                                    )
+                                                  : Container(
+                                                      color: AdminColors
+                                                          .primaryDark
+                                                          .withAlpha(20),
+                                                      child: Icon(
+                                                        Icons.person_rounded,
+                                                        size: 48,
+                                                        color: AdminColors
+                                                            .primaryDark
+                                                            .withAlpha(100),
+                                                      ),
+                                                    ),
+                                              // Hover reveal — "Change
+                                              // Photo" overlay, so the whole
+                                              // avatar (not just the small
+                                              // camera badge) reads as
+                                              // clickable on hover.
+                                              if (_avatarHovering)
+                                                Container(
+                                                  color: Colors.black.withAlpha(
+                                                    140,
+                                                  ),
+                                                  child: Column(
+                                                    mainAxisAlignment:
+                                                        MainAxisAlignment
+                                                            .center,
+                                                    children: [
+                                                      const Icon(
+                                                        Icons
+                                                            .camera_alt_rounded,
+                                                        color: Colors.white,
+                                                        size: 18,
+                                                      ),
+                                                      const SizedBox(height: 2),
+                                                      Text(
+                                                        'Change\nPhoto',
+                                                        textAlign:
+                                                            TextAlign.center,
+                                                        style:
+                                                            GoogleFonts.beVietnamPro(
+                                                              fontSize: 9,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w600,
+                                                              color:
+                                                                  Colors.white,
+                                                              height: 1.2,
+                                                            ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                        ),
                                       ),
-                                      boxShadow: _DS.cardShadow,
-                                    ),
-                                    child: ClipOval(
-                                      child: imageProvider != null
-                                          ? Image(
-                                              image: imageProvider,
-                                              fit: BoxFit.cover,
-                                            )
-                                          : Container(
-                                              color: AdminColors.primaryDark
-                                                  .withAlpha(20),
-                                              child: Icon(
-                                                Icons.person_rounded,
-                                                size: 48,
-                                                color: AdminColors.primaryDark
-                                                    .withAlpha(100),
-                                              ),
-                                            ),
                                     ),
                                   ),
                                   Positioned(

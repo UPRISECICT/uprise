@@ -280,7 +280,7 @@ class _FilterDropdown extends StatelessWidget {
 Widget _audienceBadge(String audience) {
   final Map<String, _BadgeTheme> map = {
     'Public': _BadgeTheme(_C.successBg, _C.success, Icons.public_rounded),
-    'Bulsuan': _BadgeTheme(
+    'BulSUan': _BadgeTheme(
       const Color(0xFFF3E8FF),
       const Color(0xFF7C3AED),
       Icons.account_balance_rounded,
@@ -330,7 +330,7 @@ IconData _audienceIcon(String audience) {
   switch (audience) {
     case 'Public':
       return Icons.public_rounded;
-    case 'Bulsuan':
+    case 'BulSUan':
       return Icons.account_balance_rounded;
     case 'CICT Only':
       return Icons.school_rounded;
@@ -2117,7 +2117,7 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                                   items:
                                       [
                                             'Public',
-                                            'Bulsuan',
+                                            'BulSUan',
                                             'CICT Only',
                                             'Members Only',
                                           ]
@@ -2437,6 +2437,29 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                               ? null
                               : () async {
                                   if (!formKey.currentState!.validate()) return;
+
+                                  // Firestore caps a single document at
+                                  // ~1MiB; the image and every attachment
+                                  // are stored inline as base64 in this
+                                  // same doc, so keep their combined size
+                                  // well under that ceiling rather than
+                                  // let a large announcement fail with a
+                                  // raw Firestore error at write time.
+                                  final totalBase64Bytes =
+                                      (imageBase64?.length ?? 0) +
+                                      attachments.fold<int>(
+                                        0,
+                                        (acc, a) => acc + a.base64.length,
+                                      );
+                                  if (totalBase64Bytes > 900 * 1024) {
+                                    _snack(
+                                      'This announcement is too large to save. '
+                                      'Remove the image or an attachment and try again.',
+                                      isError: true,
+                                    );
+                                    return;
+                                  }
+
                                   setDlg(() => isSubmitting = true);
                                   try {
                                     final user =
@@ -2632,8 +2655,12 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
         if (result == null) return;
         try {
           final bytes = result.files.first.bytes!;
-          if (bytes.length > 5 * 1024 * 1024) {
-            _snack('Image too large! Max 5MB', isError: true);
+          // Firestore caps a single document at ~1MiB and this image is
+          // stored inline as base64 (which inflates raw bytes by ~33%), so
+          // keep a safety margin well under that ceiling rather than let a
+          // large photo fail with a raw Firestore error at write time.
+          if (bytes.length > 700 * 1024) {
+            _snack('Image too large! Max 700KB', isError: true);
             return;
           }
           onSelected(base64Encode(bytes));
@@ -2672,7 +2699,7 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
               ),
             ),
             Text(
-              'PNG, JPG up to 5MB',
+              'PNG, JPG up to 700KB',
               style: GoogleFonts.beVietnamPro(
                 fontSize: 11,
                 color: _C.textFaint,
@@ -2701,16 +2728,38 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
             if (result == null) return;
             try {
               final newAtts = <AttachmentBase64>[];
+              // Attachments share the announcement's single Firestore doc
+              // with the banner image, so cap both the count and the
+              // running base64 total here — catching it during picking
+              // gives the org feedback immediately instead of only at
+              // submit time (see the aggregate check on the Post button).
+              var totalBase64Bytes = attachments.fold<int>(
+                0,
+                (acc, a) => acc + a.base64.length,
+              );
               for (final file in result.files) {
+                if (attachments.length + newAtts.length >= 5) {
+                  _snack('Maximum 5 attachments allowed', isError: true);
+                  break;
+                }
                 final bytes = file.bytes!;
                 if (bytes.length > 700 * 1024) {
                   _snack('${file.name} exceeds 700 KB', isError: true);
                   continue;
                 }
+                final encoded = base64Encode(bytes);
+                if (totalBase64Bytes + encoded.length > 600 * 1024) {
+                  _snack(
+                    '${file.name} would make attachments too large overall',
+                    isError: true,
+                  );
+                  continue;
+                }
+                totalBase64Bytes += encoded.length;
                 newAtts.add(
                   AttachmentBase64(
                     name: file.name,
-                    base64: base64Encode(bytes),
+                    base64: encoded,
                     size: '${(bytes.length / 1024).toStringAsFixed(1)} KB',
                   ),
                 );

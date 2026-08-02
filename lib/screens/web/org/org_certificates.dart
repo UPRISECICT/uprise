@@ -14,6 +14,7 @@ import '../../../theme/org_theme.dart';
 import '../../../widgets/certificate_preview.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/org_action_icon_button.dart';
+import '../../../widgets/org_modal_shell.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RECIPIENT STATUS ROW - moved to top level
@@ -2014,277 +2015,205 @@ class _BatchDetailModalState extends State<_BatchDetailModal> {
       );
     }
 
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      child: Container(
-        width: 720,
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.85,
+    return OrgModalShell(
+      accentColor: UpriseColors.primaryDark,
+      icon: Icons.card_membership_outlined,
+      title: b.eventName,
+      width: 720,
+      maxHeightFraction: 0.85,
+      subtitleWidget: Row(
+        children: [
+          Flexible(
+            child: Text(
+              '${b.totalRecipients} recipient(s) · ${b.sentCount} sent',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 11,
+                color: Colors.white.withAlpha(179),
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 8),
+          _batchBadge(b.batchStatus),
+        ],
+      ),
+      footerActions: [
+        ElevatedButton.icon(
+          onPressed: widget.onSendAll,
+          icon: const Icon(Icons.send_rounded, size: 15),
+          label: Text(
+            'Send All Eligible',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: UpriseColors.primaryDark,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+          ),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header
-            Container(
-              padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
-              decoration: const BoxDecoration(
-                color: Color(0xFFF8F9FB),
-                borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: UpriseColors.primaryDark.withAlpha(26),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.card_membership_outlined,
-                      color: UpriseColors.primaryDark,
-                      size: 18,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          b.eventName,
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w700,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        Text(
-                          '${b.totalRecipients} recipient(s) · ${b.sentCount} sent',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 11,
-                            color: UpriseColors.darkGray,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  _batchBadge(b.batchStatus),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded, size: 20),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-            ),
-            // Body - Unified status table
-            Expanded(
-              child: FutureBuilder<List<_RecipientStatusRow>>(
-                future: fetchRecipientStatus(eventId),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (snapshot.hasError) {
-                    return Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Text(
-                          'Error: ${snapshot.error}',
-                          style: GoogleFonts.beVietnamPro(
-                            color: UpriseColors.error,
-                          ),
-                        ),
-                      ),
-                    );
-                  }
-                  final rows = snapshot.data ?? [];
-                  if (rows.isEmpty) {
-                    return Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Text(
-                          'No attendees found for this event.',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 14,
-                            color: const Color(0xFF64748B),
-                          ),
-                        ),
-                      ),
-                    );
-                  }
-                  return ListView.separated(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: rows.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (_, i) {
-                      final row = rows[i];
-                      final bool canSend = row.evaluated && !row.certSent;
-                      final bool awaitingEval = !row.evaluated;
-
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(8),
-                          color: canSend
-                              ? UpriseColors.warning.withOpacity(0.08)
-                              : (awaitingEval
-                                    ? Colors.grey.shade50
-                                    : UpriseColors.success.withOpacity(0.05)),
-                        ),
-                        child: Row(
-                          children: [
-                            // Name
-                            Expanded(
-                              flex: 2,
-                              child: Text(
-                                row.name,
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
-                                  color: const Color(0xFF1A202C),
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            // Status badge
-                            Expanded(flex: 1, child: _buildStatusBadge(row)),
-                            const SizedBox(width: 8),
-                            // Action button
-                            if (awaitingEval)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey[200],
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  'Waiting',
-                                  style: GoogleFonts.beVietnamPro(
-                                    fontSize: 11,
-                                    color: Colors.grey[600],
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              )
-                            else if (canSend)
-                              ElevatedButton.icon(
-                                onPressed: () async {
-                                  await widget.onSendSingle(
-                                    row.key,
-                                    row.name,
-                                    row.isGuest,
-                                  );
-                                  if (mounted) setState(() {});
-                                },
-                                icon: const Icon(Icons.send_rounded, size: 14),
-                                label: const Text('Send'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: UpriseColors.primaryDark,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 14,
-                                    vertical: 7,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  elevation: 0,
-                                ),
-                              )
-                            else if (row.certSent)
-                              OutlinedButton.icon(
-                                onPressed: () {
-                                  // Find the existing record for this recipient
-                                  final record = b.records.firstWhere(
-                                    (r) => r.recipientName == row.name,
-                                    orElse: () => b.records.first,
-                                  );
-                                  widget.onResend(record);
-                                },
-                                icon: const Icon(
-                                  Icons.refresh_rounded,
-                                  size: 14,
-                                ),
-                                label: Text(
-                                  row.resendCount > 0
-                                      ? 'Resend ×${row.resendCount + 1}'
-                                      : 'Resend',
-                                  style: GoogleFonts.beVietnamPro(fontSize: 11),
-                                ),
-                                style: OutlinedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 14,
-                                    vertical: 7,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  side: BorderSide(
-                                    color: UpriseColors.primaryDark.withOpacity(
-                                      0.4,
-                                    ),
-                                  ),
-                                ),
-                              )
-                            else
-                              const SizedBox.shrink(),
-                          ],
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-            // Footer
-            Container(
-              padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
-              decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: Color(0xFFE8ECF0))),
-                color: Color(0xFFF8F9FB),
-                borderRadius: BorderRadius.vertical(
-                  bottom: Radius.circular(18),
+      ],
+      body: FutureBuilder<List<_RecipientStatusRow>>(
+        future: fetchRecipientStatus(eventId),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  'Error: ${snapshot.error}',
+                  style: GoogleFonts.beVietnamPro(color: UpriseColors.error),
                 ),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  ElevatedButton.icon(
-                    onPressed: widget.onSendAll,
-                    icon: const Icon(Icons.send_rounded, size: 15),
-                    label: Text(
-                      'Send All Eligible',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: UpriseColors.primaryDark,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
+            );
+          }
+          final rows = snapshot.data ?? [];
+          if (rows.isEmpty) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  'No attendees found for this event.',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 14,
+                    color: const Color(0xFF64748B),
                   ),
-                ],
+                ),
               ),
-            ),
-          ],
-        ),
+            );
+          }
+          return ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: rows.length,
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (_, i) {
+              final row = rows[i];
+              final bool canSend = row.evaluated && !row.certSent;
+              final bool awaitingEval = !row.evaluated;
+
+              return Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  color: canSend
+                      ? UpriseColors.warning.withOpacity(0.08)
+                      : (awaitingEval
+                            ? Colors.grey.shade50
+                            : UpriseColors.success.withOpacity(0.05)),
+                ),
+                child: Row(
+                  children: [
+                    // Name
+                    Expanded(
+                      flex: 2,
+                      child: Text(
+                        row.name,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: const Color(0xFF1A202C),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    // Status badge
+                    Expanded(flex: 1, child: _buildStatusBadge(row)),
+                    const SizedBox(width: 8),
+                    // Action button
+                    if (awaitingEval)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200],
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          'Waiting',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 11,
+                            color: Colors.grey[600],
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      )
+                    else if (canSend)
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          await widget.onSendSingle(
+                            row.key,
+                            row.name,
+                            row.isGuest,
+                          );
+                          if (mounted) setState(() {});
+                        },
+                        icon: const Icon(Icons.send_rounded, size: 14),
+                        label: const Text('Send'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: UpriseColors.primaryDark,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 7,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          elevation: 0,
+                        ),
+                      )
+                    else if (row.certSent)
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          // Find the existing record for this recipient
+                          final record = b.records.firstWhere(
+                            (r) => r.recipientName == row.name,
+                            orElse: () => b.records.first,
+                          );
+                          widget.onResend(record);
+                        },
+                        icon: const Icon(Icons.refresh_rounded, size: 14),
+                        label: Text(
+                          row.resendCount > 0
+                              ? 'Resend ×${row.resendCount + 1}'
+                              : 'Resend',
+                          style: GoogleFonts.beVietnamPro(fontSize: 11),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 7,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          side: BorderSide(
+                            color: UpriseColors.primaryDark.withOpacity(0.4),
+                          ),
+                        ),
+                      )
+                    else
+                      const SizedBox.shrink(),
+                  ],
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }

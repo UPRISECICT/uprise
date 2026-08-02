@@ -19,6 +19,7 @@ import '../../models/profile_model.dart';
 import '../../widgets/shared/app_support.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../widgets/student/student_app_bar.dart';
+import '../../widgets/student/app_image.dart';
 
 // ─────────────────────────────────────────────────────────────
 // Shared constants - brand palette
@@ -428,40 +429,14 @@ class _ProfileImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (photoUrl.startsWith('data:image')) {
-      try {
-        final bytes = base64Decode(photoUrl.split(',').last);
-        return Image.memory(
-          bytes,
-          width: width,
-          height: height,
-          fit: fit,
-          errorBuilder: errorBuilder,
-        );
-      } catch (e, st) {
-        return errorBuilder(context, e, st);
-      }
-    }
-    return Image.network(
-      photoUrl,
+    return AppImage(
+      source: photoUrl,
       width: width,
       height: height,
       fit: fit,
       errorBuilder: errorBuilder,
     );
   }
-}
-
-ImageProvider? _profileImageProvider(String photoUrl) {
-  if (photoUrl.isEmpty) return null;
-  if (photoUrl.startsWith('data:image')) {
-    try {
-      return MemoryImage(base64Decode(photoUrl.split(',').last));
-    } catch (_) {
-      return null;
-    }
-  }
-  return NetworkImage(photoUrl);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -2475,35 +2450,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     onChanged: (value) {
                       setState(() => _selectedCampus = value);
                     },
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            Container(
-              color: Colors.white,
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Contact Information',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                  ),
-                  const SizedBox(height: 16),
-                  _EditField(
-                    label: 'Mobile Number',
-                    controller: _mobileCtrl,
-                    icon: Icons.phone_outlined,
-                    keyboardType: TextInputType.phone,
-                  ),
-                  const SizedBox(height: 14),
-                  _EditField(
-                    label: 'Campus Address',
-                    controller: _addressCtrl,
-                    icon: Icons.location_on_outlined,
                   ),
                 ],
               ),

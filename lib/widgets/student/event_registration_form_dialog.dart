@@ -190,9 +190,13 @@ class _DynamicRegistrationDialogState extends State<DynamicRegistrationDialog> {
     if (mounted) setState(() => _submitting = false);
   }
 
-  Future<void> _pickAndUploadFile(String fieldId) async {
+  Future<void> _pickAndUploadFile(String fieldId, String mediaType) async {
     final result = await FilePicker.platform.pickFiles(
-      type: FileType.media,
+      type: mediaType == 'image'
+          ? FileType.image
+          : mediaType == 'video'
+          ? FileType.video
+          : FileType.media,
       withData: true,
     );
     if (result == null || result.files.isEmpty) return;
@@ -458,10 +462,16 @@ class _DynamicRegistrationDialogState extends State<DynamicRegistrationDialog> {
         );
         break;
       case 'file_upload':
+        final mediaType = f['mediaType'] as String? ?? 'both';
+        final mediaNoun = mediaType == 'image'
+            ? 'photo'
+            : mediaType == 'video'
+            ? 'video'
+            : 'photo or video';
         input = FormField<String>(
           initialValue: _answers[id] as String?,
           validator: (_) => required && (_answers[id] as String? ?? '').isEmpty
-              ? 'Please upload a photo or video'
+              ? 'Please upload a $mediaNoun'
               : null,
           builder: (state) {
             final uploading = _uploadingFields[id] == true;
@@ -474,7 +484,7 @@ class _DynamicRegistrationDialogState extends State<DynamicRegistrationDialog> {
                   onTap: uploading
                       ? null
                       : () async {
-                          await _pickAndUploadFile(id);
+                          await _pickAndUploadFile(id, mediaType);
                           state.didChange(_answers[id] as String?);
                         },
                   child: Container(
@@ -515,7 +525,7 @@ class _DynamicRegistrationDialogState extends State<DynamicRegistrationDialog> {
                                 ? 'Uploading…'
                                 : hasFile
                                 ? (fileName ?? 'File uploaded')
-                                : 'Tap to upload a photo or video',
+                                : 'Tap to upload a $mediaNoun',
                             style: TextStyle(
                               fontSize: 13,
                               color: hasFile

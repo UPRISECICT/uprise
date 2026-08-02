@@ -1,6 +1,5 @@
 // lib/screens/student/student_home_screen.dart
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -19,6 +18,7 @@ import '../../widgets/student/announcements_feed.dart';
 import '../../widgets/student/profile_summary.dart';
 import '../../widgets/student/countdown_widget.dart';
 import '../../widgets/student/app_colors.dart';
+import '../../widgets/student/app_image.dart';
 
 // Screens (navigation targets)
 import 'student_events_screen.dart';
@@ -79,46 +79,15 @@ class Base64Image extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    try {
-      String base64Data = base64String;
-      if (base64String.startsWith('data:image')) {
-        final commaIndex = base64String.indexOf(',');
-        if (commaIndex != -1) {
-          base64Data = base64String.substring(commaIndex + 1);
-        }
-      }
-
-      final bytes = base64Decode(base64Data);
-      return Image.memory(
-        bytes,
-        height: height,
-        width: width,
-        fit: fit,
-        errorBuilder: (context, error, stackTrace) {
-          return Container(
-            height: height,
-            width: width,
-            color: AppColors.primaryDark.withOpacity(0.1),
-            child: const Icon(
-              Icons.image_not_supported,
-              color: Colors.grey,
-              size: 40,
-            ),
-          );
-        },
-      );
-    } catch (e) {
-      return Container(
-        height: height,
-        width: width,
-        color: AppColors.primaryDark.withOpacity(0.1),
-        child: const Icon(
-          Icons.image_not_supported,
-          color: Colors.grey,
-          size: 40,
-        ),
-      );
-    }
+    return AppImage(
+      source: base64String,
+      height: height,
+      width: width,
+      fit: fit,
+      placeholderBackgroundColor: AppColors.primaryDark.withOpacity(0.1),
+      placeholderIconColor: Colors.grey,
+      placeholderIconSize: 40,
+    );
   }
 }
 

@@ -2707,7 +2707,10 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                   ),
                   cells: [
                     _cellText(rows[i]['title'] as String, bold: true),
-                    _cellText(rows[i]['category'] as String),
+                    _cellBadge(
+                      rows[i]['category'] as String,
+                      _categoryBadgeColor(rows[i]['category'] as String),
+                    ),
                     _cellText(_fmtDate(rows[i]['date'] as DateTime?)),
                     _cellText(rows[i]['location'] as String),
                   ],
@@ -2810,7 +2813,10 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                   ),
                   cells: [
                     _cellText(rows[i]['title'] as String, bold: true),
-                    _cellText(rows[i]['category'] as String),
+                    _cellBadge(
+                      rows[i]['category'] as String,
+                      _categoryBadgeColor(rows[i]['category'] as String),
+                    ),
                     _cellText(_fmtDate(rows[i]['eventDate'] as DateTime?)),
                     _cellText(_fmtDate(rows[i]['submittedAt'] as DateTime?)),
                   ],
@@ -2994,7 +3000,10 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                   ),
                   cells: [
                     _cellText(rows[i]['name'] as String, bold: true),
-                    _cellText(rows[i]['category'] as String),
+                    _cellBadge(
+                      rows[i]['category'] as String,
+                      _merchCategoryBadgeColor(rows[i]['category'] as String),
+                    ),
                     _cellText(money(rows[i]['price'] as double)),
                     _cellText('${rows[i]['stock']}'),
                   ],
@@ -3153,6 +3162,64 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
         fontSize: 13,
         fontWeight: bold ? FontWeight.w600 : FontWeight.w400,
         color: color ?? OrgColors.charcoal,
+      ),
+    );
+  }
+
+  // Same palette as admin_dashboard.dart's _categoryBadgeColors — kept
+  // identical value-for-value (not just similarly-themed) so an event
+  // category reads as the same color whether an admin or the org is
+  // looking at it, instead of two different color systems for one concept.
+  static const Map<String, Color> _categoryBadgeColors = {
+    'Workshop': Color(0xFF8B5CF6),
+    'Seminar': Color(0xFF3B82F6),
+    'Competition': Color(0xFFEF4444),
+    'General Assembly': Color(0xFFF97316),
+    'Social': Color(0xFFEC4899),
+    'Outreach': Color(0xFF10B981),
+    'Sports': Color(0xFF14B8A6),
+    'Academic': Color(0xFF6366F1),
+    'Technical': Color(0xFF06B6D4),
+    'Cultural': Color(0xFFD946EF),
+  };
+
+  Color _categoryBadgeColor(String category) {
+    return _categoryBadgeColors[category] ?? const Color(0xFF6B7280);
+  }
+
+  // Merchandise categories are a separate domain from event categories
+  // (admin has no merchandise feature to match colors against), so this is
+  // its own small fixed palette rather than reusing the event map above.
+  static const Map<String, Color> _merchCategoryBadgeColors = {
+    'T-Shirts / Uniforms': Color(0xFF6366F1),
+    'Lanyards / IDs': Color(0xFF06B6D4),
+    'Stickers / Pins': Color(0xFFEC4899),
+    'Tumblers / Water Bottles': Color(0xFF14B8A6),
+    'Notebooks / Planners': Color(0xFF8B5CF6),
+  };
+
+  Color _merchCategoryBadgeColor(String category) {
+    return _merchCategoryBadgeColors[category] ?? const Color(0xFF6B7280);
+  }
+
+  Widget _cellBadge(String text, Color color) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: color.withAlpha(24),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          text,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: color,
+          ),
+        ),
       ),
     );
   }

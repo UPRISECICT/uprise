@@ -8,9 +8,13 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class UpriseColors {
-  static const Color primaryDark = Color(0xFFEA580C); // true orange – primary
+  // Deepened from orange-600 to orange-700 (matches OrgColors.primaryDark in
+  // org_dashboard.dart) — a richer, less neon shade that reads as "brand
+  // primary" instead of "highlighter" now that it's the dominant color
+  // across every org screen, not just a sparing accent.
+  static const Color primaryDark = Color(0xFFC2410C); // deep orange – primary
   static const Color primaryLight = Color(
-    0xFFF97316,
+    0xFFEA580C,
   ); // lighter orange – hover/emphasis
   static const Color accent = Color(0xFFF97316); // secondary accent
   static const Color info = Color(0xFF2563EB); // blue – links/info accents only

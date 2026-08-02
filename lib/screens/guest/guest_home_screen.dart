@@ -271,9 +271,13 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
   // Bulsuan-only or CICT/Members-only events in the feed either.
   String _guestClassification = 'Outsider';
 
-  bool _audienceAllowed(String audience) {
+  // An event can target more than one audience at once (org side stores
+  // them comma-joined in the same field, e.g. "CICT Only, Bulsuan") — a
+  // guest can see it if ANY one of the listed audiences would individually
+  // allow them.
+  bool _singleAudienceAllowed(String audience) {
     switch (audience) {
-      case 'Bulsuan':
+      case 'BulSUan':
         return _guestClassification == 'BulSUan';
       case 'CICT Only':
       case 'Members Only':
@@ -281,6 +285,15 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
       default:
         return true;
     }
+  }
+
+  bool _audienceAllowed(String audience) {
+    final values = audience
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty);
+    if (values.isEmpty) return true;
+    return values.any(_singleAudienceAllowed);
   }
 
   Future<void> _loadGuestClassification() async {
@@ -999,7 +1012,10 @@ class _AnnouncementCardState extends State<_AnnouncementCard> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    if (item.audience == 'CICT Only')
+                    if (item.audience
+                        .split(',')
+                        .map((s) => s.trim())
+                        .contains('CICT Only'))
                       _MiniChip(label: 'CICT', color: const Color(0xFF1565C0)),
                   ],
                 ),

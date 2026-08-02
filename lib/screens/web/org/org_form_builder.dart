@@ -309,8 +309,23 @@ class _OrgFormBuilderModalState extends State<OrgFormBuilderModal> {
         'description': '',
         'required': false,
         'options': type.hasOptions ? ['', ''] : <String>[],
+        if (type == _FType.fileUpload) 'mediaType': 'both',
       });
       _expandedIdx = _fields.length - 1;
+    });
+  }
+
+  void _duplicateField(int i) {
+    final copy = Map<String, dynamic>.from(_fields[i]);
+    copy['id'] = 'f_${DateTime.now().millisecondsSinceEpoch}';
+    // Deep-copy options too — sharing the original List would make edits to
+    // the duplicate's options silently mutate the source question as well.
+    if (copy['options'] is List) {
+      copy['options'] = List<String>.from(copy['options'] as List);
+    }
+    setState(() {
+      _fields.insert(i + 1, copy);
+      _expandedIdx = i + 1;
     });
   }
 
@@ -399,6 +414,7 @@ class _OrgFormBuilderModalState extends State<OrgFormBuilderModal> {
                               () => _expandedIdx = _expandedIdx == i ? null : i,
                             ),
                             onDelete: () => _deleteField(i),
+                            onDuplicate: () => _duplicateField(i),
                             onMoveUp: () => _moveUp(i),
                             onMoveDown: () => _moveDown(i),
                             onChanged: (updated) =>
@@ -851,6 +867,7 @@ class _FieldCard extends StatefulWidget {
   final bool isLocked;
   final VoidCallback onTap;
   final VoidCallback onDelete;
+  final VoidCallback onDuplicate;
   final VoidCallback onMoveUp;
   final VoidCallback onMoveDown;
   final ValueChanged<Map<String, dynamic>> onChanged;
@@ -864,6 +881,7 @@ class _FieldCard extends StatefulWidget {
     required this.isLocked,
     required this.onTap,
     required this.onDelete,
+    required this.onDuplicate,
     required this.onMoveUp,
     required this.onMoveDown,
     required this.onChanged,
@@ -1046,6 +1064,11 @@ class _FieldCardState extends State<_FieldCard> {
                           : null,
                     ),
                     _miniBtn(
+                      Icons.content_copy_rounded,
+                      widget.onDuplicate,
+                      color: const Color(0xFF64748B),
+                    ),
+                    _miniBtn(
                       Icons.delete_outline_rounded,
                       widget.onDelete,
                       color: const Color(0xFFDC2626),
@@ -1099,6 +1122,11 @@ class _FieldCardState extends State<_FieldCard> {
                   if (type.hasOptions) ...[
                     const SizedBox(height: 16),
                     _buildOptionsEditor(type),
+                  ],
+                  // Accepted media (for photo/video upload)
+                  if (type == _FType.fileUpload) ...[
+                    const SizedBox(height: 16),
+                    _buildMediaTypeEditor(),
                   ],
                   // Preview hint
                   const SizedBox(height: 14),
@@ -1168,6 +1196,9 @@ class _FieldCardState extends State<_FieldCard> {
               });
             } else if (!t.hasOptions) {
               u['options'] = <String>[];
+            }
+            if (t == _FType.fileUpload && u['mediaType'] == null) {
+              u['mediaType'] = 'both';
             }
             widget.onChanged(u);
           },
@@ -1342,6 +1373,95 @@ class _FieldCardState extends State<_FieldCard> {
             minimumSize: Size.zero,
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
+        ),
+      ],
+    );
+  }
+
+  static const _mediaTypeOptions = [
+    ('both', 'Photos & Videos', Icons.perm_media_rounded),
+    ('image', 'Photos Only', Icons.image_rounded),
+    ('video', 'Videos Only', Icons.videocam_rounded),
+  ];
+
+  Widget _buildMediaTypeEditor() {
+    final current = (widget.field['mediaType'] as String?) ?? 'both';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.tune_rounded, size: 13, color: Color(0xFFDB2777)),
+            const SizedBox(width: 6),
+            Text(
+              'Accepted media',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF374151),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _mediaTypeOptions.map((opt) {
+            final (value, label, icon) = opt;
+            final selected = current == value;
+            return GestureDetector(
+              onTap: () {
+                final u = Map<String, dynamic>.from(widget.field);
+                u['mediaType'] = value;
+                widget.onChanged(u);
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 9,
+                ),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? UpriseColors.primaryDark.withAlpha(20)
+                      : const Color(0xFFF8F9FB),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: selected
+                        ? UpriseColors.primaryDark
+                        : const Color(0xFFE2E6EA),
+                    width: selected ? 1.5 : 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      icon,
+                      size: 15,
+                      color: selected
+                          ? UpriseColors.primaryDark
+                          : const Color(0xFF9AA5B4),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      label,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12.5,
+                        fontWeight: selected
+                            ? FontWeight.w600
+                            : FontWeight.w400,
+                        color: selected
+                            ? const Color(0xFF1A202C)
+                            : const Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
         ),
       ],
     );
@@ -1525,6 +1645,12 @@ class _FieldCardState extends State<_FieldCard> {
           ),
         );
       case _FType.fileUpload:
+        final mediaType = (widget.field['mediaType'] as String?) ?? 'both';
+        final hint = mediaType == 'image'
+            ? 'Upload a photo'
+            : mediaType == 'video'
+            ? 'Upload a video'
+            : 'Upload a photo or video';
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
           decoration: BoxDecoration(
@@ -1544,7 +1670,7 @@ class _FieldCardState extends State<_FieldCard> {
               ),
               const SizedBox(width: 8),
               Text(
-                'Upload a photo or video',
+                hint,
                 style: GoogleFonts.beVietnamPro(
                   fontSize: 12,
                   color: const Color(0xFF9AA5B4),

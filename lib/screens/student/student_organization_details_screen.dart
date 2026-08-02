@@ -1,5 +1,4 @@
 // lib/screens/student/student_organization_details_screen.dart
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -7,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../widgets/student/student_app_bar.dart';
+import '../../widgets/student/app_image.dart';
 import '../../widgets/common/loading_widget.dart';
 import 'package:uprise/models/event_model.dart';
 import 'student_broadcast_screen.dart';
@@ -30,38 +30,17 @@ class _StudentOrganizationsDetailsScreenState
   bool _coverImageFailed = false;
 
   ImageProvider? _buildLogoImage(String? logoUrl) {
-    if (logoUrl == null || logoUrl.isEmpty) return null;
-
-    if (logoUrl.startsWith('data:')) {
-      try {
-        final base64Str = logoUrl.split(',').last;
-        return MemoryImage(base64Decode(base64Str));
-      } catch (_) {
-        return null;
-      }
-    }
-
-    return NetworkImage(logoUrl);
+    return AppImage.provider(logoUrl ?? '');
   }
 
   DecorationImage? _buildCoverImage(String? coverUrl) {
     if (coverUrl == null || coverUrl.isEmpty) return null;
+    final provider = AppImage.provider(coverUrl);
+    if (provider == null) return null;
 
-    if (coverUrl.startsWith('data:image')) {
-      try {
-        final base64Str = coverUrl.split(',').last;
-        return DecorationImage(
-          image: MemoryImage(base64Decode(base64Str)),
-          fit: BoxFit.cover,
-        );
-      } catch (_) {
-        return null;
-      }
-    }
-
-    if (coverUrl.startsWith('http://') || coverUrl.startsWith('https://')) {
+    if (provider is NetworkImage) {
       return DecorationImage(
-        image: NetworkImage(coverUrl),
+        image: provider,
         fit: BoxFit.cover,
         onError: (_, __) {
           if (mounted) {
@@ -71,7 +50,7 @@ class _StudentOrganizationsDetailsScreenState
       );
     }
 
-    return null;
+    return DecorationImage(image: provider, fit: BoxFit.cover);
   }
 
   Widget _buildCoverPlaceholder() {
@@ -425,16 +404,9 @@ class _StudentOrganizationsDetailsScreenState
                             final hasMultiple =
                                 adviserList != null && adviserList.isNotEmpty;
                             final photoUrl = org['adviserPhotoUrl'] as String?;
-                            ImageProvider? photoProvider;
-                            if (photoUrl != null && photoUrl.isNotEmpty) {
-                              try {
-                                photoProvider = photoUrl.startsWith('data:')
-                                    ? MemoryImage(
-                                        base64Decode(photoUrl.split(',').last),
-                                      )
-                                    : NetworkImage(photoUrl) as ImageProvider;
-                              } catch (_) {}
-                            }
+                            final photoProvider = AppImage.provider(
+                              photoUrl ?? '',
+                            );
                             final advisersToShow = hasMultiple
                                 ? adviserList!
                                 : [

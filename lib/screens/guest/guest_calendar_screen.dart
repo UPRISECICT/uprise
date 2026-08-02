@@ -84,9 +84,13 @@ class _GuestCalendarScreenState extends State<GuestCalendarScreen> {
     _subscribe();
   }
 
-  bool _audienceAllowed(String audience) {
+  // An event can target more than one audience at once (org side stores
+  // them comma-joined in the same field, e.g. "CICT Only, Bulsuan") — a
+  // guest can see it if ANY one of the listed audiences would individually
+  // allow them.
+  bool _singleAudienceAllowed(String audience) {
     switch (audience) {
-      case 'Bulsuan':
+      case 'BulSUan':
         return _guestClassification == 'BulSUan';
       case 'CICT Only':
       case 'Members Only':
@@ -94,6 +98,15 @@ class _GuestCalendarScreenState extends State<GuestCalendarScreen> {
       default:
         return true;
     }
+  }
+
+  bool _audienceAllowed(String audience) {
+    final values = audience
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty);
+    if (values.isEmpty) return true;
+    return values.any(_singleAudienceAllowed);
   }
 
   @override

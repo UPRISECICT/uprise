@@ -16,15 +16,10 @@ import '../../theme/app_theme.dart';
 import '../../widgets/certificate_preview.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../widgets/student/student_app_bar.dart';
+import '../../widgets/student/app_image.dart';
 import '../../widgets/common/loading_widget.dart';
 import 'dart:math' as math;
 import 'package:google_fonts/google_fonts.dart';
-
-// ─── TOP-LEVEL HELPER FUNCTIONS ──────────────────────────────
-bool isBase64Image(String url) {
-  return url.startsWith('data:image') ||
-      (!url.startsWith('http') && url.isNotEmpty);
-}
 
 class _ImageSourceTile extends StatelessWidget {
   final IconData icon;
@@ -246,45 +241,12 @@ class _CertificatesContentState extends State<CertificatesContent> {
 
   Widget _buildImage(String imageUrl, {double height = 180}) {
     if (imageUrl.isEmpty) return const SizedBox.shrink();
-
-    if (isBase64Image(imageUrl)) {
-      try {
-        final base64Str = imageUrl.contains(',')
-            ? imageUrl.split(',').last
-            : imageUrl;
-        final bytes = base64Decode(base64Str);
-        return Image.memory(
-          bytes,
-          height: height,
-          width: double.infinity,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-        );
-      } catch (_) {
-        return Container(
-          height: height,
-          color: Colors.grey.shade200,
-          child: const Icon(Icons.broken_image, color: Colors.grey),
-        );
-      }
-    }
-
-    return Image.network(
-      imageUrl,
+    return AppImage(
+      source: imageUrl,
       height: height,
       width: double.infinity,
       fit: BoxFit.cover,
-      loadingBuilder: (context, child, loadingProgress) {
-        if (loadingProgress == null) return child;
-        return Container(
-          height: height,
-          color: AppColors.primaryDark.shade50,
-          child: const Center(
-            child: CircularProgressIndicator(color: AppColors.primaryDark),
-          ),
-        );
-      },
-      errorBuilder: (_, __, ___) => Container(
+      placeholder: Container(
         height: height,
         color: Colors.grey.shade200,
         child: const Icon(Icons.broken_image, color: Colors.grey),
@@ -1005,35 +967,18 @@ class _CertificatesContentState extends State<CertificatesContent> {
               fit: StackFit.expand,
               children: [
                 // Background template image
-                isBase64Image(templateImageUrl)
-                    ? Image.memory(
-                        base64Decode(
-                          templateImageUrl.contains(',')
-                              ? templateImageUrl.split(',').last
-                              : templateImageUrl,
-                        ),
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          color: Colors.grey.shade200,
-                          child: const Icon(
-                            Icons.broken_image,
-                            size: 50,
-                            color: Colors.grey,
-                          ),
-                        ),
-                      )
-                    : Image.network(
-                        templateImageUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          color: Colors.grey.shade200,
-                          child: const Icon(
-                            Icons.broken_image,
-                            size: 50,
-                            color: Colors.grey,
-                          ),
-                        ),
-                      ),
+                AppImage(
+                  source: templateImageUrl,
+                  fit: BoxFit.cover,
+                  placeholder: Container(
+                    color: Colors.grey.shade200,
+                    child: const Icon(
+                      Icons.broken_image,
+                      size: 50,
+                      color: Colors.grey,
+                    ),
+                  ),
+                ),
                 // Recipient name - no container, just text
                 Positioned(
                   left: 0,
@@ -1419,45 +1364,12 @@ class CertificateDetailScreen extends StatelessWidget {
 
   Widget _buildFullImage(String imageUrl) {
     if (imageUrl.isEmpty) return const SizedBox.shrink();
-
-    if (isBase64Image(imageUrl)) {
-      try {
-        final base64Str = imageUrl.contains(',')
-            ? imageUrl.split(',').last
-            : imageUrl;
-        final bytes = base64Decode(base64Str);
-        return Image.memory(
-          bytes,
-          width: double.infinity,
-          height: double.infinity,
-          fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-        );
-      } catch (_) {
-        return Container(
-          color: Colors.grey.shade200,
-          child: const Center(
-            child: Icon(Icons.broken_image, size: 48, color: Colors.grey),
-          ),
-        );
-      }
-    }
-
-    return Image.network(
-      imageUrl,
+    return AppImage(
+      source: imageUrl,
       width: double.infinity,
       height: double.infinity,
       fit: BoxFit.contain,
-      loadingBuilder: (context, child, loadingProgress) {
-        if (loadingProgress == null) return child;
-        return Container(
-          color: AppColors.primaryDark.shade50,
-          child: const Center(
-            child: CircularProgressIndicator(color: AppColors.primaryDark),
-          ),
-        );
-      },
-      errorBuilder: (_, __, ___) => Container(
+      placeholder: Container(
         color: Colors.grey.shade200,
         child: const Center(
           child: Icon(Icons.broken_image, size: 48, color: Colors.grey),
@@ -1484,35 +1396,18 @@ class CertificateDetailScreen extends StatelessWidget {
               fit: StackFit.expand,
               children: [
                 // Background template image
-                isBase64Image(templateImageUrl)
-                    ? Image.memory(
-                        base64Decode(
-                          templateImageUrl.contains(',')
-                              ? templateImageUrl.split(',').last
-                              : templateImageUrl,
-                        ),
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          color: Colors.grey.shade200,
-                          child: const Icon(
-                            Icons.broken_image,
-                            size: 50,
-                            color: Colors.grey,
-                          ),
-                        ),
-                      )
-                    : Image.network(
-                        templateImageUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          color: Colors.grey.shade200,
-                          child: const Icon(
-                            Icons.broken_image,
-                            size: 50,
-                            color: Colors.grey,
-                          ),
-                        ),
-                      ),
+                AppImage(
+                  source: templateImageUrl,
+                  fit: BoxFit.cover,
+                  placeholder: Container(
+                    color: Colors.grey.shade200,
+                    child: const Icon(
+                      Icons.broken_image,
+                      size: 50,
+                      color: Colors.grey,
+                    ),
+                  ),
+                ),
                 // Recipient name - no container, just text with shadow
                 Center(
                   child: Text(
@@ -1958,45 +1853,12 @@ class _CertificateDownloadPreviewSheetState
   // Reuse the same helper functions from the main screen
   Widget _buildFullImage(String imageUrl) {
     if (imageUrl.isEmpty) return const SizedBox.shrink();
-
-    if (isBase64Image(imageUrl)) {
-      try {
-        final base64Str = imageUrl.contains(',')
-            ? imageUrl.split(',').last
-            : imageUrl;
-        final bytes = base64Decode(base64Str);
-        return Image.memory(
-          bytes,
-          width: double.infinity,
-          height: double.infinity,
-          fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-        );
-      } catch (_) {
-        return Container(
-          color: Colors.grey.shade200,
-          child: const Center(
-            child: Icon(Icons.broken_image, size: 48, color: Colors.grey),
-          ),
-        );
-      }
-    }
-
-    return Image.network(
-      imageUrl,
+    return AppImage(
+      source: imageUrl,
       width: double.infinity,
       height: double.infinity,
       fit: BoxFit.contain,
-      loadingBuilder: (context, child, loadingProgress) {
-        if (loadingProgress == null) return child;
-        return Container(
-          color: AppColors.primaryDark.shade50,
-          child: const Center(
-            child: CircularProgressIndicator(color: AppColors.primaryDark),
-          ),
-        );
-      },
-      errorBuilder: (_, __, ___) => Container(
+      placeholder: Container(
         color: Colors.grey.shade200,
         child: const Center(
           child: Icon(Icons.broken_image, size: 48, color: Colors.grey),
@@ -2012,35 +1874,18 @@ class _CertificateDownloadPreviewSheetState
       return Stack(
         fit: StackFit.expand,
         children: [
-          isBase64Image(templateImageUrl)
-              ? Image.memory(
-                  base64Decode(
-                    templateImageUrl.contains(',')
-                        ? templateImageUrl.split(',').last
-                        : templateImageUrl,
-                  ),
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    color: Colors.grey.shade200,
-                    child: const Icon(
-                      Icons.broken_image,
-                      size: 50,
-                      color: Colors.grey,
-                    ),
-                  ),
-                )
-              : Image.network(
-                  templateImageUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    color: Colors.grey.shade200,
-                    child: const Icon(
-                      Icons.broken_image,
-                      size: 50,
-                      color: Colors.grey,
-                    ),
-                  ),
-                ),
+          AppImage(
+            source: templateImageUrl,
+            fit: BoxFit.cover,
+            placeholder: Container(
+              color: Colors.grey.shade200,
+              child: const Icon(
+                Icons.broken_image,
+                size: 50,
+                color: Colors.grey,
+              ),
+            ),
+          ),
           Center(
             child: Text(
               cert['recipientName'] as String? ?? 'Recipient',

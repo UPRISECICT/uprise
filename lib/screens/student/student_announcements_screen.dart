@@ -13,48 +13,8 @@ import 'package:share_plus/share_plus.dart';
 import 'package:uprise/models/event_model.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../widgets/student/student_app_bar.dart';
+import '../../widgets/student/app_image.dart';
 import 'student_events_screen.dart';
-
-// ─────────────────────────────────────────────────────────────
-//  HELPER: IMAGE PROVIDER - FIXED FOR YOUR DATA FORMAT
-// ─────────────────────────────────────────────────────────────
-ImageProvider _studentImageProvider(String url) {
-  if (url.isEmpty) return const AssetImage('assets/placeholder.png');
-
-  // Handle "dataimage" without colon (YOUR FORMAT)
-  if (url.startsWith('dataimage')) {
-    try {
-      final base64Str = url.split('base64,').last;
-      final bytes = base64Decode(base64Str);
-      return MemoryImage(bytes);
-    } catch (_) {
-      return const AssetImage('assets/placeholder.png');
-    }
-  }
-
-  // Handle "data:image" format
-  if (url.startsWith('data:image')) {
-    try {
-      final base64Str = url.split(',').last;
-      final bytes = base64Decode(base64Str);
-      return MemoryImage(bytes);
-    } catch (_) {
-      return const AssetImage('assets/placeholder.png');
-    }
-  }
-
-  // Handle raw base64
-  if (!url.startsWith('http')) {
-    try {
-      final bytes = base64Decode(url);
-      return MemoryImage(bytes);
-    } catch (_) {
-      return const AssetImage('assets/placeholder.png');
-    }
-  }
-
-  return NetworkImage(url);
-}
 
 // ─────────────────────────────────────────────────────────────
 //  NAVIGATE TO LINKED EVENT
@@ -556,9 +516,12 @@ class _AnnouncementCardState extends State<_AnnouncementCard> {
                       color: AppColors.primaryDark.withOpacity(0.1),
                     ),
                     child: ClipOval(
-                      child: (logoUrl != null && logoUrl.isNotEmpty)
+                      child:
+                          (logoUrl != null &&
+                              logoUrl.isNotEmpty &&
+                              AppImage.provider(logoUrl) != null)
                           ? Image(
-                              image: _studentImageProvider(logoUrl),
+                              image: AppImage.provider(logoUrl)!,
                               fit: BoxFit.cover,
                               errorBuilder: (_, __, ___) => Center(
                                 child: Text(
@@ -742,19 +705,28 @@ class _AnnouncementCardState extends State<_AnnouncementCard> {
                 width: double.infinity,
                 constraints: const BoxConstraints(maxHeight: 420),
                 color: const Color(0xFFF8F9FB),
-                child: Image(
-                  image: _studentImageProvider(ann.imageUrl),
-                  width: double.infinity,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => Container(
-                    height: 200,
-                    color: const Color(0xFFF8F9FB),
-                    child: Icon(
-                      Icons.broken_image_outlined,
-                      color: Colors.grey.shade400,
-                    ),
-                  ),
-                ),
+                child: AppImage.provider(ann.imageUrl) != null
+                    ? Image(
+                        image: AppImage.provider(ann.imageUrl)!,
+                        width: double.infinity,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => Container(
+                          height: 200,
+                          color: const Color(0xFFF8F9FB),
+                          child: Icon(
+                            Icons.broken_image_outlined,
+                            color: Colors.grey.shade400,
+                          ),
+                        ),
+                      )
+                    : Container(
+                        height: 200,
+                        color: const Color(0xFFF8F9FB),
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          color: Colors.grey.shade400,
+                        ),
+                      ),
               ),
             ],
 
@@ -866,9 +838,10 @@ class AnnouncementDetailScreen extends StatelessWidget {
               background: Stack(
                 fit: StackFit.expand,
                 children: [
-                  ann.imageUrl.isNotEmpty
+                  (ann.imageUrl.isNotEmpty &&
+                          AppImage.provider(ann.imageUrl) != null)
                       ? Image(
-                          image: _studentImageProvider(ann.imageUrl),
+                          image: AppImage.provider(ann.imageUrl)!,
                           fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) => Container(
                             decoration: BoxDecoration(
@@ -1036,9 +1009,12 @@ class AnnouncementDetailScreen extends StatelessWidget {
                           color: AppColors.primaryDark.withOpacity(0.1),
                         ),
                         child: ClipOval(
-                          child: (logoUrl != null && logoUrl.isNotEmpty)
+                          child:
+                              (logoUrl != null &&
+                                  logoUrl.isNotEmpty &&
+                                  AppImage.provider(logoUrl) != null)
                               ? Image(
-                                  image: _studentImageProvider(logoUrl),
+                                  image: AppImage.provider(logoUrl)!,
                                   fit: BoxFit.cover,
                                   errorBuilder: (_, __, ___) => Icon(
                                     Icons.business_center_outlined,

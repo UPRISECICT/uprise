@@ -1,9 +1,9 @@
 // lib/screens/student/student_organizations_screen.dart
 import 'package:flutter/material.dart';
-import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../widgets/student/student_app_bar.dart';
+import '../../widgets/student/app_image.dart';
 import '../../widgets/common/loading_widget.dart';
 import 'student_organization_details_screen.dart';
 
@@ -51,21 +51,6 @@ class _StudentOrganizationsScreenState
   void dispose() {
     _searchController.dispose();
     super.dispose();
-  }
-
-  ImageProvider? _buildLogoImage(String? logoUrl) {
-    if (logoUrl == null || logoUrl.isEmpty) return null;
-
-    if (logoUrl.startsWith('data:')) {
-      try {
-        final base64Str = logoUrl.split(',').last;
-        return MemoryImage(base64Decode(base64Str));
-      } catch (_) {
-        return null;
-      }
-    }
-
-    return NetworkImage(logoUrl);
   }
 
   @override
@@ -346,21 +331,6 @@ class _OrganizationCard extends StatelessWidget {
     required this.category,
   });
 
-  ImageProvider? _buildLogoImage() {
-    if (logoUrl == null || logoUrl!.isEmpty) return null;
-
-    if (logoUrl!.startsWith('data:')) {
-      try {
-        final base64Str = logoUrl!.split(',').last;
-        return MemoryImage(base64Decode(base64Str));
-      } catch (_) {
-        return null;
-      }
-    }
-
-    return NetworkImage(logoUrl!);
-  }
-
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -387,9 +357,9 @@ class _OrganizationCard extends StatelessWidget {
             SizedBox(
               height: 96,
               width: double.infinity,
-              child: _buildLogoImage() != null
+              child: AppImage.provider(logoUrl ?? '') != null
                   ? Image(
-                      image: _buildLogoImage()!,
+                      image: AppImage.provider(logoUrl ?? '')!,
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => _buildPlaceholder(),
                     )
@@ -501,21 +471,6 @@ class _OrganizationListCard extends StatelessWidget {
     required this.category,
   });
 
-  ImageProvider? _buildLogoImage() {
-    if (logoUrl == null || logoUrl!.isEmpty) return null;
-
-    if (logoUrl!.startsWith('data:')) {
-      try {
-        final base64Str = logoUrl!.split(',').last;
-        return MemoryImage(base64Decode(base64Str));
-      } catch (_) {
-        return null;
-      }
-    }
-
-    return NetworkImage(logoUrl!);
-  }
-
   Widget _buildAvatarPlaceholder() {
     return Container(
       height: 64,
@@ -536,7 +491,7 @@ class _OrganizationListCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final logoImage = _buildLogoImage();
+    final logoImage = AppImage.provider(logoUrl ?? '');
 
     return GestureDetector(
       onTap: () {

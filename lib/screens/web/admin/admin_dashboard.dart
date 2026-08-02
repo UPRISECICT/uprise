@@ -23,6 +23,7 @@ import 'settings.dart';
 import 'admin_profile.dart';
 import 'export_pdf.dart' show AdminExportPdf;
 import 'export_util.dart';
+import 'export_excel.dart';
 import '../../../widgets/app_toast.dart';
 import '../../../widgets/admin_export_button.dart';
 
@@ -610,7 +611,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
       transitionDuration: const Duration(milliseconds: 200),
       pageBuilder: (ctx, anim, secAnim) => const SizedBox.shrink(),
       transitionBuilder: (ctx, anim, secAnim, child) {
-        final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
+        final curved = CurvedAnimation(
+          parent: anim,
+          curve: Curves.easeOutCubic,
+        );
         return Opacity(
           opacity: curved.value,
           child: Transform.scale(
@@ -2552,8 +2556,7 @@ class _DashboardHomeState extends State<DashboardHome> {
                     extraAction,
                     if (onExport != null) const SizedBox(width: 10),
                   ],
-                  if (onExport != null)
-                    AdminExportButton(onSelected: onExport),
+                  if (onExport != null) AdminExportButton(onSelected: onExport),
                 ],
               ),
             ],
@@ -2693,7 +2696,9 @@ class _DashboardHomeState extends State<DashboardHome> {
         color: color ?? UpriseColors.charcoal,
       ),
     );
-    return numeric ? Align(alignment: Alignment.centerRight, child: child) : child;
+    return numeric
+        ? Align(alignment: Alignment.centerRight, child: child)
+        : child;
   }
 
   // Gold/silver/bronze circle for the top 3 rows of Organization Standings —
@@ -2764,12 +2769,16 @@ class _DashboardHomeState extends State<DashboardHome> {
               .take(2)
               .map((w) => w.isNotEmpty ? w[0].toUpperCase() : '')
               .join();
-    final color = _avatarPalette[trimmed.hashCode.abs() % _avatarPalette.length];
+    final color =
+        _avatarPalette[trimmed.hashCode.abs() % _avatarPalette.length];
     return Container(
       width: 32,
       height: 32,
       alignment: Alignment.center,
-      decoration: BoxDecoration(color: color.withAlpha(28), shape: BoxShape.circle),
+      decoration: BoxDecoration(
+        color: color.withAlpha(28),
+        shape: BoxShape.circle,
+      ),
       child: Text(
         initials,
         style: GoogleFonts.beVietnamPro(
@@ -2785,7 +2794,11 @@ class _DashboardHomeState extends State<DashboardHome> {
   // number blended into every other numeric column, so at a glance you
   // couldn't tell "0 pending" (good) from "12 pending" (needs attention)
   // without reading each digit. Zero renders as a plain dash to stay quiet.
-  Widget _cellCountPill(int count, {required Color color, required IconData icon}) {
+  Widget _cellCountPill(
+    int count, {
+    required Color color,
+    required IconData icon,
+  }) {
     if (count <= 0) {
       return Align(
         alignment: Alignment.center,
@@ -2876,14 +2889,18 @@ class _DashboardHomeState extends State<DashboardHome> {
   }) async {
     final ts = DateFormat('yyyy-MM-dd').format(DateTime.now());
     try {
-      if (format == 'csv') {
-        String esc(String s) => '"${s.replaceAll('"', '""')}"';
-        final csv = [
-          headers,
-          ...rows,
-        ].map((r) => r.map(esc).join(',')).join('\n');
-        final fileName = '${fileNamePrefix}_$ts.csv';
-        await AdminExportUtil.saveText(csv, fileName, mimeType: 'text/csv');
+      if (format == 'excel') {
+        final bytes = AdminExportExcel.generateStyledTable(
+          title: title,
+          headers: headers,
+          rows: rows,
+        );
+        final fileName = '${fileNamePrefix}_$ts.xlsx';
+        await AdminExportUtil.saveBytes(
+          bytes,
+          fileName,
+          mimeType: xlsxMimeType,
+        );
         if (mounted) {
           AppToast.success(context, 'Exported $fileName');
         }
@@ -2971,7 +2988,8 @@ class _DashboardHomeState extends State<DashboardHome> {
   // tried here first and read as too busy for what's meant to be a quick
   // reference card — this keeps one accent color and lets layout (not
   // color) do the organizing.
-  bool _isCompactField(String value) => value.length <= 18 && !value.contains('\n');
+  bool _isCompactField(String value) =>
+      value.length <= 18 && !value.contains('\n');
 
   Widget _statBox(String label, String value) {
     return Container(
@@ -4259,12 +4277,8 @@ class _AdminNotificationPanelState extends State<_AdminNotificationPanel> {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 13),
               decoration: BoxDecoration(
-                color: hovering
-                    ? const Color(0xFFFFF7ED)
-                    : Colors.white,
-                border: const Border(
-                  top: BorderSide(color: Color(0xFFE8ECF0)),
-                ),
+                color: hovering ? const Color(0xFFFFF7ED) : Colors.white,
+                border: const Border(top: BorderSide(color: Color(0xFFE8ECF0))),
                 borderRadius: const BorderRadius.vertical(
                   bottom: Radius.circular(16),
                 ),

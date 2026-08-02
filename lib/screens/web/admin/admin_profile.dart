@@ -5,7 +5,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../../theme/app_theme.dart';
+import 'package:intl/intl.dart';
+import '../../../theme/admin_theme.dart';
 import '../../../utils/file_validation.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 
@@ -44,7 +45,7 @@ class _DS {
                 children: [
                   TextSpan(
                     text: ' *',
-                    style: labelTextStyle.copyWith(color: UpriseColors.error),
+                    style: labelTextStyle.copyWith(color: AdminColors.error),
                   ),
                 ],
               ),
@@ -73,15 +74,15 @@ class _DS {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(radiusSm),
-        borderSide: BorderSide(color: UpriseColors.primaryDark, width: 1.5),
+        borderSide: BorderSide(color: AdminColors.primaryDark, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(radiusSm),
-        borderSide: BorderSide(color: UpriseColors.error, width: 1),
+        borderSide: BorderSide(color: AdminColors.error, width: 1),
       ),
       focusedErrorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(radiusSm),
-        borderSide: BorderSide(color: UpriseColors.error, width: 1.5),
+        borderSide: BorderSide(color: AdminColors.error, width: 1.5),
       ),
     );
   }
@@ -93,7 +94,7 @@ Widget _sectionLabel(String text, {IconData? icon}) {
     child: Row(
       children: [
         if (icon != null) ...[
-          Icon(icon, size: 16, color: UpriseColors.primaryDark),
+          Icon(icon, size: 16, color: AdminColors.primaryDark),
           const SizedBox(width: 8),
         ],
         Text(
@@ -101,7 +102,7 @@ Widget _sectionLabel(String text, {IconData? icon}) {
           style: GoogleFonts.beVietnamPro(
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: UpriseColors.primaryDark,
+            color: AdminColors.primaryDark,
             letterSpacing: 0.3,
           ),
         ),
@@ -153,6 +154,10 @@ class _AdminProfileState extends State<AdminProfile> {
   Future<void> _loadUserData() async {
     if (_currentUser != null) {
       _fullNameController.text = _currentUser!.displayName ?? '';
+      // Auth is the source of truth for the login email — Firestore's
+      // mirror only exists for convenience and goes stale the moment a
+      // verifyBeforeUpdateEmail link is confirmed (that happens outside the
+      // app, so nothing else writes the new address back to Firestore).
       _emailController.text = _currentUser!.email ?? '';
     }
     final doc = await FirebaseFirestore.instance
@@ -163,7 +168,18 @@ class _AdminProfileState extends State<AdminProfile> {
       final data = doc.data();
       if (data != null) {
         _fullNameController.text = data['fullName'] ?? _fullNameController.text;
-        _emailController.text = data['email'] ?? _emailController.text;
+        final firestoreEmail = data['email'] as String?;
+        final authEmail = _currentUser?.email;
+        if (authEmail != null &&
+            authEmail.isNotEmpty &&
+            firestoreEmail != authEmail) {
+          // Self-heal: a pending email change was verified since the mirror
+          // was last written. Bring Firestore back in sync silently.
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(_currentUser!.uid)
+              .set({'email': authEmail}, SetOptions(merge: true));
+        }
       }
     }
     if (mounted) setState(() {});
@@ -216,35 +232,26 @@ class _AdminProfileState extends State<AdminProfile> {
     }
   }
 
+  // Email is intentionally read-only on this page. Changing it is a
+  // sensitive operation that Firebase requires a recent re-authentication
+  // for — that flow (password confirmation + verifyBeforeUpdateEmail) already
+  // exists on the Settings screen, so it's surfaced here as a pointer rather
+  // than duplicated (and previously silently failing) here.
   Future<void> _updateProfile() async {
     if (!_profileFormKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
     try {
-      // If email changed, attempt to update the auth user's email as well.
-      final newEmail = _emailController.text.trim();
-      if (newEmail.isNotEmpty && newEmail != (_currentUser?.email ?? '')) {
-        try {
-          await _currentUser!.updateEmail(newEmail);
-        } on FirebaseAuthException catch (e) {
-          if (e.code == 'requires-recent-login') {
-            _showSnack('Please re-login to change your email', success: false);
-            setState(() => _isLoading = false);
-            return;
-          }
-          rethrow;
-        }
-      }
-      await _currentUser!.updateDisplayName(_fullNameController.text.trim());
+      final newName = _fullNameController.text.trim();
+      await _currentUser!.updateDisplayName(newName);
       await FirebaseFirestore.instance
           .collection('users')
           .doc(_currentUser!.uid)
           .set({
-            'fullName': _fullNameController.text.trim(),
-            'email': _emailController.text.trim(),
+            'fullName': newName,
             'updatedAt': FieldValue.serverTimestamp(),
           }, SetOptions(merge: true));
       await activity_log.ActivityLogger.log(
-        action: 'Updated profile name to ${_fullNameController.text.trim()}',
+        action: 'Updated profile name to $newName',
         module: 'My Profile',
       );
       widget.onProfileUpdated?.call();
@@ -261,11 +268,16 @@ class _AdminProfileState extends State<AdminProfile> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message, style: GoogleFonts.beVietnamPro(fontSize: 13)),
-        backgroundColor: success ? const Color(0xFF059669) : UpriseColors.error,
+        backgroundColor: success ? const Color(0xFF059669) : AdminColors.error,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
+  }
+
+  String _formatDate(DateTime? dt) {
+    if (dt == null) return 'Unknown';
+    return DateFormat('MMM d, y').format(dt);
   }
 
   @override
@@ -274,6 +286,8 @@ class _AdminProfileState extends State<AdminProfile> {
     if (_profileImageBase64 != null && _profileImageBase64!.isNotEmpty) {
       imageProvider = MemoryImage(base64Decode(_profileImageBase64!));
     }
+
+    final metadata = _currentUser?.metadata;
 
     return Container(
       color: const Color(0xFFFBFCFE),
@@ -304,7 +318,7 @@ class _AdminProfileState extends State<AdminProfile> {
                 const SizedBox(height: 20),
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(28),
+                  clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(_DS.radiusLg),
@@ -313,122 +327,183 @@ class _AdminProfileState extends State<AdminProfile> {
                   ),
                   child: Column(
                     children: [
-                      Stack(
-                        children: [
-                          Container(
-                            width: 96,
-                            height: 96,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: UpriseColors.primaryDark.withAlpha(38),
-                                width: 3,
-                              ),
-                              boxShadow: _DS.cardShadow,
-                            ),
-                            child: ClipOval(
-                              child: imageProvider != null
-                                  ? Image(
-                                      image: imageProvider,
-                                      fit: BoxFit.cover,
-                                    )
-                                  : Container(
-                                      color: UpriseColors.primaryDark.withAlpha(
-                                        20,
-                                      ),
-                                      child: Icon(
-                                        Icons.person_rounded,
-                                        size: 48,
-                                        color: UpriseColors.primaryDark
-                                            .withAlpha(100),
-                                      ),
-                                    ),
-                            ),
+                      Container(
+                        height: 88,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              AdminColors.primaryDark,
+                              AdminColors.primaryLight,
+                            ],
                           ),
-                          Positioned(
-                            bottom: 0,
-                            right: 0,
-                            child: MouseRegion(
-                              cursor: _isLoading
-                                  ? MouseCursor.defer
-                                  : SystemMouseCursors.click,
-                              child: GestureDetector(
-                                onTap: _isLoading ? null : _pickAndUploadImage,
-                                child: Container(
-                                  width: 30,
-                                  height: 30,
-                                  decoration: BoxDecoration(
-                                    color: UpriseColors.primaryDark,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: Colors.white,
-                                      width: 2,
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(28, 0, 28, 28),
+                        child: Column(
+                          children: [
+                            Transform.translate(
+                              offset: const Offset(0, -48),
+                              child: Stack(
+                                children: [
+                                  Container(
+                                    width: 96,
+                                    height: 96,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: Colors.white,
+                                        width: 4,
+                                      ),
+                                      boxShadow: _DS.cardShadow,
+                                    ),
+                                    child: ClipOval(
+                                      child: imageProvider != null
+                                          ? Image(
+                                              image: imageProvider,
+                                              fit: BoxFit.cover,
+                                            )
+                                          : Container(
+                                              color: AdminColors.primaryDark
+                                                  .withAlpha(20),
+                                              child: Icon(
+                                                Icons.person_rounded,
+                                                size: 48,
+                                                color: AdminColors.primaryDark
+                                                    .withAlpha(100),
+                                              ),
+                                            ),
                                     ),
                                   ),
-                                  child: _isLoading
-                                      ? const Padding(
-                                          padding: EdgeInsets.all(6),
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Colors.white,
+                                  Positioned(
+                                    bottom: 0,
+                                    right: 0,
+                                    child: MouseRegion(
+                                      cursor: _isLoading
+                                          ? MouseCursor.defer
+                                          : SystemMouseCursors.click,
+                                      child: GestureDetector(
+                                        onTap: _isLoading
+                                            ? null
+                                            : _pickAndUploadImage,
+                                        child: Container(
+                                          width: 30,
+                                          height: 30,
+                                          decoration: BoxDecoration(
+                                            color: AdminColors.primaryDark,
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: Colors.white,
+                                              width: 2,
+                                            ),
                                           ),
-                                        )
-                                      : const Icon(
-                                          Icons.camera_alt_rounded,
-                                          size: 14,
-                                          color: Colors.white,
+                                          child: _isLoading
+                                              ? const Padding(
+                                                  padding: EdgeInsets.all(6),
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                        strokeWidth: 2,
+                                                        color: Colors.white,
+                                                      ),
+                                                )
+                                              : const Icon(
+                                                  Icons.camera_alt_rounded,
+                                                  size: 14,
+                                                  color: Colors.white,
+                                                ),
                                         ),
-                                ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-                      Text(
-                        _fullNameController.text.isNotEmpty
-                            ? _fullNameController.text
-                            : 'Admin User',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFF1A202C),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _emailController.text,
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 13,
-                          color: const Color(0xFF64748B),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: UpriseColors.primaryDark.withAlpha(20),
-                          borderRadius: BorderRadius.circular(_DS.radiusPill),
-                        ),
-                        child: Text(
-                          'System Administrator',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: UpriseColors.primaryDark,
-                            letterSpacing: 0.4,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Tap the camera icon to change your photo',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 11,
-                          color: const Color(0xFF9AA5B4),
+                            Transform.translate(
+                              offset: const Offset(0, -32),
+                              child: Column(
+                                children: [
+                                  Text(
+                                    _fullNameController.text.isNotEmpty
+                                        ? _fullNameController.text
+                                        : 'Admin User',
+                                    style: GoogleFonts.beVietnamPro(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w700,
+                                      color: const Color(0xFF1A202C),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _emailController.text,
+                                    style: GoogleFonts.beVietnamPro(
+                                      fontSize: 13,
+                                      color: const Color(0xFF64748B),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 5,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: AdminColors.primaryDark.withAlpha(
+                                        20,
+                                      ),
+                                      borderRadius: BorderRadius.circular(
+                                        _DS.radiusPill,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.verified_rounded,
+                                          size: 13,
+                                          color: AdminColors.primaryDark,
+                                        ),
+                                        const SizedBox(width: 5),
+                                        Text(
+                                          'System Administrator',
+                                          style: GoogleFonts.beVietnamPro(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            color: AdminColors.primaryDark,
+                                            letterSpacing: 0.4,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _StatChip(
+                                    icon: Icons.calendar_today_rounded,
+                                    label: 'Member since',
+                                    value: _formatDate(metadata?.creationTime),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _StatChip(
+                                    icon: Icons.login_rounded,
+                                    label: 'Last sign-in',
+                                    value: _formatDate(
+                                      metadata?.lastSignInTime,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -469,21 +544,24 @@ class _AdminProfileState extends State<AdminProfile> {
                         const SizedBox(height: 12),
                         TextFormField(
                           controller: _emailController,
-                          style: GoogleFonts.beVietnamPro(fontSize: 13),
+                          enabled: false,
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 13,
+                            color: const Color(0xFF9AA5B4),
+                          ),
                           decoration: _DS.inputDecoration(
                             'Email Address',
-                            icon: Icons.email_outlined,
-                            required: true,
+                            icon: Icons.lock_outline_rounded,
                           ),
-                          keyboardType: TextInputType.emailAddress,
-                          validator: (v) {
-                            if (v == null || v.trim().isEmpty)
-                              return 'Required';
-                            if (!v.contains('@') || !v.contains('.')) {
-                              return 'Enter a valid email';
-                            }
-                            return null;
-                          },
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Your email is tied to account sign-in and can only be changed from Settings, where it goes through password confirmation and a verification link.',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 11.5,
+                            color: const Color(0xFF9AA5B4),
+                            height: 1.4,
+                          ),
                         ),
                         const SizedBox(height: 20),
                         ElevatedButton.icon(
@@ -506,7 +584,7 @@ class _AdminProfileState extends State<AdminProfile> {
                             ),
                           ),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: UpriseColors.primaryDark,
+                            backgroundColor: AdminColors.primaryDark,
                             foregroundColor: Colors.white,
                             elevation: 0,
                             minimumSize: const Size(double.infinity, 44),
@@ -523,6 +601,60 @@ class _AdminProfileState extends State<AdminProfile> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _StatChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _StatChip({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8F9FB),
+        borderRadius: BorderRadius.circular(_DS.radiusSm),
+        border: Border.all(color: const Color(0xFFE8ECF0)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 15, color: AdminColors.primaryDark.withAlpha(160)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 10,
+                    color: const Color(0xFF9AA5B4),
+                  ),
+                ),
+                Text(
+                  value,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF374151),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

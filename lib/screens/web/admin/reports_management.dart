@@ -6,6 +6,7 @@ import 'package:pdf/pdf.dart';
 import 'package:universal_html/html.dart' as html;
 import 'package:uprise/screens/web/admin/export_pdf.dart' show AdminExportPdf;
 import 'export_util.dart';
+import 'export_excel.dart';
 import 'package:uprise/widgets/admin_export_button.dart';
 import '../../../widgets/student/event_image.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -1887,12 +1888,15 @@ class _ReportsManagementState extends State<ReportsManagement>
       ).showSnackBar(const SnackBar(content: Text('No data to export.')));
       return;
     }
-    final rows = <List<String>>[_eventSummaryHeaders, ..._eventSummaryRows()];
-    final csv = rows.map((r) => r.join(',')).join('\n');
+    final bytes = AdminExportExcel.generateStyledTable(
+      title: 'Event Summary',
+      headers: _eventSummaryHeaders,
+      rows: _eventSummaryRows(),
+    );
     final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-    final fileName = 'event_summary_$ts.csv';
-    await AdminExportUtil.saveText(csv, fileName, mimeType: 'text/csv');
-    await _logGeneratedReport(fileName, 'CSV', 'Event Summary');
+    final fileName = 'event_summary_$ts.xlsx';
+    await AdminExportUtil.saveBytes(bytes, fileName, mimeType: xlsxMimeType);
+    await _logGeneratedReport(fileName, 'Excel', 'Event Summary');
   }
 
   Future<void> _exportEventSummaryPdf() async {
@@ -2337,24 +2341,32 @@ class _ReportsManagementState extends State<ReportsManagement>
       ).showSnackBar(const SnackBar(content: Text('No data to export.')));
       return;
     }
-    final rows = <List<String>>[
-      ['Organization', 'Event', 'Type', 'Description', 'Date Submitted'],
-    ];
-    for (final r in reports) {
-      rows.add([
-        r.orgName,
-        r.eventTitle,
-        r.type,
-        r.description,
-        DateFormat('yyyy-MM-dd').format(r.submittedAt),
-      ]);
-    }
-    String esc(String s) => '"${s.replaceAll('"', '""')}"';
-    final csv = rows.map((row) => row.map(esc).join(',')).join('\n');
+    final rows = reports
+        .map(
+          (r) => [
+            r.orgName,
+            r.eventTitle,
+            r.type,
+            r.description,
+            DateFormat('yyyy-MM-dd').format(r.submittedAt),
+          ],
+        )
+        .toList();
+    final bytes = AdminExportExcel.generateStyledTable(
+      title: '$reportType Reports',
+      headers: const [
+        'Organization',
+        'Event',
+        'Type',
+        'Description',
+        'Date Submitted',
+      ],
+      rows: rows,
+    );
     final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-    final fileName = '${reportType.toLowerCase()}_reports_$ts.csv';
-    await AdminExportUtil.saveText(csv, fileName, mimeType: 'text/csv');
-    await _logGeneratedReport(fileName, 'CSV', reportType);
+    final fileName = '${reportType.toLowerCase()}_reports_$ts.xlsx';
+    await AdminExportUtil.saveBytes(bytes, fileName, mimeType: xlsxMimeType);
+    await _logGeneratedReport(fileName, 'Excel', reportType);
   }
 
   Future<void> _exportAdminReportsPdf(
@@ -3481,8 +3493,15 @@ class _ReportsManagementState extends State<ReportsManagement>
       ).showSnackBar(const SnackBar(content: Text('No data to export.')));
       return;
     }
-    final rows = <List<String>>[
-      [
+    final rows = <List<String>>[];
+    for (final entry in [('Financial', finRows), ('Accomplishment', accRows)]) {
+      for (final s in entry.$2) {
+        rows.add(_submissionExportRow(entry.$1, s));
+      }
+    }
+    final bytes = AdminExportExcel.generateStyledTable(
+      title: 'Submission Tracker',
+      headers: const [
         'Type',
         'Organization',
         'Event / Period',
@@ -3491,18 +3510,12 @@ class _ReportsManagementState extends State<ReportsManagement>
         'Submitted On',
         'Status',
       ],
-    ];
-    for (final entry in [('Financial', finRows), ('Accomplishment', accRows)]) {
-      for (final s in entry.$2) {
-        rows.add(_submissionExportRow(entry.$1, s));
-      }
-    }
-    String esc(String v) => '"${v.replaceAll('"', '""')}"';
-    final csv = rows.map((r) => r.map(esc).join(',')).join('\n');
+      rows: rows,
+    );
     final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-    final fileName = 'submission_tracker_$ts.csv';
-    await AdminExportUtil.saveText(csv, fileName, mimeType: 'text/csv');
-    await _logGeneratedReport(fileName, 'CSV', 'Submission Tracker');
+    final fileName = 'submission_tracker_$ts.xlsx';
+    await AdminExportUtil.saveBytes(bytes, fileName, mimeType: xlsxMimeType);
+    await _logGeneratedReport(fileName, 'Excel', 'Submission Tracker');
   }
 
   Future<void> _exportSubmissionTrackerPdf() async {
@@ -4903,12 +4916,14 @@ class _ReportsManagementState extends State<ReportsManagement>
               ),
             )
           else ...[
-            ...items.take(5).map(
-              (item) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _breakdownItemTile(item, maxVal, color),
-              ),
-            ),
+            ...items
+                .take(5)
+                .map(
+                  (item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _breakdownItemTile(item, maxVal, color),
+                  ),
+                ),
             if (items.length > 5)
               Align(
                 alignment: Alignment.centerLeft,
@@ -6239,7 +6254,7 @@ class _ExportButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return AdminExportButton(
       onSelected: (choice) {
-        if (choice == 'csv') onExportCsv();
+        if (choice == 'excel') onExportCsv();
         if (choice == 'pdf') onExportPdf();
       },
     );

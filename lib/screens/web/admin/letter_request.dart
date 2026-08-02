@@ -13,6 +13,7 @@ import 'package:uprise/widgets/admin_export_button.dart';
 import 'package:intl/intl.dart';
 import 'export_util.dart';
 import 'export_pdf.dart';
+import 'export_excel.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../services/firestore_collections.dart';
 import '../../../services/notification_service.dart';
@@ -3357,10 +3358,8 @@ class _ExportButton extends StatelessWidget {
       }
 
       final now = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-      if (format == 'csv') {
-        final buffer = StringBuffer();
-        buffer.writeln('Organization,Subject,Message,Status,Date Submitted');
-        for (final doc in docs) {
+      if (format == 'excel') {
+        final rows = docs.map((doc) {
           final d = doc.data() as Map<String, dynamic>?;
           final date =
               (d?['timestamp'] as Timestamp?)?.toDate().toString().substring(
@@ -3368,23 +3367,30 @@ class _ExportButton extends StatelessWidget {
                 10,
               ) ??
               '';
-          final message = (d?['message'] ?? '').toString();
-          String escape(String value) => '"${value.replaceAll('"', '""')}"';
-          buffer.writeln(
-            [
-              escape(d?['orgName'] ?? ''),
-              escape(d?['subject'] ?? ''),
-              escape(message),
-              escape(d?['status'] ?? ''),
-              escape(date),
-            ].join(','),
-          );
-        }
-        final fileName = 'letter_requests_$now.csv';
-        await AdminExportUtil.saveText(
-          buffer.toString(),
+          return [
+            (d?['orgName'] ?? '').toString(),
+            (d?['subject'] ?? '').toString(),
+            (d?['message'] ?? '').toString(),
+            (d?['status'] ?? '').toString(),
+            date,
+          ];
+        }).toList();
+        final bytes = AdminExportExcel.generateStyledTable(
+          title: 'Letter Requests',
+          headers: const [
+            'Organization',
+            'Subject',
+            'Message',
+            'Status',
+            'Date Submitted',
+          ],
+          rows: rows,
+        );
+        final fileName = 'letter_requests_$now.xlsx';
+        await AdminExportUtil.saveBytes(
+          bytes,
           fileName,
-          mimeType: 'text/csv',
+          mimeType: xlsxMimeType,
         );
         messenger.showSnackBar(
           SnackBar(content: Text('Download started: $fileName')),

@@ -16,6 +16,7 @@ import 'package:http/http.dart' as http;
 import 'package:cross_file/cross_file.dart';
 import 'export_util.dart';
 import 'export_pdf.dart';
+import 'export_excel.dart';
 import '../../../theme/admin_theme.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../widgets/admin_stat_cards_row.dart';
@@ -1522,18 +1523,93 @@ class _StudentAccountsState extends State<StudentAccounts> {
     }
   }
 
-  // Downloadable starter CSV — header row matches the exact column order
-  // the parser expects, plus one example row using the real student number
-  // (no dash) and section (digit+letter-G+digit) formats, so admins don't
-  // have to guess at either from prose alone.
+  // Downloadable starter workbook — a real .xlsx (not .csv) so it can
+  // actually carry styling: a filled/bold header row, a muted example row,
+  // and sized columns. CSV is plain text with zero formatting support —
+  // what looked like a styled header in a spreadsheet app is always that
+  // app's own toolbar chrome, never something the file itself carries.
+  // The batch importer already accepts .xlsx, so this is a drop-in
+  // replacement, not a new format to support.
   Future<void> _downloadImportTemplate() async {
-    const csv =
-        'Student ID,Full Name,Course,Year Level,Section,Email\n'
-        '2023100467,Juan Dela Cruz,BSIT,3,4H-G1,juan.delacruz@outlook.com';
-    await AdminExportUtil.saveText(
-      csv,
-      'student_import_template.csv',
-      mimeType: 'text/csv',
+    final excel = Excel.createExcel();
+    final sheetName = excel.getDefaultSheet() ?? 'Sheet1';
+    final sheet = excel[sheetName];
+
+    const headers = [
+      'Student ID',
+      'Full Name',
+      'Course',
+      'Year Level',
+      'Section',
+      'Email',
+    ];
+    final headerStyle = CellStyle(
+      bold: true,
+      fontColorHex: ExcelColor.white,
+      // Brand amber-700, matching UpriseColors.primaryDark elsewhere in
+      // the app.
+      backgroundColorHex: ExcelColor.fromHexString('FFB45309'),
+      horizontalAlign: HorizontalAlign.Center,
+      verticalAlign: VerticalAlign.Center,
+    );
+    for (var i = 0; i < headers.length; i++) {
+      final cell = sheet.cell(
+        CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0),
+      );
+      cell.value = TextCellValue(headers[i]);
+      cell.cellStyle = headerStyle;
+    }
+
+    // Student ID is written as text (not a number) so Excel doesn't
+    // reinterpret a 10-digit ID as a number and mangle it (dropping
+    // leading zeros or switching to scientific notation).
+    const exampleRow = [
+      '2023100467',
+      'Juan Dela Cruz',
+      'BSIT',
+      '3',
+      '4H-G1',
+      '2023100467@ms.bulsu.edu.ph',
+    ];
+    final exampleStyle = CellStyle(
+      fontColorHex: ExcelColor.fromHexString('FF64748B'),
+      backgroundColorHex: ExcelColor.fromHexString('FFF8F9FB'),
+    );
+    for (var i = 0; i < exampleRow.length; i++) {
+      final cell = sheet.cell(
+        CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 1),
+      );
+      cell.value = TextCellValue(exampleRow[i]);
+      cell.cellStyle = exampleStyle;
+    }
+
+    const columnWidths = [14.0, 24.0, 10.0, 12.0, 10.0, 30.0];
+    for (var i = 0; i < columnWidths.length; i++) {
+      sheet.setColumnWidth(i, columnWidths[i]);
+    }
+
+    final bytes = excel.encode();
+    if (bytes == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Could not generate the template file.'),
+            backgroundColor: AdminColors.error,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    await AdminExportUtil.saveBytes(
+      bytes,
+      'student_import_template.xlsx',
+      mimeType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1554,6 +1630,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
     bool isUploading = false;
     String? resultMessage;
     bool resultIsError = false;
+    List<String> resultDetails = [];
 
     showDialog(
       context: context,
@@ -1636,9 +1713,21 @@ class _StudentAccountsState extends State<StudentAccounts> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            _sectionLabel(
-                              'Select File',
-                              icon: Icons.attach_file_rounded,
+                            // _sectionLabel's own Row ends in an
+                            // Expanded(Divider) — nesting it directly as a
+                            // non-flex child of this outer Row gives it
+                            // unbounded width (Row's non-flex children get
+                            // loose/unbounded main-axis constraints), which
+                            // crashes RenderFlex ("children have non-zero
+                            // flex but incoming width constraints are
+                            // unbounded") the instant this dialog opens.
+                            // Wrapping it in Expanded here gives it the
+                            // bounded width its own Expanded needs.
+                            Expanded(
+                              child: _sectionLabel(
+                                'Select File',
+                                icon: Icons.attach_file_rounded,
+                              ),
                             ),
                             MouseRegion(
                               cursor: SystemMouseCursors.click,
@@ -1657,7 +1746,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
                                       ),
                                       const SizedBox(width: 4),
                                       Text(
-                                        'Download CSV template',
+                                        'Download Excel template',
                                         style: GoogleFonts.beVietnamPro(
                                           fontSize: 12,
                                           fontWeight: FontWeight.w600,
@@ -1700,6 +1789,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
                                               'File is too large. Max size is '
                                               '${(FileValidation.defaultMaxDocumentBytes / (1024 * 1024)).toStringAsFixed(0)}MB.';
                                           resultIsError = true;
+                                          resultDetails = [];
                                         });
                                         return;
                                       }
@@ -1716,6 +1806,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
                                         }
                                         fileName = result.files.single.name;
                                         resultMessage = null;
+                                        resultDetails = [];
                                       });
                                     }
                                   },
@@ -1791,7 +1882,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
-                                  'Required columns (in order):\nStudent ID · Full Name · Course · Year Level · Section · Email\n\nStudent ID: 10 digits, no dash (e.g. 2023100467). Section: 4H-G1 format.\n\nEmail must be an Outlook/Microsoft account (outlook.com, hotmail.com, live.com, or msn.com) — other domains will be skipped.',
+                                  'Required columns (in order):\nStudent ID · Full Name · Course · Year Level · Section · Email\n\nStudent ID: 10 digits, no dash (e.g. 2023100467). Section: 4H-G1 format.\n\nEmail must be the school\'s Microsoft account (e.g. 2023100467@ms.bulsu.edu.ph — outlook.com, hotmail.com, live.com, and msn.com also accepted) — other domains will be skipped.',
                                   style: GoogleFonts.beVietnamPro(
                                     fontSize: 12,
                                     color: const Color(0xFF1D4ED8),
@@ -1835,29 +1926,83 @@ class _StudentAccountsState extends State<StudentAccounts> {
                                     : const Color(0xFF6EE7B7),
                               ),
                             ),
-                            child: Row(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Icon(
-                                  resultIsError
-                                      ? Icons.error_outline_rounded
-                                      : Icons.check_circle_outline_rounded,
-                                  size: 16,
-                                  color: resultIsError
-                                      ? const Color(0xFFDC2626)
-                                      : const Color(0xFF059669),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    resultMessage!,
-                                    style: GoogleFonts.beVietnamPro(
-                                      fontSize: 12,
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Icon(
+                                      resultIsError
+                                          ? Icons.error_outline_rounded
+                                          : Icons.check_circle_outline_rounded,
+                                      size: 16,
                                       color: resultIsError
-                                          ? const Color(0xFF991B1B)
-                                          : const Color(0xFF065F46),
+                                          ? const Color(0xFFDC2626)
+                                          : const Color(0xFF059669),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        resultMessage!,
+                                        style: GoogleFonts.beVietnamPro(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: resultIsError
+                                              ? const Color(0xFF991B1B)
+                                              : const Color(0xFF065F46),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                // Per-row reasons — replaces the old silent
+                                // drop of any row that failed validation,
+                                // which used to leave the admin with just
+                                // "0 created" and no way to tell why.
+                                if (resultDetails.isNotEmpty) ...[
+                                  const SizedBox(height: 10),
+                                  Container(
+                                    width: double.infinity,
+                                    constraints: const BoxConstraints(
+                                      maxHeight: 180,
+                                    ),
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: resultIsError
+                                            ? const Color(0xFFFECACA)
+                                            : const Color(0xFFA7F3D0),
+                                      ),
+                                    ),
+                                    child: SingleChildScrollView(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          for (final detail in resultDetails)
+                                            Padding(
+                                              padding: const EdgeInsets.only(
+                                                bottom: 4,
+                                              ),
+                                              child: Text(
+                                                '• $detail',
+                                                style: GoogleFonts.beVietnamPro(
+                                                  fontSize: 11.5,
+                                                  color: const Color(
+                                                    0xFF4B5563,
+                                                  ),
+                                                  height: 1.4,
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                ),
+                                ],
                               ],
                             ),
                           ),
@@ -1910,30 +2055,34 @@ class _StudentAccountsState extends State<StudentAccounts> {
                                     resultMessage =
                                         'Please select a file to import.';
                                     resultIsError = true;
+                                    resultDetails = [];
                                   });
                                   return;
                                 }
                                 setDialogState(() {
                                   isUploading = true;
                                   resultMessage = null;
+                                  resultDetails = [];
                                 });
                                 try {
-                                  List<Map<String, String>> students;
-                                  if (kIsWeb) {
-                                    students = await _parseXFile(pickedFile!);
-                                  } else {
-                                    students = await _parseFile(
-                                      File(pickedFile!.path),
-                                    );
-                                  }
-                                  if (students.isEmpty) {
+                                  final parsed = kIsWeb
+                                      ? await _parseXFile(pickedFile!)
+                                      : await _parseFile(
+                                          File(pickedFile!.path),
+                                        );
+                                  final students = parsed.students;
+                                  final parseErrors = parsed.errors;
+
+                                  if (students.isEmpty && parseErrors.isEmpty) {
                                     throw Exception(
-                                      'No valid data found. Check column order '
-                                      'and make sure every email is an '
-                                      'Outlook/Microsoft account.',
+                                      'No data rows found in the file. Make '
+                                      'sure there\'s a header row followed '
+                                      'by student rows.',
                                     );
                                   }
+
                                   int success = 0, failed = 0, failedEmails = 0;
+                                  final creationErrors = <String>[];
                                   for (final s in students) {
                                     try {
                                       // Credentials email is already sent
@@ -1948,17 +2097,39 @@ class _StudentAccountsState extends State<StudentAccounts> {
                                         failedEmails++;
                                       }
                                       success++;
-                                    } catch (_) {
+                                    } catch (e) {
                                       failed++;
+                                      creationErrors.add(
+                                        '${s['studentId']} (${s['email']}): '
+                                        '${e.toString().replaceFirst('Exception: ', '')}',
+                                      );
                                     }
                                   }
+
+                                  final allErrors = [
+                                    ...parseErrors,
+                                    ...creationErrors,
+                                  ];
                                   setDialogState(() {
                                     isUploading = false;
+                                    final skipped = parseErrors.length + failed;
                                     resultMessage =
-                                        'Import complete: $success created, $failed skipped.${failedEmails > 0 ? ' $failedEmails credential emails failed to send.' : ''}';
-                                    resultIsError = failed > 0 && success == 0;
+                                        'Import complete: $success created, $skipped skipped.'
+                                        '${failedEmails > 0 ? ' $failedEmails credential emails failed to send.' : ''}';
+                                    resultDetails = allErrors.length > 15
+                                        ? [
+                                            ...allErrors.take(15),
+                                            '…and ${allErrors.length - 15} more.',
+                                          ]
+                                        : allErrors;
+                                    resultIsError = success == 0;
                                   });
-                                  if (success > 0) {
+
+                                  // Only auto-close on a fully clean import
+                                  // — if anything was skipped, keep the
+                                  // dialog open so the admin can actually
+                                  // read why instead of it vanishing in 2s.
+                                  if (success > 0 && allErrors.isEmpty) {
                                     Future.delayed(
                                       const Duration(seconds: 2),
                                       () {
@@ -1991,6 +2162,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
                                     isUploading = false;
                                     resultMessage = 'Error: $e';
                                     resultIsError = true;
+                                    resultDetails = [];
                                   });
                                 }
                               },
@@ -2244,7 +2416,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
                             controller: emailCtrl,
                             decoration: _DS.inputDecoration(
                               'Email Address',
-                              hint: 'e.g., student@outlook.com',
+                              hint: 'e.g., 2023100467@ms.bulsu.edu.ph',
                               icon: Icons.email_outlined,
                               required: true,
                             ),
@@ -2258,8 +2430,8 @@ class _StudentAccountsState extends State<StudentAccounts> {
                                 return 'Enter a valid email';
                               }
                               if (!_isMicrosoftEmail(v)) {
-                                return 'Must be an Outlook/Microsoft email '
-                                    '(outlook.com, hotmail.com, live.com, msn.com)';
+                                return 'Must be the school\'s Microsoft email '
+                                    '(ms.bulsu.edu.ph, outlook.com, hotmail.com, live.com, msn.com)';
                               }
                               return null;
                             },
@@ -2567,137 +2739,119 @@ class _StudentAccountsState extends State<StudentAccounts> {
     }
   }
 
-  Future<List<Map<String, String>>> _parseFile(File file) async {
-    final List<Map<String, String>> students = [];
-    final ext = file.path.split('.').last.toLowerCase();
-    if (ext == 'csv') {
-      final csvString = await file.readAsString();
-      final rows = const CsvToListConverter().convert(csvString);
-      for (int i = 1; i < rows.length; i++) {
-        final row = rows[i];
-        if (row.length >= 5) {
-          final hasSection =
-              row.length >= 6; // NEW: section is column 4 when 6 cols present
-          students.add({
-            'studentId': row[0]?.toString().trim() ?? '',
-            'fullName': row[1]?.toString().trim() ?? '',
-            'course': _normalizeCourse(row[2]?.toString().trim() ?? ''),
-            'yearLevel': row[3]?.toString().trim() ?? '',
-            'section': hasSection
-                ? (row[4]?.toString().trim() ?? '')
-                : '', // NEW
-            'email': hasSection
-                ? (row[5]?.toString().trim() ?? '')
-                : (row[4]?.toString().trim() ?? ''), // NEW
-          });
-        }
-      }
-    } else {
-      final bytes = await file.readAsBytes();
-      final excel = Excel.decodeBytes(bytes);
-      for (final table in excel.tables.keys) {
-        final sheet = excel.tables[table];
-        for (int i = 1; i < (sheet?.rows.length ?? 0); i++) {
-          final row = sheet!.rows[i];
-          if (row.length >= 5) {
-            final hasSection = row.length >= 6; // NEW
-            students.add({
-              'studentId': row[0]?.value?.toString().trim() ?? '',
-              'fullName': row[1]?.value?.toString().trim() ?? '',
-              'course': _normalizeCourse(
-                row[2]?.value?.toString().trim() ?? '',
-              ),
-              'yearLevel': row[3]?.value?.toString().trim() ?? '',
-              'section': hasSection
-                  ? (row[4]?.value?.toString().trim() ?? '')
-                  : '', // NEW
-              'email': hasSection
-                  ? (row[5]?.value?.toString().trim() ?? '')
-                  : (row[4]?.value?.toString().trim() ?? ''), // NEW
-            });
-          }
-        }
-        break;
-      }
-    }
-    students.removeWhere(
-      (s) =>
-          s['studentId']!.isEmpty ||
-          (s['fullName'] ?? '').isEmpty ||
-          s['email']!.isEmpty ||
-          !_isMicrosoftEmail(s['email']!) ||
-          !_studentIdPattern.hasMatch(s['studentId']!) ||
-          !_fullNamePattern.hasMatch(s['fullName']!) ||
-          ((s['section'] ?? '').isNotEmpty &&
-              !_sectionPattern.hasMatch(s['section']!)),
-    );
-    return students;
+  // Raw rows in, one student map per row out — shared by both the CSV and
+  // Excel branches (and both the io and web entry points below) so there's
+  // a single place that decides column order instead of four copies that
+  // could quietly drift apart.
+  Map<String, String> _rowToStudentMap(List<dynamic> values) {
+    String cell(int i) =>
+        (i < values.length ? values[i]?.toString().trim() : null) ?? '';
+    final hasSection = values.length >= 6;
+    return {
+      'studentId': cell(0),
+      'fullName': cell(1),
+      'course': _normalizeCourse(cell(2)),
+      'yearLevel': cell(3),
+      'section': hasSection ? cell(4) : '',
+      'email': hasSection ? cell(5) : cell(4),
+    };
   }
 
-  Future<List<Map<String, String>>> _parseXFile(XFile xfile) async {
-    final bytes = await xfile.readAsBytes();
-    final name = xfile.name.toLowerCase();
-    final List<Map<String, String>> students = [];
-    if (name.endsWith('.csv')) {
-      final csvString = String.fromCharCodes(bytes);
-      final rows = const CsvToListConverter().convert(csvString);
-      for (int i = 1; i < rows.length; i++) {
-        final row = rows[i];
-        if (row.length >= 5) {
-          final hasSection = row.length >= 6; // NEW
-          students.add({
-            'studentId': row[0]?.toString().trim() ?? '',
-            'fullName': row[1]?.toString().trim() ?? '',
-            'course': _normalizeCourse(row[2]?.toString().trim() ?? ''),
-            'yearLevel': row[3]?.toString().trim() ?? '',
-            'section': hasSection
-                ? (row[4]?.toString().trim() ?? '')
-                : '', // NEW
-            'email': hasSection
-                ? (row[5]?.toString().trim() ?? '')
-                : (row[4]?.toString().trim() ?? ''), // NEW
-          });
-        }
+  // Replaces the old silent `students.removeWhere(...)` — that dropped
+  // every row failing validation with zero indication of which row or
+  // why, so a batch that imported "0 created" gave the admin nothing to
+  // act on. This returns the specific reason per rejected row instead.
+  ({List<Map<String, String>> students, List<String> errors}) _validateRows(
+    List<List<dynamic>> rawRows,
+  ) {
+    final valid = <Map<String, String>>[];
+    final errors = <String>[];
+    for (var i = 0; i < rawRows.length; i++) {
+      final rowNum = i + 2; // +1 for header row, +1 for 0-index
+      final values = rawRows[i];
+      if (values.length < 5) {
+        errors.add(
+          'Row $rowNum: only ${values.length} column(s) found — need at least 5 (Student ID, Full Name, Course, Year Level, Email).',
+        );
+        continue;
       }
-    } else {
-      final excel = Excel.decodeBytes(bytes);
-      for (final table in excel.tables.keys) {
-        final sheet = excel.tables[table];
-        for (int i = 1; i < (sheet?.rows.length ?? 0); i++) {
-          final row = sheet!.rows[i];
-          if (row.length >= 5) {
-            final hasSection = row.length >= 6; // NEW
-            students.add({
-              'studentId': row[0]?.value?.toString().trim() ?? '',
-              'fullName': row[1]?.value?.toString().trim() ?? '',
-              'course': _normalizeCourse(
-                row[2]?.value?.toString().trim() ?? '',
-              ),
-              'yearLevel': row[3]?.value?.toString().trim() ?? '',
-              'section': hasSection
-                  ? (row[4]?.value?.toString().trim() ?? '')
-                  : '', // NEW
-              'email': hasSection
-                  ? (row[5]?.value?.toString().trim() ?? '')
-                  : (row[4]?.value?.toString().trim() ?? ''), // NEW
-            });
-          }
-        }
-        break;
+      final s = _rowToStudentMap(values);
+      final reasons = <String>[];
+
+      if (s['studentId']!.isEmpty) {
+        reasons.add('missing Student ID');
+      } else if (!_studentIdPattern.hasMatch(s['studentId']!)) {
+        reasons.add(
+          'Student ID "${s['studentId']}" must be exactly 10 digits with no dash',
+        );
+      }
+
+      if (s['fullName']!.isEmpty) {
+        reasons.add('missing Full Name');
+      } else if (!_fullNamePattern.hasMatch(s['fullName']!)) {
+        reasons.add('Full Name "${s['fullName']}" needs a first and last name');
+      }
+
+      final section = s['section']!;
+      if (section.isNotEmpty && !_sectionPattern.hasMatch(section)) {
+        reasons.add('Section "$section" must look like 4H-G1');
+      }
+
+      if (s['email']!.isEmpty) {
+        reasons.add('missing Email');
+      } else if (!_isMicrosoftEmail(s['email']!)) {
+        reasons.add(
+          'Email "${s['email']}" isn\'t the school\'s Microsoft account (ms.bulsu.edu.ph, outlook.com, hotmail.com, live.com, msn.com)',
+        );
+      }
+
+      if (reasons.isEmpty) {
+        valid.add(s);
+      } else {
+        errors.add('Row $rowNum: ${reasons.join('; ')}.');
       }
     }
-    students.removeWhere(
-      (s) =>
-          s['studentId']!.isEmpty ||
-          (s['fullName'] ?? '').isEmpty ||
-          s['email']!.isEmpty ||
-          !_isMicrosoftEmail(s['email']!) ||
-          !_studentIdPattern.hasMatch(s['studentId']!) ||
-          !_fullNamePattern.hasMatch(s['fullName']!) ||
-          ((s['section'] ?? '').isNotEmpty &&
-              !_sectionPattern.hasMatch(s['section']!)),
-    );
-    return students;
+    return (students: valid, errors: errors);
+  }
+
+  ({List<Map<String, String>> students, List<String> errors}) _parseCsv(
+    String csvString,
+  ) {
+    final rows = const CsvToListConverter().convert(csvString);
+    return _validateRows(rows.length > 1 ? rows.sublist(1) : []);
+  }
+
+  ({List<Map<String, String>> students, List<String> errors}) _parseExcel(
+    List<int> bytes,
+  ) {
+    final excel = Excel.decodeBytes(bytes);
+    for (final table in excel.tables.keys) {
+      final sheet = excel.tables[table];
+      final rows = (sheet?.rows ?? [])
+          .map((row) => row.map((cell) => cell?.value).toList())
+          .toList();
+      return _validateRows(rows.length > 1 ? rows.sublist(1) : []);
+    }
+    return (students: <Map<String, String>>[], errors: <String>[]);
+  }
+
+  Future<({List<Map<String, String>> students, List<String> errors})>
+  _parseFile(File file) async {
+    final ext = file.path.split('.').last.toLowerCase();
+    if (ext == 'csv') {
+      return _parseCsv(await file.readAsString());
+    }
+    return _parseExcel(await file.readAsBytes());
+  }
+
+  Future<({List<Map<String, String>> students, List<String> errors})>
+  _parseXFile(XFile xfile) async {
+    final bytes = await xfile.readAsBytes();
+    final name = xfile.name.toLowerCase();
+    if (name.endsWith('.csv')) {
+      return _parseCsv(String.fromCharCodes(bytes));
+    }
+    return _parseExcel(bytes);
   }
 
   String _normalizeCourse(String course) {
@@ -2708,7 +2862,12 @@ class _StudentAccountsState extends State<StudentAccounts> {
     return 'BSIT';
   }
 
+  // ms.bulsu.edu.ph is the school's actual Microsoft 365 domain (student
+  // emails look like 2023100467@ms.bulsu.edu.ph) — the generic consumer
+  // domains below aren't tied to the institution at all, but are kept as a
+  // fallback rather than removed outright.
   static const _microsoftEmailDomains = {
+    'ms.bulsu.edu.ph',
     'outlook.com',
     'hotmail.com',
     'live.com',
@@ -3007,30 +3166,36 @@ class _ExportStudentsButton extends StatelessWidget {
 
       final now = DateTime.now().toString().substring(0, 10);
 
-      if (format == 'csv') {
-        final buf = StringBuffer();
-        buf.writeln(
-          'Student ID,Full Name,Course,Year Level,Section,Email,Archived',
-        ); // NEW: added Section
-        for (final doc in docs) {
+      if (format == 'excel') {
+        final rows = docs.map((doc) {
           final d = doc.data();
-          String esc(String s) => '"${s.replaceAll('"', '""')}"';
-          buf.writeln(
-            [
-              esc(d['studentId'] ?? ''),
-              esc(d['fullName'] ?? ''),
-              esc(d['course'] ?? ''),
-              esc(d['yearLevel'] ?? ''),
-              esc(d['section'] ?? ''), // NEW
-              esc(d['email'] ?? ''),
-              esc(d['archived'] == true ? 'Yes' : 'No'),
-            ].join(','),
-          );
-        }
-        await AdminExportUtil.saveText(
-          buf.toString(),
-          'students_$now.csv',
-          mimeType: 'text/csv',
+          return [
+            (d['studentId'] ?? '').toString(),
+            (d['fullName'] ?? '').toString(),
+            (d['course'] ?? '').toString(),
+            (d['yearLevel'] ?? '').toString(),
+            (d['section'] ?? '').toString(),
+            (d['email'] ?? '').toString(),
+            d['archived'] == true ? 'Yes' : 'No',
+          ];
+        }).toList();
+        final bytes = AdminExportExcel.generateStyledTable(
+          title: 'Student Accounts',
+          headers: const [
+            'Student ID',
+            'Full Name',
+            'Course',
+            'Year Level',
+            'Section',
+            'Email',
+            'Archived',
+          ],
+          rows: rows,
+        );
+        await AdminExportUtil.saveBytes(
+          bytes,
+          'students_$now.xlsx',
+          mimeType: xlsxMimeType,
         );
       } else if (format == 'pdf') {
         final rows = docs.map((doc) {

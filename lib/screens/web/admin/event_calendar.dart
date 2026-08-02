@@ -6,6 +6,7 @@ import 'package:uprise/widgets/admin_export_button.dart';
 import 'package:intl/intl.dart';
 import 'export_util.dart';
 import 'export_pdf.dart';
+import 'export_excel.dart';
 import '../../../theme/admin_theme.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 
@@ -1760,29 +1761,31 @@ class _ExportEventsButton extends StatelessWidget {
         return;
       }
 
-      String content, fileName;
       final now = DateTime.now().toString().substring(0, 10);
 
-      if (format == 'csv') {
-        final buf = StringBuffer();
-        buf.writeln('Title,Organization,Category,Date,Time');
-        for (final doc in docs) {
+      if (format == 'excel') {
+        final rows = docs.map((doc) {
           final d = doc.data();
           final date = (d['date'] as Timestamp).toDate();
-          String esc(String s) => '"${s.replaceAll('"', '""')}"';
-          buf.writeln(
-            [
-              esc(d['title'] ?? ''),
-              esc(d['orgName'] ?? ''),
-              esc(d['category'] ?? 'Other'),
-              esc(DateFormat('yyyy-MM-dd').format(date)),
-              esc(d['time'] ?? ''),
-            ].join(','),
-          );
-        }
-        content = buf.toString();
-        fileName = 'events_$now.csv';
-        await AdminExportUtil.saveText(content, fileName, mimeType: 'text/csv');
+          return [
+            (d['title'] ?? '').toString(),
+            (d['orgName'] ?? '').toString(),
+            (d['category'] ?? 'Other').toString(),
+            DateFormat('yyyy-MM-dd').format(date),
+            (d['time'] ?? '').toString(),
+          ];
+        }).toList();
+        final bytes = AdminExportExcel.generateStyledTable(
+          title: 'Event Calendar',
+          headers: const ['Title', 'Organization', 'Category', 'Date', 'Time'],
+          rows: rows,
+        );
+        final fileName = 'events_$now.xlsx';
+        await AdminExportUtil.saveBytes(
+          bytes,
+          fileName,
+          mimeType: xlsxMimeType,
+        );
       } else if (format == 'pdf') {
         final rows = docs.map((doc) {
           final d = doc.data();

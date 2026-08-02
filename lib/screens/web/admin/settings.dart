@@ -45,7 +45,7 @@ class _DS {
 
   static final cardShadow = [
     BoxShadow(
-      color: Colors.black.withOpacity(0.06),
+      color: Colors.black.withAlpha(15),
       blurRadius: 12,
       offset: const Offset(0, 4),
     ),
@@ -193,6 +193,144 @@ class _BadgeStyle {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Module badge — colored per module so the audit table is scannable at a
+// glance instead of every row reading the same neutral gray.
+// ─────────────────────────────────────────────────────────────────────────────
+class _ModuleBadge extends StatelessWidget {
+  final String module;
+  const _ModuleBadge(this.module);
+
+  static const Map<String, _BadgeStyle> _styles = {
+    'User Directory': _BadgeStyle(
+      Color(0xFFEFF6FF),
+      Color(0xFF2563EB),
+      'User Directory',
+    ),
+    'Admin Settings': _BadgeStyle(
+      Color(0xFFF5F3FF),
+      Color(0xFF7C3AED),
+      'Admin Settings',
+    ),
+    'Reports': _BadgeStyle(Color(0xFFECFDF5), Color(0xFF059669), 'Reports'),
+    'Organizations': _BadgeStyle(
+      Color(0xFFEEF2FF),
+      Color(0xFF4F46E5),
+      'Organizations',
+    ),
+    'Letter Request': _BadgeStyle(
+      Color(0xFFFFFBEB),
+      Color(0xFFD97706),
+      'Letter Request',
+    ),
+    'External Account': _BadgeStyle(
+      Color(0xFFECFEFF),
+      Color(0xFF0891B2),
+      'External Account',
+    ),
+    'Adviser Roles': _BadgeStyle(
+      Color(0xFFFAF5FF),
+      Color(0xFF9333EA),
+      'Adviser Roles',
+    ),
+    'Event Management': _BadgeStyle(
+      Color(0xFFFDF2F8),
+      Color(0xFFDB2777),
+      'Event Management',
+    ),
+    'My Profile': _BadgeStyle(
+      Color(0xFFFFF7ED),
+      Color(0xFFEA580C),
+      'My Profile',
+    ),
+    'Authentication': _BadgeStyle(
+      Color(0xFFF3F4F6),
+      Color(0xFF4B5563),
+      'Authentication',
+    ),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final s =
+        _styles[module] ??
+        _BadgeStyle(const Color(0xFFF3F4F6), const Color(0xFF6B7280), module);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: s.bg,
+        borderRadius: BorderRadius.circular(_DS.radiusSm),
+      ),
+      child: Text(
+        s.label,
+        style: GoogleFonts.beVietnamPro(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: s.fg,
+        ),
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Account overview stat chip (member since / last sign-in)
+// ─────────────────────────────────────────────────────────────────────────────
+class _AccountStatChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _AccountStatChip({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8F9FB),
+        borderRadius: BorderRadius.circular(_DS.radiusSm),
+        border: Border.all(color: const Color(0xFFE8ECF0)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 15, color: AdminColors.primaryDark.withAlpha(160)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 10,
+                    color: const Color(0xFF9AA5B4),
+                  ),
+                ),
+                Text(
+                  value,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF374151),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Section label helper
 // ─────────────────────────────────────────────────────────────────────────────
 Widget _sectionLabel(String text, {IconData? icon}) {
@@ -287,11 +425,38 @@ class _AdminSettingsState extends State<AdminSettings>
   bool _showEmailCurrentPassword = false;
   bool _isChangingEmail = false;
 
+  // Account overview header
+  String _accountFullName = '';
+  String? _accountPhotoBase64;
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _currentUser = FirebaseAuth.instance.currentUser;
+    _loadAccountOverview();
+  }
+
+  Future<void> _loadAccountOverview() async {
+    if (_currentUser == null) return;
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(_currentUser!.uid)
+        .get();
+    if (!mounted) return;
+    final data = doc.data();
+    setState(() {
+      _accountFullName =
+          (data?['fullName'] as String?)?.trim().isNotEmpty == true
+          ? data!['fullName'] as String
+          : (_currentUser!.displayName ?? 'Admin User');
+      _accountPhotoBase64 = data?['photoBase64'] as String?;
+    });
+  }
+
+  String _formatDate(DateTime? dt) {
+    if (dt == null) return 'Unknown';
+    return DateFormat('MMM d, y').format(dt);
   }
 
   Future<List<Map<String, dynamic>>> _fetchUserAuditLogs(String email) async {
@@ -477,6 +642,7 @@ class _AdminSettingsState extends State<AdminSettings>
                 _buildSecurityTab(),
                 _buildAuditLogsTab(),
                 const _SignatoriesTab(),
+                const _HelpTab(),
               ],
             ),
           ),
@@ -498,6 +664,7 @@ class _AdminSettingsState extends State<AdminSettings>
           Tab(text: 'Security'),
           Tab(text: 'Audit Logs'),
           Tab(text: 'Signatories'),
+          Tab(text: 'Help'),
         ],
         labelColor: AdminColors.primaryDark,
         unselectedLabelColor: const Color(0xFF64748B),
@@ -531,7 +698,7 @@ class _AdminSettingsState extends State<AdminSettings>
         borderRadius: BorderRadius.circular(_DS.radiusSm),
         border: Border.all(
           color: value
-              ? AdminColors.primaryDark.withOpacity(0.3)
+              ? AdminColors.primaryDark.withAlpha(77)
               : const Color(0xFFE2E6EA),
         ),
       ),
@@ -542,7 +709,7 @@ class _AdminSettingsState extends State<AdminSettings>
             height: 36,
             decoration: BoxDecoration(
               color: value
-                  ? AdminColors.primaryDark.withOpacity(0.10)
+                  ? AdminColors.primaryDark.withAlpha(26)
                   : const Color(0xFFE8ECF0),
               borderRadius: BorderRadius.circular(8),
             ),
@@ -588,6 +755,12 @@ class _AdminSettingsState extends State<AdminSettings>
   }
 
   Widget _buildSecurityTab() {
+    ImageProvider? imageProvider;
+    if (_accountPhotoBase64 != null && _accountPhotoBase64!.isNotEmpty) {
+      imageProvider = MemoryImage(base64Decode(_accountPhotoBase64!));
+    }
+    final metadata = _currentUser?.metadata;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(28),
       child: Center(
@@ -596,6 +769,145 @@ class _AdminSettingsState extends State<AdminSettings>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Text(
+                'Account Security',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF1A202C),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Keep your login credentials current and protected.',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(_DS.radiusLg),
+                  border: Border.all(color: const Color(0xFFE8ECF0)),
+                  boxShadow: _DS.cardShadow,
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 52,
+                          height: 52,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: AdminColors.primaryDark.withAlpha(60),
+                              width: 2,
+                            ),
+                          ),
+                          child: ClipOval(
+                            child: imageProvider != null
+                                ? Image(image: imageProvider, fit: BoxFit.cover)
+                                : Container(
+                                    color: AdminColors.primaryDark.withAlpha(
+                                      20,
+                                    ),
+                                    child: Icon(
+                                      Icons.person_rounded,
+                                      size: 26,
+                                      color: AdminColors.primaryDark.withAlpha(
+                                        100,
+                                      ),
+                                    ),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _accountFullName.isNotEmpty
+                                    ? _accountFullName
+                                    : 'Admin User',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                  color: const Color(0xFF1A202C),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                _currentUser?.email ?? '—',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 12.5,
+                                  color: const Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AdminColors.primaryDark.withAlpha(20),
+                            borderRadius: BorderRadius.circular(_DS.radiusPill),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.verified_rounded,
+                                size: 13,
+                                color: AdminColors.primaryDark,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                'System Administrator',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: AdminColors.primaryDark,
+                                  letterSpacing: 0.4,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _AccountStatChip(
+                            icon: Icons.calendar_today_rounded,
+                            label: 'Member since',
+                            value: _formatDate(metadata?.creationTime),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _AccountStatChip(
+                            icon: Icons.login_rounded,
+                            label: 'Last sign-in',
+                            value: _formatDate(metadata?.lastSignInTime),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(24),
@@ -1107,7 +1419,7 @@ class _AdminSettingsState extends State<AdminSettings>
                       vertical: 3,
                     ),
                     decoration: BoxDecoration(
-                      color: AdminColors.primaryDark.withOpacity(0.08),
+                      color: AdminColors.primaryDark.withAlpha(20),
                       borderRadius: BorderRadius.circular(_DS.radiusPill),
                     ),
                     child: Text(
@@ -1199,30 +1511,17 @@ class _AdminSettingsState extends State<AdminSettings>
                                 ),
                                 Expanded(
                                   flex: 3,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 3,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: AdminColors.primaryDark
-                                          .withOpacity(0.07),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Text(
-                                      module,
-                                      style: GoogleFonts.beVietnamPro(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                        color: AdminColors.primaryDark,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: _ModuleBadge(module),
                                   ),
                                 ),
                                 Expanded(
                                   flex: 2,
-                                  child: _SeverityBadge(severity),
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: _SeverityBadge(severity),
+                                  ),
                                 ),
                                 Expanded(
                                   flex: 3,
@@ -1788,7 +2087,7 @@ class _SignatoryFormDialogState extends State<_SignatoryFormDialog> {
                       width: 38,
                       height: 38,
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.15),
+                        color: Colors.white.withAlpha(38),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(
@@ -1983,6 +2282,592 @@ class _SignatoryFormDialogState extends State<_SignatoryFormDialog> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Help tab — navigation guide, FAQs, Terms & Conditions
+// ─────────────────────────────────────────────────────────────────────────────
+class _NavGuideEntry {
+  final IconData icon;
+  final String title;
+  final String description;
+  const _NavGuideEntry(this.icon, this.title, this.description);
+}
+
+class _FaqEntry {
+  final String question;
+  final String answer;
+  const _FaqEntry(this.question, this.answer);
+}
+
+class _HelpTab extends StatelessWidget {
+  const _HelpTab();
+
+  static const _navGuide = [
+    _NavGuideEntry(
+      Icons.dashboard_outlined,
+      'Dashboard',
+      'At-a-glance stats — org standings, pending proposals, upcoming events, '
+          'and overdue reports, each exportable straight from its panel.',
+    ),
+    _NavGuideEntry(
+      Icons.groups_outlined,
+      'Organization Management',
+      'Approve org profiles, set their status, and assign advisers.',
+    ),
+    _NavGuideEntry(
+      Icons.people_outline,
+      'Student Accounts',
+      'Create, edit, or archive individual students, or batch-import a whole '
+          'section at once using the provided Excel template.',
+    ),
+    _NavGuideEntry(
+      Icons.school_outlined,
+      'Adviser Roles',
+      'Manage adviser contact details and which organization(s) they oversee.',
+    ),
+    _NavGuideEntry(
+      Icons.pending_actions_outlined,
+      'Event Proposals',
+      'Review org-submitted proposals — approve or reject them. Once '
+          'approved, the organization itself publishes the event to students.',
+    ),
+    _NavGuideEntry(
+      Icons.calendar_today_outlined,
+      'College Event Calendar',
+      'A combined calendar of every approved event across all organizations.',
+    ),
+    _NavGuideEntry(
+      Icons.mail_outline,
+      'Letter Request',
+      'Process official letter requests submitted by organizations.',
+    ),
+    _NavGuideEntry(
+      Icons.link_outlined,
+      'External Account',
+      'Review and manage access requests from outside the student directory.',
+    ),
+    _NavGuideEntry(
+      Icons.assessment_outlined,
+      'Reports & Analytics',
+      'Generate and export financial, accomplishment, and submission-'
+          'tracking reports for the current semester.',
+    ),
+    _NavGuideEntry(
+      Icons.history_outlined,
+      'Activity Logs',
+      'A full audit trail of every significant action across the admin and '
+          'org portals — searchable and exportable.',
+    ),
+    _NavGuideEntry(
+      Icons.settings_outlined,
+      'Settings',
+      'Security, audit logs, signatories, and this Help section all live here.',
+    ),
+  ];
+
+  static const _faqs = [
+    _FaqEntry(
+      'Who approves an event proposal — admin or the organization?',
+      'Admins review a proposal and approve or reject it. Once approved, the '
+          'organization itself publishes the event to students; admins don\'t '
+          'publish events directly, only approve, reject, or archive them.',
+    ),
+    _FaqEntry(
+      'How do I add students in bulk?',
+      'Go to Student Accounts and click "Batch Import" to download the Excel '
+          'template. Fill it out and re-upload — every row is validated '
+          'before saving, with row-by-row error messages for anything that '
+          'fails instead of silently skipping it.',
+    ),
+    _FaqEntry(
+      'I changed my email in Settings but it still shows the old one.',
+      'That\'s expected. Changing your email requires clicking the '
+          'verification link sent to the new address first — your login '
+          'email only updates once that link is confirmed, so this page '
+          'correctly keeps showing your current, still-active email until '
+          'then.',
+    ),
+    _FaqEntry(
+      'How do I export a table to Excel or PDF?',
+      'Every data table has an Export button in its toolbar — choose Excel '
+          'or PDF and the file downloads immediately, styled with the CICT '
+          'brand colors.',
+    ),
+    _FaqEntry(
+      'How are certificates issued?',
+      'Certificates aren\'t generated automatically at QR check-in. On the '
+          'Certificates page, an organization issues them per event once an '
+          'attendee has submitted feedback for it — each certificate gets a '
+          'unique code that anyone can check at the public verification page.',
+    ),
+    _FaqEntry(
+      'How are report deadlines calculated?',
+      'Deadlines follow the academic semester: 1st Semester (Aug–Jan), 2nd '
+          'Semester (Feb–Jun), and Summer (Jun–Aug). Reports & Analytics '
+          'computes the active range automatically — no manual date entry.',
+    ),
+    _FaqEntry(
+      'Where can I see who changed what, and when?',
+      'The Activity Logs tab lists every logged action together with the '
+          'user, module, and timestamp involved, and can be filtered and '
+          'exported like any other table.',
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(28),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 680),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Help & Resources',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF1A202C),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'How to get around the admin portal, answers to common '
+                'questions, and the terms governing this system.',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(_DS.radiusLg),
+                  border: Border.all(color: const Color(0xFFE8ECF0)),
+                  boxShadow: _DS.cardShadow,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _sectionLabel(
+                      'Navigating the Admin Portal',
+                      icon: Icons.explore_outlined,
+                    ),
+                    for (var i = 0; i < _navGuide.length; i++) ...[
+                      if (i > 0) const SizedBox(height: 10),
+                      _NavGuideRow(entry: _navGuide[i]),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(_DS.radiusLg),
+                  border: Border.all(color: const Color(0xFFE8ECF0)),
+                  boxShadow: _DS.cardShadow,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _sectionLabel(
+                      'Frequently Asked Questions',
+                      icon: Icons.help_outline_rounded,
+                    ),
+                    for (var i = 0; i < _faqs.length; i++) ...[
+                      if (i > 0) const SizedBox(height: 8),
+                      _FaqTile(entry: _faqs[i]),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(_DS.radiusLg),
+                  border: Border.all(color: const Color(0xFFE8ECF0)),
+                  boxShadow: _DS.cardShadow,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _sectionLabel(
+                      'Terms & Conditions',
+                      icon: Icons.gavel_outlined,
+                    ),
+                    Text(
+                      'This portal handles student, organization, and event '
+                      'records. By signing in as an administrator, you agree '
+                      'to use it only for official CICT organization-'
+                      'management purposes and to keep student data '
+                      'confidential.',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12.5,
+                        color: const Color(0xFF64748B),
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: () => showDialog(
+                        context: context,
+                        builder: (_) => const _TermsDialog(),
+                      ),
+                      icon: const Icon(Icons.description_outlined, size: 16),
+                      label: Text(
+                        'View Full Terms & Conditions',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AdminColors.primaryDark,
+                        side: BorderSide(
+                          color: AdminColors.primaryDark.withAlpha(90),
+                        ),
+                        minimumSize: const Size(double.infinity, 44),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(_DS.radiusSm),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NavGuideRow extends StatelessWidget {
+  final _NavGuideEntry entry;
+  const _NavGuideRow({required this.entry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: AdminColors.primaryDark.withAlpha(15),
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Icon(entry.icon, size: 17, color: AdminColors.primaryDark),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                entry.title,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF1A202C),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                entry.description,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 12,
+                  color: const Color(0xFF64748B),
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FaqTile extends StatefulWidget {
+  final _FaqEntry entry;
+  const _FaqTile({required this.entry});
+
+  @override
+  State<_FaqTile> createState() => _FaqTileState();
+}
+
+class _FaqTileState extends State<_FaqTile> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8F9FB),
+        borderRadius: BorderRadius.circular(_DS.radiusSm),
+        border: Border.all(
+          color: _expanded
+              ? AdminColors.primaryDark.withAlpha(70)
+              : const Color(0xFFE8ECF0),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(_DS.radiusSm),
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.entry.question,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF1A202C),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  AnimatedRotation(
+                    turns: _expanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 160),
+                    child: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 20,
+                      color: AdminColors.primaryDark,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          AnimatedCrossFade(
+            duration: const Duration(milliseconds: 160),
+            crossFadeState: _expanded
+                ? CrossFadeState.showFirst
+                : CrossFadeState.showSecond,
+            firstChild: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+              child: Text(
+                widget.entry.answer,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 12,
+                  color: const Color(0xFF64748B),
+                  height: 1.5,
+                ),
+              ),
+            ),
+            secondChild: const SizedBox(width: double.infinity),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TermsSection {
+  final String title;
+  final String body;
+  const _TermsSection(this.title, this.body);
+}
+
+class _TermsDialog extends StatelessWidget {
+  const _TermsDialog();
+
+  static const _sections = [
+    _TermsSection(
+      '1. Acceptance of Use',
+      'Access to this system is granted only to authorized CICT '
+          'administrators. Signing in constitutes agreement to use it solely '
+          'for official organization-management duties within the college.',
+    ),
+    _TermsSection(
+      '2. Account Responsibility',
+      'You are responsible for keeping your login credentials confidential '
+          'and for all actions taken under your account. Report a '
+          'compromised account immediately and change your password from '
+          'the Security tab.',
+    ),
+    _TermsSection(
+      '3. Data Privacy & Confidentiality',
+      'Student, organization, and event records accessed here are '
+          'confidential and handled in line with the Data Privacy Act of '
+          '2012 (Republic Act No. 10173). Records may only be viewed, '
+          'exported, or shared for legitimate administrative purposes — '
+          'never for personal use or disclosed to unauthorized parties.',
+    ),
+    _TermsSection(
+      '4. Activity Logging',
+      'Significant actions taken in this portal — approvals, edits, '
+          'exports, deletions — are recorded in the Activity Logs audit '
+          'trail together with the acting user, timestamp, and affected '
+          'module.',
+    ),
+    _TermsSection(
+      '5. Certificates & Verification',
+      'Certificates issued through this system carry a unique '
+          'verification code checkable at the public verification page. '
+          'Do not issue or alter certificates outside the intended '
+          'attendance-and-feedback workflow.',
+    ),
+    _TermsSection(
+      '6. Prohibited Actions',
+      'Do not use exported data for purposes outside official college '
+          'business, attempt to bypass access controls, or share admin '
+          'credentials with students, organizations, or other staff.',
+    ),
+    _TermsSection(
+      '7. Changes to These Terms',
+      'These terms may be updated as the system evolves. Continued use '
+          'after an update constitutes acceptance of the revised terms.',
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    // Dialog centers on the full window by default, but AdminDashboard keeps
+    // a persistent 256px sidebar to the left on screens >= 900px wide (see
+    // _sidebarBreakpoint in admin_dashboard.dart) — centering on the whole
+    // window there leaves the dialog looking shifted left of the actual
+    // content pane. Padding only the left inset by the sidebar's width
+    // re-centers it within the visible content area instead. Below the
+    // breakpoint the sidebar becomes a Drawer (no persistent width taken),
+    // so the normal symmetric inset applies.
+    final hasPersistentSidebar = MediaQuery.of(context).size.width >= 900;
+    final insetPadding = hasPersistentSidebar
+        ? const EdgeInsets.only(left: 296, right: 40, top: 24, bottom: 24)
+        : const EdgeInsets.symmetric(horizontal: 40, vertical: 24);
+
+    return Dialog(
+      insetPadding: insetPadding,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(_DS.radiusLg),
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560, maxHeight: 620),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(24, 20, 16, 16),
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: const Color(0xFFE8ECF0)),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Terms & Conditions',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF1A202C),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded, size: 20),
+                    color: const Color(0xFF64748B),
+                  ),
+                ],
+              ),
+            ),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'CICT Organization Management System — provided for '
+                      'internal reference within the admin portal.',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 11.5,
+                        fontStyle: FontStyle.italic,
+                        color: const Color(0xFF9AA5B4),
+                      ),
+                    ),
+                    for (final s in _sections) ...[
+                      const SizedBox(height: 18),
+                      Text(
+                        s.title,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AdminColors.primaryDark,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        s.body,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 12.5,
+                          color: const Color(0xFF374151),
+                          height: 1.55,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                border: Border(top: BorderSide(color: const Color(0xFFE8ECF0))),
+              ),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AdminColors.primaryDark,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    minimumSize: const Size(double.infinity, 42),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(_DS.radiusSm),
+                    ),
+                  ),
+                  child: Text(
+                    'Close',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

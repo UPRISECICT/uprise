@@ -15,9 +15,9 @@ import '../../../utils/school_year.dart';
 
 // ============ COLOR SCHEME ============
 class OrgColors {
-  static const Color primaryDark = Color(0xFFEA580C);
-  static const Color primaryLight = Color(0xFFD47A00);
-  static const Color accent = Color(0xFFF97316);
+  static const Color primaryDark = Color(0xFFC2410C);
+  static const Color primaryLight = Color(0xFFEA580C);
+  static const Color accent = Color(0xFF2563EB);
   static const Color white = Color(0xFFFFFFFF);
   static const Color lightGray = Color(0xFFF8F9FB);
   static const Color mediumGray = Color(0xFFE8ECF0);

@@ -10,6 +10,7 @@ import 'package:uprise/widgets/admin_export_button.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 import 'export_util.dart';
 import 'export_pdf.dart';
+import 'export_excel.dart';
 import '../../../theme/admin_theme.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/admin_stat_cards_row.dart';
@@ -852,7 +853,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
         ),
         AdminExportButton(
           onSelected: (choice) {
-            if (choice == 'csv') {
+            if (choice == 'excel') {
               _exportCSV();
             } else if (choice == 'pdf') {
               _exportPDF();
@@ -1002,7 +1003,8 @@ class _AdviserRolesState extends State<AdviserRoles> {
     required bool isLast,
   }) {
     final position =
-        data['adviserPosition'] ?? data['adviserRank'] ?? 'Faculty';
+        (data['adviserPosition'] ?? data['adviserRank'] ?? 'Faculty')
+            .toString();
     final archived = data['archived'] == true;
     final orgId = data['orgId'] ?? '';
 
@@ -1110,27 +1112,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
               flex: 1,
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AdminColors.primaryDark.withAlpha(18),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    position,
-                    maxLines: 1,
-                    softWrap: false,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AdminColors.primaryDark,
-                    ),
-                  ),
-                ),
+                child: _PositionBadge(position),
               ),
             ),
 
@@ -2602,46 +2584,53 @@ class _AdviserRolesState extends State<AdviserRoles> {
         }
         return;
       }
-      String esc(String s) => '"${s.replaceAll('"', '""')}"';
-      final buf = StringBuffer();
-      buf.writeln(
-        'Organization,Abbreviation,Tag,Adviser,Email,Phone,Rank,President,President Photo,Vice President,Vice President Photo,Secretary,Secretary Photo,Status',
-      );
       String hasPhoto(dynamic v) =>
           (v is String && v.isNotEmpty) ? 'Yes' : 'No';
-      // Spreadsheet apps auto-detect long digit strings as numbers and
-      // render them in scientific notation (9.12E+09) — wrapping in an
-      // ="..." formula forces Excel/Sheets to keep it as literal text.
-      String escPhone(String s) =>
-          s.isEmpty ? '""' : '"=""${s.replaceAll('"', '""')}"""';
-      for (final doc in docs) {
+      final rows = docs.map((doc) {
         final d = doc.data() as Map<String, dynamic>;
-        buf.writeln(
-          [
-            esc(d['orgName'] ?? ''),
-            esc(d['orgAbbrev'] ?? ''),
-            esc(d['orgTag'] ?? ''),
-            esc(d['adviserName'] ?? ''),
-            esc(d['adviserEmail'] ?? ''),
-            escPhone((d['adviserPhone'] ?? '').toString()),
-            esc(d['adviserRank'] ?? ''),
-            esc(d['president'] ?? ''),
-            esc(hasPhoto(d['presidentPhotoUrl'])),
-            esc(d['vicePresident'] ?? ''),
-            esc(hasPhoto(d['vicePresidentPhotoUrl'])),
-            esc(d['secretary'] ?? ''),
-            esc(hasPhoto(d['secretaryPhotoUrl'])),
-            esc((d['archived'] ?? false) ? 'Archived' : 'Active'),
-          ].join(','),
-        );
-      }
-      final now = DateTime.now().toString().substring(0, 10);
-      final name = 'adviser_roles_$now.csv';
-      await AdminExportUtil.saveText(
-        buf.toString(),
-        name,
-        mimeType: 'text/csv',
+        return [
+          (d['orgName'] ?? '').toString(),
+          (d['orgAbbrev'] ?? '').toString(),
+          (d['orgTag'] ?? '').toString(),
+          (d['adviserName'] ?? '').toString(),
+          (d['adviserEmail'] ?? '').toString(),
+          // Written as a text cell (TextCellValue), not a number — no
+          // scientific-notation risk the way plain CSV had, so the old
+          // ="..." formula workaround for that is gone.
+          (d['adviserPhone'] ?? '').toString(),
+          (d['adviserRank'] ?? '').toString(),
+          (d['president'] ?? '').toString(),
+          hasPhoto(d['presidentPhotoUrl']),
+          (d['vicePresident'] ?? '').toString(),
+          hasPhoto(d['vicePresidentPhotoUrl']),
+          (d['secretary'] ?? '').toString(),
+          hasPhoto(d['secretaryPhotoUrl']),
+          (d['archived'] ?? false) ? 'Archived' : 'Active',
+        ];
+      }).toList();
+      final bytes = AdminExportExcel.generateStyledTable(
+        title: 'Adviser Roles',
+        headers: const [
+          'Organization',
+          'Abbreviation',
+          'Tag',
+          'Adviser',
+          'Email',
+          'Phone',
+          'Rank',
+          'President',
+          'President Photo',
+          'Vice President',
+          'Vice President Photo',
+          'Secretary',
+          'Secretary Photo',
+          'Status',
+        ],
+        rows: rows,
       );
+      final now = DateTime.now().toString().substring(0, 10);
+      final name = 'adviser_roles_$now.xlsx';
+      await AdminExportUtil.saveBytes(bytes, name, mimeType: xlsxMimeType);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

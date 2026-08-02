@@ -117,6 +117,7 @@ class ProfileModel extends ChangeNotifier {
   String major = '';
   String yearLevel = '';
   String department = '';
+  String campus = '';
   String orgId = '';
   String orgName = '';
 
@@ -139,6 +140,7 @@ class ProfileModel extends ChangeNotifier {
     major = data['major'] ?? major;
     yearLevel = data['yearLevel'] ?? yearLevel;
     department = data['department'] ?? department;
+    campus = data['campus'] ?? campus;
     orgId = data['orgId'] ?? orgId;
   }
 
@@ -218,6 +220,7 @@ class ProfileModel extends ChangeNotifier {
         'major': major,
         'yearLevel': yearLevel,
         'department': department,
+        'campus': campus,
         'orgId': orgId,
         'orgName': orgName,
       }),
@@ -236,6 +239,7 @@ class ProfileModel extends ChangeNotifier {
     String? major,
     String? yearLevel,
     String? department,
+    String? campus,
   }) async {
     this.firstName = firstName;
     this.middleName = middleName;
@@ -249,6 +253,7 @@ class ProfileModel extends ChangeNotifier {
     if (major != null) this.major = major;
     if (yearLevel != null) this.yearLevel = yearLevel;
     if (department != null) this.department = department;
+    if (campus != null) this.campus = campus;
 
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
@@ -273,6 +278,7 @@ class ProfileModel extends ChangeNotifier {
           'major': this.major,
           'yearLevel': this.yearLevel,
           'department': this.department,
+          'campus': this.campus,
         }, SetOptions(merge: true));
       }
       await _saveCache(user.uid);
@@ -859,8 +865,8 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                   ),
                 ],
 
-                // ── Contact Information ──
-                kSectionLabel('Contact Information'),
+                // ── ID Information ──
+                kSectionLabel('ID Information'),
                 Container(
                   margin: const EdgeInsets.symmetric(horizontal: 16),
                   padding: const EdgeInsets.all(16),
@@ -904,17 +910,41 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                       ),
                       const SizedBox(height: 16),
                       _ContactRow(
-                        icon: Icons.phone_android_outlined,
-                        label: 'MOBILE',
-                        value: _profile.mobile,
+                        icon: Icons.school_outlined,
+                        label: 'COURSE / PROGRAM',
+                        value: _profile.course,
                       ),
                       const SizedBox(height: 8),
                       Divider(height: 1, color: Colors.grey.shade100),
                       const SizedBox(height: 14),
                       _ContactRow(
-                        icon: Icons.location_on_outlined,
-                        label: 'CAMPUS ADDRESS',
-                        value: _profile.address,
+                        icon: Icons.workspace_premium_outlined,
+                        label: 'MAJOR',
+                        value: _profile.major,
+                      ),
+                      const SizedBox(height: 8),
+                      Divider(height: 1, color: Colors.grey.shade100),
+                      const SizedBox(height: 14),
+                      _ContactRow(
+                        icon: Icons.stairs_outlined,
+                        label: 'YEAR LEVEL',
+                        value: _profile.yearLevel,
+                      ),
+                      const SizedBox(height: 8),
+                      Divider(height: 1, color: Colors.grey.shade100),
+                      const SizedBox(height: 14),
+                      _ContactRow(
+                        icon: Icons.account_balance_outlined,
+                        label: 'COLLEGE / DEPARTMENT',
+                        value: _profile.department,
+                      ),
+                      const SizedBox(height: 8),
+                      Divider(height: 1, color: Colors.grey.shade100),
+                      const SizedBox(height: 14),
+                      _ContactRow(
+                        icon: Icons.location_city_outlined,
+                        label: 'CAMPUS',
+                        value: _profile.campus,
                       ),
                     ],
                   ),
@@ -1879,6 +1909,7 @@ class _MajorDropdownField extends StatelessWidget {
   final String? value;
   final List<String> options;
   final ValueChanged<String?> onChanged;
+  final String hint;
 
   const _MajorDropdownField({
     required this.label,
@@ -1886,6 +1917,7 @@ class _MajorDropdownField extends StatelessWidget {
     required this.value,
     required this.options,
     required this.onChanged,
+    this.hint = 'Select major',
   });
 
   @override
@@ -1908,7 +1940,7 @@ class _MajorDropdownField extends StatelessWidget {
           style: const TextStyle(fontSize: 14, color: Colors.black87),
           decoration: InputDecoration(
             prefixIcon: Icon(icon, size: 18, color: Colors.grey),
-            hintText: 'Select major',
+            hintText: hint,
             hintStyle: TextStyle(fontSize: 14, color: Colors.grey.shade400),
             filled: true,
             fillColor: Colors.white,
@@ -2114,6 +2146,17 @@ class EditProfileScreen extends StatefulWidget {
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
   static const List<String> kMajorOptions = ['WMAD', 'DBA', 'Infrastructure'];
+  static const List<String> kCollegeOptions = [
+    'College of Information and Communications Technology (CICT)',
+  ];
+  static const List<String> kCampusOptions = [
+    'Bulacan State University – Main Campus',
+    'Bulacan State University – Bustos Campus',
+    'Bulacan State University – Sarmiento Campus',
+    'Bulacan State University – Meneses Campus',
+    'Bulacan State University – Hagonoy Campus',
+    'Bulacan State University – San Rafael Campus',
+  ];
 
   late final TextEditingController _firstNameCtrl;
   late final TextEditingController _middleNameCtrl;
@@ -2123,8 +2166,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late final TextEditingController _addressCtrl;
   late final TextEditingController _courseCtrl;
   late final TextEditingController _yearLevelCtrl;
-  late final TextEditingController _departmentCtrl;
   String? _selectedMajor;
+  String? _selectedDepartment;
+  String? _selectedCampus;
 
   @override
   void initState() {
@@ -2151,9 +2195,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _addressCtrl = TextEditingController(text: widget.profile.address);
     _courseCtrl = TextEditingController(text: widget.profile.course);
     _yearLevelCtrl = TextEditingController(text: widget.profile.yearLevel);
-    _departmentCtrl = TextEditingController(text: widget.profile.department);
     _selectedMajor = kMajorOptions.contains(widget.profile.major)
         ? widget.profile.major
+        : null;
+    // Only one real college exists in this app today, so default to it
+    // instead of leaving a single-option dropdown sitting on a blank hint.
+    _selectedDepartment = kCollegeOptions.contains(widget.profile.department)
+        ? widget.profile.department
+        : kCollegeOptions.first;
+    _selectedCampus = kCampusOptions.contains(widget.profile.campus)
+        ? widget.profile.campus
         : null;
   }
 
@@ -2167,7 +2218,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _addressCtrl.dispose();
     _courseCtrl.dispose();
     _yearLevelCtrl.dispose();
-    _departmentCtrl.dispose();
     super.dispose();
   }
 
@@ -2187,7 +2237,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         course: _courseCtrl.text.trim(),
         major: _selectedMajor ?? '',
         yearLevel: _yearLevelCtrl.text.trim(),
-        department: _departmentCtrl.text.trim(),
+        department: _selectedDepartment ?? '',
+        campus: _selectedCampus ?? '',
       );
 
       // The update() method now automatically updates all registrations
@@ -2404,10 +2455,26 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     icon: Icons.stairs_outlined,
                   ),
                   const SizedBox(height: 14),
-                  _EditField(
+                  _MajorDropdownField(
                     label: 'College / Department',
-                    controller: _departmentCtrl,
                     icon: Icons.account_balance_outlined,
+                    value: _selectedDepartment,
+                    options: kCollegeOptions,
+                    hint: 'Select college / department',
+                    onChanged: (value) {
+                      setState(() => _selectedDepartment = value);
+                    },
+                  ),
+                  const SizedBox(height: 14),
+                  _MajorDropdownField(
+                    label: 'Campus',
+                    icon: Icons.location_city_outlined,
+                    value: _selectedCampus,
+                    options: kCampusOptions,
+                    hint: 'Select campus',
+                    onChanged: (value) {
+                      setState(() => _selectedCampus = value);
+                    },
                   ),
                 ],
               ),

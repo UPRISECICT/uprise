@@ -10,6 +10,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:uprise/widgets/admin_export_button.dart';
 import 'export_util.dart';
 import 'export_pdf.dart';
+import 'export_excel.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../services/notification_service.dart';
 import '../../../theme/admin_theme.dart';
@@ -3268,31 +3269,37 @@ class _ExportProposalsButton extends StatelessWidget {
         return;
       }
 
-      String content, fileName;
       final now = DateTime.now().toString().substring(0, 10);
 
-      if (format == 'csv') {
-        final buf = StringBuffer();
-        buf.writeln(
-          'Organization,Event Title,Category,Date,Status,Description',
-        );
-        for (final doc in docs) {
+      if (format == 'excel') {
+        final rows = docs.map((doc) {
           final d = doc.data();
-          String esc(String s) => '"${s.replaceAll('"', '""')}"';
-          buf.writeln(
-            [
-              esc(d['orgName'] ?? ''),
-              esc(d['title'] ?? ''),
-              esc(d['category'] ?? ''),
-              esc(_fmtDate(d['date'])),
-              esc(d['status'] ?? ''),
-              esc(d['description'] ?? ''),
-            ].join(','),
-          );
-        }
-        content = buf.toString();
-        fileName = 'event_proposals_$now.csv';
-        await AdminExportUtil.saveText(content, fileName, mimeType: 'text/csv');
+          return [
+            (d['orgName'] ?? '').toString(),
+            (d['title'] ?? '').toString(),
+            (d['category'] ?? '').toString(),
+            _fmtDate(d['date']),
+            (d['status'] ?? '').toString(),
+            (d['description'] ?? '').toString(),
+          ];
+        }).toList();
+        final bytes = AdminExportExcel.generateStyledTable(
+          title: 'Event Proposals',
+          headers: const [
+            'Organization',
+            'Event Title',
+            'Category',
+            'Date',
+            'Status',
+            'Description',
+          ],
+          rows: rows,
+        );
+        await AdminExportUtil.saveBytes(
+          bytes,
+          'event_proposals_$now.xlsx',
+          mimeType: xlsxMimeType,
+        );
       } else if (format == 'pdf') {
         final rows = docs.map((doc) {
           final d = doc.data();

@@ -40,7 +40,7 @@ class _AdminExportButtonState extends State<AdminExportButton> {
     }
   }
 
-  static const _items = ['csv', 'pdf'];
+  static const _items = ['excel', 'pdf'];
 
   @override
   Widget build(BuildContext context) {
@@ -83,13 +83,13 @@ class _AdminExportButtonState extends State<AdminExportButton> {
       menuWidth: 190,
       itemBuilder: (value, selected) => Row(children: [
         Icon(
-          value == 'csv' ? Icons.table_chart_rounded : Icons.picture_as_pdf_rounded,
+          value == 'excel' ? Icons.table_chart_rounded : Icons.picture_as_pdf_rounded,
           size: 16,
           color: const Color(0xFF64748B),
         ),
         const SizedBox(width: 10),
         Text(
-          value == 'csv' ? 'Export as CSV' : 'Export as PDF',
+          value == 'excel' ? 'Export as Excel' : 'Export as PDF',
           style: GoogleFonts.beVietnamPro(fontSize: 13),
         ),
       ]),

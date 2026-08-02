@@ -9,6 +9,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'export_util.dart';
 import 'export_pdf.dart';
+import 'export_excel.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
@@ -325,6 +326,21 @@ class _BadgeStyle {
   const _BadgeStyle(this.bg, this.fg, this.label);
 }
 
+// Same color-per-category convention as event_calendar.dart's
+// _categoryColors — every org TYPE used to render in one flat
+// AdminColors.primaryDark tint, so a Student Government row read
+// identically to a Sports Organization row in the table.
+const Map<String, Color> _orgTypeBadgeColors = {
+  'Academic Organization': Color(0xFF6366F1),
+  'Student Government': Color(0xFF2563EB),
+  'Special Interest Group': Color(0xFF06B6D4),
+  'Cultural Organization': Color(0xFFD946EF),
+  'Sports Organization': Color(0xFF14B8A6),
+};
+
+Color _orgTypeBadgeColor(String type) =>
+    _orgTypeBadgeColors[type] ?? const Color(0xFF6B7280);
+
 // Wraps the org type in a highlighted chip instead of plain text — same
 // pattern as the category chip in org_event_proposals.dart.
 Widget _typeBadge(String type) {
@@ -337,10 +353,11 @@ Widget _typeBadge(String type) {
       ),
     );
   }
+  final color = _orgTypeBadgeColor(type);
   return Container(
     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
     decoration: BoxDecoration(
-      color: AdminColors.primaryDark.withAlpha(18),
+      color: color.withAlpha(24),
       borderRadius: BorderRadius.circular(6),
     ),
     child: Text(
@@ -351,7 +368,7 @@ Widget _typeBadge(String type) {
       style: GoogleFonts.beVietnamPro(
         fontSize: 12,
         fontWeight: FontWeight.w600,
-        color: AdminColors.primaryDark,
+        color: color,
       ),
     ),
   );
@@ -1513,37 +1530,43 @@ class _ExportButton extends StatelessWidget {
     BuildContext context,
     List<QueryDocumentSnapshot> docs,
   ) async {
-    final buffer = StringBuffer();
-    buffer.writeln(
-      'Organization Name,Short Name,Type,Status,Adviser(s),Org Email,Description,Date Created',
-    );
-    for (final doc in docs) {
+    final rows = docs.map((doc) {
       final d = doc.data() as Map<String, dynamic>? ?? {};
       final date = (d['createdAt'] as Timestamp?)?.toDate();
       final dateStr = date != null ? DateFormat('yyyy-MM-dd').format(date) : '';
-      String csvEscape(String s) => '"${s.replaceAll('"', '""')}"';
       final advisers =
           (d['advisers'] as List?)
               ?.map((a) => (a['name'] ?? '').toString())
               .join('; ') ??
           (d['adviserName'] ?? '');
-      buffer.writeln(
-        [
-          csvEscape(d['name'] ?? ''),
-          csvEscape(d['shortName'] ?? ''),
-          csvEscape(d['type'] ?? ''),
-          csvEscape(d['status'] ?? ''),
-          csvEscape(advisers),
-          csvEscape(d['orgEmail'] ?? ''),
-          csvEscape(d['description'] ?? ''),
-          csvEscape(dateStr),
-        ].join(','),
-      );
-    }
-    final content = buffer.toString();
+      return [
+        (d['name'] ?? '').toString(),
+        (d['shortName'] ?? '').toString(),
+        (d['type'] ?? '').toString(),
+        (d['status'] ?? '').toString(),
+        advisers.toString(),
+        (d['orgEmail'] ?? '').toString(),
+        (d['description'] ?? '').toString(),
+        dateStr,
+      ];
+    }).toList();
+    final bytes = AdminExportExcel.generateStyledTable(
+      title: 'Organizations',
+      headers: const [
+        'Organization Name',
+        'Short Name',
+        'Type',
+        'Status',
+        'Adviser(s)',
+        'Org Email',
+        'Description',
+        'Date Created',
+      ],
+      rows: rows,
+    );
     final fileName =
-        'organizations_${DateFormat('yyyy-MM-dd').format(DateTime.now())}.csv';
-    await AdminExportUtil.saveText(content, fileName, mimeType: 'text/csv');
+        'organizations_${DateFormat('yyyy-MM-dd').format(DateTime.now())}.xlsx';
+    await AdminExportUtil.saveBytes(bytes, fileName, mimeType: xlsxMimeType);
   }
 
   Future<void> _exportPDF(
@@ -1629,7 +1652,7 @@ class _ExportButton extends StatelessWidget {
           );
           return;
         }
-        if (choice == 'csv') {
+        if (choice == 'excel') {
           await _exportCSV(context, docs);
         } else if (choice == 'pdf') {
           await _exportPDF(context, docs);

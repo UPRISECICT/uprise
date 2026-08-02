@@ -5,6 +5,7 @@ import 'package:uprise/widgets/admin_export_button.dart';
 import 'package:intl/intl.dart';
 import 'export_util.dart';
 import 'export_pdf.dart';
+import 'export_excel.dart';
 import '../../../theme/admin_theme.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/admin_stat_cards_row.dart';
@@ -1422,39 +1423,48 @@ class _ExportLogsButton extends StatelessWidget {
         return;
       }
 
-      String content, fileName;
       final now = DateTime.now().toString().substring(0, 10);
 
-      if (format == 'csv') {
-        final buf = StringBuffer();
-        buf.writeln('User,Action,Module,Severity,Timestamp,IP Address,Org ID');
-        for (final doc in snap.docs) {
+      if (format == 'excel') {
+        final rows = snap.docs.map((doc) {
           final d = doc.data();
           dynamic tsField = d['timestamp'];
           String tsStr = '';
           if (tsField is Timestamp) tsStr = tsField.toDate().toIso8601String();
-
-          String esc(String s) => '"${s.replaceAll('"', '""')}"';
           final orgId =
               (d['orgId'] ??
                       (d['details'] is Map ? d['details']['orgId'] : '') ??
                       '')
                   .toString();
-          buf.writeln(
-            [
-              esc(d['user'] ?? ''),
-              esc(d['action'] ?? ''),
-              esc(d['module'] ?? ''),
-              esc(d['severity'] ?? ''),
-              esc(tsStr),
-              esc(d['ipAddress'] ?? ''),
-              esc(orgId),
-            ].join(','),
-          );
-        }
-        content = buf.toString();
-        fileName = 'activity_logs_$now.csv';
-        await AdminExportUtil.saveText(content, fileName, mimeType: 'text/csv');
+          return [
+            (d['user'] ?? '').toString(),
+            (d['action'] ?? '').toString(),
+            (d['module'] ?? '').toString(),
+            (d['severity'] ?? '').toString(),
+            tsStr,
+            (d['ipAddress'] ?? '').toString(),
+            orgId,
+          ];
+        }).toList();
+        final bytes = AdminExportExcel.generateStyledTable(
+          title: 'Activity Logs',
+          headers: const [
+            'User',
+            'Action',
+            'Module',
+            'Severity',
+            'Timestamp',
+            'IP Address',
+            'Org ID',
+          ],
+          rows: rows,
+        );
+        final fileName = 'activity_logs_$now.xlsx';
+        await AdminExportUtil.saveBytes(
+          bytes,
+          fileName,
+          mimeType: xlsxMimeType,
+        );
       } else if (format == 'pdf') {
         final rows = snap.docs.map((doc) {
           final d = doc.data();

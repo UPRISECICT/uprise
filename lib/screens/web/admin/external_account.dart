@@ -10,6 +10,7 @@ import 'package:uprise/widgets/admin_export_button.dart';
 import 'package:intl/intl.dart';
 import 'export_util.dart';
 import 'export_pdf.dart';
+import 'export_excel.dart';
 import '../../../theme/admin_theme.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../widgets/anchored_dropdown.dart';
@@ -2053,35 +2054,44 @@ class _ExportButton extends StatelessWidget {
         return;
       }
 
-      String content, fileName;
       final now = DateTime.now().toString().substring(0, 10);
 
-      if (format == 'csv') {
-        final buf = StringBuffer();
-        buf.writeln('Name,Email,University,Purpose,Status,Request Date');
-        for (final doc in docs) {
+      if (format == 'excel') {
+        final rows = docs.map((doc) {
           final d = doc.data();
-          String esc(String s) => '"${s.replaceAll('"', '""')}"';
           final date =
               (d['requestDate'] as Timestamp?)?.toDate().toString().substring(
                 0,
                 10,
               ) ??
               '';
-          buf.writeln(
-            [
-              esc(d['userName'] ?? ''),
-              esc(d['email'] ?? ''),
-              esc(d['university'] ?? ''),
-              esc(d['purpose'] ?? ''),
-              esc(d['status'] ?? ''),
-              esc(date),
-            ].join(','),
-          );
-        }
-        content = buf.toString();
-        fileName = 'external_requests_$now.csv';
-        await AdminExportUtil.saveText(content, fileName, mimeType: 'text/csv');
+          return [
+            (d['userName'] ?? '').toString(),
+            (d['email'] ?? '').toString(),
+            (d['university'] ?? '').toString(),
+            (d['purpose'] ?? '').toString(),
+            (d['status'] ?? '').toString(),
+            date,
+          ];
+        }).toList();
+        final bytes = AdminExportExcel.generateStyledTable(
+          title: 'External Requests',
+          headers: const [
+            'Name',
+            'Email',
+            'University',
+            'Purpose',
+            'Status',
+            'Request Date',
+          ],
+          rows: rows,
+        );
+        final fileName = 'external_requests_$now.xlsx';
+        await AdminExportUtil.saveBytes(
+          bytes,
+          fileName,
+          mimeType: xlsxMimeType,
+        );
       } else if (format == 'pdf') {
         final rows = docs.map((doc) {
           final d = doc.data();

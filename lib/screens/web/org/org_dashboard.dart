@@ -35,7 +35,9 @@ import 'org_merchandise.dart';
 import 'org_settings.dart';
 import 'export_pdf.dart';
 import 'export_util.dart';
+import 'export_excel.dart';
 import '../../../services/notification_service.dart';
+import '../../../widgets/admin_export_button.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens (copied from report.dart for the countdown)
@@ -46,8 +48,11 @@ class _DS {
   static const double radiusLg = 16;
   static const double radiusPill = 100;
 
-  static const Color primary = Color(0xFFEA580C);
-  static const Color primaryBg = Color(0xFFFEF3C7);
+  // Deepened from orange-600 to orange-700 — same reasoning as
+  // AdminColors.primaryDark's slate-700 -> slate-800 deepening: a richer,
+  // less neon shade that reads as "brand primary" instead of "highlighter."
+  static const Color primary = Color(0xFFC2410C);
+  static const Color primaryBg = Color(0xFFFDEEE6);
 
   static final cardShadow = [
     BoxShadow(
@@ -59,12 +64,18 @@ class _DS {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// OrgColors (your existing theme)
+// OrgColors — org's dominant brand color is orange (mirrors how
+// AdminColors' dominant color is gray), balanced with gray for structure,
+// blue for interactive/selected moments, and white for surfaces — instead
+// of every element being a shade of the same bright orange.
 // ─────────────────────────────────────────────────────────────────────────────
 class OrgColors {
-  static const Color primaryDark = Color(0xFFEA580C);
-  static const Color primaryLight = Color(0xFFD47A00);
-  static const Color accent = Color(0xFFF97316);
+  static const Color primaryDark = Color(0xFFC2410C);
+  static const Color primaryLight = Color(0xFFEA580C);
+  // Blue, not another orange — this is what makes a selected nav item or
+  // highlighted moment actually pop against the orange-dominant chrome
+  // instead of blending into it.
+  static const Color accent = Color(0xFF2563EB);
   static const Color white = Color(0xFFFFFFFF);
   static const Color surface = Color(0xFFF8F9FB);
   static const Color lightGray = Color(0xFFF8F9FB);
@@ -375,21 +386,20 @@ class _SidebarNavState extends State<_SidebarNav> {
             vertical: 10,
           ).copyWith(left: indent, right: 14),
           decoration: BoxDecoration(
-            color: isSelected
-                ? OrgColors.accent.withAlpha(46)
-                : Colors.transparent,
+            // White, not a second accent hue — this sits directly on the
+            // orange sidebar, so the selected state is a lighter/brighter
+            // version of the same surface instead of clashing with it.
+            color: isSelected ? Colors.white.withAlpha(38) : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
             border: isSelected
-                ? Border.all(color: OrgColors.accent.withAlpha(130), width: 1)
+                ? Border.all(color: Colors.white.withAlpha(90), width: 1)
                 : null,
           ),
           child: Row(
             children: [
               Icon(
                 item['icon'] as IconData,
-                color: isSelected
-                    ? OrgColors.accent
-                    : Colors.white.withAlpha(166),
+                color: isSelected ? Colors.white : Colors.white.withAlpha(166),
                 size: 17,
               ),
               const SizedBox(width: 12),
@@ -411,7 +421,7 @@ class _SidebarNavState extends State<_SidebarNav> {
                   width: 6,
                   height: 6,
                   decoration: const BoxDecoration(
-                    color: OrgColors.accent,
+                    color: Colors.white,
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -1424,24 +1434,28 @@ class _OrgDashboardState extends State<OrgDashboard> {
             child: Row(
               children: [
                 Container(
-                  width: 68,
-                  height: 68,
+                  width: 56,
+                  height: 56,
                   decoration: BoxDecoration(
-                    color: Colors.white.withAlpha(46),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(14),
-                    child: Image.asset(
-                      'assets/images/logo.png',
-                      fit: BoxFit.contain,
-                      filterQuality: FilterQuality.high,
-                      errorBuilder: (_, __, ___) => const Icon(
-                        Icons.school_rounded,
-                        color: Colors.white,
-                        size: 40,
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withAlpha(40),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
                       ),
+                    ],
+                  ),
+                  padding: const EdgeInsets.all(7),
+                  child: Image.asset(
+                    'assets/images/logo.png',
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.high,
+                    errorBuilder: (_, __, ___) => const Icon(
+                      Icons.school_rounded,
+                      color: OrgColors.primaryDark,
+                      size: 28,
                     ),
                   ),
                 ),
@@ -1646,58 +1660,70 @@ class _OrgDashboardState extends State<OrgDashboard> {
             },
             child: KeyedSubtree(
               key: _bellKey,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: _unreadNotifications > 0
-                          ? OrgColors.primaryDark.withAlpha(12)
-                          : OrgColors.lightGray,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: _unreadNotifications > 0
-                            ? OrgColors.primaryDark.withAlpha(60)
-                            : OrgColors.border,
-                      ),
-                    ),
-                    child: Icon(
-                      _unreadNotifications > 0
-                          ? Icons.notifications_rounded
-                          : Icons.notifications_none_rounded,
-                      color: _unreadNotifications > 0
-                          ? OrgColors.primaryDark
-                          : OrgColors.darkGray,
-                      size: 18,
-                    ),
-                  ),
-                  if (_unreadNotifications > 0)
-                    Positioned(
-                      right: -3,
-                      top: -3,
-                      child: Container(
-                        width: 18,
-                        height: 18,
-                        alignment: Alignment.center,
-                        decoration: const BoxDecoration(
-                          color: OrgColors.error,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Text(
-                          _unreadNotifications > 9
-                              ? '9+'
-                              : '$_unreadNotifications',
-                          style: GoogleFonts.beVietnamPro(
-                            color: Colors.white,
-                            fontSize: 9,
-                            fontWeight: FontWeight.w700,
+              // Live count so a new notification updates the badge
+              // immediately, without needing to reopen the dropdown —
+              // matches the admin bell instead of only refreshing on tap.
+              child: StreamBuilder<int>(
+                stream: FirebaseAuth.instance.currentUser != null
+                    ? NotificationService.unreadCountStream(
+                        FirebaseAuth.instance.currentUser!.uid,
+                      )
+                    : const Stream<int>.empty(),
+                initialData: _unreadNotifications,
+                builder: (context, snapshot) {
+                  final unread = snapshot.data ?? _unreadNotifications;
+                  return Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: unread > 0
+                              ? OrgColors.primaryDark.withAlpha(12)
+                              : OrgColors.lightGray,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: unread > 0
+                                ? OrgColors.primaryDark.withAlpha(60)
+                                : OrgColors.border,
                           ),
                         ),
+                        child: Icon(
+                          unread > 0
+                              ? Icons.notifications_rounded
+                              : Icons.notifications_none_rounded,
+                          color: unread > 0
+                              ? OrgColors.primaryDark
+                              : OrgColors.darkGray,
+                          size: 18,
+                        ),
                       ),
-                    ),
-                ],
+                      if (unread > 0)
+                        Positioned(
+                          right: -3,
+                          top: -3,
+                          child: Container(
+                            width: 18,
+                            height: 18,
+                            alignment: Alignment.center,
+                            decoration: const BoxDecoration(
+                              color: OrgColors.error,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Text(
+                              unread > 9 ? '9+' : '$unread',
+                              style: GoogleFonts.beVietnamPro(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                },
               ),
             ),
           ),
@@ -1849,6 +1875,53 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
   late final Stream<QuerySnapshot> _pendingProposalsStream;
   late final Stream<QuerySnapshot> _upcomingEventsStream;
   StreamSubscription<QuerySnapshot>? _chartDataSubscription;
+
+  // Dedicated streams for the drill-down table panels — deliberately NOT
+  // the same Stream instances as the stat cards above (mirrors
+  // AdminDashboard's _activeEventsTableStreamGetter). Firestore sends the
+  // current snapshot immediately to a brand-new .snapshots() listener, but
+  // sharing one Stream object between two simultaneously-mounted
+  // StreamBuilders doesn't — whichever one attaches second only sees
+  // future changes, not the snapshot that already fired for the first, so
+  // it sat on the loading spinner until the collection happened to change.
+  // Lazily created on first use so we're not running extra listeners
+  // before a card is ever opened.
+  Stream<QuerySnapshot>? _activeEventsTableStream;
+  Stream<QuerySnapshot> get _activeEventsTableStreamGetter =>
+      _activeEventsTableStream ??= FirebaseFirestore.instance
+          .collection('event_proposals')
+          .where('orgId', isEqualTo: widget.orgId)
+          .where('status', isEqualTo: 'approved')
+          .snapshots();
+
+  Stream<QuerySnapshot>? _pendingProposalsTableStream;
+  Stream<QuerySnapshot> get _pendingProposalsTableStreamGetter =>
+      _pendingProposalsTableStream ??= FirebaseFirestore.instance
+          .collection('event_proposals')
+          .where('orgId', isEqualTo: widget.orgId)
+          .where('status', isEqualTo: 'pending')
+          .snapshots();
+
+  Stream<QuerySnapshot>? _upcomingEventsTableStream;
+  Stream<QuerySnapshot> get _upcomingEventsTableStreamGetter =>
+      _upcomingEventsTableStream ??= FirebaseFirestore.instance
+          .collection('event_proposals')
+          .where('orgId', isEqualTo: widget.orgId)
+          .where('status', isEqualTo: 'approved')
+          .where(
+            'date',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(DateTime.now()),
+          )
+          .orderBy('date')
+          .snapshots();
+
+  Stream<QuerySnapshot>? _merchSalesTableStream;
+  Stream<QuerySnapshot> get _merchSalesTableStreamGetter =>
+      _merchSalesTableStream ??= FirebaseFirestore.instance
+          .collection('products')
+          .where('orgId', isEqualTo: widget.orgId)
+          .where('isArchived', isEqualTo: false)
+          .snapshots();
 
   // Plain calendar years — no academic-year offset to keep in sync with.
   List<int> get _yearOptions {
@@ -2009,17 +2082,6 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
           // Countdown card – now stateful, doesn't cause parent rebuild
           if (_eventLoaded && _eventDate != null)
             _CountdownCard(eventDate: _eventDate!, eventLabel: _eventLabel),
-          const SizedBox(height: 20),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: _buildUpcomingEvents()),
-              const SizedBox(width: 16),
-              Expanded(child: _buildRecentProposals()),
-              const SizedBox(width: 16),
-              Expanded(child: _buildRecentActivity()),
-            ],
-          ),
         ],
       ),
     );
@@ -2243,7 +2305,7 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
     final cardWidgets = [
       streamCard(
         cardIndex: 0,
-        label: 'Active Events',
+        label: 'Events',
         icon: Icons.event_rounded,
         color: OrgColors.info,
         stream: _approvedEventsStream,
@@ -2337,7 +2399,7 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                     style: GoogleFonts.beVietnamPro(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
-                      color: OrgColors.accent,
+                      color: OrgColors.charcoal,
                     ),
                   ),
                   const SizedBox(height: 3),
@@ -2412,273 +2474,6 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
     );
   }
 
-  // ── Upcoming events ───────────────────────────────────────────────
-  Widget _buildUpcomingEvents() {
-    return Container(
-      decoration: BoxDecoration(
-        color: OrgColors.white,
-        borderRadius: BorderRadius.circular(_DS.radiusMd),
-        border: Border.all(color: OrgColors.border),
-        boxShadow: _DS.cardShadow,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('event_proposals')
-              .where('orgId', isEqualTo: widget.orgId)
-              .where('status', isEqualTo: 'approved')
-              .where(
-                'date',
-                isGreaterThanOrEqualTo: Timestamp.fromDate(DateTime.now()),
-              )
-              .orderBy('date')
-              .limit(4)
-              .snapshots(),
-          builder: (_, snap) {
-            final showViewAll = snap.hasData && snap.data!.docs.length >= 4;
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Upcoming Events',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: OrgColors.accent,
-                      ),
-                    ),
-                    if (showViewAll)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: OrgColors.primaryDark.withAlpha(20),
-                          borderRadius: BorderRadius.circular(_DS.radiusPill),
-                        ),
-                        child: Text(
-                          'View All',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: OrgColors.primaryDark,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                if (snap.connectionState == ConnectionState.waiting)
-                  const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: CircularProgressIndicator(
-                        color: OrgColors.primaryDark,
-                        strokeWidth: 2,
-                      ),
-                    ),
-                  )
-                else if (!snap.hasData || snap.data!.docs.isEmpty)
-                  _emptyPlaceholder(
-                    Icons.calendar_today_outlined,
-                    'No upcoming events',
-                  )
-                else
-                  Column(
-                    children: snap.data!.docs.map((doc) {
-                      final d = doc.data() as Map<String, dynamic>;
-                      return _EventRow(
-                        date: d['date'] is Timestamp
-                            ? (d['date'] as Timestamp)
-                                  .toDate()
-                                  .toIso8601String()
-                            : d['date'],
-                        title: d['title'] ?? 'Untitled',
-                        location: d['location'] ?? 'TBA',
-                        time: d['time'] ?? 'TBA',
-                      );
-                    }).toList(),
-                  ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  // ── Recent activity ───────────────────────────────────────────────
-  Widget _buildRecentActivity() {
-    return Container(
-      decoration: BoxDecoration(
-        color: OrgColors.white,
-        borderRadius: BorderRadius.circular(_DS.radiusMd),
-        border: Border.all(color: OrgColors.border),
-        boxShadow: _DS.cardShadow,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Recent Activity',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: OrgColors.accent,
-              ),
-            ),
-            const SizedBox(height: 16),
-            StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('activity_logs')
-                  .where('orgId', isEqualTo: widget.orgId)
-                  .orderBy('timestamp', descending: true)
-                  .limit(6)
-                  .snapshots(),
-              builder: (_, snap) {
-                if (snap.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: CircularProgressIndicator(
-                        color: OrgColors.primaryDark,
-                        strokeWidth: 2,
-                      ),
-                    ),
-                  );
-                }
-                if (!snap.hasData || snap.data!.docs.isEmpty) {
-                  return _emptyPlaceholder(
-                    Icons.history_rounded,
-                    'No recent activity',
-                  );
-                }
-                return Column(
-                  children: snap.data!.docs.map((doc) {
-                    final d = doc.data() as Map<String, dynamic>;
-                    return _ActivityRow(
-                      title: d['action'] ?? 'Activity',
-                      module: d['module'] ?? '',
-                      timestamp: d['timestamp'] as Timestamp?,
-                    );
-                  }).toList(),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildRecentProposals() {
-    return Container(
-      decoration: BoxDecoration(
-        color: OrgColors.white,
-        borderRadius: BorderRadius.circular(_DS.radiusMd),
-        border: Border.all(color: OrgColors.border),
-        boxShadow: _DS.cardShadow,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('event_proposals')
-              .where('orgId', isEqualTo: widget.orgId)
-              .snapshots(),
-          builder: (_, snap) {
-            final showViewAll = snap.hasData && snap.data!.docs.length > 5;
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Recent Proposals',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: OrgColors.accent,
-                      ),
-                    ),
-                    if (showViewAll)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: OrgColors.primaryDark.withAlpha(20),
-                          borderRadius: BorderRadius.circular(_DS.radiusPill),
-                        ),
-                        child: Text(
-                          'View All',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: OrgColors.primaryDark,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                if (snap.connectionState == ConnectionState.waiting)
-                  const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: CircularProgressIndicator(
-                        color: OrgColors.primaryDark,
-                        strokeWidth: 2,
-                      ),
-                    ),
-                  )
-                else if (!snap.hasData || snap.data!.docs.isEmpty)
-                  _emptyPlaceholder(
-                    Icons.description_rounded,
-                    'No proposals yet',
-                  )
-                else ...[
-                  ...((snap.data!.docs.map((doc) {
-                        final d = doc.data() as Map<String, dynamic>;
-                        return {
-                          'title': d['title'] ?? 'Untitled',
-                          'status': d['status'] ?? 'pending',
-                          'submittedAt': d['submittedAt'] as Timestamp?,
-                        };
-                      }).toList()..sort((a, b) {
-                        final ta = a['submittedAt'] as Timestamp?;
-                        final tb = b['submittedAt'] as Timestamp?;
-                        if (ta == null && tb == null) return 0;
-                        if (ta == null) return 1;
-                        if (tb == null) return -1;
-                        return tb.compareTo(ta);
-                      }))
-                      .take(5)
-                      .map(
-                        (proposal) => _ProposalRow(
-                          title: proposal['title'] as String,
-                          status: proposal['status'] as String,
-                          submittedAt: proposal['submittedAt'] as Timestamp?,
-                        ),
-                      )),
-                ],
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-
   Widget _buildTopMerchandise() {
     return Container(
       decoration: BoxDecoration(
@@ -2700,7 +2495,7 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                   style: GoogleFonts.beVietnamPro(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
-                    color: OrgColors.accent,
+                    color: OrgColors.charcoal,
                   ),
                 ),
                 Container(
@@ -2826,7 +2621,7 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
 
   Widget _buildActiveEventsPanel() {
     return StreamBuilder<QuerySnapshot>(
-      stream: _approvedEventsStream,
+      stream: _activeEventsTableStreamGetter,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _tableCardSimple(
@@ -2865,11 +2660,12 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
 
         return _tableCard(
           header: _panelHeader(
-            title: 'Active Events',
+            title: 'Events',
             subtitle: 'Approved events, ${rows.length} total.',
             onBack: () => setState(() => _selectedCard = null),
-            onExport: () => _exportTable(
-              title: 'Active Events',
+            onExport: (format) => _exportTable(
+              format: format,
+              title: 'Events',
               headers: const ['Title', 'Category', 'Date', 'Location'],
               rows: [
                 for (final r in rows)
@@ -2925,7 +2721,7 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
 
   Widget _buildPendingProposalsPanel() {
     return StreamBuilder<QuerySnapshot>(
-      stream: _pendingProposalsStream,
+      stream: _pendingProposalsTableStreamGetter,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _tableCardSimple(
@@ -2969,7 +2765,8 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
             title: 'Pending Proposals',
             subtitle: 'Awaiting admin review, ${rows.length} total.',
             onBack: () => setState(() => _selectedCard = null),
-            onExport: () => _exportTable(
+            onExport: (format) => _exportTable(
+              format: format,
               title: 'Pending Proposals',
               headers: const ['Title', 'Category', 'Event Date', 'Submitted'],
               rows: [
@@ -3027,7 +2824,7 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
 
   Widget _buildUpcomingEventsTablePanel() {
     return StreamBuilder<QuerySnapshot>(
-      stream: _upcomingEventsStream,
+      stream: _upcomingEventsTableStreamGetter,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _tableCardSimple(
@@ -3060,7 +2857,8 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
             title: 'Upcoming Events',
             subtitle: 'Approved events still ahead, ${rows.length} total.',
             onBack: () => setState(() => _selectedCard = null),
-            onExport: () => _exportTable(
+            onExport: (format) => _exportTable(
+              format: format,
               title: 'Upcoming Events',
               headers: const ['Title', 'Date', 'Time', 'Location'],
               rows: [
@@ -3118,11 +2916,7 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
   // shows the catalog itself: what's listed and how much stock is left.
   Widget _buildMerchSalesPanel() {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('products')
-          .where('orgId', isEqualTo: widget.orgId)
-          .where('isArchived', isEqualTo: false)
-          .snapshots(),
+      stream: _merchSalesTableStreamGetter,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _tableCardSimple(
@@ -3162,7 +2956,8 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
             title: 'Merchandise',
             subtitle: 'All listed products, ${rows.length} total.',
             onBack: () => setState(() => _selectedCard = null),
-            onExport: () => _exportTable(
+            onExport: (format) => _exportTable(
+              format: format,
               title: 'Merchandise',
               headers: const ['Product', 'Category', 'Price', 'Stock'],
               rows: [
@@ -3216,7 +3011,7 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
   Widget _panelHeader({
     required String title,
     required String subtitle,
-    VoidCallback? onExport,
+    dynamic Function(String format)? onExport,
     VoidCallback? onBack,
   }) {
     return Column(
@@ -3263,7 +3058,7 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                     style: GoogleFonts.beVietnamPro(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
-                      color: OrgColors.accent,
+                      color: OrgColors.charcoal,
                     ),
                   ),
                   const SizedBox(height: 3),
@@ -3279,31 +3074,7 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
             ),
             if (onExport != null) ...[
               const SizedBox(width: 12),
-              MouseRegion(
-                cursor: SystemMouseCursors.click,
-                child: OutlinedButton.icon(
-                  onPressed: onExport,
-                  icon: const Icon(Icons.file_download_outlined, size: 16),
-                  label: Text(
-                    'Export',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: OrgColors.primaryDark,
-                    side: const BorderSide(color: OrgColors.borderSoft),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                ),
-              ),
+              AdminExportButton(onSelected: onExport),
             ],
           ],
         ),
@@ -3517,24 +3288,35 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
       );
 
   Future<void> _exportTable({
+    required String format,
     required String title,
     required List<String> headers,
     required List<List<String>> rows,
     required String fileNamePrefix,
   }) async {
     try {
-      final bytes = await OrgExportPdf.generateTablePdf(
-        title: title,
-        headers: headers,
-        rows: rows,
-      );
-      final fileName =
-          '${fileNamePrefix}_${DateFormat('yyyy-MM-dd').format(DateTime.now())}.pdf';
-      await OrgExportUtil.saveBytes(
-        bytes,
-        fileName,
-        mimeType: 'application/pdf',
-      );
+      final ts = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final String fileName;
+      final List<int> bytes;
+      final String mimeType;
+      if (format == 'excel') {
+        bytes = OrgExportExcel.generateStyledTable(
+          title: title,
+          headers: headers,
+          rows: rows,
+        );
+        fileName = '${fileNamePrefix}_$ts.xlsx';
+        mimeType = orgXlsxMimeType;
+      } else {
+        bytes = await OrgExportPdf.generateTablePdf(
+          title: title,
+          headers: headers,
+          rows: rows,
+        );
+        fileName = '${fileNamePrefix}_$ts.pdf';
+        mimeType = 'application/pdf';
+      }
+      await OrgExportUtil.saveBytes(bytes, fileName, mimeType: mimeType);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -3884,315 +3666,6 @@ class _ActivityBarChart extends StatelessWidget {
   }
 }
 
-// ── Event row ──────────────────────────────────────────────────────────────
-class _EventRow extends StatelessWidget {
-  final String? date, title, location, time;
-  const _EventRow({this.date, this.title, this.location, this.time});
-
-  ({String month, String day}) _parsedDate() {
-    if (date == null) return (month: 'TBD', day: '--');
-    try {
-      final dt = DateTime.parse(date!);
-      const m = [
-        'JAN',
-        'FEB',
-        'MAR',
-        'APR',
-        'MAY',
-        'JUN',
-        'JUL',
-        'AUG',
-        'SEP',
-        'OCT',
-        'NOV',
-        'DEC',
-      ];
-      return (month: m[dt.month - 1], day: '${dt.day}');
-    } catch (_) {
-      return (month: 'TBD', day: '--');
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final d = _parsedDate();
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            width: 48,
-            height: 52,
-            decoration: BoxDecoration(
-              color: OrgColors.primaryDark.withAlpha(20),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  d.month,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w700,
-                    color: OrgColors.primaryDark,
-                  ),
-                ),
-                Text(
-                  d.day,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: OrgColors.primaryDark,
-                    height: 1.1,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title ?? 'Untitled',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: OrgColors.charcoal,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 3),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.location_on_outlined,
-                      size: 11,
-                      color: OrgColors.textFaint,
-                    ),
-                    const SizedBox(width: 3),
-                    Flexible(
-                      child: Text(
-                        location ?? 'TBA',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 11,
-                          color: OrgColors.textFaint,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    const Icon(
-                      Icons.access_time_rounded,
-                      size: 11,
-                      color: OrgColors.textFaint,
-                    ),
-                    const SizedBox(width: 3),
-                    Text(
-                      time ?? 'TBA',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 11,
-                        color: OrgColors.textFaint,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Activity row ────────────────────────────────────────────────────────────
-class _ActivityRow extends StatelessWidget {
-  final String title, module;
-  final Timestamp? timestamp;
-  const _ActivityRow({
-    required this.title,
-    required this.module,
-    this.timestamp,
-  });
-
-  String _timeAgo() {
-    if (timestamp == null) return 'Just now';
-    final diff = DateTime.now().difference(timestamp!.toDate());
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    if (diff.inDays < 7) return '${diff.inDays}d ago';
-    return '${(diff.inDays / 7).floor()}w ago';
-  }
-
-  Color _dotColor() {
-    final l = title.toLowerCase();
-    if (l.contains('proposal') || l.contains('pending')) {
-      return OrgColors.warning;
-    }
-    if (l.contains('verified') || l.contains('created')) {
-      return OrgColors.success;
-    }
-    if (l.contains('deleted') || l.contains('error')) {
-      return OrgColors.error;
-    }
-    return OrgColors.primaryDark;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                color: _dotColor(),
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: OrgColors.charcoal,
-                  ),
-                ),
-                if (module.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 7,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      module,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 10,
-                        color: OrgColors.darkGray,
-                      ),
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 3),
-                Text(
-                  _timeAgo(),
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 10,
-                    color: OrgColors.textFaint,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProposalRow extends StatelessWidget {
-  final String title;
-  final String status;
-  final Timestamp? submittedAt;
-  const _ProposalRow({
-    required this.title,
-    required this.status,
-    this.submittedAt,
-  });
-
-  String _formatDate() {
-    if (submittedAt == null) return 'No date';
-    return DateFormat('MMM dd, yyyy').format(submittedAt!.toDate());
-  }
-
-  Color _statusColor() {
-    final lower = status.toLowerCase();
-    if (lower.contains('approved')) return OrgColors.success;
-    if (lower.contains('rejected')) return OrgColors.error;
-    if (lower.contains('pending')) return OrgColors.warning;
-    return OrgColors.primaryDark;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: OrgColors.charcoal,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Text(
-                      _formatDate(),
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 11,
-                        color: OrgColors.textFaint,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _statusColor().withAlpha(31),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        status.toUpperCase(),
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 10,
-                          color: _statusColor(),
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Org Notification Panel
 // ─────────────────────────────────────────────────────────────────────────────
@@ -4378,103 +3851,140 @@ class _OrgNotificationPanelState extends State<_OrgNotificationPanel> {
     }
   }
 
+  // Per-type icon + color so the list reads at a glance instead of every
+  // row showing the same generic bell — mirrors the admin notification
+  // panel's _notifTypeMeta, mapped to the types admin actually sends to
+  // orgs (proposal decisions, letter status, and deadline reminders).
+  static const Map<String, List<Object>> _notifTypeMeta = {
+    'proposal_status': [Icons.description_rounded, Color(0xFF2563EB)],
+    'proposal_revision': [Icons.edit_note_rounded, Color(0xFFD97706)],
+    'letter_status': [Icons.mail_rounded, Color(0xFF7C3AED)],
+    'deadline_reminder': [Icons.alarm_rounded, Color(0xFFDC2626)],
+  };
+
+  List<Object> _metaFor(String? type) =>
+      _notifTypeMeta[type] ??
+      const [Icons.notifications_rounded, OrgColors.primaryDark];
+
+  // Row is a StatefulBuilder so it can track its own hover flag, matching
+  // the admin notification panel's hover treatment instead of the flat,
+  // static look this had.
   Widget _buildNotifItem(Map<String, dynamic> n) {
     final isRead = n['isRead'] as bool? ?? false;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () {
-          if (!isRead) _markRead(n['id'] as String);
-          widget.onNotificationTap(n);
-          Navigator.of(context).pop();
-        },
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-          decoration: BoxDecoration(
-            color: isRead ? Colors.white : const Color(0xFFFFF7ED),
-            border: const Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: OrgColors.border),
-                ),
-                child: Icon(
-                  Icons.notifications_rounded,
-                  size: 16,
-                  color: isRead ? OrgColors.textFaint : OrgColors.primaryDark,
+    final meta = _metaFor(n['type']?.toString());
+    final icon = meta[0] as IconData;
+    final color = meta[1] as Color;
+    var hovering = false;
+    return StatefulBuilder(
+      builder: (context, setLocalState) {
+        return MouseRegion(
+          cursor: SystemMouseCursors.click,
+          onEnter: (_) => setLocalState(() => hovering = true),
+          onExit: (_) => setLocalState(() => hovering = false),
+          child: GestureDetector(
+            onTap: () {
+              if (!isRead) _markRead(n['id'] as String);
+              widget.onNotificationTap(n);
+              Navigator.of(context).pop();
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 120),
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(15, 12, 18, 12),
+              decoration: BoxDecoration(
+                color: hovering
+                    ? OrgColors.lightGray
+                    : (isRead ? Colors.white : const Color(0xFFFFF7ED)),
+                border: Border(
+                  left: BorderSide(
+                    color: isRead ? Colors.transparent : OrgColors.primaryDark,
+                    width: 3,
+                  ),
+                  bottom: const BorderSide(color: Color(0xFFF1F5F9)),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: color.withAlpha(isRead ? 16 : 28),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      icon,
+                      size: 16,
+                      color: isRead ? color.withAlpha(160) : color,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Container(
-                          width: 6,
-                          height: 6,
-                          margin: const EdgeInsets.only(right: 6, top: 4),
-                          decoration: BoxDecoration(
-                            color: isRead
-                                ? OrgColors.border
-                                : OrgColors.primaryDark,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        Expanded(
-                          child: Text(
-                            n['title']?.toString() ?? 'Notification',
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 13,
-                              fontWeight: isRead
-                                  ? FontWeight.w600
-                                  : FontWeight.w700,
-                              color: isRead
-                                  ? OrgColors.darkGray
-                                  : OrgColors.charcoal,
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              margin: const EdgeInsets.only(right: 6, top: 4),
+                              decoration: BoxDecoration(
+                                color: isRead
+                                    ? OrgColors.border
+                                    : OrgColors.primaryDark,
+                                shape: BoxShape.circle,
+                              ),
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                            Expanded(
+                              child: Text(
+                                n['title']?.toString() ?? 'Notification',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 13,
+                                  fontWeight: isRead
+                                      ? FontWeight.w600
+                                      : FontWeight.w700,
+                                  color: isRead
+                                      ? OrgColors.darkGray
+                                      : OrgColors.charcoal,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              _timeAgo(n['timestamp']),
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 11,
+                                color: OrgColors.textFaint,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(height: 4),
                         Text(
-                          _timeAgo(n['timestamp']),
+                          n['message']?.toString() ?? '',
                           style: GoogleFonts.beVietnamPro(
-                            fontSize: 11,
-                            color: OrgColors.textFaint,
+                            fontSize: 12,
+                            color: OrgColors.darkGray,
+                            height: 1.45,
                           ),
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      n['message']?.toString() ?? '',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 12,
-                        color: OrgColors.darkGray,
-                        height: 1.45,
-                      ),
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 

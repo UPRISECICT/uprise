@@ -76,20 +76,12 @@ class EventModel {
           final parts = startTime.split(':');
           hour = int.parse(parts[0]);
           minute = int.parse(
-            parts.length > 1
-                ? parts[1].replaceAll(RegExp(r'[^0-9]'), '')
-                : '0',
+            parts.length > 1 ? parts[1].replaceAll(RegExp(r'[^0-9]'), '') : '0',
           );
         }
       }
 
-      return DateTime(
-        date.year,
-        date.month,
-        date.day,
-        hour,
-        minute,
-      );
+      return DateTime(date.year, date.month, date.day, hour, minute);
     } catch (_) {
       return date;
     }
@@ -107,6 +99,38 @@ class EventModel {
 
   /// Check kung may image
   bool get hasImage => bannerUrl != null && bannerUrl!.isNotEmpty;
+
+  /// Mirrors guest_events_screen.dart's `_audienceAllowed` — an event can
+  /// target more than one audience at once (comma-joined in the same
+  /// field), and passes if ANY one of them would allow this student. Only
+  /// 'Members Only' is actually enforced here: 'CICT Only'/'BulSUan' have
+  /// no equivalent student classification data to check against, so they
+  /// fall through as allowed on the student side (same as they always have).
+  /// [userData] is the signed-in student's own `users/{uid}` doc.
+  static bool audienceAllowsMember({
+    required String audience,
+    required String eventOrgId,
+    required Map<String, dynamic>? userData,
+  }) {
+    final values = audience
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty);
+    if (values.isEmpty) return true;
+
+    bool isMemberOfEventOrg() {
+      if (userData == null) return false;
+      final userOrgId = (userData['orgId'] ?? '').toString();
+      if (userOrgId.isEmpty || userOrgId != eventOrgId) return false;
+      final role = (userData['orgRole'] ?? '').toString();
+      return role == 'member' ||
+          role == 'officer' ||
+          userData['isOrgMember'] == true ||
+          userData['isOrgOfficer'] == true;
+    }
+
+    return values.any((v) => v == 'Members Only' ? isMemberOfEventOrg() : true);
+  }
 
   factory EventModel.fromFirestore(DocumentSnapshot doc) {
     final d = doc.data() as Map<String, dynamic>? ?? {};
@@ -139,29 +163,28 @@ class EventModel {
   }
 
   Map<String, dynamic> toMap() => {
-        'title': title,
-        'description': description,
-        'location': location,
-        'category': category,
-        'orgName': orgName,
-        'orgId': orgId,
-        'date': Timestamp.fromDate(date),
-        'startTime': startTime,
-        'endTime': endTime,
-        'audience': audience,
-        'status': status,
-        'isPublic': isPublic,
-        'proposalId': proposalId,
-        'createdFromProposalId': createdFromProposalId,
-        'logoUrl': logoUrl,
-        'bannerUrl': bannerUrl,
-      };
+    'title': title,
+    'description': description,
+    'location': location,
+    'category': category,
+    'orgName': orgName,
+    'orgId': orgId,
+    'date': Timestamp.fromDate(date),
+    'startTime': startTime,
+    'endTime': endTime,
+    'audience': audience,
+    'status': status,
+    'isPublic': isPublic,
+    'proposalId': proposalId,
+    'createdFromProposalId': createdFromProposalId,
+    'logoUrl': logoUrl,
+    'bannerUrl': bannerUrl,
+  };
 
   /// Uses full date + start time
   bool get isPast => fullDateTime.isBefore(DateTime.now());
 
-  String get formattedDate =>
-      DateFormat('MMMM dd, yyyy').format(date);
+  String get formattedDate => DateFormat('MMMM dd, yyyy').format(date);
 
   String get formattedTime {
     if (startTime.isNotEmpty && endTime.isNotEmpty) {

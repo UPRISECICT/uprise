@@ -23,6 +23,7 @@ import '../../../widgets/admin_export_button.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/org_action_icon_button.dart';
 import '../../../widgets/org_attachment_preview.dart';
+import '../../../widgets/org_modal_shell.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens — enhanced for a more polished look
@@ -33,10 +34,12 @@ class _DS {
   static const double radiusLg = 16;
   static const double radiusPill = 100;
 
-  static const Color primary = Color(0xFFEA580C);
-  static const Color primaryLight = Color(0xFFFFE4CC);
+  // Was a stale, more-vivid orange (0xFFEA580C) that didn't match the
+  // deepened brand primary the rest of the org portal was moved to (see
+  // theme/org_theme.dart's UpriseColors.primaryDark) — same drift bug as
+  // org_events_schedule.dart's calendar page had.
+  static const Color primary = UpriseColors.primaryDark;
   static const Color primaryBg = Color(0xFFFEF3C7);
-  static const Color primaryDark = Color(0xFF9A3A00);
 
   static const Color surface = Color(0xFFFBFCFE);
   static const Color cardBg = Color(0xFFFFFFFF);
@@ -49,131 +52,119 @@ class _DS {
     BoxShadow(color: Color(0x14000000), blurRadius: 16, offset: Offset(0, 4)),
   ];
 
+  // Required fields are labeled "Foo *" — the asterisk used to render in the
+  // same muted gray as the rest of the label and was easy to miss. Splitting
+  // it into its own red TextSpan (matching org_event_proposals.dart's
+  // _orgEventProposalsInputDecoration) makes it actually stand out.
   static InputDecoration inputDecoration(
     String label, {
     String? hint,
     IconData? icon,
     int? maxLines,
-  }) => InputDecoration(
-    labelText: label,
-    hintText: hint,
-    prefixIcon: icon != null
-        ? Icon(icon, size: 18, color: const Color(0xFF9AA5B4))
-        : null,
-    alignLabelWithHint: maxLines != null && maxLines > 1,
-    labelStyle: GoogleFonts.beVietnamPro(
-      fontSize: 13,
-      color: const Color(0xFF64748B),
-    ),
-    hintStyle: GoogleFonts.beVietnamPro(
-      fontSize: 13,
-      color: const Color(0xFF9AA5B4),
-    ),
-    filled: true,
-    fillColor: const Color(0xFFF8F9FB),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-    border: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(radiusSm),
-      borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
-    ),
-    enabledBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(radiusSm),
-      borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
-    ),
-    focusedBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(radiusSm),
-      borderSide: const BorderSide(color: _DS.primary, width: 1.5),
-    ),
-    errorBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(radiusSm),
-      borderSide: const BorderSide(color: Color(0xFFDC2626)),
-    ),
-    focusedErrorBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(radiusSm),
-      borderSide: const BorderSide(color: Color(0xFFDC2626), width: 1.5),
-    ),
-  );
+  }) {
+    final trimmed = label.trimRight();
+    final isRequired = trimmed.endsWith('*');
+    final baseLabel = isRequired
+        ? trimmed.substring(0, trimmed.length - 1).trimRight()
+        : label;
+
+    return InputDecoration(
+      labelText: isRequired ? null : label,
+      label: isRequired
+          ? RichText(
+              text: TextSpan(
+                children: [
+                  TextSpan(
+                    text: baseLabel,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 13,
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                  TextSpan(
+                    text: ' *',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 13,
+                      color: const Color(0xFFDC2626),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : null,
+      hintText: hint,
+      prefixIcon: icon != null
+          ? Icon(icon, size: 18, color: const Color(0xFF9AA5B4))
+          : null,
+      alignLabelWithHint: maxLines != null && maxLines > 1,
+      labelStyle: GoogleFonts.beVietnamPro(
+        fontSize: 13,
+        color: const Color(0xFF64748B),
+      ),
+      hintStyle: GoogleFonts.beVietnamPro(
+        fontSize: 13,
+        color: const Color(0xFF9AA5B4),
+      ),
+      filled: true,
+      fillColor: const Color(0xFFF8F9FB),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(radiusSm),
+        borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(radiusSm),
+        borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(radiusSm),
+        borderSide: const BorderSide(color: _DS.primary, width: 1.5),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(radiusSm),
+        borderSide: const BorderSide(color: Color(0xFFDC2626)),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(radiusSm),
+        borderSide: const BorderSide(color: Color(0xFFDC2626), width: 1.5),
+      ),
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared small widgets
 // ─────────────────────────────────────────────────────────────────────────────
-Widget _sectionLabel(String text, {IconData? icon}) => Padding(
-  padding: const EdgeInsets.only(bottom: 12),
-  child: Row(
-    children: [
-      if (icon != null) ...[
-        Icon(icon, size: 16, color: _DS.primary),
-        const SizedBox(width: 8),
-      ],
-      Text(
-        text,
-        style: GoogleFonts.beVietnamPro(
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-          color: _DS.primary,
-          letterSpacing: 0.3,
+// Standalone field label ("Covers", "Select Event", …) with a red " *"
+// appended — matches the red-asterisk treatment other org modals give
+// required TextFormFields (see org_event_proposals.dart's
+// _orgEventProposalsInputDecoration), for labels that sit above a picker
+// instead of inside an InputDecoration.
+Widget _requiredLabel(String label) => Padding(
+  padding: const EdgeInsets.only(bottom: 8),
+  child: Text.rich(
+    TextSpan(
+      children: [
+        TextSpan(
+          text: label,
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 13,
+            color: _DS.textSecondary,
+          ),
         ),
-      ),
-      const SizedBox(width: 12),
-      Expanded(child: Divider(color: const Color(0xFFE2E6EA), thickness: 1)),
-    ],
+        TextSpan(
+          text: ' *',
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: const Color(0xFFDC2626),
+          ),
+        ),
+      ],
+    ),
   ),
 );
-
-Widget _statusBadge(String status) {
-  final Map<String, _BadgeStyle> styles = {
-    'pending': _BadgeStyle(
-      const Color(0xFFFFFBEB),
-      const Color(0xFFFB923C),
-      'PENDING',
-    ),
-    'approved': _BadgeStyle(
-      const Color(0xFFECFDF5),
-      const Color(0xFF059669),
-      'APPROVED',
-    ),
-    'rejected': _BadgeStyle(
-      const Color(0xFFFEF2F2),
-      const Color(0xFFDC2626),
-      'REJECTED',
-    ),
-    'review': _BadgeStyle(
-      const Color(0xFFEDE9FE),
-      const Color(0xFF5B21B6),
-      'ON REVIEW',
-    ),
-  };
-  final s =
-      styles[status.toLowerCase()] ??
-      _BadgeStyle(
-        const Color(0xFFF3F4F6),
-        const Color(0xFF6B7280),
-        status.toUpperCase(),
-      );
-  return Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-    decoration: BoxDecoration(
-      color: s.bg,
-      borderRadius: BorderRadius.circular(_DS.radiusPill),
-    ),
-    child: Text(
-      s.label,
-      style: GoogleFonts.beVietnamPro(
-        fontSize: 10,
-        fontWeight: FontWeight.w700,
-        color: s.fg,
-        letterSpacing: 0.8,
-      ),
-    ),
-  );
-}
-
-class _BadgeStyle {
-  final Color bg, fg;
-  final String label;
-  const _BadgeStyle(this.bg, this.fg, this.label);
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Screen
@@ -584,21 +575,19 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
     final totalPending = pending.length;
     final eventCount = orderedEventIds.length;
 
-    // Only show first 3 chips
-    final showCount = 3;
-    final visibleIds = orderedEventIds.take(showCount).toList();
-    final hiddenIds = orderedEventIds.skip(showCount).toList();
-    final hasMore = hiddenIds.isNotEmpty;
-
     final isUrgent = overdueCount > 0;
     final accentColor = isUrgent
         ? const Color(0xFFDC2626)
         : const Color(0xFFD97706);
 
+    // Single compact row instead of a header + a wrapped grid of per-event
+    // chips — the chip grid grew as tall as the page for orgs with many
+    // pending events without adding information "View all" doesn't already
+    // give in one click.
     return Padding(
       padding: const EdgeInsets.fromLTRB(28, 8, 28, 8),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.centerLeft,
@@ -622,111 +611,138 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
                 ]
               : _DS.cardShadow,
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            // Header with stats
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: accentColor,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: accentColor.withAlpha(70),
-                        blurRadius: 10,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: accentColor,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: accentColor.withAlpha(70),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
                   ),
-                  child: Icon(
+                ],
+              ),
+              child: Icon(
+                isUrgent
+                    ? Icons.warning_amber_rounded
+                    : Icons.pending_actions_rounded,
+                size: 18,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
                     isUrgent
-                        ? Icons.warning_amber_rounded
-                        : Icons.pending_actions_rounded,
-                    size: 20,
-                    color: Colors.white,
+                        ? 'Reports overdue — action needed'
+                        : 'Pending reports',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: isUrgent
+                          ? const Color(0xFF991B1B)
+                          : const Color(0xFF92400E),
+                    ),
                   ),
+                  Text(
+                    '$totalPending report${totalPending > 1 ? 's' : ''} needed from $eventCount event${eventCount > 1 ? 's' : ''}',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: isUrgent
+                          ? const Color(0xFF991B1B)
+                          : const Color(0xFF92400E),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            if (overdueCount > 0) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFDC2626),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.priority_high_rounded,
+                      size: 14,
+                      color: Colors.white,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '$overdueCount Overdue',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+            ],
+            MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () =>
+                    _showAllDeadlines(context, groups, orderedEventIds),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: isUrgent
+                          ? const Color(0xFFFCA5A5)
+                          : const Color(0xFFFDE68A),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        isUrgent
-                            ? 'Reports overdue — action needed'
-                            : 'Pending reports',
+                        'View all',
                         style: GoogleFonts.beVietnamPro(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
                           color: isUrgent
                               ? const Color(0xFF991B1B)
                               : const Color(0xFF92400E),
                         ),
                       ),
-                      Text(
-                        '$totalPending report${totalPending > 1 ? 's' : ''} needed from $eventCount event${eventCount > 1 ? 's' : ''}',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: isUrgent
-                              ? const Color(0xFF991B1B)
-                              : const Color(0xFF92400E),
-                        ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        size: 16,
+                        color: isUrgent
+                            ? const Color(0xFF991B1B)
+                            : const Color(0xFF92400E),
                       ),
                     ],
                   ),
                 ),
-                if (overdueCount > 0)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFDC2626),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.priority_high_rounded,
-                          size: 14,
-                          color: Colors.white,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '$overdueCount Overdue',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            // Chips row
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                ...visibleIds.map(
-                  (eventId) => _PendingDeadlineChip(items: groups[eventId]!),
-                ),
-                if (hasMore)
-                  _MoreDeadlineChip(
-                    count: hiddenIds.length,
-                    onTap: () =>
-                        _showAllDeadlines(context, groups, orderedEventIds),
-                  ),
-              ],
+              ),
             ),
           ],
         ),
@@ -863,7 +879,10 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
                   itemBuilder: (_, idx) {
                     final eventId = orderedEventIds[idx];
                     final items = groups[eventId]!;
-                    return _PendingDeadlineListItem(items: items);
+                    return _PendingDeadlineListItem(
+                      items: items,
+                      onUpload: (type) => _openPrefillModal(eventId, type),
+                    );
                   },
                 ),
               ),
@@ -1048,10 +1067,13 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
       child: Row(
         children: [
           Expanded(flex: 2, child: _headerCell('REPORT ID')),
+          const SizedBox(width: 16),
           Expanded(flex: 3, child: _headerCell('EVENT')),
+          const SizedBox(width: 16),
           Expanded(flex: 2, child: _headerCell('TYPE')),
+          const SizedBox(width: 16),
           Expanded(flex: 2, child: _headerCell('DATE SUBMITTED')),
-          Expanded(flex: 2, child: _headerCell('STATUS')),
+          const SizedBox(width: 16),
           Expanded(
             flex: 2,
             child: Align(
@@ -1101,6 +1123,7 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
+            const SizedBox(width: 16),
             // EVENT (Title + Description)
             Expanded(
               flex: 3,
@@ -1132,6 +1155,7 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
                 ],
               ),
             ),
+            const SizedBox(width: 16),
             // Type chip
             Expanded(
               flex: 2,
@@ -1163,6 +1187,7 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
                 ],
               ),
             ),
+            const SizedBox(width: 16),
             // Date
             Expanded(
               flex: 2,
@@ -1175,10 +1200,7 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            // Status — this was built (_statusBadge) but never actually
-            // wired into the table, so orgs had no way to tell whether a
-            // submitted report was still pending, approved, or rejected.
-            Expanded(flex: 2, child: _statusBadge(report.status)),
+            const SizedBox(width: 16),
             // Actions
             Expanded(
               flex: 2,
@@ -1345,6 +1367,24 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
     builder: (_) => _ViewReportModal(report: r),
   );
 
+  // Closes the overdue-list bottom sheet (if open) and jumps straight into
+  // the upload modal with the event + type already selected — used by the
+  // "Upload now" shortcut on overdue items instead of the normal flow of
+  // clicking "Upload Report" and picking the event/type from scratch.
+  void _openPrefillModal(String eventId, String type) {
+    Navigator.of(context).pop();
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black54,
+      builder: (_) => _ReportModal(
+        orgId: widget.orgId,
+        prefillEventId: eventId,
+        prefillType: type,
+      ),
+    );
+  }
+
   Future<void> _archiveReport(ReportModel report) async {
     final ok = await _confirm(
       title: 'Archive Report',
@@ -1456,148 +1496,19 @@ class _PendingEventDeadline {
   });
 }
 
-// ── Compact Chip for the main view ────────────────────────────────────────
-class _PendingDeadlineChip extends StatelessWidget {
-  final List<_PendingEventDeadline> items;
-  const _PendingDeadlineChip({required this.items});
-
-  @override
-  Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final anyOverdue = items.any((d) => now.isAfter(d.deadline));
-    final earliest = items
-        .map((d) => d.deadline)
-        .reduce((a, b) => a.isBefore(b) ? a : b);
-    final typesLabel = items
-        .map((d) => d.type == 'financial' ? 'Financial' : 'Accomplishment')
-        .join(' & ');
-
-    final isOverdue = anyOverdue;
-    final bgColor = isOverdue
-        ? const Color(0xFFFEF2F2)
-        : const Color(0xFFFFF7ED);
-    final borderColor = isOverdue
-        ? const Color(0xFFFCA5A5)
-        : const Color(0xFFFFE4CC);
-    final iconColor = isOverdue ? const Color(0xFFDC2626) : _DS.primary;
-    final statusText = isOverdue
-        ? 'Overdue'
-        : 'Due ${DateFormat('MMM d').format(earliest)}';
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: borderColor),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            isOverdue ? Icons.error_outline_rounded : Icons.schedule_rounded,
-            size: 14,
-            color: iconColor,
-          ),
-          const SizedBox(width: 6),
-          Text(
-            items.first.eventTitle,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: _DS.textPrimary,
-            ),
-          ),
-          const SizedBox(width: 6),
-          Container(
-            width: 3,
-            height: 3,
-            decoration: BoxDecoration(
-              color: _DS.textHint,
-              borderRadius: BorderRadius.circular(1.5),
-            ),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            typesLabel,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 11,
-              color: _DS.textSecondary,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(
-              color: iconColor,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              statusText,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 9,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-                letterSpacing: 0.3,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── "More" chip ─────────────────────────────────────────────────────────────
-class _MoreDeadlineChip extends StatelessWidget {
-  final int count;
-  final VoidCallback onTap;
-  const _MoreDeadlineChip({required this.count, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF3F4F6),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: const Color(0xFFE2E6EA)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '+$count more',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: _DS.textSecondary,
-              ),
-            ),
-            const SizedBox(width: 4),
-            const Icon(
-              Icons.chevron_right_rounded,
-              size: 16,
-              color: _DS.textSecondary,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 // ── List item for the bottom sheet ────────────────────────────────────────
 class _PendingDeadlineListItem extends StatelessWidget {
   final List<_PendingEventDeadline> items;
-  const _PendingDeadlineListItem({required this.items});
+  // Only offered for items that are actually overdue — for reports that
+  // still have time left, the normal "Upload Report" flow already covers it.
+  final ValueChanged<String> onUpload;
+  const _PendingDeadlineListItem({required this.items, required this.onUpload});
 
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    final anyOverdue = items.any((d) => now.isAfter(d.deadline));
+    final overdueItems = items.where((d) => now.isAfter(d.deadline)).toList();
+    final anyOverdue = overdueItems.isNotEmpty;
     final earliest = items
         .map((d) => d.deadline)
         .reduce((a, b) => a.isBefore(b) ? a : b);
@@ -1628,134 +1539,202 @@ class _PendingDeadlineListItem extends StatelessWidget {
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Status indicator bar
-          Container(
-            width: 4,
-            height: 44,
-            decoration: BoxDecoration(
-              color: anyOverdue
-                  ? const Color(0xFFDC2626)
-                  : isDueSoon
-                  ? _DS.primary
-                  : const Color(0xFF059669),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(width: 14),
-          // Content
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  items.first.eventTitle,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: _DS.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: anyOverdue
-                            ? const Color(0xFFFEF2F2)
-                            : isDueSoon
-                            ? const Color(0xFFFFF7ED)
-                            : const Color(0xFFECFDF5),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        typesLabel,
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: anyOverdue
-                              ? const Color(0xFFDC2626)
-                              : isDueSoon
-                              ? _DS.primary
-                              : const Color(0xFF059669),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      anyOverdue
-                          ? 'Overdue by ${daysLeft} day${daysLeft > 1 ? 's' : ''}'
-                          : 'Due in $daysLeft day${daysLeft > 1 ? 's' : ''}',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 12,
-                        color: _DS.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          // Status badge
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: anyOverdue
-                  ? const Color(0xFFFEF2F2)
-                  : isDueSoon
-                  ? const Color(0xFFFFF7ED)
-                  : const Color(0xFFECFDF5),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: anyOverdue
-                    ? const Color(0xFFFCA5A5)
-                    : isDueSoon
-                    ? const Color(0xFFFFE4CC)
-                    : const Color(0xFFA7F3D0),
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  anyOverdue
-                      ? Icons.error_outline_rounded
-                      : isDueSoon
-                      ? Icons.schedule_rounded
-                      : Icons.check_circle_outline_rounded,
-                  size: 14,
+          Row(
+            children: [
+              // Status indicator bar
+              Container(
+                width: 4,
+                height: 44,
+                decoration: BoxDecoration(
                   color: anyOverdue
                       ? const Color(0xFFDC2626)
                       : isDueSoon
                       ? _DS.primary
                       : const Color(0xFF059669),
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                const SizedBox(width: 4),
-                Text(
-                  anyOverdue
-                      ? 'Overdue'
+              ),
+              const SizedBox(width: 14),
+              // Content
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      items.first.eventTitle,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: _DS.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: anyOverdue
+                                ? const Color(0xFFFEF2F2)
+                                : isDueSoon
+                                ? const Color(0xFFFFF7ED)
+                                : const Color(0xFFECFDF5),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            typesLabel,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: anyOverdue
+                                  ? const Color(0xFFDC2626)
+                                  : isDueSoon
+                                  ? _DS.primary
+                                  : const Color(0xFF059669),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          anyOverdue
+                              ? 'Overdue by ${daysLeft} day${daysLeft > 1 ? 's' : ''}'
+                              : 'Due in $daysLeft day${daysLeft > 1 ? 's' : ''}',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 12,
+                            color: _DS.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              // Status badge
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: anyOverdue
+                      ? const Color(0xFFFEF2F2)
                       : isDueSoon
-                      ? 'Due Soon'
-                      : 'On Track',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
+                      ? const Color(0xFFFFF7ED)
+                      : const Color(0xFFECFDF5),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
                     color: anyOverdue
-                        ? const Color(0xFFDC2626)
+                        ? const Color(0xFFFCA5A5)
                         : isDueSoon
-                        ? _DS.primary
-                        : const Color(0xFF059669),
+                        ? const Color(0xFFFFE4CC)
+                        : const Color(0xFFA7F3D0),
                   ),
                 ),
-              ],
-            ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      anyOverdue
+                          ? Icons.error_outline_rounded
+                          : isDueSoon
+                          ? Icons.schedule_rounded
+                          : Icons.check_circle_outline_rounded,
+                      size: 14,
+                      color: anyOverdue
+                          ? const Color(0xFFDC2626)
+                          : isDueSoon
+                          ? _DS.primary
+                          : const Color(0xFF059669),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      anyOverdue
+                          ? 'Overdue'
+                          : isDueSoon
+                          ? 'Due Soon'
+                          : 'On Track',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: anyOverdue
+                            ? const Color(0xFFDC2626)
+                            : isDueSoon
+                            ? _DS.primary
+                            : const Color(0xFF059669),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
+          if (anyOverdue) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: overdueItems
+                  .map(
+                    (d) => _UploadNowButton(
+                      label: d.type == 'financial'
+                          ? 'Upload Financial'
+                          : 'Upload Accomplishment',
+                      onTap: () => onUpload(d.type),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+class _UploadNowButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+  const _UploadNowButton({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFFDC2626),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.upload_file_rounded,
+                size: 14,
+                color: Colors.white,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1815,174 +1794,276 @@ class _ViewReportModal extends StatelessWidget {
         ? const Color(0xFFECFDF5)
         : const Color(0xFFEFF6FF);
 
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Container(
-        width: 560,
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.85,
+    return OrgModalShell(
+      accentColor: _DS.primary,
+      icon: isFinancial
+          ? Icons.account_balance_wallet_rounded
+          : Icons.assignment_rounded,
+      title: 'Report Details',
+      subtitle: report.reportId,
+      width: 560,
+      maxHeightFraction: 0.85,
+      footerActions: [
+        OutlinedButton(
+          onPressed: () => Navigator.pop(context),
+          style: OutlinedButton.styleFrom(
+            side: const BorderSide(color: Color(0xFFE2E6EA)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+          ),
+          child: Text(
+            'Close',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: _DS.textSecondary,
+            ),
+          ),
         ),
+        const SizedBox(width: 10),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(context),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: _DS.primary,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          ),
+          child: Text(
+            'Done',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Header ──────────────────────────────────────────────────────
-            Container(
-              padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
-              decoration: BoxDecoration(
-                color: _DS.primary,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(20),
+            // Title Row
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    report.title,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: _DS.textPrimary,
+                    ),
+                  ),
                 ),
-              ),
-              child: Row(
+                const SizedBox(width: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: typeBgColor,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    typeLabel,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: typeColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            OrgModalSection(
+              title: 'Report Information',
+              icon: Icons.info_outline_rounded,
+              accentColor: _DS.primary,
+              child: Column(
                 children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withAlpha(30),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(
-                      isFinancial
-                          ? Icons.account_balance_wallet_rounded
-                          : Icons.assignment_rounded,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Report Details',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OrgDetailItem(
+                          label: 'Report ID',
+                          value: report.reportId,
+                          icon: Icons.confirmation_number_outlined,
+                          iconColor: _DS.primary,
                         ),
-                        Text(
-                          report.reportId,
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 12,
-                            color: Colors.white.withAlpha(200),
-                          ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OrgDetailItem(
+                          label: 'Date Submitted',
+                          value: DateFormat(
+                            'MMM dd, yyyy',
+                          ).format(report.submittedAt.toDate()),
+                          icon: Icons.calendar_today_outlined,
+                          iconColor: _DS.primary,
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.close_rounded,
-                      color: Colors.white,
-                      size: 20,
+                  if (report.description.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    const Divider(height: 1, color: Color(0xFFE8ECF0)),
+                    const SizedBox(height: 12),
+                    OrgDetailItem(
+                      label: 'Description',
+                      value: report.description,
+                      icon: Icons.notes_rounded,
+                      iconColor: _DS.primary,
                     ),
-                    onPressed: () => Navigator.pop(context),
-                  ),
+                  ],
                 ],
               ),
             ),
-
-            // ── Body ──────────────────────────────────────────────────────
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            if (hasFile) ...[
+              const SizedBox(height: 20),
+              OrgModalSection(
+                title: 'File Attachment',
+                icon: Icons.attach_file_rounded,
+                accentColor: _DS.primary,
+                child: Row(
                   children: [
-                    // Title Row
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            report.title,
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: _DS.primary.withAlpha(20),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.insert_drive_file_rounded,
+                        size: 20,
+                        color: _DS.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            report.fileName ?? 'Attached File',
                             style: GoogleFonts.beVietnamPro(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
                               color: _DS.textPrimary,
                             ),
+                            overflow: TextOverflow.ellipsis,
                           ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: typeBgColor,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            typeLabel,
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: typeColor,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // Info Grid
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8F9FB),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: const Color(0xFFE8ECF0),
-                          width: 1,
-                        ),
-                      ),
-                      child: Column(
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _InfoItem(
-                                  label: 'Report ID',
-                                  value: report.reportId,
-                                ),
+                          if (report.fileSize != null)
+                            Text(
+                              report.fileSize!,
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 11,
+                                color: _DS.textSecondary,
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _InfoItem(
-                                  label: 'Date Submitted',
-                                  value: DateFormat(
-                                    'MMM dd, yyyy',
-                                  ).format(report.submittedAt.toDate()),
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (report.description.isNotEmpty) ...[
-                            const SizedBox(height: 12),
-                            const Divider(height: 1, color: Color(0xFFE8ECF0)),
-                            const SizedBox(height: 12),
-                            _InfoItem(
-                              label: 'Description',
-                              value: report.description,
-                              isMultiline: true,
                             ),
-                          ],
                         ],
                       ),
                     ),
+                    TextButton.icon(
+                      onPressed: () => _openAttachment(context),
+                      icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                      label: const Text('Open'),
+                      style: TextButton.styleFrom(foregroundColor: _DS.primary),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            if (showTxnSection) ...[
+              const SizedBox(height: 20),
+              OrgModalSection(
+                title: 'Event Transactions',
+                icon: Icons.account_balance_wallet_rounded,
+                accentColor: _DS.primary,
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('transactions')
+                      .where('orgId', isEqualTo: report.orgId)
+                      .snapshots(),
+                  builder: (ctx, snap) {
+                    if (snap.connectionState == ConnectionState.waiting) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        child: Center(
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                      );
+                    }
+                    if (snap.hasError) {
+                      return Text(
+                        'Failed to load transactions',
+                        style: GoogleFonts.beVietnamPro(
+                          color: const Color(0xFFDC2626),
+                          fontSize: 12,
+                        ),
+                      );
+                    }
+                    final docs = snap.data?.docs ?? [];
+                    final filteredDocs = docs.where((d) {
+                      final m = d.data() as Map<String, dynamic>;
+                      if (hasEventId) {
+                        return (m['eventId']?.toString() ?? '') ==
+                            report.eventId;
+                      }
+                      return (m['eventName']?.toString().toLowerCase() ?? '') ==
+                          report.title.toLowerCase();
+                    }).toList();
 
-                    // File Attachment
-                    if (hasFile) ...[
-                      const SizedBox(height: 20),
-                      Container(
-                        padding: const EdgeInsets.all(14),
+                    if (filteredDocs.isEmpty) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        child: Center(
+                          child: Text(
+                            'No transactions recorded for this event.',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13,
+                              color: _DS.textSecondary,
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+
+                    double total = 0.0;
+                    final items = filteredDocs.map((d) {
+                      final m = d.data() as Map<String, dynamic>;
+                      final amt = (m['amount'] ?? 0).toDouble();
+                      total += amt;
+                      final cat = m['category']?.toString() ?? '';
+                      final seg = m['segment']?.toString() ?? '';
+                      final ts = m['date'] as Timestamp?;
+                      final dateStr = ts != null
+                          ? DateFormat('MMM dd, yyyy').format(ts.toDate())
+                          : '';
+                      final type = (m['type'] ?? 'income').toString();
+                      final isIncome = type == 'income';
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF8F9FB),
-                          borderRadius: BorderRadius.circular(12),
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
                           border: Border.all(
                             color: const Color(0xFFE8ECF0),
                             width: 1,
@@ -1990,392 +2071,102 @@ class _ViewReportModal extends StatelessWidget {
                         ),
                         child: Row(
                           children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: _DS.primary.withAlpha(20),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Icon(
-                                Icons.insert_drive_file_rounded,
-                                size: 20,
-                                color: _DS.primary,
-                              ),
+                            Icon(
+                              isIncome
+                                  ? Icons.arrow_upward_rounded
+                                  : Icons.arrow_downward_rounded,
+                              size: 14,
+                              color: isIncome
+                                  ? const Color(0xFF059669)
+                                  : const Color(0xFFDC2626),
                             ),
-                            const SizedBox(width: 12),
+                            const SizedBox(width: 10),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    report.fileName ?? 'Attached File',
+                                    '$cat • $seg',
                                     style: GoogleFonts.beVietnamPro(
                                       fontSize: 13,
-                                      fontWeight: FontWeight.w500,
+                                      fontWeight: FontWeight.w600,
                                       color: _DS.textPrimary,
                                     ),
-                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                  if (report.fileSize != null)
-                                    Text(
-                                      report.fileSize!,
-                                      style: GoogleFonts.beVietnamPro(
-                                        fontSize: 11,
-                                        color: _DS.textSecondary,
-                                      ),
+                                  Text(
+                                    dateStr,
+                                    style: GoogleFonts.beVietnamPro(
+                                      fontSize: 11,
+                                      color: _DS.textSecondary,
                                     ),
+                                  ),
                                 ],
                               ),
                             ),
-                            TextButton.icon(
-                              onPressed: () => _openAttachment(context),
-                              icon: const Icon(
-                                Icons.open_in_new_rounded,
-                                size: 16,
-                              ),
-                              label: const Text('Open'),
-                              style: TextButton.styleFrom(
-                                foregroundColor: _DS.primary,
+                            Text(
+                              currency.format(amt),
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: isIncome
+                                    ? const Color(0xFF059669)
+                                    : const Color(0xFFDC2626),
                               ),
                             ),
                           ],
                         ),
-                      ),
-                    ],
+                      );
+                    }).toList();
 
-                    // Transactions
-                    if (showTxnSection) ...[
-                      const SizedBox(height: 20),
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8F9FB),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: const Color(0xFFE8ECF0),
-                            width: 1,
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: _DS.primary.withAlpha(10),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: _DS.primary.withAlpha(30),
+                              width: 1,
+                            ),
                           ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.account_balance_wallet_rounded,
-                                  size: 18,
+                          child: Row(
+                            children: [
+                              Text(
+                                'Total:',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: _DS.textSecondary,
+                                ),
+                              ),
+                              const Spacer(),
+                              Text(
+                                currency.format(total),
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w800,
                                   color: _DS.primary,
                                 ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'Event Transactions',
-                                  style: GoogleFonts.beVietnamPro(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
-                                    color: _DS.textPrimary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            StreamBuilder<QuerySnapshot>(
-                              stream: FirebaseFirestore.instance
-                                  .collection('transactions')
-                                  .where('orgId', isEqualTo: report.submittedBy)
-                                  .snapshots(),
-                              builder: (ctx, snap) {
-                                if (snap.connectionState ==
-                                    ConnectionState.waiting) {
-                                  return const Padding(
-                                    padding: EdgeInsets.symmetric(vertical: 16),
-                                    child: Center(
-                                      child: SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                }
-                                if (snap.hasError) {
-                                  return Text(
-                                    'Failed to load transactions',
-                                    style: GoogleFonts.beVietnamPro(
-                                      color: const Color(0xFFDC2626),
-                                      fontSize: 12,
-                                    ),
-                                  );
-                                }
-                                final docs = snap.data?.docs ?? [];
-                                final filteredDocs = docs.where((d) {
-                                  final m = d.data() as Map<String, dynamic>;
-                                  if (hasEventId) {
-                                    return (m['eventId']?.toString() ?? '') ==
-                                        report.eventId;
-                                  }
-                                  return (m['eventName']
-                                              ?.toString()
-                                              .toLowerCase() ??
-                                          '') ==
-                                      report.title.toLowerCase();
-                                }).toList();
-
-                                if (filteredDocs.isEmpty) {
-                                  return Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 16,
-                                    ),
-                                    child: Center(
-                                      child: Text(
-                                        'No transactions recorded for this event.',
-                                        style: GoogleFonts.beVietnamPro(
-                                          fontSize: 13,
-                                          color: _DS.textSecondary,
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                }
-
-                                double total = 0.0;
-                                final items = filteredDocs.map((d) {
-                                  final m = d.data() as Map<String, dynamic>;
-                                  final amt = (m['amount'] ?? 0).toDouble();
-                                  total += amt;
-                                  final cat = m['category']?.toString() ?? '';
-                                  final seg = m['segment']?.toString() ?? '';
-                                  final ts = m['date'] as Timestamp?;
-                                  final dateStr = ts != null
-                                      ? DateFormat(
-                                          'MMM dd, yyyy',
-                                        ).format(ts.toDate())
-                                      : '';
-                                  final type = (m['type'] ?? 'income')
-                                      .toString();
-                                  final isIncome = type == 'income';
-
-                                  return Container(
-                                    margin: const EdgeInsets.only(bottom: 6),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 10,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                        color: const Color(0xFFE8ECF0),
-                                        width: 1,
-                                      ),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Icon(
-                                          isIncome
-                                              ? Icons.arrow_upward_rounded
-                                              : Icons.arrow_downward_rounded,
-                                          size: 14,
-                                          color: isIncome
-                                              ? const Color(0xFF059669)
-                                              : const Color(0xFFDC2626),
-                                        ),
-                                        const SizedBox(width: 10),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                '$cat • $seg',
-                                                style: GoogleFonts.beVietnamPro(
-                                                  fontSize: 13,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: _DS.textPrimary,
-                                                ),
-                                              ),
-                                              Text(
-                                                dateStr,
-                                                style: GoogleFonts.beVietnamPro(
-                                                  fontSize: 11,
-                                                  color: _DS.textSecondary,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        Text(
-                                          currency.format(amt),
-                                          style: GoogleFonts.beVietnamPro(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w700,
-                                            color: isIncome
-                                                ? const Color(0xFF059669)
-                                                : const Color(0xFFDC2626),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                }).toList();
-
-                                return Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(10),
-                                      decoration: BoxDecoration(
-                                        color: _DS.primary.withAlpha(10),
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(
-                                          color: _DS.primary.withAlpha(30),
-                                          width: 1,
-                                        ),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Text(
-                                            'Total:',
-                                            style: GoogleFonts.beVietnamPro(
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.w600,
-                                              color: _DS.textSecondary,
-                                            ),
-                                          ),
-                                          const Spacer(),
-                                          Text(
-                                            currency.format(total),
-                                            style: GoogleFonts.beVietnamPro(
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.w800,
-                                              color: _DS.primary,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(height: 10),
-                                    Container(
-                                      constraints: const BoxConstraints(
-                                        maxHeight: 200,
-                                      ),
-                                      child: ListView(
-                                        shrinkWrap: true,
-                                        children: items,
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              },
-                            ),
-                          ],
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  ],
+                        const SizedBox(height: 10),
+                        Container(
+                          constraints: const BoxConstraints(maxHeight: 200),
+                          child: ListView(shrinkWrap: true, children: items),
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ),
-            ),
-
-            // ── Footer ────────────────────────────────────────────────────
-            Container(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8F9FB),
-                borderRadius: const BorderRadius.vertical(
-                  bottom: Radius.circular(20),
-                ),
-                border: Border(
-                  top: BorderSide(color: const Color(0xFFE8ECF0), width: 1),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  OutlinedButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFFE2E6EA)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 10,
-                      ),
-                    ),
-                    child: Text(
-                      'Close',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: _DS.textSecondary,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  ElevatedButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _DS.primary,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 10,
-                      ),
-                    ),
-                    child: Text(
-                      'Done',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            ],
           ],
         ),
       ),
-    );
-  }
-
-  // ── Info Item Widget ──────────────────────────────────────────────────
-  Widget _InfoItem({
-    required String label,
-    required String value,
-    bool isMultiline = false,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: _DS.textSecondary,
-            letterSpacing: 0.5,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-            color: _DS.textPrimary,
-          ),
-          maxLines: isMultiline ? 3 : 1,
-          overflow: isMultiline ? TextOverflow.ellipsis : TextOverflow.ellipsis,
-        ),
-      ],
     );
   }
 
@@ -2432,7 +2223,17 @@ class _ViewReportModal extends StatelessWidget {
 class _ReportModal extends StatefulWidget {
   final String orgId;
   final ReportModel? existingReport;
-  const _ReportModal({required this.orgId, this.existingReport});
+  // Pre-selects the event + report type when opened from the overdue-reports
+  // list, so uploading against an already-known-overdue item skips the
+  // manual "cover/event/type" picking a from-scratch upload needs.
+  final String? prefillEventId;
+  final String? prefillType;
+  const _ReportModal({
+    required this.orgId,
+    this.existingReport,
+    this.prefillEventId,
+    this.prefillType,
+  });
 
   @override
   State<_ReportModal> createState() => _ReportModalState();
@@ -2471,6 +2272,8 @@ class _ReportModalState extends State<_ReportModal> {
       _scope = r.scope;
       if ((r.schoolYear ?? '').isNotEmpty) _schoolYear = r.schoolYear!;
       if ((r.semester ?? '').isNotEmpty) _semester = r.semester!;
+    } else if (widget.prefillType != null) {
+      _type = widget.prefillType!;
     }
     _loadEvents();
   }
@@ -2516,6 +2319,8 @@ class _ReportModalState extends State<_ReportModal> {
             if (match.isNotEmpty) {
               _selectedEventId = match['id'];
             }
+          } else if (widget.prefillEventId != null) {
+            _selectedEventId = widget.prefillEventId;
           }
         });
       }
@@ -2734,152 +2539,185 @@ class _ReportModalState extends State<_ReportModal> {
     );
   }
 
+  // True when this modal was opened via the overdue-report "Upload now"
+  // shortcut — the event + report type are already known in that case, so
+  // the Covers/Event/Type pickers are replaced with a locked summary instead
+  // of asking the org officer to re-pick something that's already fixed.
+  bool get _locked =>
+      widget.existingReport == null && widget.prefillEventId != null;
+
+  Widget _buildLockedSummary() {
+    final match = _events.firstWhere(
+      (e) => e['id'] == _selectedEventId,
+      orElse: () => {},
+    );
+    final eventTitle = match['title'] as String? ?? 'Loading…';
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _DS.primary.withAlpha(15),
+        borderRadius: BorderRadius.circular(_DS.radiusSm),
+        border: Border.all(color: _DS.primary.withAlpha(46)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.event_available_rounded, size: 20, color: _DS.primary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  eventTitle,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: _DS.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${_type == 'financial' ? 'Financial' : 'Accomplishment'} '
+                  'report — auto-detected from the overdue reminder',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 11.5,
+                    color: _DS.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isEdit = widget.existingReport != null;
     final hasFile = _fileBase64 != null && _fileBase64!.isNotEmpty;
 
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Container(
-        width: 520,
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.88,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header
-            Container(
-              padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
-              decoration: BoxDecoration(
-                color: _DS.primary,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(20),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withAlpha(38),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(
-                      isEdit ? Icons.edit_outlined : Icons.upload_file_outlined,
-                      color: Colors.white,
-                      size: 18,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Text(
-                      isEdit ? 'Edit Report' : 'Upload Report',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.close_rounded,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                    onPressed: _isSubmitting
-                        ? null
-                        : () => Navigator.pop(context),
-                  ),
-                ],
-              ),
+    return OrgModalShell(
+      accentColor: _DS.primary,
+      icon: isEdit ? Icons.edit_outlined : Icons.upload_file_outlined,
+      title: isEdit ? 'Edit Report' : 'Upload Report',
+      width: 520,
+      maxHeightFraction: 0.88,
+      closeEnabled: !_isSubmitting,
+      footerActions: [
+        OutlinedButton(
+          onPressed: _isSubmitting ? null : () => Navigator.pop(context),
+          style: OutlinedButton.styleFrom(
+            side: const BorderSide(color: Color(0xFFE2E6EA)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
             ),
-            // Body
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: Form(
-                  key: _formKey,
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+          ),
+          child: Text(
+            'Cancel',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 13,
+              color: const Color(0xFF374151),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        ElevatedButton.icon(
+          onPressed: _isSubmitting || _isUploading || !_eventsLoaded
+              ? null
+              : _submit,
+          icon: _isSubmitting
+              ? const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : Icon(
+                  isEdit ? Icons.save_rounded : Icons.upload_file_outlined,
+                  size: 16,
+                ),
+          label: Text(
+            isEdit ? 'Save Changes' : 'Submit Report',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: _DS.primary,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
+            disabledBackgroundColor: _DS.primary.withAlpha(128),
+          ),
+        ),
+      ],
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (_locked) ...[
+                _buildLockedSummary(),
+                const SizedBox(height: 20),
+              ] else ...[
+                OrgModalSection(
+                  title: 'Report Details',
+                  icon: Icons.article_outlined,
+                  accentColor: _DS.primary,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _sectionLabel(
-                        'Report Details',
-                        icon: Icons.article_outlined,
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      _requiredLabel('Covers'),
+                      Row(
                         children: [
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Text(
-                              'Covers *',
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 13,
-                                color: _DS.textSecondary,
-                              ),
-                            ),
+                          _TypeCard(
+                            label: 'Specific Event',
+                            icon: Icons.event_outlined,
+                            selected: _scope == 'event',
+                            onTap: () => setState(() => _scope = 'event'),
                           ),
-                          Row(
-                            children: [
-                              _TypeCard(
-                                label: 'Specific Event',
-                                icon: Icons.event_outlined,
-                                selected: _scope == 'event',
-                                onTap: () => setState(() => _scope = 'event'),
-                              ),
-                              const SizedBox(width: 10),
-                              _TypeCard(
-                                label: 'Semester',
-                                icon: Icons.date_range_outlined,
-                                selected: _scope == 'semester',
-                                onTap: () =>
-                                    setState(() => _scope = 'semester'),
-                              ),
-                              const SizedBox(width: 10),
-                              _TypeCard(
-                                label: 'Whole School Year',
-                                icon: Icons.school_outlined,
-                                selected: _scope == 'year',
-                                onTap: () => setState(() => _scope = 'year'),
-                              ),
-                            ],
+                          const SizedBox(width: 10),
+                          _TypeCard(
+                            label: 'Semester',
+                            icon: Icons.date_range_outlined,
+                            selected: _scope == 'semester',
+                            onTap: () => setState(() => _scope = 'semester'),
+                          ),
+                          const SizedBox(width: 10),
+                          _TypeCard(
+                            label: 'Whole School Year',
+                            icon: Icons.school_outlined,
+                            selected: _scope == 'year',
+                            onTap: () => setState(() => _scope = 'year'),
                           ),
                         ],
                       ),
                       const SizedBox(height: 12),
                       if (_scope == 'event') ...[
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: Text(
-                                'Select Event *',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 13,
-                                  color: _DS.textSecondary,
-                                ),
-                              ),
+                        _requiredLabel('Select Event'),
+                        _buildEventDropdown(),
+                        if (_errorMsg != null &&
+                            _selectedEventId == null &&
+                            _errorMsg!.contains('event')) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            _errorMsg!,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 12,
+                              color: const Color(0xFFDC2626),
                             ),
-                            _buildEventDropdown(),
-                            if (_errorMsg != null &&
-                                _selectedEventId == null &&
-                                _errorMsg!.contains('event')) ...[
-                              const SizedBox(height: 6),
-                              Text(
-                                _errorMsg!,
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 12,
-                                  color: const Color(0xFFDC2626),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
+                          ),
+                        ],
                       ] else ...[
                         Row(
                           children: [
@@ -2887,17 +2725,8 @@ class _ReportModalState extends State<_ReportModal> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Padding(
-                                    padding: const EdgeInsets.only(bottom: 8),
-                                    child: Text(
-                                      'School Year *',
-                                      style: GoogleFonts.beVietnamPro(
-                                        fontSize: 13,
-                                        color: _DS.textSecondary,
-                                      ),
-                                    ),
-                                  ),
-                                  DropdownButtonFormField<String>(
+                                  _requiredLabel('School Year'),
+                                  AnchoredDropdownField<String>(
                                     value: _schoolYear,
                                     decoration: _DS.inputDecoration(
                                       'School Year',
@@ -2926,17 +2755,8 @@ class _ReportModalState extends State<_ReportModal> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Padding(
-                                      padding: const EdgeInsets.only(bottom: 8),
-                                      child: Text(
-                                        'Semester *',
-                                        style: GoogleFonts.beVietnamPro(
-                                          fontSize: 13,
-                                          color: _DS.textSecondary,
-                                        ),
-                                      ),
-                                    ),
-                                    DropdownButtonFormField<String>(
+                                    _requiredLabel('Semester'),
+                                    AnchoredDropdownField<String>(
                                       value: _semester,
                                       decoration: _DS.inputDecoration(
                                         'Semester',
@@ -2964,174 +2784,95 @@ class _ReportModalState extends State<_ReportModal> {
                         ),
                       ],
                       const SizedBox(height: 12),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Text(
-                              'Report Type',
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 13,
-                                color: _DS.textSecondary,
-                              ),
-                            ),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(
+                          'Report Type',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 13,
+                            color: _DS.textSecondary,
                           ),
-                          Row(
-                            children: [
-                              _TypeCard(
-                                label: 'Financial',
-                                icon: Icons.account_balance_outlined,
-                                selected: _type == 'financial',
-                                onTap: () =>
-                                    setState(() => _type = 'financial'),
-                              ),
-                              const SizedBox(width: 10),
-                              _TypeCard(
-                                label: 'Accomplishment',
-                                icon: Icons.assignment_turned_in_outlined,
-                                selected: _type == 'accomplishment',
-                                onTap: () =>
-                                    setState(() => _type = 'accomplishment'),
-                              ),
-                            ],
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          _TypeCard(
+                            label: 'Financial',
+                            icon: Icons.account_balance_outlined,
+                            selected: _type == 'financial',
+                            onTap: () => setState(() => _type = 'financial'),
+                          ),
+                          const SizedBox(width: 10),
+                          _TypeCard(
+                            label: 'Accomplishment',
+                            icon: Icons.assignment_turned_in_outlined,
+                            selected: _type == 'accomplishment',
+                            onTap: () =>
+                                setState(() => _type = 'accomplishment'),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _descCtrl,
-                        style: GoogleFonts.beVietnamPro(fontSize: 13),
-                        decoration: _DS.inputDecoration(
-                          'Description',
-                          hint: 'Brief description of this report…',
-                          icon: Icons.notes_rounded,
-                          maxLines: 3,
-                        ),
-                        maxLines: 3,
-                      ),
-                      const SizedBox(height: 20),
-                      _sectionLabel(
-                        'File Attachment *',
-                        icon: Icons.attach_file_rounded,
-                      ),
-                      _buildFileZone(hasFile),
-                      if (_errorMsg != null &&
-                          !_errorMsg!.contains('event')) ...[
-                        const SizedBox(height: 14),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFEF2F2),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: const Color(0xFFFCA5A5)),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.error_outline_rounded,
-                                size: 15,
-                                color: Color(0xFFDC2626),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  _errorMsg!,
-                                  style: GoogleFonts.beVietnamPro(
-                                    fontSize: 12,
-                                    color: const Color(0xFF991B1B),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
                     ],
                   ),
                 ),
-              ),
-            ),
-            // Footer
-            Container(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
-              decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: _DS.border)),
-                color: Color(0xFFF8F9FB),
-                borderRadius: BorderRadius.vertical(
-                  bottom: Radius.circular(20),
+                const SizedBox(height: 20),
+              ],
+              OrgModalSection(
+                title: 'Additional Details',
+                icon: Icons.notes_rounded,
+                accentColor: _DS.primary,
+                child: TextFormField(
+                  controller: _descCtrl,
+                  style: GoogleFonts.beVietnamPro(fontSize: 13),
+                  decoration: _DS.inputDecoration(
+                    'Description',
+                    hint: 'Brief description of this report…',
+                    icon: Icons.notes_rounded,
+                    maxLines: 3,
+                  ),
+                  maxLines: 3,
                 ),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  OutlinedButton(
-                    onPressed: _isSubmitting
-                        ? null
-                        : () => Navigator.pop(context),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFFE2E6EA)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
-                    child: Text(
-                      'Cancel',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        color: const Color(0xFF374151),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  ElevatedButton.icon(
-                    onPressed: _isSubmitting || _isUploading || !_eventsLoaded
-                        ? null
-                        : _submit,
-                    icon: _isSubmitting
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : Icon(
-                            isEdit
-                                ? Icons.save_rounded
-                                : Icons.upload_file_outlined,
-                            size: 16,
-                          ),
-                    label: Text(
-                      isEdit ? 'Save Changes' : 'Submit Report',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _DS.primary,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 11,
-                      ),
-                      disabledBackgroundColor: _DS.primary.withAlpha(128),
-                    ),
-                  ),
-                ],
+              const SizedBox(height: 20),
+              OrgModalSection(
+                title: 'File Attachment',
+                icon: Icons.attach_file_rounded,
+                accentColor: _DS.primary,
+                required: true,
+                child: _buildFileZone(hasFile),
               ),
-            ),
-          ],
+              if (_errorMsg != null && !_errorMsg!.contains('event')) ...[
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEF2F2),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFFCA5A5)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.error_outline_rounded,
+                        size: 15,
+                        color: Color(0xFFDC2626),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _errorMsg!,
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 12,
+                            color: const Color(0xFF991B1B),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );
@@ -3383,59 +3124,62 @@ class _ReportModalState extends State<_ReportModal> {
       );
     }
 
-    return GestureDetector(
-      onTap: _pickFile,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8F9FB),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: const Color(0xFFE2E6EA)),
-        ),
-        child: Column(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: _DS.primary.withAlpha(20),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                Icons.cloud_upload_rounded,
-                size: 24,
-                color: _DS.primary,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text.rich(
-              TextSpan(
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  color: _DS.textSecondary,
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: _pickFile,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8F9FB),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFE2E6EA)),
+          ),
+          child: Column(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: _DS.primary.withAlpha(20),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                children: [
-                  TextSpan(
-                    text: 'Click to browse ',
-                    style: GoogleFonts.beVietnamPro(
-                      fontWeight: FontWeight.w600,
-                      color: _DS.primary,
-                    ),
+                child: Icon(
+                  Icons.cloud_upload_rounded,
+                  size: 24,
+                  color: _DS.primary,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text.rich(
+                TextSpan(
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 13,
+                    color: _DS.textSecondary,
                   ),
-                  const TextSpan(text: 'or drop your file here'),
-                ],
+                  children: [
+                    TextSpan(
+                      text: 'Click to browse ',
+                      style: GoogleFonts.beVietnamPro(
+                        fontWeight: FontWeight.w600,
+                        color: _DS.primary,
+                      ),
+                    ),
+                    const TextSpan(text: 'or drop your file here'),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'PDF, DOC, DOCX, XLSX, JPG, PNG — max 700 KB',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 11,
-                color: _DS.textHint,
+              const SizedBox(height: 4),
+              Text(
+                'PDF, DOC, DOCX, XLSX, JPG, PNG — max 700 KB',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 11,
+                  color: _DS.textHint,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -4109,19 +3853,19 @@ class _ToolbarButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ElevatedButton.icon(
     onPressed: onPressed,
-    icon: Icon(icon, size: 18),
+    icon: Icon(icon, size: 15),
     label: Text(
       label,
       style: GoogleFonts.beVietnamPro(
-        fontSize: 14,
+        fontSize: 13,
         fontWeight: FontWeight.w600,
       ),
     ),
     style: ElevatedButton.styleFrom(
       backgroundColor: UpriseColors.primaryDark,
       foregroundColor: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       elevation: 0,
     ),
   );
@@ -4163,23 +3907,26 @@ class _PageNumButton extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: onTap,
-    child: Container(
-      margin: const EdgeInsets.symmetric(horizontal: 2),
-      width: 28,
-      height: 28,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: isActive ? _DS.primary : Colors.transparent,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        '$page',
-        style: GoogleFonts.beVietnamPro(
-          fontSize: 12,
-          fontWeight: isActive ? FontWeight.w700 : FontWeight.normal,
-          color: isActive ? Colors.white : const Color(0xFF374151),
+  Widget build(BuildContext context) => MouseRegion(
+    cursor: SystemMouseCursors.click,
+    child: GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        width: 28,
+        height: 28,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: isActive ? _DS.primary : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          '$page',
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 12,
+            fontWeight: isActive ? FontWeight.w700 : FontWeight.normal,
+            color: isActive ? Colors.white : const Color(0xFF374151),
+          ),
         ),
       ),
     ),
@@ -4201,6 +3948,7 @@ class ReportModel {
   final String status;
   final Timestamp submittedAt;
   final String submittedBy;
+  final String orgId;
   final String? eventId;
   final String scope;
   final String? schoolYear;
@@ -4218,6 +3966,7 @@ class ReportModel {
     required this.status,
     required this.submittedAt,
     required this.submittedBy,
+    this.orgId = '',
     this.eventId,
     this.scope = 'event',
     this.schoolYear,
@@ -4240,6 +3989,7 @@ class ReportModel {
       status: d['status'] as String? ?? 'pending',
       submittedAt: d['submittedAt'] as Timestamp? ?? Timestamp.now(),
       submittedBy: d['submittedBy'] as String? ?? '',
+      orgId: d['orgId'] as String? ?? '',
       eventId: d['eventId'] as String?,
       scope: d['scope'] as String? ?? 'event',
       schoolYear: d['schoolYear'] as String?,

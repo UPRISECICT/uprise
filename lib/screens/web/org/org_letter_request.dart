@@ -2317,66 +2317,69 @@ class _LetterRequestModalState extends State<_LetterRequestModal> {
       );
     }
 
-    return GestureDetector(
-      onTap: _pickFile,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: _attachmentError
-              ? const Color(0xFFFEF2F2)
-              : const Color(0xFFF8F9FB),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: _pickFile,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
             color: _attachmentError
-                ? const Color(0xFFDC2626)
-                : const Color(0xFFE2E6EA),
-            width: _attachmentError ? 1.5 : 1,
+                ? const Color(0xFFFEF2F2)
+                : const Color(0xFFF8F9FB),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: _attachmentError
+                  ? const Color(0xFFDC2626)
+                  : const Color(0xFFE2E6EA),
+              width: _attachmentError ? 1.5 : 1,
+            ),
           ),
-        ),
-        child: Column(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: _DS.primary.withOpacity(0.08),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                Icons.cloud_upload_rounded,
-                size: 24,
-                color: _DS.primary,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text.rich(
-              TextSpan(
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  color: const Color(0xFF64748B),
+          child: Column(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: _DS.primary.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                children: [
-                  TextSpan(
-                    text: 'Click to browse ',
-                    style: GoogleFonts.beVietnamPro(
-                      fontWeight: FontWeight.w600,
-                      color: _DS.primary,
-                    ),
+                child: Icon(
+                  Icons.cloud_upload_rounded,
+                  size: 24,
+                  color: _DS.primary,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text.rich(
+                TextSpan(
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 13,
+                    color: const Color(0xFF64748B),
                   ),
-                  const TextSpan(text: 'or drop your file here'),
-                ],
+                  children: [
+                    TextSpan(
+                      text: 'Click to browse ',
+                      style: GoogleFonts.beVietnamPro(
+                        fontWeight: FontWeight.w600,
+                        color: _DS.primary,
+                      ),
+                    ),
+                    const TextSpan(text: 'or drop your file here'),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Supported: PDF, DOC, DOCX, TXT, JPG, PNG — max 700 KB',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 11,
-                color: const Color(0xFF9AA5B4),
+              const SizedBox(height: 4),
+              Text(
+                'Supported: PDF, DOC, DOCX, TXT, JPG, PNG — max 700 KB',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 11,
+                  color: const Color(0xFF9AA5B4),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -2605,23 +2608,26 @@ class _PageNumButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 2),
-        width: 28,
-        height: 28,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: isActive ? _DS.primary : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(
-          '$page',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 12,
-            fontWeight: isActive ? FontWeight.w700 : FontWeight.normal,
-            color: isActive ? Colors.white : const Color(0xFF374151),
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: isActive ? _DS.primary : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            '$page',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 12,
+              fontWeight: isActive ? FontWeight.w700 : FontWeight.normal,
+              color: isActive ? Colors.white : const Color(0xFF374151),
+            ),
           ),
         ),
       ),

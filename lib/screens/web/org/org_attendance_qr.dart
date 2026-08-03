@@ -1840,23 +1840,27 @@ class _AttendanceTabState extends State<AttendanceTab>
                         ),
                         if (active) ...[
                           const Spacer(),
-                          GestureDetector(
-                            onTap: () => setState(() => _scanning = !_scanning),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                _scanning ? 'Pause' : 'Resume',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 11,
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
+                          MouseRegion(
+                            cursor: SystemMouseCursors.click,
+                            child: GestureDetector(
+                              onTap: () =>
+                                  setState(() => _scanning = !_scanning),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  _scanning ? 'Pause' : 'Resume',
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 11,
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ),
                             ),
@@ -3051,33 +3055,38 @@ class _SubTab extends StatelessWidget {
   final VoidCallback onTap;
   const _SubTab(this.label, this.selected, this.onTap);
   @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: onTap,
-    child: AnimatedContainer(
-      duration: const Duration(milliseconds: 150),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-      decoration: BoxDecoration(
-        color: selected ? UpriseColors.primaryDark : Colors.white,
-        borderRadius: BorderRadius.circular(_DS.radiusSm),
-        border: Border.all(
-          color: selected ? UpriseColors.primaryDark : const Color(0xFFE4E8EF),
+  Widget build(BuildContext context) => MouseRegion(
+    cursor: SystemMouseCursors.click,
+    child: GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+        decoration: BoxDecoration(
+          color: selected ? UpriseColors.primaryDark : Colors.white,
+          borderRadius: BorderRadius.circular(_DS.radiusSm),
+          border: Border.all(
+            color: selected
+                ? UpriseColors.primaryDark
+                : const Color(0xFFE4E8EF),
+          ),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: UpriseColors.primaryDark.withOpacity(0.20),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ]
+              : [],
         ),
-        boxShadow: selected
-            ? [
-                BoxShadow(
-                  color: UpriseColors.primaryDark.withOpacity(0.20),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
-                ),
-              ]
-            : [],
-      ),
-      child: Text(
-        label,
-        style: GoogleFonts.beVietnamPro(
-          fontSize: 13,
-          fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-          color: selected ? Colors.white : const Color(0xFF64748B),
+        child: Text(
+          label,
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 13,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            color: selected ? Colors.white : const Color(0xFF64748B),
+          ),
         ),
       ),
     ),
@@ -3096,50 +3105,55 @@ class _ModeChip extends StatelessWidget {
     this.icon,
   });
   @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: onTap,
-    child: AnimatedContainer(
-      duration: const Duration(milliseconds: 150),
-      padding: EdgeInsets.symmetric(
-        horizontal: icon != null ? 12 : 14,
-        vertical: 8,
-      ),
-      decoration: BoxDecoration(
-        color: selected ? UpriseColors.primaryDark : Colors.white,
-        borderRadius: BorderRadius.circular(_DS.radiusSm),
-        border: Border.all(
-          color: selected ? UpriseColors.primaryDark : const Color(0xFFE4E8EF),
+  Widget build(BuildContext context) => MouseRegion(
+    cursor: SystemMouseCursors.click,
+    child: GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: EdgeInsets.symmetric(
+          horizontal: icon != null ? 12 : 14,
+          vertical: 8,
         ),
-        boxShadow: selected
-            ? [
-                BoxShadow(
-                  color: UpriseColors.primaryDark.withOpacity(0.22),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
-                ),
-              ]
-            : [],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[
-            Icon(
-              icon,
-              size: 14,
-              color: selected ? Colors.white : UpriseColors.darkGray,
-            ),
-            const SizedBox(width: 6),
-          ],
-          Text(
-            label,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: selected ? Colors.white : UpriseColors.darkGray,
-            ),
+        decoration: BoxDecoration(
+          color: selected ? UpriseColors.primaryDark : Colors.white,
+          borderRadius: BorderRadius.circular(_DS.radiusSm),
+          border: Border.all(
+            color: selected
+                ? UpriseColors.primaryDark
+                : const Color(0xFFE4E8EF),
           ),
-        ],
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: UpriseColors.primaryDark.withOpacity(0.22),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ]
+              : [],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(
+                icon,
+                size: 14,
+                color: selected ? Colors.white : UpriseColors.darkGray,
+              ),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              label,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: selected ? Colors.white : UpriseColors.darkGray,
+              ),
+            ),
+          ],
+        ),
       ),
     ),
   );

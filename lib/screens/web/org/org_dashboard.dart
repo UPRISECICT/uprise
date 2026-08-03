@@ -1551,21 +1551,24 @@ class _OrgDashboardState extends State<OrgDashboard> {
       child: Row(
         children: [
           if (isMobile)
-            GestureDetector(
-              onTap: () => setState(() => _sidebarOpen = !_sidebarOpen),
-              child: Container(
-                width: 36,
-                height: 36,
-                margin: const EdgeInsets.only(right: 12),
-                decoration: BoxDecoration(
-                  color: OrgColors.lightGray,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: OrgColors.border),
-                ),
-                child: const Icon(
-                  Icons.menu_rounded,
-                  color: OrgColors.darkGray,
-                  size: 18,
+            MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: () => setState(() => _sidebarOpen = !_sidebarOpen),
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  margin: const EdgeInsets.only(right: 12),
+                  decoration: BoxDecoration(
+                    color: OrgColors.lightGray,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: OrgColors.border),
+                  ),
+                  child: const Icon(
+                    Icons.menu_rounded,
+                    color: OrgColors.darkGray,
+                    size: 18,
+                  ),
                 ),
               ),
             ),

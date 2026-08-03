@@ -114,7 +114,12 @@ class OrgModalShell extends StatelessWidget {
                 ],
               ),
             ),
-            Expanded(
+            // Flexible (not Expanded) so a modal with short content — e.g.
+            // a report with no attached transactions — shrinks to fit
+            // instead of leaving a dead gray gap between the content and
+            // the footer. Content taller than maxHeightFraction still gets
+            // capped and scrolls exactly as before.
+            Flexible(
               child: Container(color: const Color(0xFFF8F9FB), child: body),
             ),
             if (footerActions != null && footerActions!.isNotEmpty)

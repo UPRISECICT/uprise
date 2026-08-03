@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:uprise/models/event_model.dart';
 
 class DynamicRegistrationDialog extends StatefulWidget {
   final String proposalId;
@@ -156,6 +157,21 @@ class _DynamicRegistrationDialogState extends State<DynamicRegistrationDialog> {
         final eventSnap = await tx.get(eventRef);
         if (!eventSnap.exists) throw Exception('Event not found.');
         // No slot check – org does not enforce capacity limits.
+        final eventData = eventSnap.data() as Map<String, dynamic>;
+
+        final userDoc = await tx.get(
+          FirebaseFirestore.instance.collection('users').doc(user.uid),
+        );
+        final eligible = EventModel.audienceAllowsMember(
+          audience: (eventData['audience'] ?? 'Public').toString(),
+          eventOrgId: (eventData['orgId'] ?? '').toString(),
+          userData: userDoc.data(),
+        );
+        if (!eligible) {
+          throw Exception(
+            'This event is for members of the organizing club/org only.',
+          );
+        }
 
         tx.set(regRef, {
           'userId': user.uid,

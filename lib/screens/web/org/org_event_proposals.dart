@@ -2805,23 +2805,26 @@ class _PageNumButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 2),
-        width: 28,
-        height: 28,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: isActive ? UpriseColors.primaryDark : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(
-          '$page',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 12,
-            fontWeight: isActive ? FontWeight.w700 : FontWeight.normal,
-            color: isActive ? Colors.white : const Color(0xFF374151),
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: isActive ? UpriseColors.primaryDark : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            '$page',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 12,
+              fontWeight: isActive ? FontWeight.w700 : FontWeight.normal,
+              color: isActive ? Colors.white : const Color(0xFF374151),
+            ),
           ),
         ),
       ),
@@ -3308,59 +3311,62 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
 
   Widget _audienceChip(String a) {
     final selected = _selectedAudiences.contains(a);
-    return GestureDetector(
-      onTap: () => setState(() {
-        if (selected) {
-          if (_selectedAudiences.length > 1) {
-            _selectedAudiences.remove(a);
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => setState(() {
+          if (selected) {
+            if (_selectedAudiences.length > 1) {
+              _selectedAudiences.remove(a);
+            }
+          } else {
+            _selectedAudiences.add(a);
           }
-        } else {
-          _selectedAudiences.add(a);
-        }
-      }),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-        decoration: BoxDecoration(
-          color: selected
-              ? UpriseColors.primaryDark.withAlpha(20)
-              : Colors.white,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
+        }),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+          decoration: BoxDecoration(
             color: selected
-                ? UpriseColors.primaryDark
-                : const Color(0xFFE2E6EA),
-            width: selected ? 1.5 : 1,
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              selected
-                  ? Icons.check_box_rounded
-                  : Icons.check_box_outline_blank_rounded,
-              size: 18,
+                ? UpriseColors.primaryDark.withAlpha(20)
+                : Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
               color: selected
                   ? UpriseColors.primaryDark
-                  : const Color(0xFF9AA5B4),
+                  : const Color(0xFFE2E6EA),
+              width: selected ? 1.5 : 1,
             ),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                a,
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                  color: selected
-                      ? const Color(0xFF1A202C)
-                      : const Color(0xFF64748B),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                selected
+                    ? Icons.check_box_rounded
+                    : Icons.check_box_outline_blank_rounded,
+                size: 18,
+                color: selected
+                    ? UpriseColors.primaryDark
+                    : const Color(0xFF9AA5B4),
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  a,
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 13,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                    color: selected
+                        ? const Color(0xFF1A202C)
+                        : const Color(0xFF64748B),
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -3814,58 +3820,61 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
     );
   }
 
-  Widget _imageIdleState() => GestureDetector(
-    onTap: _pickImage,
-    behavior: HitTestBehavior.opaque,
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: UpriseColors.primaryDark.withAlpha(20),
-            borderRadius: BorderRadius.circular(10),
+  Widget _imageIdleState() => MouseRegion(
+    cursor: SystemMouseCursors.click,
+    child: GestureDetector(
+      onTap: _pickImage,
+      behavior: HitTestBehavior.opaque,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: UpriseColors.primaryDark.withAlpha(20),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              Icons.image_outlined,
+              size: 24,
+              color: UpriseColors.primaryDark,
+            ),
           ),
-          child: Icon(
-            Icons.image_outlined,
-            size: 24,
-            color: UpriseColors.primaryDark,
-          ),
-        ),
-        const SizedBox(width: 14),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            RichText(
-              text: TextSpan(
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  color: const Color(0xFF64748B),
-                ),
-                children: [
-                  TextSpan(
-                    text: 'Click to upload event image ',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 13,
-                      color: UpriseColors.primaryDark,
-                      fontWeight: FontWeight.w600,
-                    ),
+          const SizedBox(width: 14),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              RichText(
+                text: TextSpan(
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 13,
+                    color: const Color(0xFF64748B),
                   ),
-                  const TextSpan(text: '(JPG, PNG)'),
-                ],
+                  children: [
+                    TextSpan(
+                      text: 'Click to upload event image ',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        color: UpriseColors.primaryDark,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const TextSpan(text: '(JPG, PNG)'),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              'Max 700 KB',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 11,
-                color: const Color(0xFF9AA5B4),
+              const SizedBox(height: 2),
+              Text(
+                'Max 700 KB',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 11,
+                  color: const Color(0xFF9AA5B4),
+                ),
               ),
-            ),
-          ],
-        ),
-      ],
+            ],
+          ),
+        ],
+      ),
     ),
   );
 
@@ -4013,58 +4022,61 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
     );
   }
 
-  Widget _attachmentIdleState() => GestureDetector(
-    onTap: _pickAttachment,
-    behavior: HitTestBehavior.opaque,
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: UpriseColors.primaryDark.withAlpha(20),
-            borderRadius: BorderRadius.circular(10),
+  Widget _attachmentIdleState() => MouseRegion(
+    cursor: SystemMouseCursors.click,
+    child: GestureDetector(
+      onTap: _pickAttachment,
+      behavior: HitTestBehavior.opaque,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: UpriseColors.primaryDark.withAlpha(20),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              Icons.cloud_upload_outlined,
+              size: 24,
+              color: UpriseColors.primaryDark,
+            ),
           ),
-          child: Icon(
-            Icons.cloud_upload_outlined,
-            size: 24,
-            color: UpriseColors.primaryDark,
-          ),
-        ),
-        const SizedBox(width: 14),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            RichText(
-              text: TextSpan(
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  color: const Color(0xFF64748B),
-                ),
-                children: [
-                  TextSpan(
-                    text: 'Click to upload attachment ',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 13,
-                      color: UpriseColors.primaryDark,
-                      fontWeight: FontWeight.w600,
-                    ),
+          const SizedBox(width: 14),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              RichText(
+                text: TextSpan(
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 13,
+                    color: const Color(0xFF64748B),
                   ),
-                  const TextSpan(text: '(PDF, DOC, etc.)'),
-                ],
+                  children: [
+                    TextSpan(
+                      text: 'Click to upload attachment ',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        color: UpriseColors.primaryDark,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const TextSpan(text: '(PDF, DOC, etc.)'),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              'PDF, DOC, DOCX, TXT, JPG, PNG — max 700 KB',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 11,
-                color: const Color(0xFF9AA5B4),
+              const SizedBox(height: 2),
+              Text(
+                'PDF, DOC, DOCX, TXT, JPG, PNG — max 700 KB',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 11,
+                  color: const Color(0xFF9AA5B4),
+                ),
               ),
-            ),
-          ],
-        ),
-      ],
+            ],
+          ),
+        ],
+      ),
     ),
   );
 

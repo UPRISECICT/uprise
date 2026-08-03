@@ -15,11 +15,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:excel/excel.dart' hide Border;
+import 'package:excel/excel.dart' hide Border, TextSpan;
 import 'package:csv/csv.dart';
 import 'package:cross_file/cross_file.dart';
 import 'package:http/http.dart' as http;
 import '../../../services/activity_logger.dart' as activity_log;
+import '../../../theme/org_theme.dart';
+import '../../../widgets/org_modal_shell.dart';
 
 final RegExp _emailPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
 
@@ -31,6 +33,7 @@ const Map<String, int> _standardPositionRanks = {
   'Treasurer': 2,
   'Business Manager': 3,
   'Board Member': 3,
+  'Student Adviser': 3,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -242,14 +245,17 @@ class AdviserInfo {
   };
 
   bool get isEmpty => name.trim().isEmpty;
-  bool get isStudentAdviser => type == 'student';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design Tokens — identical to StudentAccounts / OrgAnnouncements
 // ─────────────────────────────────────────────────────────────────────────────
 class _C {
-  static const Color primaryDark = Color(0xFFEA580C);
+  // Was a stale, more-vivid orange (0xFFEA580C) that didn't match the
+  // deepened brand primary the rest of the org portal was moved to (see
+  // theme/org_theme.dart's UpriseColors.primaryDark) — same drift bug as
+  // org_events_schedule.dart / org_reports.dart had.
+  static const Color primaryDark = UpriseColors.primaryDark;
   static const Color accent = Color(0xFFF97316);
 
   static const Color white = Color(0xFFFFFFFF);
@@ -330,9 +336,43 @@ Widget _sectionLabel(String title, {IconData? icon}) {
   );
 }
 
+// Required fields are labeled "Foo *" — the asterisk used to render in the
+// same muted gray as the rest of the label and was easy to miss. Splitting
+// it into its own red TextSpan (matching org_event_proposals.dart's
+// _orgEventProposalsInputDecoration / org_reports.dart's _DS.inputDecoration)
+// makes it actually stand out.
 InputDecoration _inputDecoration(String label, {String? hint, IconData? icon}) {
+  final trimmed = label.trimRight();
+  final isRequired = trimmed.endsWith('*');
+  final baseLabel = isRequired
+      ? trimmed.substring(0, trimmed.length - 1).trimRight()
+      : label;
+
   return InputDecoration(
-    labelText: label,
+    labelText: isRequired ? null : label,
+    label: isRequired
+        ? RichText(
+            text: TextSpan(
+              children: [
+                TextSpan(
+                  text: baseLabel,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 13,
+                    color: _C.darkGray,
+                  ),
+                ),
+                TextSpan(
+                  text: ' *',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 13,
+                    color: _C.error,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          )
+        : null,
     hintText: hint,
     prefixIcon: icon != null ? Icon(icon, size: 18, color: _C.textFaint) : null,
     labelStyle: GoogleFonts.beVietnamPro(fontSize: 13, color: _C.darkGray),
@@ -1131,8 +1171,9 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
   }
 
   // ── Adviser Card ──────────────────────────────────────────────────────────
-  // Orgs can list up to 3 advisers (one of which may be tagged as a Student
-  // Adviser rather than a faculty adviser).
+  // Orgs can list up to 3 advisers here. "Student Adviser" is not an adviser
+  // type — it's an officer position (see _standardPositions in the Officer
+  // modal) — so every slot here is just a regular faculty adviser.
   Widget _buildAdviserCard() {
     return _card(
       child: Column(
@@ -1147,20 +1188,32 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
                 ),
               ),
               if (_advisers.length < 3)
-                TextButton.icon(
+                ElevatedButton.icon(
                   onPressed: _openEditProfile,
                   icon: const Icon(
                     Icons.add_rounded,
                     size: 15,
-                    color: _C.primaryDark,
+                    color: Colors.white,
                   ),
                   label: Text(
                     'Add Adviser',
                     style: GoogleFonts.beVietnamPro(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: _C.primaryDark,
+                      color: Colors.white,
                     ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _C.primaryDark,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 9,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    elevation: 0,
                   ),
                 ),
             ],
@@ -1313,28 +1366,6 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
                       ),
                     ),
                   ),
-                  if (a.isStudentAdviser) ...[
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _C.info.withOpacity(0.10),
-                        borderRadius: BorderRadius.circular(_DS.radiusPill),
-                      ),
-                      child: Text(
-                        'Student Adviser',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: _C.info,
-                          letterSpacing: 0.4,
-                        ),
-                      ),
-                    ),
-                  ],
                 ],
               ),
               if (a.title.isNotEmpty) ...[
@@ -1423,10 +1454,10 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
                   ),
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: _C.success,
+                  backgroundColor: _C.primaryDark,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
+                    horizontal: 12,
                     vertical: 9,
                   ),
                   shape: RoundedRectangleBorder(
@@ -1573,6 +1604,29 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
               Expanded(
                 child: _sectionLabel('Members', icon: Icons.groups_outlined),
               ),
+              OutlinedButton.icon(
+                onPressed: _showMemberBatchImportDialog,
+                icon: const Icon(Icons.upload_file_outlined, size: 15),
+                label: Text(
+                  'Batch Import',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _C.primaryDark,
+                  side: const BorderSide(color: _C.borderSoft),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 9,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
               ElevatedButton.icon(
                 onPressed: _showAddMemberDialog,
                 icon: const Icon(
@@ -2148,65 +2202,8 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
     final searchCtrl = TextEditingController();
     List<Map<String, dynamic>> results = [];
     bool isLoading = false;
-
-    Future<void> loadStudents(String query) async {
-      if (!mounted) return;
-      setState(() => isLoading = true);
-      try {
-        final snap = await FirebaseFirestore.instance
-            .collection('students')
-            .orderBy('fullName')
-            .get();
-        final filtered = snap.docs
-            .map((doc) {
-              final data = doc.data();
-              final firstName = (data['firstName'] ?? '').toString();
-              final lastName = (data['lastName'] ?? '').toString();
-              final fullName = (data['fullName'] ?? '').toString();
-              final email = (data['email'] ?? '').toString();
-              final studentId = (data['studentId'] ?? '').toString();
-              final displayName = fullName.isNotEmpty
-                  ? fullName
-                  : [
-                      firstName,
-                      lastName,
-                    ].where((s) => s.isNotEmpty).join(' ').trim();
-              final isMember =
-                  (data['orgId'] ?? '') == widget.orgId &&
-                  (data['orgRole'] ?? '') == 'member';
-
-              return {
-                'uid': doc.id,
-                'name': displayName,
-                'email': email,
-                'studentId': studentId,
-                'isMember': isMember,
-              };
-            })
-            .where((item) {
-              final q = query.trim().toLowerCase();
-              if (q.isEmpty) return true;
-              final name = (item['name'] as String).toLowerCase();
-              final email = (item['email'] as String).toLowerCase();
-              final studentId = (item['studentId'] as String).toLowerCase();
-              return name.contains(q) ||
-                  email.contains(q) ||
-                  studentId.contains(q);
-            })
-            .toList();
-
-        if (mounted) {
-          setState(() {
-            results = filtered;
-            isLoading = false;
-          });
-        }
-      } catch (_) {
-        if (mounted) {
-          setState(() => isLoading = false);
-        }
-      }
-    }
+    bool hasLoadedOnce = false;
+    String? errorMsg;
 
     showDialog(
       context: context,
@@ -2215,7 +2212,10 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) {
           Future<void> localLoad(String query) async {
-            setDialogState(() => isLoading = true);
+            setDialogState(() {
+              isLoading = true;
+              errorMsg = null;
+            });
             try {
               final snap = await FirebaseFirestore.instance
                   .collection('students')
@@ -2262,64 +2262,35 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
                 results = filtered;
                 isLoading = false;
               });
-            } catch (_) {
-              setDialogState(() => isLoading = false);
+            } catch (e) {
+              setDialogState(() {
+                isLoading = false;
+                errorMsg = 'Could not load students: $e';
+              });
             }
           }
 
-          return Dialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Container(
-              width: 560,
+          if (!hasLoadedOnce) {
+            hasLoadedOnce = true;
+            WidgetsBinding.instance.addPostFrameCallback(
+              (_) => localLoad(searchCtrl.text),
+            );
+          }
+
+          return OrgModalShell(
+            accentColor: _C.primaryDark,
+            icon: Icons.person_add_alt_1_rounded,
+            title: 'Add or Remove Members',
+            subtitle:
+                'Search the admin-managed student list and add or remove members for this org.',
+            width: 560,
+            maxHeightFraction: 0.85,
+            body: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 38,
-                        height: 38,
-                        decoration: BoxDecoration(
-                          color: _C.primaryDark.withOpacity(0.10),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(
-                          Icons.person_add_alt_1_rounded,
-                          color: _C.primaryDark,
-                          size: 18,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Add or Remove Members',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w700,
-                            color: _C.charcoal,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close_rounded, size: 20),
-                        onPressed: () => Navigator.pop(ctx),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Search the admin-managed student list and add or remove members for this org.',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11.5,
-                      color: _C.darkGray,
-                      height: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
                   TextField(
                     controller: searchCtrl,
                     decoration: _inputDecoration(
@@ -2338,6 +2309,34 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
                         child: CircularProgressIndicator(color: _C.primaryDark),
                       ),
                     )
+                  else if (errorMsg != null)
+                    Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: _C.errorBg,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFFCA5A5)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.error_outline_rounded,
+                            size: 16,
+                            color: _C.error,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              errorMsg!,
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 12,
+                                color: const Color(0xFF991B1B),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
                   else if (results.isEmpty)
                     Container(
                       padding: const EdgeInsets.all(18),
@@ -2347,7 +2346,9 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
                         border: Border.all(color: _C.borderSoft),
                       ),
                       child: Text(
-                        'No students found for this search.',
+                        searchCtrl.text.trim().isEmpty
+                            ? 'No students in the roster yet.'
+                            : 'No students found for this search.',
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 12,
                           color: _C.darkGray,
@@ -2487,358 +2488,300 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
       barrierDismissible: false,
       barrierColor: Colors.black54,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: SizedBox(
-            width: 540,
+        builder: (ctx, setDialogState) => OrgModalShell(
+          accentColor: _C.primaryDark,
+          icon: Icons.upload_file_rounded,
+          title: 'Batch Import Members',
+          width: 540,
+          closeEnabled: !isUploading,
+          footerActions: [
+            TextButton(
+              onPressed: isUploading ? null : () => Navigator.pop(ctx),
+              child: Text(
+                'Cancel',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: _C.darkGray,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            ElevatedButton.icon(
+              onPressed: isUploading || pickedFile == null
+                  ? null
+                  : () async {
+                      setDialogState(() {
+                        isUploading = true;
+                        resultMessage = null;
+                      });
+                      try {
+                        final rows = await _parseMemberFile(pickedFile!);
+                        if (rows.isEmpty) {
+                          throw Exception(
+                            'No valid data found. Check column order.',
+                          );
+                        }
+                        // _createMemberAccount doesn't create a new
+                        // account — it only tags an *existing* student
+                        // account matched by email, and reports whether
+                        // that tag actually happened via `tagged`. The
+                        // old code here ignored that flag and counted
+                        // every row that didn't throw as a "success", so
+                        // an import full of emails with no matching
+                        // student account still reported as fully
+                        // successful.
+                        int tagged = 0, notFound = 0, failed = 0;
+                        final notFoundEmails = <String>[];
+                        for (final r in rows) {
+                          try {
+                            final createdCred = await _createMemberAccount(r);
+                            if (createdCred['tagged'] == true) {
+                              tagged++;
+                            } else {
+                              notFound++;
+                              final email = (r['email'] ?? '').trim();
+                              if (email.isNotEmpty) {
+                                notFoundEmails.add(email);
+                              }
+                            }
+                          } catch (_) {
+                            failed++;
+                          }
+                        }
+                        final summary = <String>[
+                          '$tagged added',
+                          if (notFound > 0)
+                            '$notFound had no matching student account',
+                          if (failed > 0) '$failed failed',
+                        ].join(', ');
+                        final clean = notFound == 0 && failed == 0;
+                        setDialogState(() {
+                          isUploading = false;
+                          resultMessage = notFoundEmails.isEmpty
+                              ? 'Import complete: $summary.'
+                              : 'Import complete: $summary.\n'
+                                    'No account found for: '
+                                    '${notFoundEmails.take(5).join(', ')}'
+                                    '${notFoundEmails.length > 5 ? ', …' : ''}';
+                          resultIsError = tagged == 0;
+                        });
+                        if (tagged > 0 && clean) {
+                          final navigator = Navigator.of(ctx);
+                          Future.delayed(const Duration(seconds: 2), () {
+                            if (mounted) {
+                              navigator.pop();
+                              _snack('$tagged members imported successfully.');
+                            }
+                          });
+                        }
+                      } catch (e) {
+                        setDialogState(() {
+                          isUploading = false;
+                          resultMessage = 'Error: $e';
+                          resultIsError = true;
+                        });
+                      }
+                    },
+              icon: isUploading
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.upload_rounded, size: 16),
+              label: Text(
+                'Upload & Import',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _C.primaryDark,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 11,
+                ),
+              ),
+            ),
+          ],
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
-                  decoration: BoxDecoration(
-                    color: _C.primaryDark,
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(18),
+                _sectionLabel('Select File', icon: Icons.attach_file_rounded),
+                MouseRegion(
+                  cursor: isUploading
+                      ? MouseCursor.defer
+                      : SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: isUploading
+                        ? null
+                        : () async {
+                            final result = await FilePicker.platform.pickFiles(
+                              type: FileType.custom,
+                              allowedExtensions: ['xlsx', 'xls', 'csv'],
+                            );
+                            if (result != null) {
+                              setDialogState(() {
+                                if (kIsWeb) {
+                                  pickedFile = XFile.fromData(
+                                    result.files.single.bytes!,
+                                    name: result.files.single.name,
+                                  );
+                                } else {
+                                  pickedFile = XFile(result.files.single.path!);
+                                }
+                                fileName = result.files.single.name;
+                                resultMessage = null;
+                              });
+                            }
+                          },
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: fileName.isEmpty
+                            ? _C.surface
+                            : const Color(0xFFECFDF5),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: fileName.isEmpty ? _C.borderSoft : _C.success,
+                          width: fileName.isEmpty ? 1 : 1.5,
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          Icon(
+                            fileName.isEmpty
+                                ? Icons.cloud_upload_rounded
+                                : Icons.check_circle_rounded,
+                            size: 36,
+                            color: fileName.isEmpty ? _C.textFaint : _C.success,
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            fileName.isEmpty
+                                ? 'Click to browse or drop your file here'
+                                : fileName,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: fileName.isEmpty
+                                  ? _C.darkGray
+                                  : _C.success,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Supported: .xlsx, .xls, .csv',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 11,
+                              color: _C.textFaint,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 38,
-                        height: 38,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(
-                          Icons.upload_file_rounded,
-                          color: Colors.white,
-                          size: 18,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Text(
-                          'Batch Import Members',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(
-                          Icons.close_rounded,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                        onPressed: isUploading
-                            ? null
-                            : () => Navigator.pop(ctx),
-                      ),
-                    ],
-                  ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0F6FF),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFBFD7FF)),
+                  ),
+                  child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _sectionLabel(
-                        'Select File',
-                        icon: Icons.attach_file_rounded,
+                      const Icon(
+                        Icons.info_outline_rounded,
+                        size: 15,
+                        color: Color(0xFF2563EB),
                       ),
-                      GestureDetector(
-                        onTap: isUploading
-                            ? null
-                            : () async {
-                                final result = await FilePicker.platform
-                                    .pickFiles(
-                                      type: FileType.custom,
-                                      allowedExtensions: ['xlsx', 'xls', 'csv'],
-                                    );
-                                if (result != null) {
-                                  setDialogState(() {
-                                    if (kIsWeb) {
-                                      pickedFile = XFile.fromData(
-                                        result.files.single.bytes!,
-                                        name: result.files.single.name,
-                                      );
-                                    } else {
-                                      pickedFile = XFile(
-                                        result.files.single.path!,
-                                      );
-                                    }
-                                    fileName = result.files.single.name;
-                                    resultMessage = null;
-                                  });
-                                }
-                              },
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: fileName.isEmpty
-                                ? _C.surface
-                                : const Color(0xFFECFDF5),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: fileName.isEmpty
-                                  ? _C.borderSoft
-                                  : _C.success,
-                              width: fileName.isEmpty ? 1 : 1.5,
-                            ),
-                          ),
-                          child: Column(
-                            children: [
-                              Icon(
-                                fileName.isEmpty
-                                    ? Icons.cloud_upload_rounded
-                                    : Icons.check_circle_rounded,
-                                size: 36,
-                                color: fileName.isEmpty
-                                    ? _C.textFaint
-                                    : _C.success,
-                              ),
-                              const SizedBox(height: 10),
-                              Text(
-                                fileName.isEmpty
-                                    ? 'Click to browse or drop your file here'
-                                    : fileName,
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: fileName.isEmpty
-                                      ? _C.darkGray
-                                      : _C.success,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Supported: .xlsx, .xls, .csv',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 11,
-                                  color: _C.textFaint,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF0F6FF),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0xFFBFD7FF)),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Icon(
-                              Icons.info_outline_rounded,
-                              size: 15,
-                              color: Color(0xFF2563EB),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                'Columns (in order): Member ID (optional) · Full Name · Email',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 12,
-                                  color: const Color(0xFF1D4ED8),
-                                  height: 1.5,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (isUploading) ...[
-                        const SizedBox(height: 16),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: LinearProgressIndicator(
-                            backgroundColor: _C.borderSoft,
-                            color: _C.primaryDark,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Importing members…',
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Columns (in order): Member ID (optional) · Full Name · Email',
                           style: GoogleFonts.beVietnamPro(
                             fontSize: 12,
-                            color: _C.darkGray,
+                            color: const Color(0xFF1D4ED8),
+                            height: 1.5,
                           ),
                         ),
-                      ],
-                      if (resultMessage != null) ...[
-                        const SizedBox(height: 14),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: resultIsError
-                                ? _C.errorBg
-                                : const Color(0xFFECFDF5),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
+                      ),
+                    ],
+                  ),
+                ),
+                if (isUploading) ...[
+                  const SizedBox(height: 16),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      backgroundColor: _C.borderSoft,
+                      color: _C.primaryDark,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Importing members…',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 12,
+                      color: _C.darkGray,
+                    ),
+                  ),
+                ],
+                if (resultMessage != null) ...[
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: resultIsError
+                          ? _C.errorBg
+                          : const Color(0xFFECFDF5),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: resultIsError
+                            ? const Color(0xFFFCA5A5)
+                            : const Color(0xFF6EE7B7),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          resultIsError
+                              ? Icons.error_outline_rounded
+                              : Icons.check_circle_outline_rounded,
+                          size: 16,
+                          color: resultIsError ? _C.error : _C.success,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            resultMessage!,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 12,
                               color: resultIsError
-                                  ? const Color(0xFFFCA5A5)
-                                  : const Color(0xFF6EE7B7),
+                                  ? const Color(0xFF991B1B)
+                                  : const Color(0xFF065F46),
                             ),
                           ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                resultIsError
-                                    ? Icons.error_outline_rounded
-                                    : Icons.check_circle_outline_rounded,
-                                size: 16,
-                                color: resultIsError ? _C.error : _C.success,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  resultMessage!,
-                                  style: GoogleFonts.beVietnamPro(
-                                    fontSize: 12,
-                                    color: resultIsError
-                                        ? const Color(0xFF991B1B)
-                                        : const Color(0xFF065F46),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
                         ),
                       ],
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
-                  decoration: BoxDecoration(
-                    border: const Border(
-                      top: BorderSide(color: Color(0xFFE8ECF0)),
-                    ),
-                    color: _C.surface,
-                    borderRadius: const BorderRadius.vertical(
-                      bottom: Radius.circular(18),
                     ),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      TextButton(
-                        onPressed: isUploading
-                            ? null
-                            : () => Navigator.pop(ctx),
-                        child: Text(
-                          'Cancel',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13,
-                            color: _C.darkGray,
-                          ),
-                        ),
-                      ),
-                      ElevatedButton.icon(
-                        onPressed: isUploading || pickedFile == null
-                            ? null
-                            : () async {
-                                setDialogState(() {
-                                  isUploading = true;
-                                  resultMessage = null;
-                                });
-                                try {
-                                  final rows = await _parseMemberFile(
-                                    pickedFile!,
-                                  );
-                                  if (rows.isEmpty) {
-                                    throw Exception(
-                                      'No valid data found. Check column order.',
-                                    );
-                                  }
-                                  int success = 0, failed = 0, failedEmails = 0;
-                                  for (final r in rows) {
-                                    try {
-                                      final createdCred =
-                                          await _createMemberAccount(r);
-                                      // _createMemberAccount already tries to
-                                      // send + queue on failure; track it here
-                                      // only to report an accurate summary.
-                                      if (createdCred['email'] == null) {
-                                        failedEmails++;
-                                      }
-                                      success++;
-                                    } catch (_) {
-                                      failed++;
-                                    }
-                                  }
-                                  setDialogState(() {
-                                    isUploading = false;
-                                    resultMessage =
-                                        'Import complete: $success created, $failed skipped.';
-                                    resultIsError = failed > 0 && success == 0;
-                                  });
-                                  if (success > 0) {
-                                    Future.delayed(
-                                      const Duration(seconds: 2),
-                                      () {
-                                        if (mounted) {
-                                          Navigator.pop(ctx);
-                                          _snack(
-                                            '$success members imported successfully.',
-                                          );
-                                        }
-                                      },
-                                    );
-                                  }
-                                } catch (e) {
-                                  setDialogState(() {
-                                    isUploading = false;
-                                    resultMessage = 'Error: $e';
-                                    resultIsError = true;
-                                  });
-                                }
-                              },
-                        icon: isUploading
-                            ? const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Icon(Icons.upload_rounded, size: 16),
-                        label: Text(
-                          'Upload & Import',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _C.primaryDark,
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 11,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                ],
               ],
             ),
           ),
@@ -3668,20 +3611,16 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
   final _a1TitleCtrl = TextEditingController();
   final _a1EmailCtrl = TextEditingController();
   final _a1PhoneCtrl = TextEditingController();
-  String _a1Type = 'faculty';
   // Co-adviser (slot 2 — optional).
   final _a2NameCtrl = TextEditingController();
   final _a2TitleCtrl = TextEditingController();
   final _a2EmailCtrl = TextEditingController();
   final _a2PhoneCtrl = TextEditingController();
-  String _a2Type = 'faculty';
   // Third adviser (slot 3 — optional, capped at 3 total advisers per org).
-  // Commonly used for a Student Adviser, but any slot can be marked as one.
   final _a3NameCtrl = TextEditingController();
   final _a3TitleCtrl = TextEditingController();
   final _a3EmailCtrl = TextEditingController();
   final _a3PhoneCtrl = TextEditingController();
-  String _a3Type = 'student';
   final _fbCtrl = TextEditingController();
   final _igCtrl = TextEditingController();
   final _twCtrl = TextEditingController();
@@ -3706,7 +3645,6 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
       _a1TitleCtrl.text = widget.advisers[0].title;
       _a1EmailCtrl.text = widget.advisers[0].email;
       _a1PhoneCtrl.text = widget.advisers[0].phone;
-      _a1Type = widget.advisers[0].type;
     }
     if (widget.advisers.length > 1) {
       _hasSecondAdviser = true;
@@ -3714,7 +3652,6 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
       _a2TitleCtrl.text = widget.advisers[1].title;
       _a2EmailCtrl.text = widget.advisers[1].email;
       _a2PhoneCtrl.text = widget.advisers[1].phone;
-      _a2Type = widget.advisers[1].type;
     }
     if (widget.advisers.length > 2) {
       _hasThirdAdviser = true;
@@ -3722,7 +3659,6 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
       _a3TitleCtrl.text = widget.advisers[2].title;
       _a3EmailCtrl.text = widget.advisers[2].email;
       _a3PhoneCtrl.text = widget.advisers[2].phone;
-      _a3Type = widget.advisers[2].type;
     }
     _fbCtrl.text = widget.facebook;
     _igCtrl.text = widget.instagram;
@@ -3854,7 +3790,6 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
         title: _a1TitleCtrl.text.trim(),
         email: _a1EmailCtrl.text.trim(),
         phone: _a1PhoneCtrl.text.trim(),
-        type: _a1Type,
       ),
       if (_hasSecondAdviser && _a2NameCtrl.text.trim().isNotEmpty)
         AdviserInfo(
@@ -3862,7 +3797,6 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
           title: _a2TitleCtrl.text.trim(),
           email: _a2EmailCtrl.text.trim(),
           phone: _a2PhoneCtrl.text.trim(),
-          type: _a2Type,
         ),
       if (_hasThirdAdviser && _a3NameCtrl.text.trim().isNotEmpty)
         AdviserInfo(
@@ -3870,7 +3804,6 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
           title: _a3TitleCtrl.text.trim(),
           email: _a3EmailCtrl.text.trim(),
           phone: _a3PhoneCtrl.text.trim(),
-          type: _a3Type,
         ),
     ].where((a) => !a.isEmpty).toList();
     final primary = advisers.isNotEmpty ? advisers.first : const AdviserInfo();
@@ -3957,39 +3890,18 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
     );
   }
 
+  // 'Student Adviser' used to be a selectable type here, but it's really an
+  // officer position, not a distinct kind of adviser — it's now a standard
+  // position choice in the Officer modal instead (see _standardPositions).
   Widget _adviserFields({
     required TextEditingController nameCtrl,
     required TextEditingController titleCtrl,
     required TextEditingController phoneCtrl,
     required TextEditingController emailCtrl,
-    required String type,
-    required ValueChanged<String> onTypeChanged,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: _adviserTypeChip(
-                label: 'Faculty Adviser',
-                icon: Icons.school_outlined,
-                selected: type == 'faculty',
-                onTap: () => onTypeChanged('faculty'),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _adviserTypeChip(
-                label: 'Student Adviser',
-                icon: Icons.badge_outlined,
-                selected: type == 'student',
-                onTap: () => onTypeChanged('student'),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
         Row(
           children: [
             Expanded(
@@ -4044,48 +3956,6 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _adviserTypeChip({
-    required String label,
-    required IconData icon,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: selected ? _C.primaryDark.withOpacity(0.08) : _C.surface,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: selected ? _C.primaryDark.withOpacity(0.4) : _C.borderSoft,
-            width: selected ? 1.5 : 1,
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 15,
-              color: selected ? _C.primaryDark : _C.textFaint,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w600,
-                color: selected ? _C.primaryDark : _C.darkGray,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -4395,8 +4265,6 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
                     titleCtrl: _a1TitleCtrl,
                     phoneCtrl: _a1PhoneCtrl,
                     emailCtrl: _a1EmailCtrl,
-                    type: _a1Type,
-                    onTypeChanged: (t) => setState(() => _a1Type = t),
                   ),
                   const SizedBox(height: 18),
 
@@ -4422,7 +4290,6 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
                             _a2TitleCtrl.clear();
                             _a2EmailCtrl.clear();
                             _a2PhoneCtrl.clear();
-                            _a2Type = 'faculty';
                           }),
                         ),
                       ],
@@ -4433,8 +4300,6 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
                       titleCtrl: _a2TitleCtrl,
                       phoneCtrl: _a2PhoneCtrl,
                       emailCtrl: _a2EmailCtrl,
-                      type: _a2Type,
-                      onTypeChanged: (t) => setState(() => _a2Type = t),
                     ),
                     const SizedBox(height: 18),
                   ] else
@@ -4480,7 +4345,6 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
                             _a3TitleCtrl.clear();
                             _a3EmailCtrl.clear();
                             _a3PhoneCtrl.clear();
-                            _a3Type = 'student';
                           }),
                         ),
                       ],
@@ -4491,8 +4355,6 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
                       titleCtrl: _a3TitleCtrl,
                       phoneCtrl: _a3PhoneCtrl,
                       emailCtrl: _a3EmailCtrl,
-                      type: _a3Type,
-                      onTypeChanged: (t) => setState(() => _a3Type = t),
                     ),
                   ] else if (_hasSecondAdviser)
                     OutlinedButton.icon(
@@ -4683,6 +4545,7 @@ class _OfficerModalState extends State<_OfficerModal> {
     'Treasurer',
     'Business Manager',
     'Board Member',
+    'Student Adviser',
   ];
 
   @override
@@ -4855,306 +4718,215 @@ class _OfficerModalState extends State<_OfficerModal> {
   @override
   Widget build(BuildContext context) {
     final isEdit = widget.existingOfficer != null;
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      child: Container(
-        width: 500,
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.88,
+    return OrgModalShell(
+      accentColor: _C.primaryDark,
+      icon: isEdit ? Icons.edit_outlined : Icons.person_add_alt_1_rounded,
+      title: isEdit ? 'Edit Officer' : 'Add New Officer',
+      subtitle: isEdit
+          ? 'Update officer information'
+          : 'Add a new officer to your organization',
+      width: 500,
+      maxHeightFraction: 0.88,
+      closeEnabled: !_isSaving,
+      footerActions: [
+        Expanded(
+          child: OutlinedButton(
+            onPressed: () => Navigator.pop(context),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: _C.borderSoft),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              padding: const EdgeInsets.symmetric(vertical: 13),
+            ),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: _C.textMid,
+              ),
+            ),
+          ),
         ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: ElevatedButton(
+            onPressed: _isSaving ? null : _save,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _C.primaryDark,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              padding: const EdgeInsets.symmetric(vertical: 13),
+            ),
+            child: _isSaving
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  )
+                : Text(
+                    isEdit ? 'Update Officer' : 'Add Officer',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+          ),
+        ),
+      ],
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
-            Container(
-              padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
-              decoration: const BoxDecoration(
-                color: _C.primaryDark,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-              ),
-              child: Row(
+            // Photo picker
+            Center(
+              child: Column(
                 children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(
-                      isEdit
-                          ? Icons.edit_outlined
-                          : Icons.person_add_alt_1_rounded,
-                      color: Colors.white,
-                      size: 18,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          isEdit ? 'Edit Officer' : 'Add New Officer',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
+                  MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: GestureDetector(
+                      onTap: _pickPhoto,
+                      child: Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          color: _C.primaryDark.withOpacity(0.08),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: _C.borderSoft, width: 2),
                         ),
-                        Text(
-                          isEdit
-                              ? 'Update officer information'
-                              : 'Add a new officer to your organization',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 11,
-                            color: Colors.white.withOpacity(0.7),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.close_rounded,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-            ),
-
-            // Body
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Photo picker
-                    Center(
-                      child: Column(
-                        children: [
-                          GestureDetector(
-                            onTap: _pickPhoto,
-                            child: Container(
-                              width: 80,
-                              height: 80,
-                              decoration: BoxDecoration(
-                                color: _C.primaryDark.withOpacity(0.08),
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: _C.borderSoft,
-                                  width: 2,
+                        clipBehavior: Clip.antiAlias,
+                        child: _isUploadingPhoto
+                            ? const Center(
+                                child: SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: _C.primaryDark,
+                                  ),
                                 ),
+                              )
+                            : _photoUrl != null
+                            ? _buildImageWidget(
+                                _photoUrl!,
+                                fit: BoxFit.cover,
+                                errorWidget: const Icon(
+                                  Icons.camera_alt_outlined,
+                                  color: _C.textFaint,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.camera_alt_outlined,
+                                size: 28,
+                                color: _C.textFaint,
                               ),
-                              clipBehavior: Clip.antiAlias,
-                              child: _isUploadingPhoto
-                                  ? const Center(
-                                      child: SizedBox(
-                                        width: 24,
-                                        height: 24,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: _C.primaryDark,
-                                        ),
-                                      ),
-                                    )
-                                  : _photoUrl != null
-                                  ? _buildImageWidget(
-                                      _photoUrl!,
-                                      fit: BoxFit.cover,
-                                      errorWidget: const Icon(
-                                        Icons.camera_alt_outlined,
-                                        color: _C.textFaint,
-                                      ),
-                                    )
-                                  : const Icon(
-                                      Icons.camera_alt_outlined,
-                                      size: 28,
-                                      color: _C.textFaint,
-                                    ),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'Tap to upload photo',
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 11,
-                              color: _C.darkGray,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Name
-                    TextField(
-                      controller: _nameCtrl,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        color: _C.charcoal,
-                      ),
-                      decoration: _inputDecoration(
-                        'Full Name *',
-                        hint: 'Officer\'s full name',
-                        icon: Icons.person_outline,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Position type toggle
-                    Text(
-                      'Position Type',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: _C.darkGray,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _posTypeBtn(
-                            'Standard',
-                            Icons.list_alt_rounded,
-                            !_useCustomPosition,
-                            () => setState(() => _useCustomPosition = false),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _posTypeBtn(
-                            'Custom',
-                            Icons.edit_outlined,
-                            _useCustomPosition,
-                            () => setState(() => _useCustomPosition = true),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-
-                    if (!_useCustomPosition)
-                      _PositionDropdown(
-                        positions: _standardPositions,
-                        selected: _selectedPosition,
-                        onSelected: (p) =>
-                            setState(() => _selectedPosition = p),
-                      )
-                    else
-                      TextField(
-                        controller: _customPosCtrl,
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 13,
-                          color: _C.charcoal,
-                        ),
-                        decoration: _inputDecoration(
-                          'Custom Position',
-                          hint: 'e.g. Social Media Manager',
-                          icon: Icons.work_outline_rounded,
-                        ),
-                      ),
-                    const SizedBox(height: 14),
-
-                    TextField(
-                      controller: _emailCtrl,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        color: _C.charcoal,
-                      ),
-                      decoration: _inputDecoration(
-                        'Email',
-                        hint: 'officer@example.com',
-                        icon: Icons.email_outlined,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _phoneCtrl,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        color: _C.charcoal,
-                      ),
-                      decoration: _inputDecoration(
-                        'Phone',
-                        hint: '+63 912 345 6789',
-                        icon: Icons.phone_outlined,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // Footer
-            Container(
-              padding: const EdgeInsets.fromLTRB(24, 14, 24, 20),
-              decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: _C.border)),
-                color: _C.surface,
-                borderRadius: BorderRadius.vertical(
-                  bottom: Radius.circular(18),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: _C.borderSoft),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 13),
-                      ),
-                      child: Text(
-                        'Cancel',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: _C.textMid,
-                        ),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: _isSaving ? null : _save,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _C.primaryDark,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 13),
-                      ),
-                      child: _isSaving
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : Text(
-                              isEdit ? 'Update Officer' : 'Add Officer',
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Tap to upload photo',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11,
+                      color: _C.darkGray,
                     ),
                   ),
                 ],
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Name
+            TextField(
+              controller: _nameCtrl,
+              style: GoogleFonts.beVietnamPro(fontSize: 13, color: _C.charcoal),
+              decoration: _inputDecoration(
+                'Full Name *',
+                hint: 'Officer\'s full name',
+                icon: Icons.person_outline,
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // Position type toggle
+            Text(
+              'Position Type',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: _C.darkGray,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: _posTypeBtn(
+                    'Standard',
+                    Icons.list_alt_rounded,
+                    !_useCustomPosition,
+                    () => setState(() => _useCustomPosition = false),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _posTypeBtn(
+                    'Custom',
+                    Icons.edit_outlined,
+                    _useCustomPosition,
+                    () => setState(() => _useCustomPosition = true),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            if (!_useCustomPosition)
+              _PositionDropdown(
+                positions: _standardPositions,
+                selected: _selectedPosition,
+                onSelected: (p) => setState(() => _selectedPosition = p),
+              )
+            else
+              TextField(
+                controller: _customPosCtrl,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: _C.charcoal,
+                ),
+                decoration: _inputDecoration(
+                  'Custom Position',
+                  hint: 'e.g. Social Media Manager',
+                  icon: Icons.work_outline_rounded,
+                ),
+              ),
+            const SizedBox(height: 14),
+
+            TextField(
+              controller: _emailCtrl,
+              style: GoogleFonts.beVietnamPro(fontSize: 13, color: _C.charcoal),
+              decoration: _inputDecoration(
+                'Email',
+                hint: 'officer@example.com',
+                icon: Icons.email_outlined,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _phoneCtrl,
+              style: GoogleFonts.beVietnamPro(fontSize: 13, color: _C.charcoal),
+              decoration: _inputDecoration(
+                'Phone',
+                hint: '+63 912 345 6789',
+                icon: Icons.phone_outlined,
               ),
             ),
           ],
@@ -5169,37 +4941,40 @@ class _OfficerModalState extends State<_OfficerModal> {
     bool selected,
     VoidCallback onTap,
   ) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: selected ? _C.primaryDark.withOpacity(0.08) : _C.surface,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: selected ? _C.primaryDark.withOpacity(0.4) : _C.borderSoft,
-            width: selected ? 1.5 : 1,
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: selected ? _C.primaryDark.withOpacity(0.08) : _C.surface,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: selected ? _C.primaryDark.withOpacity(0.4) : _C.borderSoft,
+              width: selected ? 1.5 : 1,
+            ),
           ),
-        ),
-        child: Column(
-          children: [
-            Icon(
-              icon,
-              size: 18,
-              color: selected ? _C.primaryDark : _C.textFaint,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: selected ? _C.primaryDark : _C.darkGray,
+          child: Column(
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: selected ? _C.primaryDark : _C.textFaint,
               ),
-              textAlign: TextAlign.center,
-            ),
-          ],
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: selected ? _C.primaryDark : _C.darkGray,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -5232,45 +5007,48 @@ class _PositionDropdownState extends State<_PositionDropdown> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        GestureDetector(
-          onTap: () => setState(() => _open = !_open),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-            decoration: BoxDecoration(
-              color: _C.surface,
-              borderRadius: BorderRadius.circular(_DS.radiusSm),
-              border: Border.all(
-                color: _open ? _C.primaryDark : _C.borderSoft,
-                width: _open ? 1.5 : 1,
-              ),
-            ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.work_outline_rounded,
-                  size: 18,
-                  color: _C.textFaint,
+        MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: () => setState(() => _open = !_open),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+              decoration: BoxDecoration(
+                color: _C.surface,
+                borderRadius: BorderRadius.circular(_DS.radiusSm),
+                border: Border.all(
+                  color: _open ? _C.primaryDark : _C.borderSoft,
+                  width: _open ? 1.5 : 1,
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    widget.selected ?? 'Choose a position',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 13,
-                      color: widget.selected != null
-                          ? _C.charcoal
-                          : _C.textFaint,
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.work_outline_rounded,
+                    size: 18,
+                    color: _C.textFaint,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      widget.selected ?? 'Choose a position',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        color: widget.selected != null
+                            ? _C.charcoal
+                            : _C.textFaint,
+                      ),
                     ),
                   ),
-                ),
-                Icon(
-                  _open
-                      ? Icons.keyboard_arrow_up_rounded
-                      : Icons.keyboard_arrow_down_rounded,
-                  size: 18,
-                  color: _C.textFaint,
-                ),
-              ],
+                  Icon(
+                    _open
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    size: 18,
+                    color: _C.textFaint,
+                  ),
+                ],
+              ),
             ),
           ),
         ),

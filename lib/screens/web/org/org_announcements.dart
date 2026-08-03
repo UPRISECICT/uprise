@@ -205,26 +205,29 @@ class _PinnedItem extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 6),
-          GestureDetector(
-            onTap: onView,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'View post',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
+          MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              onTap: onView,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'View post',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: _C.primaryDark,
+                    ),
+                  ),
+                  const SizedBox(width: 3),
+                  Icon(
+                    Icons.arrow_forward_rounded,
+                    size: 12,
                     color: _C.primaryDark,
                   ),
-                ),
-                const SizedBox(width: 3),
-                Icon(
-                  Icons.arrow_forward_rounded,
-                  size: 12,
-                  color: _C.primaryDark,
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
@@ -1391,58 +1394,61 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          GestureDetector(
-            onTap: () => _showAnnouncementDialog(),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // Org avatar
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: _C.primaryDark.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(
-                    Icons.campaign_rounded,
-                    size: 20,
-                    color: _C.primaryDark,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 10,
-                    ),
+          MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              onTap: () => _showAnnouncementDialog(),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Org avatar
+                  Container(
+                    width: 38,
+                    height: 38,
                     decoration: BoxDecoration(
-                      color: _C.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: _C.border),
+                      color: _C.primaryDark.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            "What's on your mind? Create an announcement…",
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 13,
-                              color: _C.textFaint,
+                    child: const Icon(
+                      Icons.campaign_rounded,
+                      size: 20,
+                      color: _C.primaryDark,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _C.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: _C.border),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              "What's on your mind? Create an announcement…",
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 13,
+                                color: _C.textFaint,
+                              ),
                             ),
                           ),
-                        ),
-                        const Icon(
-                          Icons.edit_note_rounded,
-                          size: 16,
-                          color: _C.textFaint,
-                        ),
-                      ],
+                          const Icon(
+                            Icons.edit_note_rounded,
+                            size: 16,
+                            color: _C.textFaint,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 12),
@@ -1494,35 +1500,38 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
               style: GoogleFonts.beVietnamPro(fontSize: 13, color: _C.darkGray),
             ),
             const SizedBox(height: 20),
-            GestureDetector(
-              onTap: () => _showAnnouncementDialog(),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 12,
-                ),
-                decoration: BoxDecoration(
-                  color: _C.primaryDark,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.add_rounded,
-                      size: 16,
-                      color: Colors.white,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Create Announcement',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
+            MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: () => _showAnnouncementDialog(),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _C.primaryDark,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.add_rounded,
+                        size: 16,
                         color: Colors.white,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 8),
+                      Text(
+                        'Create Announcement',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -2646,66 +2655,69 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
       );
     }
 
-    return GestureDetector(
-      onTap: () async {
-        final result = await FilePicker.platform.pickFiles(
-          type: FileType.image,
-          withData: true,
-        );
-        if (result == null) return;
-        try {
-          final bytes = result.files.first.bytes!;
-          // Firestore caps a single document at ~1MiB and this image is
-          // stored inline as base64 (which inflates raw bytes by ~33%), so
-          // keep a safety margin well under that ceiling rather than let a
-          // large photo fail with a raw Firestore error at write time.
-          if (bytes.length > 700 * 1024) {
-            _snack('Image too large! Max 700KB', isError: true);
-            return;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () async {
+          final result = await FilePicker.platform.pickFiles(
+            type: FileType.image,
+            withData: true,
+          );
+          if (result == null) return;
+          try {
+            final bytes = result.files.first.bytes!;
+            // Firestore caps a single document at ~1MiB and this image is
+            // stored inline as base64 (which inflates raw bytes by ~33%), so
+            // keep a safety margin well under that ceiling rather than let a
+            // large photo fail with a raw Firestore error at write time.
+            if (bytes.length > 700 * 1024) {
+              _snack('Image too large! Max 700KB', isError: true);
+              return;
+            }
+            onSelected(base64Encode(bytes));
+            _snack('Image uploaded');
+          } catch (e) {
+            _snack('Upload failed: $e', isError: true);
           }
-          onSelected(base64Encode(bytes));
-          _snack('Image uploaded');
-        } catch (e) {
-          _snack('Upload failed: $e', isError: true);
-        }
-      },
-      child: Container(
-        width: double.infinity,
-        height: 110,
-        decoration: BoxDecoration(
-          color: _C.surface,
-          borderRadius: BorderRadius.circular(_DS.radiusSm),
-          border: Border.all(color: _C.borderSoft),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: _C.primaryDark.withOpacity(0.08),
-                borderRadius: BorderRadius.circular(10),
+        },
+        child: Container(
+          width: double.infinity,
+          height: 110,
+          decoration: BoxDecoration(
+            color: _C.surface,
+            borderRadius: BorderRadius.circular(_DS.radiusSm),
+            border: Border.all(color: _C.borderSoft),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: _C.primaryDark.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.image_outlined, color: _C.primaryDark),
               ),
-              child: const Icon(Icons.image_outlined, color: _C.primaryDark),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Click to upload banner image',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: _C.charcoal,
+              const SizedBox(height: 8),
+              Text(
+                'Click to upload banner image',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: _C.charcoal,
+                ),
               ),
-            ),
-            Text(
-              'PNG, JPG up to 700KB',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 11,
-                color: _C.textFaint,
+              Text(
+                'PNG, JPG up to 700KB',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 11,
+                  color: _C.textFaint,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -2719,90 +2731,93 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        GestureDetector(
-          onTap: () async {
-            final result = await FilePicker.platform.pickFiles(
-              allowMultiple: true,
-              withData: true,
-            );
-            if (result == null) return;
-            try {
-              final newAtts = <AttachmentBase64>[];
-              // Attachments share the announcement's single Firestore doc
-              // with the banner image, so cap both the count and the
-              // running base64 total here — catching it during picking
-              // gives the org feedback immediately instead of only at
-              // submit time (see the aggregate check on the Post button).
-              var totalBase64Bytes = attachments.fold<int>(
-                0,
-                (acc, a) => acc + a.base64.length,
+        MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: () async {
+              final result = await FilePicker.platform.pickFiles(
+                allowMultiple: true,
+                withData: true,
               );
-              for (final file in result.files) {
-                if (attachments.length + newAtts.length >= 5) {
-                  _snack('Maximum 5 attachments allowed', isError: true);
-                  break;
-                }
-                final bytes = file.bytes!;
-                if (bytes.length > 700 * 1024) {
-                  _snack('${file.name} exceeds 700 KB', isError: true);
-                  continue;
-                }
-                final encoded = base64Encode(bytes);
-                if (totalBase64Bytes + encoded.length > 600 * 1024) {
-                  _snack(
-                    '${file.name} would make attachments too large overall',
-                    isError: true,
-                  );
-                  continue;
-                }
-                totalBase64Bytes += encoded.length;
-                newAtts.add(
-                  AttachmentBase64(
-                    name: file.name,
-                    base64: encoded,
-                    size: '${(bytes.length / 1024).toStringAsFixed(1)} KB',
-                  ),
+              if (result == null) return;
+              try {
+                final newAtts = <AttachmentBase64>[];
+                // Attachments share the announcement's single Firestore doc
+                // with the banner image, so cap both the count and the
+                // running base64 total here — catching it during picking
+                // gives the org feedback immediately instead of only at
+                // submit time (see the aggregate check on the Post button).
+                var totalBase64Bytes = attachments.fold<int>(
+                  0,
+                  (acc, a) => acc + a.base64.length,
                 );
+                for (final file in result.files) {
+                  if (attachments.length + newAtts.length >= 5) {
+                    _snack('Maximum 5 attachments allowed', isError: true);
+                    break;
+                  }
+                  final bytes = file.bytes!;
+                  if (bytes.length > 700 * 1024) {
+                    _snack('${file.name} exceeds 700 KB', isError: true);
+                    continue;
+                  }
+                  final encoded = base64Encode(bytes);
+                  if (totalBase64Bytes + encoded.length > 600 * 1024) {
+                    _snack(
+                      '${file.name} would make attachments too large overall',
+                      isError: true,
+                    );
+                    continue;
+                  }
+                  totalBase64Bytes += encoded.length;
+                  newAtts.add(
+                    AttachmentBase64(
+                      name: file.name,
+                      base64: encoded,
+                      size: '${(bytes.length / 1024).toStringAsFixed(1)} KB',
+                    ),
+                  );
+                }
+                onChanged([...attachments, ...newAtts]);
+                if (newAtts.isNotEmpty)
+                  _snack('${newAtts.length} file(s) attached');
+              } catch (e) {
+                _snack('Upload failed: $e', isError: true);
               }
-              onChanged([...attachments, ...newAtts]);
-              if (newAtts.isNotEmpty)
-                _snack('${newAtts.length} file(s) attached');
-            } catch (e) {
-              _snack('Upload failed: $e', isError: true);
-            }
-          },
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            decoration: BoxDecoration(
-              color: _C.surface,
-              borderRadius: BorderRadius.circular(_DS.radiusSm),
-              border: Border.all(color: _C.borderSoft),
-            ),
-            child: Column(
-              children: [
-                const Icon(
-                  Icons.attach_file_rounded,
-                  size: 22,
-                  color: _C.primaryDark,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Add attachments',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: _C.charcoal,
+            },
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              decoration: BoxDecoration(
+                color: _C.surface,
+                borderRadius: BorderRadius.circular(_DS.radiusSm),
+                border: Border.all(color: _C.borderSoft),
+              ),
+              child: Column(
+                children: [
+                  const Icon(
+                    Icons.attach_file_rounded,
+                    size: 22,
+                    color: _C.primaryDark,
                   ),
-                ),
-                Text(
-                  'PDF, DOC, DOCX, TXT, JPG, PNG — max 700 KB each',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 10,
-                    color: _C.textFaint,
+                  const SizedBox(height: 4),
+                  Text(
+                    'Add attachments',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: _C.charcoal,
+                    ),
                   ),
-                ),
-              ],
+                  Text(
+                    'PDF, DOC, DOCX, TXT, JPG, PNG — max 700 KB each',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 10,
+                      color: _C.textFaint,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -3266,14 +3281,17 @@ class _PostCardState extends State<_PostCard> {
                 ),
                 if (isLong) ...[
                   const SizedBox(height: 4),
-                  GestureDetector(
-                    onTap: () => setState(() => _expanded = !_expanded),
-                    child: Text(
-                      _expanded ? 'See less' : 'See more',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: _C.primaryDark,
+                  MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: GestureDetector(
+                      onTap: () => setState(() => _expanded = !_expanded),
+                      child: Text(
+                        _expanded ? 'See less' : 'See more',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: _C.primaryDark,
+                        ),
                       ),
                     ),
                   ),
@@ -3537,23 +3555,26 @@ class _PageNumBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 2),
-        width: 28,
-        height: 28,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: isActive ? _C.primaryDark : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(
-          '$page',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 12,
-            fontWeight: isActive ? FontWeight.w700 : FontWeight.normal,
-            color: isActive ? Colors.white : _C.textMid,
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: isActive ? _C.primaryDark : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            '$page',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 12,
+              fontWeight: isActive ? FontWeight.w700 : FontWeight.normal,
+              color: isActive ? Colors.white : _C.textMid,
+            ),
           ),
         ),
       ),

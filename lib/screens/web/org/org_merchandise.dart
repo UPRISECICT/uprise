@@ -492,22 +492,25 @@ class _PillTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        margin: const EdgeInsets.all(3),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
-        decoration: BoxDecoration(
-          color: selected ? UpriseColors.primaryDark : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(
-          label,
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: selected ? Colors.white : const Color(0xFF64748B),
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          margin: const EdgeInsets.all(3),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
+          decoration: BoxDecoration(
+            color: selected ? UpriseColors.primaryDark : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            label,
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: selected ? Colors.white : const Color(0xFF64748B),
+            ),
           ),
         ),
       ),
@@ -1167,184 +1170,188 @@ class _ProductCard extends StatelessWidget {
     final isLowStock = totalStock <= 5 && totalStock > 0;
     final isOutOfStock = totalStock == 0;
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFE8ECF0)),
-          boxShadow: _DS.cardShadow,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Image Section with Base64 support
-            Expanded(
-              flex: 3,
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(12),
-                ),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    _buildProductImage(),
-                    if (isOutOfStock ||
-                        isLowStock ||
-                        product.status == 'discontinued')
-                      Positioned(
-                        top: 8,
-                        right: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color:
-                                isOutOfStock || product.status == 'discontinued'
-                                ? const Color(0xFFFEF2F2)
-                                : const Color(0xFFFFFBEB),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            isOutOfStock
-                                ? 'OUT OF STOCK'
-                                : product.status == 'discontinued'
-                                ? 'DISCONTINUED'
-                                : 'LOW STOCK',
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 8,
-                              fontWeight: FontWeight.w700,
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFE8ECF0)),
+            boxShadow: _DS.cardShadow,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Image Section with Base64 support
+              Expanded(
+                flex: 3,
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(12),
+                  ),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      _buildProductImage(),
+                      if (isOutOfStock ||
+                          isLowStock ||
+                          product.status == 'discontinued')
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
                               color:
                                   isOutOfStock ||
                                       product.status == 'discontinued'
-                                  ? const Color(0xFFDC2626)
-                                  : const Color(0xFFFB923C),
-                              letterSpacing: 0.5,
+                                  ? const Color(0xFFFEF2F2)
+                                  : const Color(0xFFFFFBEB),
+                              borderRadius: BorderRadius.circular(20),
                             ),
-                          ),
-                        ),
-                      ),
-                    Positioned(
-                      bottom: 8,
-                      right: 8,
-                      child: Row(
-                        children: [
-                          _CardActionButton(
-                            icon: Icons.edit_outlined,
-                            tooltip: 'Edit',
-                            onTap: onEdit,
-                          ),
-                          const SizedBox(width: 4),
-                          _CardActionButton(
-                            icon: Icons.archive_outlined,
-                            tooltip: 'Archive',
-                            onTap: onArchive,
-                            color: UpriseColors.warning,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            // Info Section
-            Expanded(
-              flex: 2,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          product.name,
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: const Color(0xFF1A202C),
-                            height: 1.2,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: UpriseColors.mediumGray,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            product.category,
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w600,
-                              color: UpriseColors.darkGray,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '₱${NumberFormat('#,###').format(product.price)}',
+                            child: Text(
+                              isOutOfStock
+                                  ? 'OUT OF STOCK'
+                                  : product.status == 'discontinued'
+                                  ? 'DISCONTINUED'
+                                  : 'LOW STOCK',
                               style: GoogleFonts.beVietnamPro(
-                                fontSize: 15,
+                                fontSize: 8,
                                 fontWeight: FontWeight.w700,
-                                color: UpriseColors.charcoal,
+                                color:
+                                    isOutOfStock ||
+                                        product.status == 'discontinued'
+                                    ? const Color(0xFFDC2626)
+                                    : const Color(0xFFFB923C),
+                                letterSpacing: 0.5,
                               ),
                             ),
-                            Text(
-                              '$totalStock in stock',
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 10,
-                                color: const Color(0xFF64748B),
-                              ),
+                          ),
+                        ),
+                      Positioned(
+                        bottom: 8,
+                        right: 8,
+                        child: Row(
+                          children: [
+                            _CardActionButton(
+                              icon: Icons.edit_outlined,
+                              tooltip: 'Edit',
+                              onTap: onEdit,
+                            ),
+                            const SizedBox(width: 4),
+                            _CardActionButton(
+                              icon: Icons.archive_outlined,
+                              tooltip: 'Archive',
+                              onTap: onArchive,
+                              color: UpriseColors.warning,
                             ),
                           ],
                         ),
-                        if (product.sold > 0)
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // Info Section
+              Expanded(
+                flex: 2,
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            product.name,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFF1A202C),
+                              height: 1.2,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 6,
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFECFDF5),
+                              color: UpriseColors.mediumGray,
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
-                              '${product.sold} sold',
+                              product.category,
                               style: GoogleFonts.beVietnamPro(
                                 fontSize: 9,
                                 fontWeight: FontWeight.w600,
-                                color: const Color(0xFF059669),
+                                color: UpriseColors.darkGray,
                               ),
                             ),
                           ),
-                      ],
-                    ),
-                  ],
+                        ],
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '₱${NumberFormat('#,###').format(product.price)}',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                  color: UpriseColors.charcoal,
+                                ),
+                              ),
+                              Text(
+                                '$totalStock in stock',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 10,
+                                  color: const Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (product.sold > 0)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFECFDF5),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                '${product.sold} sold',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF059669),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -2102,80 +2109,85 @@ class _ProductModalState extends State<_ProductModal> {
     final existingBase64 = widget.existingProduct?.imageBase64 ?? '';
     final hasImage = _imageBytes != null || existingBase64.isNotEmpty;
 
-    return GestureDetector(
-      onTap: (_submitting || _uploadingImage) ? null : _pickImage,
-      child: Container(
-        height: hasImage ? 140 : 150,
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8F9FB),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: hasImage
-                ? UpriseColors.primaryDark.withAlpha(77)
-                : const Color(0xFFE2E6EA),
+    return MouseRegion(
+      cursor: (_submitting || _uploadingImage)
+          ? MouseCursor.defer
+          : SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: (_submitting || _uploadingImage) ? null : _pickImage,
+        child: Container(
+          height: hasImage ? 140 : 150,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8F9FB),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: hasImage
+                  ? UpriseColors.primaryDark.withAlpha(77)
+                  : const Color(0xFFE2E6EA),
+            ),
           ),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: hasImage
-              ? Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    if (_imageBytes != null)
-                      Image.memory(
-                        _imageBytes!,
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        height: 140,
-                        cacheHeight: 280,
-                        errorBuilder: (_, __, ___) => const SizedBox(),
-                      )
-                    else
-                      Image.memory(
-                        base64Decode(existingBase64),
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        height: 140,
-                        cacheHeight: 280,
-                        errorBuilder: (_, __, ___) => const SizedBox(),
-                      ),
-                    Positioned(
-                      bottom: 8,
-                      right: 8,
-                      child: _uploadPill(label: 'Change'),
-                    ),
-                    if (_uploadError != null)
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: hasImage
+                ? Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      if (_imageBytes != null)
+                        Image.memory(
+                          _imageBytes!,
+                          fit: BoxFit.cover,
+                          width: double.infinity,
+                          height: 140,
+                          cacheHeight: 280,
+                          errorBuilder: (_, __, ___) => const SizedBox(),
+                        )
+                      else
+                        Image.memory(
+                          base64Decode(existingBase64),
+                          fit: BoxFit.cover,
+                          width: double.infinity,
+                          height: 140,
+                          cacheHeight: 280,
+                          errorBuilder: (_, __, ___) => const SizedBox(),
+                        ),
                       Positioned(
                         bottom: 8,
-                        left: 8,
-                        child: _uploadErrorBadge(),
+                        right: 8,
+                        child: _uploadPill(label: 'Change'),
                       ),
-                  ],
-                )
-              : Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.add_photo_alternate_outlined,
-                      size: 32,
-                      color: Color(0xFF9AA5B4),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Upload Product Image',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 12,
-                        color: const Color(0xFF9AA5B4),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _uploadPill(label: 'Upload'),
-                    if (_uploadError != null) ...[
-                      const SizedBox(height: 10),
-                      _uploadErrorBadge(),
+                      if (_uploadError != null)
+                        Positioned(
+                          bottom: 8,
+                          left: 8,
+                          child: _uploadErrorBadge(),
+                        ),
                     ],
-                  ],
-                ),
+                  )
+                : Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.add_photo_alternate_outlined,
+                        size: 32,
+                        color: Color(0xFF9AA5B4),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Upload Product Image',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 12,
+                          color: const Color(0xFF9AA5B4),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _uploadPill(label: 'Upload'),
+                      if (_uploadError != null) ...[
+                        const SizedBox(height: 10),
+                        _uploadErrorBadge(),
+                      ],
+                    ],
+                  ),
+          ),
         ),
       ),
     );
@@ -2216,38 +2228,49 @@ class _ProductModalState extends State<_ProductModal> {
                   Positioned(
                     top: -6,
                     right: -6,
-                    child: GestureDetector(
-                      onTap: () => _removeRotationPhoto(i),
-                      child: Container(
-                        width: 20,
-                        height: 20,
-                        decoration: const BoxDecoration(
-                          color: Colors.black87,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.close_rounded,
-                          size: 13,
-                          color: Colors.white,
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: GestureDetector(
+                        onTap: () => _removeRotationPhoto(i),
+                        child: Container(
+                          width: 20,
+                          height: 20,
+                          decoration: const BoxDecoration(
+                            color: Colors.black87,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.close_rounded,
+                            size: 13,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ],
               ),
-            GestureDetector(
-              onTap: (_submitting || _uploadingImage)
-                  ? null
-                  : _pickRotationPhotos,
-              child: Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8F9FB),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFE2E6EA)),
+            MouseRegion(
+              cursor: (_submitting || _uploadingImage)
+                  ? MouseCursor.defer
+                  : SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: (_submitting || _uploadingImage)
+                    ? null
+                    : _pickRotationPhotos,
+                child: Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8F9FB),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFE2E6EA)),
+                  ),
+                  child: const Icon(
+                    Icons.add_rounded,
+                    color: Color(0xFF9AA5B4),
+                  ),
                 ),
-                child: const Icon(Icons.add_rounded, color: Color(0xFF9AA5B4)),
               ),
             ),
           ],
@@ -2409,13 +2432,16 @@ class _ProductModalState extends State<_ProductModal> {
             ),
           ],
           const SizedBox(width: 8),
-          GestureDetector(
-            onTap: () =>
-                setState(() => _variants.removeWhere((x) => x.id == v.id)),
-            child: const Icon(
-              Icons.close_rounded,
-              size: 16,
-              color: Color(0xFF9AA5B4),
+          MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              onTap: () =>
+                  setState(() => _variants.removeWhere((x) => x.id == v.id)),
+              child: const Icon(
+                Icons.close_rounded,
+                size: 16,
+                color: Color(0xFF9AA5B4),
+              ),
             ),
           ),
         ],
@@ -4524,23 +4550,26 @@ class _PageNumButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 2),
-        width: 28,
-        height: 28,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: isActive ? UpriseColors.primaryDark : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(
-          '$page',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 12,
-            fontWeight: isActive ? FontWeight.w700 : FontWeight.normal,
-            color: isActive ? Colors.white : const Color(0xFF374151),
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: isActive ? UpriseColors.primaryDark : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            '$page',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 12,
+              fontWeight: isActive ? FontWeight.w700 : FontWeight.normal,
+              color: isActive ? Colors.white : const Color(0xFF374151),
+            ),
           ),
         ),
       ),

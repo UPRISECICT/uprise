@@ -738,42 +738,45 @@ class _PublishToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => onChanged(!value),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-        decoration: BoxDecoration(
-          color: value
-              ? Colors.white.withAlpha(38)
-              : Colors.white.withAlpha(18),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white.withAlpha(80)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                color: value
-                    ? const Color(0xFF4ADE80)
-                    : Colors.white.withAlpha(120),
-                shape: BoxShape.circle,
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => onChanged(!value),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            color: value
+                ? Colors.white.withAlpha(38)
+                : Colors.white.withAlpha(18),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withAlpha(80)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: value
+                      ? const Color(0xFF4ADE80)
+                      : Colors.white.withAlpha(120),
+                  shape: BoxShape.circle,
+                ),
               ),
-            ),
-            const SizedBox(width: 7),
-            Text(
-              value ? 'Published' : 'Draft',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
+              const SizedBox(width: 7),
+              Text(
+                value ? 'Published' : 'Draft',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1410,54 +1413,57 @@ class _FieldCardState extends State<_FieldCard> {
           children: _mediaTypeOptions.map((opt) {
             final (value, label, icon) = opt;
             final selected = current == value;
-            return GestureDetector(
-              onTap: () {
-                final u = Map<String, dynamic>.from(widget.field);
-                u['mediaType'] = value;
-                widget.onChanged(u);
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 9,
-                ),
-                decoration: BoxDecoration(
-                  color: selected
-                      ? UpriseColors.primaryDark.withAlpha(20)
-                      : const Color(0xFFF8F9FB),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: selected
-                        ? UpriseColors.primaryDark
-                        : const Color(0xFFE2E6EA),
-                    width: selected ? 1.5 : 1,
+            return MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: () {
+                  final u = Map<String, dynamic>.from(widget.field);
+                  u['mediaType'] = value;
+                  widget.onChanged(u);
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 9,
                   ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      icon,
-                      size: 15,
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? UpriseColors.primaryDark.withAlpha(20)
+                        : const Color(0xFFF8F9FB),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
                       color: selected
                           ? UpriseColors.primaryDark
-                          : const Color(0xFF9AA5B4),
+                          : const Color(0xFFE2E6EA),
+                      width: selected ? 1.5 : 1,
                     ),
-                    const SizedBox(width: 6),
-                    Text(
-                      label,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 12.5,
-                        fontWeight: selected
-                            ? FontWeight.w600
-                            : FontWeight.w400,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        icon,
+                        size: 15,
                         color: selected
-                            ? const Color(0xFF1A202C)
-                            : const Color(0xFF64748B),
+                            ? UpriseColors.primaryDark
+                            : const Color(0xFF9AA5B4),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 6),
+                      Text(
+                        label,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 12.5,
+                          fontWeight: selected
+                              ? FontWeight.w600
+                              : FontWeight.w400,
+                          color: selected
+                              ? const Color(0xFF1A202C)
+                              : const Color(0xFF64748B),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             );
@@ -1719,38 +1725,43 @@ class _RequiredToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => onChanged(!value),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        decoration: BoxDecoration(
-          color: value ? const Color(0xFFFEF2F2) : const Color(0xFFF8F9FB),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: value ? const Color(0xFFFCA5A5) : const Color(0xFFE2E6EA),
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              value ? Icons.star_rounded : Icons.star_outline_rounded,
-              size: 15,
-              color: value ? const Color(0xFFDC2626) : const Color(0xFF9AA5B4),
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => onChanged(!value),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: BoxDecoration(
+            color: value ? const Color(0xFFFEF2F2) : const Color(0xFFF8F9FB),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: value ? const Color(0xFFFCA5A5) : const Color(0xFFE2E6EA),
             ),
-            const SizedBox(width: 6),
-            Text(
-              'Required',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                value ? Icons.star_rounded : Icons.star_outline_rounded,
+                size: 15,
                 color: value
                     ? const Color(0xFFDC2626)
                     : const Color(0xFF9AA5B4),
               ),
-            ),
-          ],
+              const SizedBox(width: 6),
+              Text(
+                'Required',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: value
+                      ? const Color(0xFFDC2626)
+                      : const Color(0xFF9AA5B4),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

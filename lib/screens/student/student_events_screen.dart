@@ -3221,6 +3221,22 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             .doc(widget.event.id);
         final evDoc = await tx.get(evRef);
         if (!evDoc.exists) throw Exception('Event not found');
+        final evData = evDoc.data() as Map<String, dynamic>;
+
+        final userDoc = await tx.get(
+          FirebaseFirestore.instance.collection('users').doc(user.uid),
+        );
+        final eligible = EventModel.audienceAllowsMember(
+          audience: (evData['audience'] ?? 'Public').toString(),
+          eventOrgId: (evData['orgId'] ?? '').toString(),
+          userData: userDoc.data(),
+        );
+        if (!eligible) {
+          throw Exception(
+            'This event is for members of the organizing club/org only.',
+          );
+        }
+
         tx.set(regRef, {
           'userId': user.uid,
           'eventId': widget.event.id,

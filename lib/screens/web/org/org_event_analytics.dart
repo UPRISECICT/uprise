@@ -202,28 +202,6 @@ class _AnalyticsData {
     return titles.toList()..sort();
   }
 
-  ({String eventId, String title, double score})? get highestRatedEvent {
-    final avg = avgByEvent;
-    if (avg.isEmpty) return null;
-    final entry = avg.entries.reduce((a, b) => a.value >= b.value ? a : b);
-    return (
-      eventId: entry.key,
-      title: eventDisplayTitle(entry.key),
-      score: entry.value,
-    );
-  }
-
-  ({String eventId, String title, double score})? get lowestRatedEvent {
-    final avg = avgByEvent;
-    if (avg.isEmpty) return null;
-    final entry = avg.entries.reduce((a, b) => a.value <= b.value ? a : b);
-    return (
-      eventId: entry.key,
-      title: eventDisplayTitle(entry.key),
-      score: entry.value,
-    );
-  }
-
   // A representative written comment for one event, picked from its
   // lowest- or highest-rated feedback so an insight card can show real
   // student wording instead of just a number.
@@ -329,12 +307,38 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
     final db = FirebaseFirestore.instance;
 
     try {
-      final feedbackSnapshot = await db.collection('feedback').get();
-
       final eventsSnapshot = await db
           .collection('events')
           .where('orgId', isEqualTo: widget.orgId)
           .get();
+
+      final events = eventsSnapshot.docs.map((d) {
+        final data = d.data();
+        return {
+          'id': d.id,
+          'title': data['title'] as String? ?? 'Untitled Event',
+          'eventId': data['eventId'] as String? ?? d.id,
+          'date': data['date'],
+          'bannerUrl': data['bannerUrl'] as String? ?? '',
+        };
+      }).toList();
+
+      // Every event this org owns, under either id shape events get looked
+      // up by elsewhere in this file (doc id, or the event's own denormalized
+      // 'eventId' field).
+      final orgEventIds = <String>{
+        for (final e in events) e['id'] as String,
+        for (final e in events)
+          if ((e['eventId'] as String).isNotEmpty) e['eventId'] as String,
+      };
+
+      // 'feedback' is where real submissions actually live (confirmed by
+      // inspecting the live data — 'event_feedback' currently has zero
+      // documents in this project, despite being the collection some
+      // newer write paths target). Feedback docs don't carry an orgId
+      // field, so scope by event membership instead: every event here is
+      // already known to belong to this org.
+      final feedbackSnapshot = await db.collection('feedback').get();
 
       final evalFormsSnapshot = await db
           .collection('eval_forms')
@@ -354,18 +358,8 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
               'eventId': d.data()['eventId'] as String? ?? '',
             },
           )
+          .where((f) => orgEventIds.contains(f['eventId']))
           .toList();
-
-      final events = eventsSnapshot.docs.map((d) {
-        final data = d.data();
-        return {
-          'id': d.id,
-          'title': data['title'] as String? ?? 'Untitled Event',
-          'eventId': data['eventId'] as String? ?? d.id,
-          'date': data['date'],
-          'bannerUrl': data['bannerUrl'] as String? ?? '',
-        };
-      }).toList();
 
       final evalForms = evalFormsSnapshot.docs
           .map((d) => {...d.data(), 'id': d.id})
@@ -389,6 +383,9 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
 
   void _listenForUpdates() {
     _feedbackSubscription?.cancel();
+    // Unfiltered — this only triggers a full _loadAll() re-fetch on any
+    // change, and _loadAll() itself does the real event-membership
+    // filtering (feedback docs have no orgId field to filter by here).
     _feedbackSubscription = FirebaseFirestore.instance
         .collection('feedback')
         .snapshots()
@@ -1294,11 +1291,12 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
   }
 
   Widget _buildStatsRow(_AnalyticsData data, bool isMobile) {
-    final highest = data.highestRatedEvent;
-    final lowest = data.lowestRatedEvent;
-
     void goToTab(int index) => setState(() => _tabCtrl.animateTo(index));
 
+    // Kept to just these two — "Events reviewed" and "% positive" were
+    // dropped after feedback that they weren't earning their space; the
+    // full per-event breakdown (including highest/lowest) is still one
+    // click away in the Events tab's insights section.
     final cards = [
       _StatCardData(
         'Total evaluations',
@@ -1313,22 +1311,6 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
         Icons.star_outline,
         _C.amber,
         onTap: () => goToTab(1),
-      ),
-      _StatCardData(
-        'Highest rated',
-        highest != null ? highest.title : '—',
-        Icons.emoji_events_outlined,
-        _C.green,
-        onTap: () => goToTab(0),
-        valueFontSize: 15,
-      ),
-      _StatCardData(
-        'Needs improvement',
-        lowest != null ? lowest.title : '—',
-        Icons.trending_down_rounded,
-        UpriseColors.primaryDark,
-        onTap: () => goToTab(0),
-        valueFontSize: 15,
       ),
     ];
 
@@ -1382,61 +1364,64 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
             final icon = e.value.$2;
             final badge = e.value.$3;
             final active = _tabCtrl.index == idx;
-            return GestureDetector(
-              onTap: () => setState(() => _tabCtrl.animateTo(idx)),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 14,
-                ),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(
-                      color: active
-                          ? UpriseColors.primaryDark
-                          : Colors.transparent,
-                      width: 2,
+            return MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: () => setState(() => _tabCtrl.animateTo(idx)),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 14,
+                  ),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(
+                        color: active
+                            ? UpriseColors.primaryDark
+                            : Colors.transparent,
+                        width: 2,
+                      ),
                     ),
                   ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      icon,
-                      size: 15,
-                      color: active ? UpriseColors.primaryDark : _C.muted,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      label,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
+                  child: Row(
+                    children: [
+                      Icon(
+                        icon,
+                        size: 15,
                         color: active ? UpriseColors.primaryDark : _C.muted,
                       ),
-                    ),
-                    if (badge != null) ...[
                       const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFEFF6FF),
-                          borderRadius: BorderRadius.circular(99),
-                        ),
-                        child: Text(
-                          badge,
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: _C.blue,
-                          ),
+                      Text(
+                        label,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: active ? UpriseColors.primaryDark : _C.muted,
                         ),
                       ),
+                      if (badge != null) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEFF6FF),
+                            borderRadius: BorderRadius.circular(99),
+                          ),
+                          child: Text(
+                            badge,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: _C.blue,
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             );
@@ -1486,27 +1471,9 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
         children: [
           _DistributionCard(data: data),
           const SizedBox(height: 20),
-          // Rating-by-event and income-vs-expense-by-event share one
-          // container — they were two independently-sized cards sitting
-          // side by side before, which read as disorganized (and looked
-          // broken whenever one list was much longer than the other).
-          Container(
-            decoration: BoxDecoration(
-              color: _C.white,
-              borderRadius: BorderRadius.circular(_DS.radiusMd),
-              border: Border.all(color: _C.border.withOpacity(0.5)),
-              boxShadow: _DS.cardShadow,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _RatingByEventChart(data: data),
-                const Divider(height: 1, color: _C.border),
-                _FinanceByEventChart(data: data),
-              ],
-            ),
-          ),
+          _RatingByEventChart(data: data),
+          const SizedBox(height: 20),
+          _FinanceByEventChart(data: data),
         ],
       ),
     );
@@ -1855,14 +1822,12 @@ class _StatCardData {
   final IconData icon;
   final Color color;
   final VoidCallback? onTap;
-  final double valueFontSize;
   const _StatCardData(
     this.label,
     this.value,
     this.icon,
     this.color, {
     this.onTap,
-    this.valueFontSize = 28,
   });
 }
 
@@ -1911,7 +1876,7 @@ class _StatCard extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.beVietnamPro(
-                          fontSize: c.valueFontSize,
+                          fontSize: 28,
                           fontWeight: FontWeight.w800,
                           color: _C.charcoal,
                         ),
@@ -2082,62 +2047,72 @@ class _RatingByEventChart extends StatelessWidget {
     final sorted = data.avgByEvent.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
-    // No outer card here — this shares one container with
-    // _FinanceByEventChart (see _buildAnalyticsTab) instead of floating as
-    // its own separately-sized box next to it.
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.bar_chart_rounded,
-                  size: 16,
-                  color: _C.blue,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                'Average rating by event',
-                style: GoogleFonts.inter(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: _C.charcoal,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const Divider(height: 1, color: _C.border),
-        if (sorted.isEmpty)
+    return Container(
+      decoration: BoxDecoration(
+        color: _C.white,
+        borderRadius: BorderRadius.circular(_DS.radiusMd),
+        border: Border.all(color: _C.border.withOpacity(0.5)),
+        boxShadow: _DS.cardShadow,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
           Padding(
-            padding: const EdgeInsets.all(32),
-            child: Center(
-              child: Text(
-                'No feedback data yet',
-                style: GoogleFonts.inter(fontSize: 13, color: _C.muted),
-              ),
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.bar_chart_rounded,
+                    size: 16,
+                    color: _C.blue,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Average rating by event',
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: _C.charcoal,
+                  ),
+                ),
+              ],
             ),
-          )
-        else
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-            child: Column(
-              children: sorted.map((entry) {
-                final title = data.eventDisplayTitle(entry.key);
-                final score = entry.value;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Column(
+          ),
+          const Divider(height: 1, color: _C.border),
+          if (sorted.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(32),
+              child: Center(
+                child: Text(
+                  'No feedback data yet',
+                  style: GoogleFonts.inter(fontSize: 13, color: _C.muted),
+                ),
+              ),
+            )
+          else
+            // Capped to ~5 rows visible with the rest reachable by scrolling
+            // inside this box, instead of the list just growing the whole
+            // page taller the more events an org has.
+            SizedBox(
+              height: math.min(sorted.length * 50.0, 5 * 50.0),
+              child: ListView.separated(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                itemCount: sorted.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                itemBuilder: (context, i) {
+                  final entry = sorted[i];
+                  final title = data.eventDisplayTitle(entry.key);
+                  final score = entry.value;
+                  return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
@@ -2174,12 +2149,12 @@ class _RatingByEventChart extends StatelessWidget {
                         ),
                       ),
                     ],
-                  ),
-                );
-              }).toList(),
+                  );
+                },
+              ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -2252,66 +2227,77 @@ class _FinanceByEventChart extends StatelessWidget {
         ),
       );
 
-    // No outer card here — shares one container with _RatingByEventChart
-    // (see _buildAnalyticsTab).
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFECFDF5),
-                  borderRadius: BorderRadius.circular(8),
+    return Container(
+      decoration: BoxDecoration(
+        color: _C.white,
+        borderRadius: BorderRadius.circular(_DS.radiusMd),
+        border: Border.all(color: _C.border.withOpacity(0.5)),
+        boxShadow: _DS.cardShadow,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFECFDF5),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.payments_outlined,
+                    size: 16,
+                    color: _C.green,
+                  ),
                 ),
-                child: const Icon(
-                  Icons.payments_outlined,
-                  size: 16,
-                  color: _C.green,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Income vs. expense by event',
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: _C.charcoal,
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Income vs. expense by event',
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: _C.charcoal,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        _legendDot(_C.green, 'Income'),
-                        const SizedBox(width: 14),
-                        _legendDot(_C.red, 'Expense'),
-                      ],
-                    ),
-                  ],
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          _legendDot(_C.green, 'Income'),
+                          const SizedBox(width: 14),
+                          _legendDot(_C.red, 'Expense'),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-        const Divider(height: 1, color: _C.border),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          child: Column(
-            children: entries.map((entry) {
-              final title = entry.key;
-              final f = entry.value;
-              final net = f.income - f.expense;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 14),
-                child: Column(
+          const Divider(height: 1, color: _C.border),
+          // Same capped-and-scrollable treatment as _RatingByEventChart's
+          // list, just a taller per-row estimate since each row here has two
+          // bars (income + expense) instead of one.
+          SizedBox(
+            height: math.min(entries.length * 70.0, 5 * 70.0),
+            child: ListView.separated(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              itemCount: entries.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 12),
+              itemBuilder: (context, i) {
+                final entry = entries[i];
+                final title = entry.key;
+                final f = entry.value;
+                final net = f.income - f.expense;
+                return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
@@ -2344,12 +2330,12 @@ class _FinanceByEventChart extends StatelessWidget {
                     const SizedBox(height: 4),
                     _financeBar(f.expense, maxValue, _C.red),
                   ],
-                ),
-              );
-            }).toList(),
+                );
+              },
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -2519,7 +2505,7 @@ class _DonutPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final cx = size.width / 2, cy = size.height / 2;
     final r = math.min(cx, cy) - 14;
-    const sw = 24.0, gap = 0.04;
+    const sw = 24.0, gap = 0.012;
     final paint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = sw

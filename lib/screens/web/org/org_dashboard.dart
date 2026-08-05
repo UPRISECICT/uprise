@@ -309,8 +309,13 @@ const List<Map<String, dynamic>> _navItems = [
 // under a collapsible parent (indices refer to _navItems / _screens).
 // Org Profile (8) is deliberately absent — it's user-scoped now, reached
 // only via the profile dropdown's "My Profile" entry.
-const List<int> _standaloneTop = [0];
-const List<int> _standaloneBottom = [6];
+// Messages (7) used to be buried inside "Attendance & Certificates",
+// between Mark Attendance and Certificates — pulled out to stand on its own
+// next to Announcements (6), since it's a private-messaging inbox, not an
+// attendance/certificate tool. Both now sit right under Dashboard (top of
+// the sidebar, ahead of every group) since they're checked constantly.
+const List<int> _standaloneTop = [0, 6, 7];
+const List<int> _standaloneBottom = [];
 const Map<String, Map<String, dynamic>> _navGroups = {
   'events': {
     'label': 'Events & Requests',
@@ -320,7 +325,7 @@ const Map<String, Map<String, dynamic>> _navGroups = {
   'attendance': {
     'label': 'Attendance & Certificates',
     'icon': Icons.fact_check_outlined,
-    'children': [3, 7, 4],
+    'children': [3, 4],
   },
   'finance': {
     'label': 'Finance & Merch',
@@ -799,33 +804,54 @@ class _OrgDashboardState extends State<OrgDashboard> {
     // One cooldown per org+type throttles how often we re-notify; it
     // doesn't change which event the notification is about — the first
     // finished event still missing a report (in date order) is reported.
+    //
+    // The override + report-existence lookups used to run one event at a
+    // time in a sequential for-loop (N round trips awaited serially for an
+    // org with N past events). They're independent per event, so fetch them
+    // in parallel batches instead and just pick the first qualifying event
+    // out of the already-resolved results, preserving the same ordering.
     Future<void> checkOne(String key, String label) async {
       final lastSentField =
           'last${key[0].toUpperCase()}${key.substring(1)}DeadlineReminderAt';
       if (!_cooldownElapsed(orgData[lastSentField] as Timestamp?)) return;
 
-      for (final ev in finishedEvents) {
-        final eventId = ev['id'] as String;
-        final overrideDoc = await FirebaseFirestore.instance
-            .collection('report_deadline_overrides')
-            .doc('${_orgId}_${eventId}_$key')
-            .get();
-        final deadline =
-            (overrideDoc.data()?['deadline'] as Timestamp?)?.toDate() ??
-            (ev['date'] as DateTime).add(const Duration(days: 7));
+      final overrideDocs = await Future.wait(
+        finishedEvents.map(
+          (ev) => FirebaseFirestore.instance
+              .collection('report_deadline_overrides')
+              .doc('${_orgId}_${ev['id']}_$key')
+              .get(),
+        ),
+      );
 
+      final withDeadlines = <Map<String, dynamic>>[];
+      for (var i = 0; i < finishedEvents.length; i++) {
+        final ev = finishedEvents[i];
+        final deadline =
+            (overrideDocs[i].data()?['deadline'] as Timestamp?)?.toDate() ??
+            (ev['date'] as DateTime).add(const Duration(days: 7));
         final daysUntil = deadline.difference(now);
         if (daysUntil > _deadlineNearWindow || daysUntil.isNegative) continue;
+        withDeadlines.add({...ev, 'daysUntil': daysUntil});
+      }
+      if (withDeadlines.isEmpty) return;
 
-        final reportSnap = await FirebaseFirestore.instance
-            .collection('reports')
-            .where('orgId', isEqualTo: _orgId)
-            .where('eventId', isEqualTo: eventId)
-            .where('type', isEqualTo: key)
-            .limit(1)
-            .get();
-        if (reportSnap.docs.isNotEmpty) continue;
+      final reportSnaps = await Future.wait(
+        withDeadlines.map(
+          (ev) => FirebaseFirestore.instance
+              .collection('reports')
+              .where('orgId', isEqualTo: _orgId)
+              .where('eventId', isEqualTo: ev['id'])
+              .where('type', isEqualTo: key)
+              .limit(1)
+              .get(),
+        ),
+      );
 
+      for (var i = 0; i < withDeadlines.length; i++) {
+        if (reportSnaps[i].docs.isNotEmpty) continue;
+        final ev = withDeadlines[i];
+        final daysUntil = ev['daysUntil'] as Duration;
         final daysLabel = daysUntil.inDays <= 0
             ? 'today'
             : 'in ${daysUntil.inDays} day${daysUntil.inDays == 1 ? '' : 's'}';
@@ -852,9 +878,14 @@ class _OrgDashboardState extends State<OrgDashboard> {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     try {
+      // Capped — this pulled the account's entire lifetime notification
+      // history on every dashboard load and every bell-icon open, growing
+      // unbounded with account age.
       final snap = await FirebaseFirestore.instance
           .collection('notifications')
           .where('userId', isEqualTo: uid)
+          .orderBy('createdAt', descending: true)
+          .limit(50)
           .get();
       if (mounted) {
         final all = snap.docs
@@ -3530,7 +3561,7 @@ class _StatCardWidget extends StatelessWidget {
 // Was "Merch Sales" (summed price*sold) \u2014 merch has no checkout anymore, so
 // sold/revenue are permanently frozen at 0 and meaningless. This now counts
 // the org's active catalog listings instead.
-class _MerchSalesStatCard extends StatelessWidget {
+class _MerchSalesStatCard extends StatefulWidget {
   final String orgId;
   final bool isSelected;
   final VoidCallback? onTap;
@@ -3541,13 +3572,28 @@ class _MerchSalesStatCard extends StatelessWidget {
   });
 
   @override
+  State<_MerchSalesStatCard> createState() => _MerchSalesStatCardState();
+}
+
+class _MerchSalesStatCardState extends State<_MerchSalesStatCard> {
+  // Cached once instead of built inline in build() — the sibling stat cards
+  // in this row (approved events / pending proposals / upcoming events) tap
+  // through a shared setState in the parent, which rebuilds this whole row
+  // on every click. An inline `stream:` expression is a *new* Stream object
+  // each time, so StreamBuilder tore down and resubscribed a fresh Firestore
+  // listener on every single stat-card tap instead of reusing one.
+  late final Stream<QuerySnapshot> _stream = FirebaseFirestore.instance
+      .collection('products')
+      .where('orgId', isEqualTo: widget.orgId)
+      .where('isArchived', isEqualTo: false)
+      .snapshots();
+
+  @override
   Widget build(BuildContext context) {
+    final isSelected = widget.isSelected;
+    final onTap = widget.onTap;
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('products')
-          .where('orgId', isEqualTo: orgId)
-          .where('isArchived', isEqualTo: false)
-          .snapshots(),
+      stream: _stream,
       builder: (_, snap) {
         final loading = snap.connectionState == ConnectionState.waiting;
         final count = snap.data?.docs.length ?? 0;

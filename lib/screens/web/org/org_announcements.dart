@@ -3347,6 +3347,11 @@ class _PostCardState extends State<_PostCard> {
                 base64Decode(a.imageBase64!),
                 width: double.infinity,
                 fit: BoxFit.contain,
+                // Decodes at a feed-card-sized resolution instead of
+                // whatever the org originally uploaded — see
+                // org_merchandise.dart's identical fix for why this matters
+                // for a repeating list of cards.
+                cacheWidth: 960,
                 errorBuilder: (_, __, ___) => Container(
                   height: 280,
                   color: _C.surface,

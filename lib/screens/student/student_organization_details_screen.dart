@@ -216,7 +216,24 @@ class _StudentOrganizationsDetailsScreenState
           }
 
           final org = snapshot.data!.data() as Map<String, dynamic>;
-          final officers = (org['officers'] as List?) ?? [];
+          // Ordered to match the web "Organization Hierarchy" chart
+          // (President/VP tier, then Secretary/Treasurer, then everyone
+          // else, each ordered the way the org arranged them) instead of
+          // whatever order Firestore happened to return — this list used
+          // to be flat/unordered on mobile.
+          final officers =
+              List<Map<String, dynamic>>.from(
+                (org['officers'] as List? ?? []).whereType<Map>().map(
+                  (o) => Map<String, dynamic>.from(o),
+                ),
+              )..sort((a, b) {
+                final rankCompare = ((a['positionRank'] as num?) ?? 0)
+                    .compareTo((b['positionRank'] as num?) ?? 0);
+                if (rankCompare != 0) return rankCompare;
+                return ((a['order'] as num?) ?? 0).compareTo(
+                  (b['order'] as num?) ?? 0,
+                );
+              });
 
           return Scaffold(
             backgroundColor: AppColors.background,

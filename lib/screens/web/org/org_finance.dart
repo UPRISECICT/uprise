@@ -120,8 +120,10 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
     'General',
   ];
 
+  // Stats row used to hold its own separate live listener on this exact
+  // same query — two Firestore subscriptions doing identical work for the
+  // whole time this screen was open. Now shared.
   late final Stream<QuerySnapshot> _transactionsStream;
-  late final Stream<QuerySnapshot> _statsStream;
 
   List<TransactionModel> _filterTransactions(List<TransactionModel> list) {
     return list.where((t) {
@@ -1231,10 +1233,6 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
         // Removed server-side orderBy to avoid requiring a composite index.
         // We will sort the transactions client-side in _transactionsFromSnapshot().
         .snapshots();
-    _statsStream = FirebaseFirestore.instance
-        .collection('transactions')
-        .where('orgId', isEqualTo: widget.orgId)
-        .snapshots();
     _loadOrgProfile();
   }
 
@@ -1350,7 +1348,7 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
   // ── Stats Row ──────────────────────────────────────────────────────
   Widget _buildStatsRow() {
     return StreamBuilder<QuerySnapshot>(
-      stream: _statsStream,
+      stream: _transactionsStream,
       builder: (context, snapshot) {
         double income = 0, expense = 0;
         int activeCount = 0;
@@ -1732,7 +1730,10 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
               ),
               const SizedBox(width: 20),
               // ── Right: Summary Panel ──
-              SizedBox(width: 300, child: _SummaryPanel(orgId: widget.orgId)),
+              SizedBox(
+                width: 300,
+                child: _SummaryPanel(stream: _transactionsStream),
+              ),
             ],
           );
         },
@@ -2063,28 +2064,17 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
 }
 
 // ============ SUMMARY PANEL ============
-class _SummaryPanel extends StatefulWidget {
-  final String orgId;
-  const _SummaryPanel({required this.orgId});
-
-  @override
-  State<_SummaryPanel> createState() => _SummaryPanelState();
-}
-
-class _SummaryPanelState extends State<_SummaryPanel> {
-  // Created once, not inline in build() — the parent rebuilds on every
-  // search/filter/page change, which was re-subscribing to Firestore from
-  // scratch each time even though Flutter preserves this State object
-  // across those parent rebuilds.
-  late final Stream<QuerySnapshot> _stream = FirebaseFirestore.instance
-      .collection('transactions')
-      .where('orgId', isEqualTo: widget.orgId)
-      .snapshots();
+// Takes the parent's already-open transactions stream instead of opening a
+// third independent live listener on the exact same org-scoped query (the
+// stats row above it shared a fourth one until this was consolidated too).
+class _SummaryPanel extends StatelessWidget {
+  final Stream<QuerySnapshot> stream;
+  const _SummaryPanel({required this.stream});
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
-      stream: _stream,
+      stream: stream,
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());

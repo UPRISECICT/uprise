@@ -13,9 +13,14 @@ import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../services/notification_service.dart';
 import '../../../utils/profanity_filter.dart';
+import '../../../theme/org_theme.dart' as theme;
 
 class _C {
-  static const Color primaryDark = Color(0xFFEA580C);
+  // Was a stale, more-vivid orange (0xFFEA580C) that didn't match the
+  // deepened brand primary the rest of the org portal was moved to — same
+  // drift bug fixed elsewhere (org_events_schedule.dart, org_reports.dart,
+  // org_profile.dart) this session.
+  static const Color primaryDark = theme.UpriseColors.primaryDark;
   static const Color white = Color(0xFFFFFFFF);
   static const Color surface = Color(0xFFF8F9FB);
   static const Color pageBg = Color(0xFFFBFCFE);
@@ -28,6 +33,123 @@ class _C {
 ImageProvider _imageProviderFromBase64(String data) {
   final base64Part = data.contains(',') ? data.split(',').last : data;
   return MemoryImage(base64Decode(base64Part));
+}
+
+const List<String> _reportReasons = [
+  'Spam',
+  'Inappropriate content',
+  'Harassment',
+  'Other',
+];
+
+// Shared by both sides of this chat (org here, student in
+// student_broadcast_screen.dart) — writes to `message_reports` for later
+// admin review. There's no report-review queue UI yet; this is the
+// reporting mechanism itself.
+Future<void> showReportMessageDialog(
+  BuildContext context, {
+  required String conversationId,
+  required String messageId,
+  required String messageText,
+  required String reporterRole,
+  required String reportedUserId,
+  required String reportedUserRole,
+}) async {
+  String selectedReason = _reportReasons.first;
+  final detailsCtrl = TextEditingController();
+  final submitted = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setDialogState) => AlertDialog(
+        title: Text(
+          'Report message',
+          style: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w700),
+        ),
+        content: SizedBox(
+          width: 360,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Why are you reporting this message?',
+                style: GoogleFonts.beVietnamPro(fontSize: 13),
+              ),
+              const SizedBox(height: 8),
+              for (final reason in _reportReasons)
+                RadioListTile<String>(
+                  value: reason,
+                  groupValue: selectedReason,
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    reason,
+                    style: GoogleFonts.beVietnamPro(fontSize: 13),
+                  ),
+                  onChanged: (v) => setDialogState(() => selectedReason = v!),
+                ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: detailsCtrl,
+                maxLines: 2,
+                style: GoogleFonts.beVietnamPro(fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: 'Additional details (optional)',
+                  hintStyle: GoogleFonts.beVietnamPro(fontSize: 12),
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFDC2626),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Report'),
+          ),
+        ],
+      ),
+    ),
+  );
+  if (submitted != true) return;
+
+  final reporter = FirebaseAuth.instance.currentUser;
+  try {
+    await FirebaseFirestore.instance.collection('message_reports').add({
+      'conversationId': conversationId,
+      'messageId': messageId,
+      'messageText': messageText,
+      'reporterId': reporter?.uid ?? '',
+      'reporterRole': reporterRole,
+      'reportedUserId': reportedUserId,
+      'reportedUserRole': reportedUserRole,
+      'reason': selectedReason,
+      'details': detailsCtrl.text.trim(),
+      'status': 'pending',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Message reported. Thanks for flagging it.'),
+        ),
+      );
+    }
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not submit report: $e')));
+    }
+  }
 }
 
 String _conversationId(String orgId, String studentId) => '${orgId}_$studentId';
@@ -723,6 +845,24 @@ class _ChatThreadState extends State<_ChatThread> {
     }
   }
 
+  Future<void> _toggleBlock(bool currentlyBlocked) async {
+    await FirebaseFirestore.instance
+        .collection('conversations')
+        .doc(widget.conversationId)
+        .update({'blockedByOrg': !currentlyBlocked});
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            !currentlyBlocked
+                ? '$_studentName is now blocked from messaging this org.'
+                : '$_studentName can message this org again.',
+          ),
+        ),
+      );
+    }
+  }
+
   Future<void> _pickImage() async {
     try {
       final picker = ImagePicker();
@@ -761,6 +901,23 @@ class _ChatThreadState extends State<_ChatThread> {
 
   @override
   Widget build(BuildContext context) {
+    // Streamed (not read from widget.conversation, which is a one-time
+    // snapshot from when the thread was opened) so a block/unblock toggle
+    // reflects immediately without needing to reopen the conversation.
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('conversations')
+          .doc(widget.conversationId)
+          .snapshots(),
+      builder: (context, convoSnap) {
+        final convoData = convoSnap.data?.data() as Map<String, dynamic>? ?? {};
+        final blocked = convoData['blockedByOrg'] == true;
+        return _buildBody(context, blocked);
+      },
+    );
+  }
+
+  Widget _buildBody(BuildContext context, bool blocked) {
     return Column(
       children: [
         Container(
@@ -784,13 +941,46 @@ class _ChatThreadState extends State<_ChatThread> {
                 ),
               ),
               const SizedBox(width: 12),
-              Text(
-                _studentName,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: _C.charcoal,
+              Expanded(
+                child: Text(
+                  _studentName,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: _C.charcoal,
+                  ),
                 ),
+              ),
+              if (blocked)
+                Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFDC2626).withAlpha(24),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    'Blocked',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFFDC2626),
+                    ),
+                  ),
+                ),
+              IconButton(
+                onPressed: () => _toggleBlock(blocked),
+                icon: Icon(
+                  blocked ? Icons.lock_open_rounded : Icons.block_rounded,
+                  color: blocked ? _C.darkGray : const Color(0xFFDC2626),
+                  size: 20,
+                ),
+                tooltip: blocked
+                    ? 'Unblock $_studentName'
+                    : 'Block $_studentName',
               ),
             ],
           ),
@@ -839,6 +1029,18 @@ class _ChatThreadState extends State<_ChatThread> {
                       text: text,
                       imageBase64: image,
                       time: ts != null ? DateFormat('h:mm a').format(ts) : '',
+                      onReport: isOrg
+                          ? null
+                          : () => showReportMessageDialog(
+                              context,
+                              conversationId: widget.conversationId,
+                              messageId: docs[i].id,
+                              messageText: text,
+                              reporterRole: 'org',
+                              reportedUserId: (data['senderId'] ?? '')
+                                  .toString(),
+                              reportedUserRole: 'student',
+                            ),
                     );
                   },
                 );
@@ -912,12 +1114,17 @@ class _MessageBubble extends StatelessWidget {
   final String text;
   final String? imageBase64;
   final String time;
+  // Only set for the other person's messages — reporting your own message
+  // makes no sense, so the long-press menu simply doesn't appear on isMe
+  // bubbles.
+  final VoidCallback? onReport;
 
   const _MessageBubble({
     required this.isMe,
     required this.text,
     required this.imageBase64,
     required this.time,
+    this.onReport,
   });
 
   @override
@@ -927,66 +1134,72 @@ class _MessageBubble extends StatelessWidget {
 
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        constraints: const BoxConstraints(maxWidth: 460),
-        child: Column(
-          crossAxisAlignment: isMe
-              ? CrossAxisAlignment.end
-              : CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: bg,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(16),
-                  topRight: const Radius.circular(16),
-                  bottomLeft: Radius.circular(isMe ? 16 : 4),
-                  bottomRight: Radius.circular(isMe ? 4 : 16),
+      child: GestureDetector(
+        onLongPress: onReport,
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: Column(
+            crossAxisAlignment: isMe
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withAlpha(10),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
+                decoration: BoxDecoration(
+                  color: bg,
+                  borderRadius: BorderRadius.only(
+                    topLeft: const Radius.circular(16),
+                    topRight: const Radius.circular(16),
+                    bottomLeft: Radius.circular(isMe ? 16 : 4),
+                    bottomRight: Radius.circular(isMe ? 4 : 16),
                   ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (imageBase64 != null) ...[
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: Image(
-                        image: _imageProviderFromBase64(imageBase64!),
-                        width: 200,
-                        fit: BoxFit.cover,
-                      ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withAlpha(10),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
                     ),
-                    if (text.isNotEmpty) const SizedBox(height: 6),
                   ],
-                  if (text.isNotEmpty)
-                    Text(
-                      text,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13.5,
-                        color: fg,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (imageBase64 != null) ...[
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Image(
+                          image: _imageProviderFromBase64(imageBase64!),
+                          width: 200,
+                          fit: BoxFit.cover,
+                        ),
                       ),
-                    ),
-                ],
+                      if (text.isNotEmpty) const SizedBox(height: 6),
+                    ],
+                    if (text.isNotEmpty)
+                      Text(
+                        text,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13.5,
+                          color: fg,
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 3),
-            Text(
-              time,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 10,
-                color: _C.textFaint,
+              const SizedBox(height: 3),
+              Text(
+                time,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 10,
+                  color: _C.textFaint,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

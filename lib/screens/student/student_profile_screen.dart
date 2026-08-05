@@ -121,6 +121,14 @@ class ProfileModel extends ChangeNotifier {
   String campus = '';
   String orgId = '';
   String orgName = '';
+  // Set by org_profile.dart when an org tags this student as an officer or
+  // member (org_profile.dart's _tagMatchingStudentAccount writes these same
+  // fields onto both `users` and `students`, so they're already sitting in
+  // the same doc this screen already fetches — no extra read needed).
+  String orgRole = '';
+  bool isOrgOfficer = false;
+  bool isOrgMember = false;
+  String officerPosition = '';
 
   ProfileModel() {
     _loadUserData();
@@ -143,6 +151,10 @@ class ProfileModel extends ChangeNotifier {
     department = data['department'] ?? department;
     campus = data['campus'] ?? campus;
     orgId = data['orgId'] ?? orgId;
+    orgRole = data['orgRole'] ?? orgRole;
+    isOrgOfficer = data['isOrgOfficer'] == true;
+    isOrgMember = data['isOrgMember'] == true;
+    officerPosition = data['officerPosition'] ?? officerPosition;
   }
 
   // Cache-first: a fresh ProfileModel is created every time the student
@@ -224,6 +236,10 @@ class ProfileModel extends ChangeNotifier {
         'campus': campus,
         'orgId': orgId,
         'orgName': orgName,
+        'orgRole': orgRole,
+        'isOrgOfficer': isOrgOfficer,
+        'isOrgMember': isOrgMember,
+        'officerPosition': officerPosition,
       }),
     );
   }
@@ -832,6 +848,37 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                                   color: Colors.white,
                                 ),
                               ),
+                              // The card above already proved "assigned to
+                              // an org," but nothing distinguished an
+                              // officer from a plain member — this pill is
+                              // the actual "you are part of this org" tag.
+                              if (_profile.isOrgOfficer ||
+                                  _profile.isOrgMember) ...[
+                                const SizedBox(height: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.25),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    _profile.isOrgOfficer
+                                        ? (_profile.officerPosition.isNotEmpty
+                                              ? 'OFFICER · ${_profile.officerPosition.toUpperCase()}'
+                                              : 'OFFICER')
+                                        : 'MEMBER',
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ),

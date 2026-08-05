@@ -12,6 +12,33 @@ ImageProvider _guestImageProvider(String url) {
   return NetworkImage(url);
 }
 
+// Shared by both the browse-list filter (which just hides events a guest
+// classification isn't allowed to see) and the registration screen (which
+// enforces the same rule at the actual write) — a guest reaching the
+// registration screen via a direct navigation, bypassing the hidden-from-list
+// filter, would otherwise be able to register for a BulSUan-only event
+// without ever being BulSUan-classified.
+bool classificationAllowsAudience(String audience, String classification) {
+  bool singleAllowed(String v) {
+    switch (v) {
+      case 'BulSUan':
+        return classification == 'BulSUan';
+      case 'CICT Only':
+      case 'Members Only':
+        return false;
+      default:
+        return true;
+    }
+  }
+
+  final values = audience
+      .split(',')
+      .map((s) => s.trim())
+      .where((s) => s.isNotEmpty);
+  if (values.isEmpty) return true;
+  return values.any(singleAllowed);
+}
+
 // ─────────────────────────────────────────────────────────────
 // Theme
 // ─────────────────────────────────────────────────────────────
@@ -143,26 +170,8 @@ class _GuestEventsScreenState extends State<GuestEventsScreen> {
   // them comma-joined in the same field, e.g. "CICT Only, BulSUan") — a
   // guest can see it if ANY one of the listed audiences would individually
   // allow them, so checking multiple boxes only ever widens who sees it.
-  bool _singleAudienceAllowed(String audience) {
-    switch (audience) {
-      case 'BulSUan':
-        return _guestClassification == 'BulSUan';
-      case 'CICT Only':
-      case 'Members Only':
-        return false;
-      default:
-        return true;
-    }
-  }
-
-  bool _audienceAllowed(String audience) {
-    final values = audience
-        .split(',')
-        .map((s) => s.trim())
-        .where((s) => s.isNotEmpty);
-    if (values.isEmpty) return true;
-    return values.any(_singleAudienceAllowed);
-  }
+  bool _audienceAllowed(String audience) =>
+      classificationAllowsAudience(audience, _guestClassification);
 
   @override
   void dispose() {
@@ -1299,6 +1308,41 @@ class _GuestEventRegistrationScreenState
     setState(() => _isLoading = true);
 
     try {
+      // Re-check the guest's classification against this event's audience
+      // here too — the browse list already hides events a guest can't see,
+      // but that's just a list filter; nothing stopped this screen from
+      // being reached directly and registering anyway.
+      var classification = 'Outsider';
+      final guestSvc = GuestAuthService();
+      if (guestSvc.isAuthenticated && guestSvc.docId != null) {
+        try {
+          final classDoc = await FirebaseFirestore.instance
+              .collection('external_requests')
+              .doc(guestSvc.docId)
+              .get();
+          if (classDoc.data()?['classification'] == 'BulSUan') {
+            classification = 'BulSUan';
+          }
+        } catch (_) {}
+      }
+      if (!classificationAllowsAudience(
+        widget.event.audience,
+        classification,
+      )) {
+        if (mounted) {
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'This event is not open to your guest classification.',
+              ),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+        }
+        return;
+      }
+
       // Check for duplicate registration by email
       final dupCheck = await FirebaseFirestore.instance
           .collection('registrations')

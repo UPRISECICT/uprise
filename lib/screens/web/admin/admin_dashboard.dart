@@ -19,6 +19,7 @@ import 'external_account.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../services/notification_service.dart';
 import 'reports_management.dart';
+import 'admin_message_reports.dart';
 import 'settings.dart';
 import 'admin_profile.dart';
 import 'export_pdf.dart' show AdminExportPdf;
@@ -78,12 +79,13 @@ const List<Map<String, dynamic>> _navItems = [
   {'label': 'External Account', 'icon': Icons.link_outlined},
   {'label': 'Reports & Analytics', 'icon': Icons.assessment_outlined},
   {'label': 'Activity Logs', 'icon': Icons.history_outlined},
+  {'label': 'Message Reports', 'icon': Icons.flag_outlined},
 ];
 
 // Sidebar groups: standalone items render directly, grouped items nest
 // under a collapsible parent (indices refer to _navItems / _screens).
 const List<int> _standaloneTop = [0];
-const List<int> _standaloneBottom = [9];
+const List<int> _standaloneBottom = [9, 10];
 const Map<String, Map<String, dynamic>> _navGroups = {
   'requests': {
     'label': 'Requests',
@@ -331,8 +333,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
       const ExternalAccount(),
       const ReportsManagement(),
       const ActivityLogs(),
-      const AdminSettings(), // index 10 — settings
-      AdminProfile(onProfileUpdated: _fetchAdminData), // index 11 — my profile
+      const AdminMessageReports(), // index 10 — message reports
+      const AdminSettings(), // index 11 — settings
+      AdminProfile(onProfileUpdated: _fetchAdminData), // index 12 — my profile
     ];
   }
 
@@ -500,8 +503,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
     if (index != null) _selectTab(index);
   }
 
-  // -1 is the "Settings" sentinel (maps to _screens[10]) and -2 is the
-  // "My Profile" sentinel (maps to _screens[11]) — neither has a slot in
+  // -1 is the "Settings" sentinel (maps to _screens[11]) and -2 is the
+  // "My Profile" sentinel (maps to _screens[12]) — neither has a slot in
   // _navItems/the sidebar, since both are reached from the top-right
   // profile menu instead.
   void _selectTab(int index) {
@@ -517,8 +520,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   int _screenIndexFor(int selectedIndex) {
-    if (selectedIndex == -1) return 10;
-    if (selectedIndex == -2) return 11;
+    if (selectedIndex == -1) return 11;
+    if (selectedIndex == -2) return 12;
     return selectedIndex;
   }
 
@@ -860,6 +863,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
       'External Account',
       'Reports & Analytics',
       'Activity Logs',
+      'Message Reports',
     ];
     return titles[_selectedIndex];
   }

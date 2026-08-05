@@ -8,8 +8,10 @@
 
 import 'dart:convert';
 import 'dart:math';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -19,21 +21,79 @@ import 'package:excel/excel.dart' hide Border, TextSpan;
 import 'package:csv/csv.dart';
 import 'package:cross_file/cross_file.dart';
 import 'package:http/http.dart' as http;
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../theme/org_theme.dart';
+import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/org_modal_shell.dart';
+import 'export_util.dart';
 
 final RegExp _emailPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
 
-// Drives which tier of the org chart (_HierarchyTree) an officer lands in.
+// Builds the denormalized `officers` array field the mobile app's
+// Organization Details screen reads directly (org['officers']) instead of
+// the `officers` subcollection. This used to be built independently in 3
+// different places in this file, two of which wrote the position title
+// under the key 'role' while mobile reads 'position' — silently leaving
+// every officer's title blank on the student side — and one of which
+// ordered by name instead of rank, discarding the hierarchy order every
+// time an officer was added/edited. One shared builder now, always ordered
+// by (positionRank, order) and with the field names mobile actually reads.
+Future<List<Map<String, dynamic>>> _buildOrgOfficersArray(String orgId) async {
+  final snap = await FirebaseFirestore.instance
+      .collection('organizations')
+      .doc(orgId)
+      .collection('officers')
+      .orderBy('positionRank')
+      .get();
+  final officers = snap.docs.map((d) {
+    final dd = d.data();
+    return {
+      'id': d.id,
+      'name': dd['name'] ?? '',
+      'position': dd['position'] ?? '',
+      'positionRank': dd['positionRank'] ?? 0,
+      'order': dd['order'] ?? 0,
+      'email': dd['email'] ?? '',
+      'phone': dd['phone'] ?? '',
+      'photoUrl': dd['photoUrl'] ?? '',
+      'parentId': dd['parentId'] ?? '',
+    };
+  }).toList();
+  officers.sort((a, b) {
+    final rankCompare = (a['positionRank'] as int).compareTo(
+      b['positionRank'] as int,
+    );
+    if (rankCompare != 0) return rankCompare;
+    return (a['order'] as int).compareTo(b['order'] as int);
+  });
+  return officers;
+}
+
+Future<void> _syncOrgOfficersArray(String orgId) async {
+  final officers = await _buildOrgOfficersArray(orgId);
+  await FirebaseFirestore.instance
+      .collection('organizations')
+      .doc(orgId)
+      .update({'officers': officers});
+}
+
+// Drives which tier (row) of the org chart (_HierarchyTree) an officer
+// lands in — each distinct rank value gets its own row, top to bottom, so
+// President/VP/Secretary/Treasurer/Auditor each read as a separate level
+// instead of being lumped together. Only positions that legitimately share
+// a level (Business Manager/Board Member/Student Adviser — none of them
+// outrank each other) share a rank.
 const Map<String, int> _standardPositionRanks = {
   'President': 0,
   'Vice President': 1,
   'Secretary': 2,
-  'Treasurer': 2,
-  'Business Manager': 3,
-  'Board Member': 3,
-  'Student Adviser': 3,
+  'Treasurer': 3,
+  'Auditor': 4,
+  'Business Manager': 5,
+  'Board Member': 5,
+  'Student Adviser': 5,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -58,10 +118,23 @@ String _mimeTypeFromBytes(List<int> bytes) {
   return 'image/png';
 }
 
+// MemoryImage's cache key is the decoded bytes object itself, not the
+// source string — so calling base64Decode() fresh on every build (which
+// happens a lot here: every rebuild of every officer/member/adviser tile)
+// produced a *new* Uint8List each time, which Flutter's image cache can
+// never recognize as "the same image already loaded." That forced a full
+// re-decode + repaint from scratch on every rebuild, which is exactly what
+// showed up as photos visibly reloading while scrolling. Caching the
+// decoded MemoryImage per URL string means the same object is reused, so
+// the cache actually hits.
+final Map<String, MemoryImage> _memoryImageCache = {};
+
 ImageProvider _imageProviderFromUrl(String url) {
   if (url.startsWith('data:image')) {
-    final base64Part = url.split(',').last;
-    return MemoryImage(base64Decode(base64Part));
+    return _memoryImageCache.putIfAbsent(url, () {
+      final base64Part = url.split(',').last;
+      return MemoryImage(base64Decode(base64Part));
+    });
   }
   return NetworkImage(url);
 }
@@ -114,14 +187,42 @@ Future<bool> _tagMatchingStudentAccount({
       return false;
     }
 
+    // The `students` doc ID is meant to be the exact same uid as its
+    // `users` counterpart (see CLAUDE.md) — both are supposed to be created
+    // together. Some accounts only ever had one of the two written though
+    // (older/seeded data), which meant tagging looked successful ("added as
+    // a member!") but only ever touched whichever side already existed —
+    // if that was `students` only, the Members list (which reads `users`
+    // exclusively) would never show them. Back-fill whichever side is
+    // missing instead of silently skipping it.
     if (userSnap.docs.isNotEmpty) {
       await userSnap.docs.first.reference.set(updates, SetOptions(merge: true));
+    } else {
+      final uid = studentSnap.docs.first.id;
+      final studentData = studentSnap.docs.first.data();
+      await FirebaseFirestore.instance.collection('users').doc(uid).set({
+        'uid': uid,
+        'email': trimmed,
+        'fullName': studentData['fullName'] ?? '',
+        'role': 'student',
+        ...updates,
+      }, SetOptions(merge: true));
     }
+
     if (studentSnap.docs.isNotEmpty) {
       await studentSnap.docs.first.reference.set(
         updates,
         SetOptions(merge: true),
       );
+    } else {
+      final uid = userSnap.docs.first.id;
+      final userData = userSnap.docs.first.data();
+      await FirebaseFirestore.instance.collection('students').doc(uid).set({
+        'uid': uid,
+        'email': trimmed,
+        'fullName': userData['fullName'] ?? '',
+        ...updates,
+      }, SetOptions(merge: true));
     }
 
     return true;
@@ -536,22 +637,7 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
   ) async {
     try {
       final storedOfficers = data['officers'] as List<dynamic>?;
-      final officerSnap = await FirebaseFirestore.instance
-          .collection('organizations')
-          .doc(widget.orgId)
-          .collection('officers')
-          .orderBy('positionRank', descending: false)
-          .get();
-      final officers = officerSnap.docs.map((d) {
-        final dd = d.data();
-        return {
-          'name': dd['name'] ?? '',
-          'role': dd['position'] ?? '',
-          'email': dd['email'] ?? '',
-          'phone': dd['phone'] ?? '',
-          'photoUrl': dd['photoUrl'] ?? '',
-        };
-      }).toList();
+      final officers = await _buildOrgOfficersArray(widget.orgId);
       if (!_officersMatch(storedOfficers, officers)) {
         await FirebaseFirestore.instance
             .collection('organizations')
@@ -577,21 +663,7 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
   }
 
   Future<void> _syncOrganizationOfficers() async {
-    final orgDoc = FirebaseFirestore.instance
-        .collection('organizations')
-        .doc(widget.orgId);
-    final snap = await orgDoc.collection('officers').get();
-    final officers = snap.docs.map((d) {
-      final dd = d.data();
-      return {
-        'name': dd['name'] ?? '',
-        'role': dd['position'] ?? '',
-        'email': dd['email'] ?? '',
-        'phone': dd['phone'] ?? '',
-        'photoUrl': dd['photoUrl'] ?? '',
-      };
-    }).toList();
-    await orgDoc.update({'officers': officers});
+    await _syncOrgOfficersArray(widget.orgId);
   }
 
   // Created once, not a getter — used in three separate StreamBuilders, so
@@ -648,7 +720,7 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
     );
   }
 
-  void _openEditProfile() {
+  void _openEditProfile({bool focusAdvisers = false}) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -669,11 +741,14 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
           instagram: _instagram,
           twitter: _twitter,
           gmail: _gmail,
+          focusAdvisers: focusAdvisers,
           onSaved: _loadOrgData,
         ),
       ),
     );
   }
+
+  void _openAddAdviser() => _openEditProfile(focusAdvisers: true);
 
   void _openOfficerModal({OfficerModel? officer}) {
     showDialog(
@@ -1189,7 +1264,7 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
               ),
               if (_advisers.length < 3)
                 ElevatedButton.icon(
-                  onPressed: _openEditProfile,
+                  onPressed: _openAddAdviser,
                   icon: const Icon(
                     Icons.add_rounded,
                     size: 15,
@@ -1246,7 +1321,7 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
                   ),
                   const SizedBox(width: 10),
                   ElevatedButton.icon(
-                    onPressed: _openEditProfile,
+                    onPressed: _openAddAdviser,
                     icon: const Icon(
                       Icons.add_rounded,
                       size: 16,
@@ -2200,6 +2275,11 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
 
   void _showAddMemberDialog() {
     final searchCtrl = TextEditingController();
+    // The whole roster is fetched from Firestore exactly once per dialog
+    // open; every keystroke after that just re-filters this in-memory copy
+    // instead of re-querying the entire `students` collection per character
+    // typed.
+    List<Map<String, dynamic>> allStudents = [];
     List<Map<String, dynamic>> results = [];
     bool isLoading = false;
     bool hasLoadedOnce = false;
@@ -2211,6 +2291,23 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
       barrierColor: Colors.black54,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) {
+          void applyFilter(String query) {
+            final q = query.trim().toLowerCase();
+            setDialogState(() {
+              results = q.isEmpty
+                  ? allStudents
+                  : allStudents.where((item) {
+                      final name = (item['name'] as String).toLowerCase();
+                      final email = (item['email'] as String).toLowerCase();
+                      final studentId = (item['studentId'] as String)
+                          .toLowerCase();
+                      return name.contains(q) ||
+                          email.contains(q) ||
+                          studentId.contains(q);
+                    }).toList();
+            });
+          }
+
           Future<void> localLoad(String query) async {
             setDialogState(() {
               isLoading = true;
@@ -2221,47 +2318,32 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
                   .collection('students')
                   .orderBy('fullName')
                   .get();
-              final filtered = snap.docs
-                  .map((doc) {
-                    final data = doc.data();
-                    final firstName = (data['firstName'] ?? '').toString();
-                    final lastName = (data['lastName'] ?? '').toString();
-                    final fullName = (data['fullName'] ?? '').toString();
-                    final email = (data['email'] ?? '').toString();
-                    final studentId = (data['studentId'] ?? '').toString();
-                    final displayName = fullName.isNotEmpty
-                        ? fullName
-                        : [
-                            firstName,
-                            lastName,
-                          ].where((s) => s.isNotEmpty).join(' ').trim();
-                    final isMember =
-                        (data['orgId'] ?? '') == widget.orgId &&
-                        (data['orgRole'] ?? '') == 'member';
-                    return {
-                      'uid': doc.id,
-                      'name': displayName,
-                      'email': email,
-                      'studentId': studentId,
-                      'isMember': isMember,
-                    };
-                  })
-                  .where((item) {
-                    final q = query.trim().toLowerCase();
-                    if (q.isEmpty) return true;
-                    final name = (item['name'] as String).toLowerCase();
-                    final email = (item['email'] as String).toLowerCase();
-                    final studentId = (item['studentId'] as String)
-                        .toLowerCase();
-                    return name.contains(q) ||
-                        email.contains(q) ||
-                        studentId.contains(q);
-                  })
-                  .toList();
-              setDialogState(() {
-                results = filtered;
-                isLoading = false;
-              });
+              allStudents = snap.docs.map((doc) {
+                final data = doc.data();
+                final firstName = (data['firstName'] ?? '').toString();
+                final lastName = (data['lastName'] ?? '').toString();
+                final fullName = (data['fullName'] ?? '').toString();
+                final email = (data['email'] ?? '').toString();
+                final studentId = (data['studentId'] ?? '').toString();
+                final displayName = fullName.isNotEmpty
+                    ? fullName
+                    : [
+                        firstName,
+                        lastName,
+                      ].where((s) => s.isNotEmpty).join(' ').trim();
+                final isMember =
+                    (data['orgId'] ?? '') == widget.orgId &&
+                    (data['orgRole'] ?? '') == 'member';
+                return {
+                  'uid': doc.id,
+                  'name': displayName,
+                  'email': email,
+                  'studentId': studentId,
+                  'isMember': isMember,
+                };
+              }).toList();
+              setDialogState(() => isLoading = false);
+              applyFilter(query);
             } catch (e) {
               setDialogState(() {
                 isLoading = false;
@@ -2299,7 +2381,7 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
                       icon: Icons.search_rounded,
                     ),
                     style: GoogleFonts.beVietnamPro(fontSize: 13),
-                    onChanged: (value) => localLoad(value),
+                    onChanged: applyFilter,
                   ),
                   const SizedBox(height: 14),
                   if (isLoading)
@@ -3169,20 +3251,122 @@ String _currentAcademicYearLabel() {
   return '$startYear - ${startYear + 1}';
 }
 
-class _HierarchyTree extends StatelessWidget {
+const double _hierarchyBoxWidth = 112;
+const double _hierarchySpacing = 18;
+
+class _HierarchyTree extends StatefulWidget {
   final String orgId;
   final String orgName;
   const _HierarchyTree({required this.orgId, required this.orgName});
 
-  static const double _boxWidth = 112;
-  static const double _spacing = 18;
+  @override
+  State<_HierarchyTree> createState() => _HierarchyTreeState();
+}
+
+class _HierarchyTreeState extends State<_HierarchyTree> {
+  final GlobalKey _captureKey = GlobalKey();
+  bool _editMode = false;
+  bool _isExporting = false;
+
+  // Dragging one officer onto another swaps their entire tree position —
+  // tier (positionRank), order, AND parentId — so this both reorders peers
+  // and moves someone to a different tier/parent in one gesture, without
+  // needing a full free-form canvas (this app had no drag-and-drop
+  // precedent anywhere else, so this keeps the interaction to the simplest
+  // thing that gives real control). Assigning a specific parent (e.g. a
+  // custom "Coach" reporting to "Head Coach") is still primarily done via
+  // the officer modal's "Reports To" picker — this just lets a drag swap
+  // two officers' full positions at once, parent included.
+  Future<void> _swapOfficers(OfficerModel a, OfficerModel b) async {
+    if (a.id == b.id) return;
+    // Swapping parentId straight across would make a node its own parent
+    // if one is currently a direct report of the other (e.g. dragging
+    // "Head Coach" onto "Coach" who reports to them) — refuse rather than
+    // create a cycle; that restructure belongs in the "Reports To" picker.
+    if (a.parentId == b.id || b.parentId == a.id) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              "Can't swap a position with its own direct report — use "
+              '"Reports To" in the edit form instead.',
+            ),
+            backgroundColor: _C.error,
+          ),
+        );
+      }
+      return;
+    }
+    final col = FirebaseFirestore.instance
+        .collection('organizations')
+        .doc(widget.orgId)
+        .collection('officers');
+    final batch = FirebaseFirestore.instance.batch();
+    batch.update(col.doc(a.id), {
+      'positionRank': b.positionRank,
+      'order': b.order,
+      'parentId': b.parentId ?? '',
+    });
+    batch.update(col.doc(b.id), {
+      'positionRank': a.positionRank,
+      'order': a.order,
+      'parentId': a.parentId ?? '',
+    });
+    await batch.commit();
+    await _syncOrgOfficersArray(widget.orgId);
+  }
+
+  Future<void> _exportAsPdf() async {
+    setState(() => _isExporting = true);
+    try {
+      final boundary =
+          _captureKey.currentContext?.findRenderObject()
+              as RenderRepaintBoundary?;
+      if (boundary == null) throw Exception('Could not capture the chart');
+      final image = await boundary.toImage(pixelRatio: 3.0);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) throw Exception('Could not capture the chart');
+      final imageBytes = byteData.buffer.asUint8List();
+
+      final doc = pw.Document();
+      doc.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4.landscape,
+          margin: const pw.EdgeInsets.all(24),
+          build: (context) => pw.Center(
+            child: pw.Image(pw.MemoryImage(imageBytes), fit: pw.BoxFit.contain),
+          ),
+        ),
+      );
+      final pdfBytes = await doc.save();
+      final safeName = widget.orgName
+          .replaceAll(RegExp(r'[^A-Za-z0-9]+'), '_')
+          .replaceAll(RegExp(r'_+'), '_');
+      await OrgExportUtil.saveBytes(
+        pdfBytes,
+        '${safeName.isEmpty ? 'org' : safeName}_hierarchy.pdf',
+        mimeType: 'application/pdf',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Export failed: $e'),
+            backgroundColor: _C.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('organizations')
-          .doc(orgId)
+          .doc(widget.orgId)
           .collection('officers')
           .orderBy('positionRank', descending: false)
           .snapshots(),
@@ -3195,105 +3379,260 @@ class _HierarchyTree extends StatelessWidget {
         final officers = snap.data!.docs
             .map((d) => OfficerModel.fromFirestore(d))
             .toList();
-        if (officers.isEmpty) {
-          return Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: _C.surface,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: _C.borderSoft),
-            ),
-            child: Center(
-              child: Text(
-                'No officers to display',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  color: _C.darkGray,
-                ),
-              ),
-            ),
-          );
-        }
 
-        final tier1 = officers.where((o) => o.positionRank <= 1).toList();
-        final tier2 = officers.where((o) => o.positionRank == 2).toList();
-        final tier3 = officers.where((o) => o.positionRank >= 3).toList();
-        final tiers = [tier1, tier2, tier3].where((t) => t.isNotEmpty).toList();
-
-        return FutureBuilder<QuerySnapshot>(
-          future: FirebaseFirestore.instance
-              .collection('users')
-              .where('orgId', isEqualTo: orgId)
-              .where('orgRole', isEqualTo: 'member')
-              .limit(6)
-              .get(),
-          builder: (context, memberSnap) {
-            final members = memberSnap.data?.docs ?? [];
-            return Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(_DS.radiusLg),
-                gradient: LinearGradient(
-                  colors: [
-                    _C.primaryDark.withAlpha(15),
-                    _C.accent.withAlpha(10),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-              child: Column(
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (officers.isNotEmpty) ...[
+              Row(
                 children: [
-                  Text(
-                    '${orgName.toUpperCase()} OFFICERS',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: _C.charcoal,
-                      letterSpacing: 0.4,
+                  if (_editMode)
+                    Expanded(
+                      child: Text(
+                        'Drag a card onto another to swap their positions.',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 11.5,
+                          color: _C.darkGray,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    )
+                  else
+                    const Spacer(),
+                  OutlinedButton.icon(
+                    onPressed: () => setState(() => _editMode = !_editMode),
+                    icon: Icon(
+                      _editMode ? Icons.check_rounded : Icons.edit_outlined,
+                      size: 15,
+                    ),
+                    label: Text(
+                      _editMode ? 'Done' : 'Customize Layout',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _C.primaryDark,
+                      side: const BorderSide(color: _C.borderSoft),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 9,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'A.Y. ${_currentAcademicYearLabel()}',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 13,
-                      color: _C.darkGray,
+                  const SizedBox(width: 10),
+                  OutlinedButton.icon(
+                    onPressed: _isExporting ? null : _exportAsPdf,
+                    icon: _isExporting
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.download_rounded, size: 15),
+                    label: Text(
+                      'Export',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _C.primaryDark,
+                      side: const BorderSide(color: _C.borderSoft),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 9,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 28),
-                  for (var i = 0; i < tiers.length; i++) ...[
-                    _tierRow(tiers[i], isTop: i == 0),
-                    if (i < tiers.length - 1)
-                      _TierConnector(childCount: tiers[i + 1].length),
-                  ],
-                  if (members.isNotEmpty) ...[
-                    _TierConnector(childCount: 1),
-                    _MembersRow(members: members),
-                  ],
                 ],
               ),
-            );
-          },
+              const SizedBox(height: 14),
+            ],
+            RepaintBoundary(key: _captureKey, child: _buildChart(officers)),
+          ],
         );
       },
     );
   }
 
-  Widget _tierRow(List<OfficerModel> officers, {bool isTop = false}) {
+  Widget _buildChart(List<OfficerModel> officers) {
+    if (officers.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: _C.surface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: _C.borderSoft),
+        ),
+        child: Center(
+          child: Text(
+            'No officers to display',
+            style: GoogleFonts.beVietnamPro(fontSize: 13, color: _C.darkGray),
+          ),
+        ),
+      );
+    }
+
+    // Officers with an explicit "Reports To" parent are rendered nested
+    // directly under that specific officer (see _officerNode) instead of
+    // in the generic rank tiers below — that's what lets a custom "Coach"
+    // sit straight under a custom "Head Coach" regardless of rank. An
+    // officer whose parent was deleted/missing falls back to root level
+    // instead of silently disappearing from the chart.
+    final validIds = officers.map((o) => o.id).toSet();
+    final childrenByParent = <String, List<OfficerModel>>{};
+    for (final o in officers) {
+      if (o.parentId != null && validIds.contains(o.parentId)) {
+        childrenByParent.putIfAbsent(o.parentId!, () => []).add(o);
+      }
+    }
+    final roots = officers
+        .where((o) => o.parentId == null || !validIds.contains(o.parentId))
+        .toList();
+
+    // Roots get one row per distinct rank value present, top to bottom —
+    // President and VP used to be merged onto the same row as siblings,
+    // which meant there was no real "up/down" between them, only
+    // left/right. Grouping by the exact rank instead of a fixed 3-bucket
+    // split gives every rank (President, VP, Secretary, Treasurer,
+    // Auditor, ...) its own level.
+    final byRank = <int, List<OfficerModel>>{};
+    for (final o in roots) {
+      byRank.putIfAbsent(o.positionRank, () => []).add(o);
+    }
+    final ranks = byRank.keys.toList()..sort();
+    final tiers = [
+      for (final rank in ranks)
+        (byRank[rank]!..sort((a, b) => a.order.compareTo(b.order))),
+    ];
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(_DS.radiusLg),
+        gradient: LinearGradient(
+          colors: [_C.primaryDark.withAlpha(15), _C.accent.withAlpha(10)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Column(
+        children: [
+          Text(
+            '${widget.orgName.toUpperCase()} OFFICERS',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: _C.charcoal,
+              letterSpacing: 0.4,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'A.Y. ${_currentAcademicYearLabel()}',
+            style: GoogleFonts.beVietnamPro(fontSize: 13, color: _C.darkGray),
+          ),
+          const SizedBox(height: 28),
+          for (var i = 0; i < tiers.length; i++) ...[
+            _tierRow(tiers[i], childrenByParent, isTop: i == 0),
+            if (i < tiers.length - 1)
+              _TierConnector(childCount: tiers[i + 1].length),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _draggableBox(OfficerModel officer, Widget card) {
+    if (!_editMode) return card;
+    return DragTarget<OfficerModel>(
+      onWillAcceptWithDetails: (details) => details.data.id != officer.id,
+      onAcceptWithDetails: (details) => _swapOfficers(details.data, officer),
+      builder: (context, candidateData, rejectedData) {
+        final isHovering = candidateData.isNotEmpty;
+        return Draggable<OfficerModel>(
+          data: officer,
+          feedback: Material(
+            color: Colors.transparent,
+            child: Opacity(opacity: 0.85, child: card),
+          ),
+          childWhenDragging: Opacity(opacity: 0.3, child: card),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(_DS.radiusSm),
+              border: isHovering
+                  ? Border.all(color: _C.primaryDark, width: 2)
+                  : null,
+            ),
+            child: card,
+          ),
+        );
+      },
+    );
+  }
+
+  // Renders one officer's box plus — recursively — their own direct
+  // reports underneath, connected by a bus line scoped to just this
+  // officer's branch. This is what puts a custom "Coach" straight under a
+  // custom "Head Coach" instead of merging everyone at the same rank into
+  // one flat row.
+  Widget _officerNode(
+    OfficerModel officer,
+    Map<String, List<OfficerModel>> childrenByParent, {
+    bool isTop = false,
+  }) {
+    final card = _draggableBox(
+      officer,
+      _HierarchyBox(
+        key: ValueKey(officer.id),
+        officer: officer,
+        isTop: isTop,
+        width: _hierarchyBoxWidth,
+      ),
+    );
+    final children = childrenByParent[officer.id];
+    if (children == null || children.isEmpty) return card;
+    children.sort((a, b) => a.order.compareTo(b.order));
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        card,
+        _TierConnector(childCount: children.length),
+        _nodeRow(children, childrenByParent),
+      ],
+    );
+  }
+
+  Widget _nodeRow(
+    List<OfficerModel> officers,
+    Map<String, List<OfficerModel>> childrenByParent, {
+    bool isTop = false,
+  }) {
     // A bus-style connector (drawn in _TierConnector) assumes a single,
-    // non-wrapping row laid out with _boxWidth/_spacing — fall back to a
-    // plain Wrap for unusually large tiers where that assumption breaks.
+    // non-wrapping row laid out with _hierarchyBoxWidth/_hierarchySpacing —
+    // fall back to a plain Wrap for unusually large tiers where that
+    // assumption breaks.
     if (officers.length <= 6) {
       return Row(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (var i = 0; i < officers.length; i++) ...[
-            if (i > 0) const SizedBox(width: _spacing),
-            _HierarchyBox(officer: officers[i], isTop: isTop, width: _boxWidth),
+            if (i > 0) const SizedBox(width: _hierarchySpacing),
+            _officerNode(officers[i], childrenByParent, isTop: isTop),
           ],
         ],
       );
@@ -3304,13 +3643,17 @@ class _HierarchyTree extends StatelessWidget {
         spacing: 12,
         runSpacing: 12,
         children: officers
-            .map(
-              (o) => _HierarchyBox(officer: o, isTop: isTop, width: _boxWidth),
-            )
+            .map((o) => _officerNode(o, childrenByParent, isTop: isTop))
             .toList(),
       ),
     );
   }
+
+  Widget _tierRow(
+    List<OfficerModel> officers,
+    Map<String, List<OfficerModel>> childrenByParent, {
+    bool isTop = false,
+  }) => _nodeRow(officers, childrenByParent, isTop: isTop);
 }
 
 // Draws a trunk-and-bus connector between two tiers: a single vertical line
@@ -3321,8 +3664,6 @@ class _TierConnector extends StatelessWidget {
   final int childCount;
   const _TierConnector({required this.childCount});
 
-  static const double _boxWidth = _HierarchyTree._boxWidth;
-  static const double _spacing = _HierarchyTree._spacing;
   static const double _height = 28;
 
   @override
@@ -3336,15 +3677,16 @@ class _TierConnector extends StatelessWidget {
       );
     }
     final count = childCount.clamp(1, 6);
-    final totalWidth = count * _boxWidth + (count - 1) * _spacing;
+    final totalWidth =
+        count * _hierarchyBoxWidth + (count - 1) * _hierarchySpacing;
     return SizedBox(
       height: _height,
       width: totalWidth,
       child: CustomPaint(
         painter: _BusConnectorPainter(
           childCount: count,
-          boxWidth: _boxWidth,
-          spacing: _spacing,
+          boxWidth: _hierarchyBoxWidth,
+          spacing: _hierarchySpacing,
           color: _C.primaryDark.withAlpha(76),
         ),
       ),
@@ -3394,6 +3736,7 @@ class _HierarchyBox extends StatelessWidget {
   final bool isTop;
   final double width;
   const _HierarchyBox({
+    super.key,
     required this.officer,
     this.isTop = false,
     this.width = 112,
@@ -3481,96 +3824,6 @@ class _HierarchyBox extends StatelessWidget {
   );
 }
 
-class _MembersRow extends StatelessWidget {
-  final List<QueryDocumentSnapshot> members;
-  const _MembersRow({required this.members});
-
-  @override
-  Widget build(BuildContext context) {
-    if (members.isEmpty) return const SizedBox();
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _C.surface,
-        borderRadius: BorderRadius.circular(_DS.radiusMd),
-        border: Border.all(color: _C.borderSoft),
-      ),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.people_outline_rounded,
-                size: 14,
-                color: _C.darkGray,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                'Members (${members.length}+)',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: _C.darkGray,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            alignment: WrapAlignment.center,
-            children: members.map((m) {
-              final data = m.data() as Map<String, dynamic>;
-              final name = data['fullName'] ?? data['name'] ?? 'Member';
-              final photo = data['photoUrl'] ?? '';
-              return Tooltip(
-                message: name,
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: _C.primaryDark.withOpacity(0.10),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: _C.white, width: 2),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: photo.isNotEmpty
-                      ? Image(
-                          image: _imageProviderFromUrl(photo),
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Center(
-                            child: Text(
-                              name[0].toUpperCase(),
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: _C.primaryDark,
-                              ),
-                            ),
-                          ),
-                        )
-                      : Center(
-                          child: Text(
-                            name[0].toUpperCase(),
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: _C.primaryDark,
-                            ),
-                          ),
-                        ),
-                ),
-              );
-            }).toList(),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Edit Org Profile Sheet
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3580,6 +3833,11 @@ class _EditOrgProfileSheet extends StatefulWidget {
   final List<AdviserInfo> advisers;
   final String adviserPhotoUrl;
   final String facebook, instagram, twitter, gmail;
+  // Set when this sheet was opened from the "Add Adviser" button rather than
+  // the generic "Edit Profile" entry point — used to jump straight to the
+  // Adviser section instead of surfacing the whole profile form from the top,
+  // which read as the wrong screen opening.
+  final bool focusAdvisers;
   final VoidCallback onSaved;
 
   const _EditOrgProfileSheet({
@@ -3596,6 +3854,7 @@ class _EditOrgProfileSheet extends StatefulWidget {
     required this.instagram,
     required this.twitter,
     required this.gmail,
+    this.focusAdvisers = false,
     required this.onSaved,
   });
 
@@ -3635,6 +3894,8 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
   bool _isUploadingCover = false;
   bool _isUploadingPhoto = false;
   bool _isSaving = false;
+  final _formKey = GlobalKey<FormState>();
+  final _adviserSectionKey = GlobalKey();
 
   @override
   void initState() {
@@ -3671,6 +3932,18 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
     _adviserPhotoUrl = widget.adviserPhotoUrl.isNotEmpty
         ? widget.adviserPhotoUrl
         : null;
+    if (widget.focusAdvisers) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final sectionContext = _adviserSectionKey.currentContext;
+        if (sectionContext != null) {
+          Scrollable.ensureVisible(
+            sectionContext,
+            duration: const Duration(milliseconds: 350),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    }
   }
 
   @override
@@ -3763,24 +4036,10 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
   }
 
   Future<void> _save() async {
-    final emailFields = <String, String>{
-      'Primary adviser': _a1EmailCtrl.text.trim(),
-      if (_hasSecondAdviser) 'Second adviser': _a2EmailCtrl.text.trim(),
-      if (_hasThirdAdviser) 'Third adviser': _a3EmailCtrl.text.trim(),
-    };
-    for (final entry in emailFields.entries) {
-      if (entry.value.isNotEmpty && !_emailPattern.hasMatch(entry.value)) {
-        _snack(
-          '${entry.key} email is not a valid email address.',
-          isError: true,
-        );
-        return;
-      }
-    }
-    if (_a1NameCtrl.text.trim().isEmpty) {
-      _snack('Primary adviser name is required.', isError: true);
-      return;
-    }
+    // Inline field-level errors (red border + message under each field) now
+    // cover both the required-name and email-format checks that used to be
+    // snackbar-only — see the validators wired up in _adviserFields().
+    if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isSaving = true);
 
@@ -3898,6 +4157,9 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
     required TextEditingController titleCtrl,
     required TextEditingController phoneCtrl,
     required TextEditingController emailCtrl,
+    // Only the primary adviser's name is mandatory (co-/third advisers are
+    // optional add-ons) — see the isEmpty filter in _save().
+    bool nameRequired = false,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -3905,22 +4167,27 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
         Row(
           children: [
             Expanded(
-              child: TextField(
+              child: TextFormField(
                 controller: nameCtrl,
                 style: GoogleFonts.beVietnamPro(
                   fontSize: 13,
                   color: _C.charcoal,
                 ),
                 decoration: _inputDecoration(
-                  'Full Name',
+                  nameRequired ? 'Full Name *' : 'Full Name',
                   hint: 'Adviser full name',
                   icon: Icons.person_outline,
                 ),
+                validator: nameRequired
+                    ? (v) => v?.trim().isEmpty == true
+                          ? 'Adviser name is required'
+                          : null
+                    : null,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: TextField(
+              child: TextFormField(
                 controller: titleCtrl,
                 style: GoogleFonts.beVietnamPro(
                   fontSize: 13,
@@ -3936,7 +4203,7 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
           ],
         ),
         const SizedBox(height: 12),
-        TextField(
+        TextFormField(
           controller: phoneCtrl,
           style: GoogleFonts.beVietnamPro(fontSize: 13, color: _C.charcoal),
           decoration: _inputDecoration(
@@ -3946,7 +4213,7 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
           ),
         ),
         const SizedBox(height: 12),
-        TextField(
+        TextFormField(
           controller: emailCtrl,
           style: GoogleFonts.beVietnamPro(fontSize: 13, color: _C.charcoal),
           decoration: _inputDecoration(
@@ -3954,6 +4221,11 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
             hint: 'adviser@example.com',
             icon: Icons.email_outlined,
           ),
+          validator: (v) {
+            final t = v?.trim() ?? '';
+            if (t.isEmpty) return null;
+            return _emailPattern.hasMatch(t) ? null : 'Enter a valid email';
+          },
         ),
       ],
     );
@@ -3985,8 +4257,10 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
                     color: Colors.white.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Icon(
-                    Icons.edit_outlined,
+                  child: Icon(
+                    widget.focusAdvisers
+                        ? Icons.person_add_alt_1_outlined
+                        : Icons.edit_outlined,
                     color: Colors.white,
                     size: 18,
                   ),
@@ -3997,7 +4271,9 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Edit Organization Profile',
+                        widget.focusAdvisers
+                            ? 'Add Adviser'
+                            : 'Edit Organization Profile',
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 17,
                           fontWeight: FontWeight.w700,
@@ -4005,7 +4281,9 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
                         ),
                       ),
                       Text(
-                        'Update info, adviser details & social links',
+                        widget.focusAdvisers
+                            ? 'Add or update this organization\'s adviser details'
+                            : 'Update info, adviser details & social links',
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 11,
                           color: Colors.white.withOpacity(0.7),
@@ -4030,338 +4308,106 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Logo
-                  _sectionLabel(
-                    'Organization Logo',
-                    icon: Icons.image_outlined,
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Container(
-                        width: 64,
-                        height: 64,
-                        decoration: BoxDecoration(
-                          color: _C.surface,
-                          borderRadius: BorderRadius.circular(_DS.radiusMd),
-                          border: Border.all(color: _C.borderSoft),
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: _logoUrl != null
-                            ? _buildImageWidget(
-                                _logoUrl!,
-                                fit: BoxFit.cover,
-                                errorWidget: const Icon(
-                                  Icons.business,
-                                  color: _C.textFaint,
-                                ),
-                              )
-                            : const Icon(Icons.business, color: _C.textFaint),
-                      ),
-                      const SizedBox(width: 14),
-                      OutlinedButton.icon(
-                        onPressed: _isUploadingLogo ? null : _pickLogo,
-                        icon: _isUploadingLogo
-                            ? const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.upload_outlined, size: 16),
-                        label: Text(
-                          _isUploadingLogo ? 'Uploading…' : 'Upload Logo',
-                          style: GoogleFonts.beVietnamPro(fontSize: 12),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: _C.borderSoft),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          foregroundColor: _C.primaryDark,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Cover photo
-                  _sectionLabel('Cover Photo', icon: Icons.panorama_outlined),
-                  const SizedBox(height: 12),
-                  Container(
-                    width: double.infinity,
-                    height: 110,
-                    decoration: BoxDecoration(
-                      color: _C.surface,
-                      borderRadius: BorderRadius.circular(_DS.radiusMd),
-                      border: Border.all(color: _C.borderSoft),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Logo
+                    _sectionLabel(
+                      'Organization Logo',
+                      icon: Icons.image_outlined,
                     ),
-                    clipBehavior: Clip.antiAlias,
-                    child: _coverPhotoUrl != null
-                        ? _buildImageWidget(
-                            _coverPhotoUrl!,
-                            fit: BoxFit.cover,
-                            errorWidget: const Icon(
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Container(
+                          width: 64,
+                          height: 64,
+                          decoration: BoxDecoration(
+                            color: _C.surface,
+                            borderRadius: BorderRadius.circular(_DS.radiusMd),
+                            border: Border.all(color: _C.borderSoft),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: _logoUrl != null
+                              ? _buildImageWidget(
+                                  _logoUrl!,
+                                  fit: BoxFit.cover,
+                                  errorWidget: const Icon(
+                                    Icons.business,
+                                    color: _C.textFaint,
+                                  ),
+                                )
+                              : const Icon(Icons.business, color: _C.textFaint),
+                        ),
+                        const SizedBox(width: 14),
+                        OutlinedButton.icon(
+                          onPressed: _isUploadingLogo ? null : _pickLogo,
+                          icon: _isUploadingLogo
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.upload_outlined, size: 16),
+                          label: Text(
+                            _isUploadingLogo ? 'Uploading…' : 'Upload Logo',
+                            style: GoogleFonts.beVietnamPro(fontSize: 12),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: _C.borderSoft),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            foregroundColor: _C.primaryDark,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Cover photo
+                    _sectionLabel('Cover Photo', icon: Icons.panorama_outlined),
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      height: 110,
+                      decoration: BoxDecoration(
+                        color: _C.surface,
+                        borderRadius: BorderRadius.circular(_DS.radiusMd),
+                        border: Border.all(color: _C.borderSoft),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: _coverPhotoUrl != null
+                          ? _buildImageWidget(
+                              _coverPhotoUrl!,
+                              fit: BoxFit.cover,
+                              errorWidget: const Icon(
+                                Icons.panorama_outlined,
+                                color: _C.textFaint,
+                              ),
+                            )
+                          : const Icon(
                               Icons.panorama_outlined,
                               color: _C.textFaint,
+                              size: 28,
                             ),
-                          )
-                        : const Icon(
-                            Icons.panorama_outlined,
-                            color: _C.textFaint,
-                            size: 28,
-                          ),
-                  ),
-                  const SizedBox(height: 10),
-                  OutlinedButton.icon(
-                    onPressed: _isUploadingCover ? null : _pickCoverPhoto,
-                    icon: _isUploadingCover
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.upload_outlined, size: 16),
-                    label: Text(
-                      _isUploadingCover ? 'Uploading…' : 'Upload Cover Photo',
-                      style: GoogleFonts.beVietnamPro(fontSize: 12),
                     ),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: _C.borderSoft),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      foregroundColor: _C.primaryDark,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Org name (read-only)
-                  _sectionLabel(
-                    'Organization Name',
-                    icon: Icons.business_outlined,
-                  ),
-                  const SizedBox(height: 10),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 13,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _C.surface,
-                      borderRadius: BorderRadius.circular(_DS.radiusSm),
-                      border: Border.all(color: _C.borderSoft),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.lock_outline_rounded,
-                          size: 14,
-                          color: _C.textFaint,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          widget.orgName,
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13,
-                            color: _C.darkGray,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Description
-                  _sectionLabel(
-                    'Description',
-                    icon: Icons.description_outlined,
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: _descCtrl,
-                    maxLines: 3,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 13,
-                      color: _C.charcoal,
-                    ),
-                    decoration: _inputDecoration('Organization description…'),
-                  ),
-                  const SizedBox(height: 22),
-
-                  // Adviser section — up to 2 advisers per org
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _sectionLabel(
-                          'Primary Adviser',
-                          icon: Icons.person_outline_rounded,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  // Adviser photo (primary adviser only)
-                  Row(
-                    children: [
-                      Container(
-                        width: 60,
-                        height: 60,
-                        decoration: BoxDecoration(
-                          color: _C.primaryDark.withOpacity(0.10),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: _C.borderSoft, width: 2),
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: _adviserPhotoUrl != null
-                            ? _buildImageWidget(
-                                _adviserPhotoUrl!,
-                                fit: BoxFit.cover,
-                                errorWidget: const Icon(
-                                  Icons.person,
-                                  color: _C.textFaint,
-                                ),
-                              )
-                            : const Icon(
-                                Icons.person,
-                                color: _C.textFaint,
-                                size: 28,
-                              ),
-                      ),
-                      const SizedBox(width: 14),
-                      OutlinedButton.icon(
-                        onPressed: _isUploadingPhoto ? null : _pickAdviserPhoto,
-                        icon: _isUploadingPhoto
-                            ? const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.upload_outlined, size: 16),
-                        label: Text(
-                          _isUploadingPhoto ? 'Uploading…' : 'Upload Photo',
-                          style: GoogleFonts.beVietnamPro(fontSize: 12),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: _C.borderSoft),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          foregroundColor: _C.primaryDark,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  _adviserFields(
-                    nameCtrl: _a1NameCtrl,
-                    titleCtrl: _a1TitleCtrl,
-                    phoneCtrl: _a1PhoneCtrl,
-                    emailCtrl: _a1EmailCtrl,
-                  ),
-                  const SizedBox(height: 18),
-
-                  if (_hasSecondAdviser) ...[
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _sectionLabel(
-                            'Co-Adviser',
-                            icon: Icons.person_outline_rounded,
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: 'Remove co-adviser',
-                          icon: const Icon(
-                            Icons.close_rounded,
-                            size: 18,
-                            color: _C.error,
-                          ),
-                          onPressed: () => setState(() {
-                            _hasSecondAdviser = false;
-                            _a2NameCtrl.clear();
-                            _a2TitleCtrl.clear();
-                            _a2EmailCtrl.clear();
-                            _a2PhoneCtrl.clear();
-                          }),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    _adviserFields(
-                      nameCtrl: _a2NameCtrl,
-                      titleCtrl: _a2TitleCtrl,
-                      phoneCtrl: _a2PhoneCtrl,
-                      emailCtrl: _a2EmailCtrl,
-                    ),
-                    const SizedBox(height: 18),
-                  ] else
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 18),
-                      child: OutlinedButton.icon(
-                        onPressed: () =>
-                            setState(() => _hasSecondAdviser = true),
-                        icon: const Icon(Icons.add_rounded, size: 16),
-                        label: Text(
-                          'Add Second Adviser',
-                          style: GoogleFonts.beVietnamPro(fontSize: 12),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: _C.borderSoft),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          foregroundColor: _C.primaryDark,
-                        ),
-                      ),
-                    ),
-
-                  if (_hasThirdAdviser) ...[
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _sectionLabel(
-                            'Third Adviser',
-                            icon: Icons.person_outline_rounded,
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: 'Remove third adviser',
-                          icon: const Icon(
-                            Icons.close_rounded,
-                            size: 18,
-                            color: _C.error,
-                          ),
-                          onPressed: () => setState(() {
-                            _hasThirdAdviser = false;
-                            _a3NameCtrl.clear();
-                            _a3TitleCtrl.clear();
-                            _a3EmailCtrl.clear();
-                            _a3PhoneCtrl.clear();
-                          }),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    _adviserFields(
-                      nameCtrl: _a3NameCtrl,
-                      titleCtrl: _a3TitleCtrl,
-                      phoneCtrl: _a3PhoneCtrl,
-                      emailCtrl: _a3EmailCtrl,
-                    ),
-                  ] else if (_hasSecondAdviser)
+                    const SizedBox(height: 10),
                     OutlinedButton.icon(
-                      onPressed: () => setState(() => _hasThirdAdviser = true),
-                      icon: const Icon(Icons.add_rounded, size: 16),
+                      onPressed: _isUploadingCover ? null : _pickCoverPhoto,
+                      icon: _isUploadingCover
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.upload_outlined, size: 16),
                       label: Text(
-                        'Add Third Adviser (max 3)',
+                        _isUploadingCover ? 'Uploading…' : 'Upload Cover Photo',
                         style: GoogleFonts.beVietnamPro(fontSize: 12),
                       ),
                       style: OutlinedButton.styleFrom(
@@ -4372,66 +4418,306 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
                         foregroundColor: _C.primaryDark,
                       ),
                     ),
-                  const SizedBox(height: 22),
+                    const SizedBox(height: 20),
 
-                  // Social Media
-                  _sectionLabel(
-                    'Social Media Links',
-                    icon: Icons.share_outlined,
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _fbCtrl,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 13,
-                      color: _C.charcoal,
+                    // Org name (read-only)
+                    _sectionLabel(
+                      'Organization Name',
+                      icon: Icons.business_outlined,
                     ),
-                    decoration: _inputDecoration(
-                      'Facebook',
-                      hint: 'facebook.com/yourorg',
-                      icon: Icons.facebook_rounded,
+                    const SizedBox(height: 10),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 13,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _C.surface,
+                        borderRadius: BorderRadius.circular(_DS.radiusSm),
+                        border: Border.all(color: _C.borderSoft),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.lock_outline_rounded,
+                            size: 14,
+                            color: _C.textFaint,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            widget.orgName,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13,
+                              color: _C.darkGray,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _igCtrl,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 13,
-                      color: _C.charcoal,
+                    const SizedBox(height: 16),
+
+                    // Description
+                    _sectionLabel(
+                      'Description',
+                      icon: Icons.description_outlined,
                     ),
-                    decoration: _inputDecoration(
-                      'Instagram',
-                      hint: '@yourorg',
-                      icon: Icons.camera_alt_outlined,
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _descCtrl,
+                      maxLines: 3,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        color: _C.charcoal,
+                      ),
+                      decoration: _inputDecoration('Organization description…'),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _twCtrl,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 13,
-                      color: _C.charcoal,
+                    const SizedBox(height: 22),
+
+                    // Adviser section — up to 2 advisers per org
+                    Row(
+                      key: _adviserSectionKey,
+                      children: [
+                        Expanded(
+                          child: _sectionLabel(
+                            'Primary Adviser',
+                            icon: Icons.person_outline_rounded,
+                          ),
+                        ),
+                      ],
                     ),
-                    decoration: _inputDecoration(
-                      'Twitter / X',
-                      hint: '@yourhandle',
-                      icon: Icons.alternate_email_rounded,
+                    const SizedBox(height: 12),
+                    // Adviser photo (primary adviser only)
+                    Row(
+                      children: [
+                        Container(
+                          width: 60,
+                          height: 60,
+                          decoration: BoxDecoration(
+                            color: _C.primaryDark.withOpacity(0.10),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: _C.borderSoft, width: 2),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: _adviserPhotoUrl != null
+                              ? _buildImageWidget(
+                                  _adviserPhotoUrl!,
+                                  fit: BoxFit.cover,
+                                  errorWidget: const Icon(
+                                    Icons.person,
+                                    color: _C.textFaint,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.person,
+                                  color: _C.textFaint,
+                                  size: 28,
+                                ),
+                        ),
+                        const SizedBox(width: 14),
+                        OutlinedButton.icon(
+                          onPressed: _isUploadingPhoto
+                              ? null
+                              : _pickAdviserPhoto,
+                          icon: _isUploadingPhoto
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.upload_outlined, size: 16),
+                          label: Text(
+                            _isUploadingPhoto ? 'Uploading…' : 'Upload Photo',
+                            style: GoogleFonts.beVietnamPro(fontSize: 12),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: _C.borderSoft),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            foregroundColor: _C.primaryDark,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _gmCtrl,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 13,
-                      color: _C.charcoal,
+                    const SizedBox(height: 14),
+                    _adviserFields(
+                      nameCtrl: _a1NameCtrl,
+                      titleCtrl: _a1TitleCtrl,
+                      phoneCtrl: _a1PhoneCtrl,
+                      emailCtrl: _a1EmailCtrl,
+                      nameRequired: true,
                     ),
-                    decoration: _inputDecoration(
-                      'Gmail',
-                      hint: 'yourorg@gmail.com',
-                      icon: Icons.mail_outline_rounded,
+                    const SizedBox(height: 18),
+
+                    if (_hasSecondAdviser) ...[
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _sectionLabel(
+                              'Co-Adviser',
+                              icon: Icons.person_outline_rounded,
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Remove co-adviser',
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              size: 18,
+                              color: _C.error,
+                            ),
+                            onPressed: () => setState(() {
+                              _hasSecondAdviser = false;
+                              _a2NameCtrl.clear();
+                              _a2TitleCtrl.clear();
+                              _a2EmailCtrl.clear();
+                              _a2PhoneCtrl.clear();
+                            }),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      _adviserFields(
+                        nameCtrl: _a2NameCtrl,
+                        titleCtrl: _a2TitleCtrl,
+                        phoneCtrl: _a2PhoneCtrl,
+                        emailCtrl: _a2EmailCtrl,
+                      ),
+                      const SizedBox(height: 18),
+                    ] else
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 18),
+                        child: OutlinedButton.icon(
+                          onPressed: () =>
+                              setState(() => _hasSecondAdviser = true),
+                          icon: const Icon(Icons.add_rounded, size: 16),
+                          label: Text(
+                            'Add Second Adviser',
+                            style: GoogleFonts.beVietnamPro(fontSize: 12),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: _C.borderSoft),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            foregroundColor: _C.primaryDark,
+                          ),
+                        ),
+                      ),
+
+                    if (_hasThirdAdviser) ...[
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _sectionLabel(
+                              'Third Adviser',
+                              icon: Icons.person_outline_rounded,
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Remove third adviser',
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              size: 18,
+                              color: _C.error,
+                            ),
+                            onPressed: () => setState(() {
+                              _hasThirdAdviser = false;
+                              _a3NameCtrl.clear();
+                              _a3TitleCtrl.clear();
+                              _a3EmailCtrl.clear();
+                              _a3PhoneCtrl.clear();
+                            }),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      _adviserFields(
+                        nameCtrl: _a3NameCtrl,
+                        titleCtrl: _a3TitleCtrl,
+                        phoneCtrl: _a3PhoneCtrl,
+                        emailCtrl: _a3EmailCtrl,
+                      ),
+                    ] else if (_hasSecondAdviser)
+                      OutlinedButton.icon(
+                        onPressed: () =>
+                            setState(() => _hasThirdAdviser = true),
+                        icon: const Icon(Icons.add_rounded, size: 16),
+                        label: Text(
+                          'Add Third Adviser (max 3)',
+                          style: GoogleFonts.beVietnamPro(fontSize: 12),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: _C.borderSoft),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          foregroundColor: _C.primaryDark,
+                        ),
+                      ),
+                    const SizedBox(height: 22),
+
+                    // Social Media
+                    _sectionLabel(
+                      'Social Media Links',
+                      icon: Icons.share_outlined,
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _fbCtrl,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        color: _C.charcoal,
+                      ),
+                      decoration: _inputDecoration(
+                        'Facebook',
+                        hint: 'facebook.com/yourorg',
+                        icon: Icons.facebook_rounded,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _igCtrl,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        color: _C.charcoal,
+                      ),
+                      decoration: _inputDecoration(
+                        'Instagram',
+                        hint: '@yourorg',
+                        icon: Icons.camera_alt_outlined,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _twCtrl,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        color: _C.charcoal,
+                      ),
+                      decoration: _inputDecoration(
+                        'Twitter / X',
+                        hint: '@yourhandle',
+                        icon: Icons.alternate_email_rounded,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _gmCtrl,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        color: _C.charcoal,
+                      ),
+                      decoration: _inputDecoration(
+                        'Gmail',
+                        hint: 'yourorg@gmail.com',
+                        icon: Icons.mail_outline_rounded,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -4537,16 +4823,27 @@ class _OfficerModalState extends State<_OfficerModal> {
   bool _isSaving = false;
   bool _useCustomPosition = false;
   String? _selectedPosition;
+  // Null = top-level (placed purely by rank, as before). Lets a custom
+  // position (e.g. "Coach") be pinned directly under a specific other
+  // officer (e.g. "Head Coach") regardless of the standard rank system.
+  String? _parentId;
 
   static const List<String> _standardPositions = [
     'President',
     'Vice President',
     'Secretary',
     'Treasurer',
+    'Auditor',
     'Business Manager',
     'Board Member',
     'Student Adviser',
   ];
+
+  late final Future<QuerySnapshot> _officersFuture = FirebaseFirestore.instance
+      .collection('organizations')
+      .doc(widget.orgId)
+      .collection('officers')
+      .get();
 
   @override
   void initState() {
@@ -4557,6 +4854,7 @@ class _OfficerModalState extends State<_OfficerModal> {
       _emailCtrl.text = e.email;
       _phoneCtrl.text = e.phone;
       _photoUrl = e.photoUrl.isNotEmpty ? e.photoUrl : null;
+      _parentId = e.parentId;
       if (_standardPositions.contains(e.position)) {
         _selectedPosition = e.position;
         _useCustomPosition = false;
@@ -4622,8 +4920,15 @@ class _OfficerModalState extends State<_OfficerModal> {
       'email': _emailCtrl.text.trim(),
       'phone': _phoneCtrl.text.trim(),
       'positionRank': _resolvedPositionRank,
+      // Preserve manual ordering on edit; new officers default to the end
+      // of the list (a fresh timestamp sorts after any existing order
+      // value) until the org drags them into place.
+      'order':
+          widget.existingOfficer?.order ??
+          DateTime.now().millisecondsSinceEpoch,
       'isCaptain': widget.existingOfficer?.isCaptain ?? false,
       'photoUrl': _photoUrl ?? '',
+      'parentId': _parentId ?? '',
     };
     try {
       final col = FirebaseFirestore.instance
@@ -4681,21 +4986,7 @@ class _OfficerModalState extends State<_OfficerModal> {
   }
 
   Future<void> _syncOfficers() async {
-    final orgDoc = FirebaseFirestore.instance
-        .collection('organizations')
-        .doc(widget.orgId);
-    final snap = await orgDoc.collection('officers').orderBy('name').get();
-    final officers = snap.docs.map((d) {
-      final dd = d.data();
-      return {
-        'name': dd['name'] ?? '',
-        'role': dd['position'] ?? '',
-        'email': dd['email'] ?? '',
-        'phone': dd['phone'] ?? '',
-        'photoUrl': dd['photoUrl'] ?? '',
-      };
-    }).toList();
-    await orgDoc.update({'officers': officers});
+    await _syncOrgOfficersArray(widget.orgId);
   }
 
   void _snack(String msg, {bool isError = false}) {
@@ -4910,6 +5201,65 @@ class _OfficerModalState extends State<_OfficerModal> {
               ),
             const SizedBox(height: 14),
 
+            // Optional — pins this officer directly under a specific other
+            // officer in the chart (e.g. a custom "Coach" reporting to a
+            // custom "Head Coach"), independent of the standard rank tiers.
+            // Left as "Top Level" this officer's row is placed by rank alone,
+            // same as before this existed.
+            Text(
+              'Reports To',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: _C.darkGray,
+              ),
+            ),
+            const SizedBox(height: 8),
+            FutureBuilder<QuerySnapshot>(
+              future: _officersFuture,
+              builder: (context, snap) {
+                final docs = (snap.data?.docs ?? [])
+                    .where((d) => d.id != widget.existingOfficer?.id)
+                    .toList();
+                return AnchoredDropdownField<String>(
+                  value:
+                      (_parentId != null && docs.any((d) => d.id == _parentId))
+                      ? _parentId
+                      : null,
+                  decoration: _inputDecoration(
+                    'Reports To',
+                    icon: Icons.account_tree_outlined,
+                  ),
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 13,
+                    color: _C.charcoal,
+                  ),
+                  items: [
+                    DropdownMenuItem(
+                      value: null,
+                      child: Text(
+                        'Top Level (no one)',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          color: _C.darkGray,
+                        ),
+                      ),
+                    ),
+                    for (final d in docs)
+                      DropdownMenuItem(
+                        value: d.id,
+                        child: Text(
+                          '${(d.data() as Map<String, dynamic>)['name'] ?? ''} — '
+                          '${(d.data() as Map<String, dynamic>)['position'] ?? ''}',
+                        ),
+                      ),
+                  ],
+                  onChanged: (v) => setState(() => _parentId = v),
+                );
+              },
+            ),
+            const SizedBox(height: 14),
+
             TextField(
               controller: _emailCtrl,
               style: GoogleFonts.beVietnamPro(fontSize: 13, color: _C.charcoal),
@@ -5120,8 +5470,20 @@ class OfficerModel {
   final String email;
   final String phone;
   final int positionRank;
+  // Manual ordering within a tier — set on creation and rewritten when an
+  // org drags one officer card onto another to swap their tier/order (see
+  // _HierarchyTree). Firestore's own `orderBy('positionRank')` alone can't
+  // express "who comes first among peers of the same rank."
+  final int order;
   final bool isCaptain;
   final String photoUrl;
+  // Explicit "reports to" link to another officer's doc id in the same
+  // subcollection — null means this officer sits at the top level (their
+  // row is placed purely by positionRank, as before). Set via the officer
+  // modal's "Reports To" picker, e.g. a custom "Coach" position reporting
+  // to a custom "Head Coach" position, independent of the standard-position
+  // rank system.
+  final String? parentId;
 
   const OfficerModel({
     required this.id,
@@ -5130,8 +5492,10 @@ class OfficerModel {
     required this.email,
     required this.phone,
     required this.positionRank,
+    this.order = 0,
     this.isCaptain = false,
     this.photoUrl = '',
+    this.parentId,
   });
 
   factory OfficerModel.fromFirestore(DocumentSnapshot doc) {
@@ -5143,8 +5507,12 @@ class OfficerModel {
       email: data['email'] ?? '',
       phone: data['phone'] ?? '',
       positionRank: data['positionRank'] ?? 0,
+      order: data['order'] ?? 0,
       isCaptain: data['isCaptain'] ?? false,
       photoUrl: data['photoUrl'] ?? '',
+      parentId: (data['parentId'] as String?)?.isNotEmpty == true
+          ? data['parentId'] as String
+          : null,
     );
   }
 }

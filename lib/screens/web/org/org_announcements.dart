@@ -4,6 +4,7 @@
 // All Firestore parameters preserved for student-side compatibility
 
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart'; // 👈 for TapGestureRecognizer
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -68,13 +69,25 @@ class _DS {
     ),
   ];
 
+  // Required fields are labeled "Foo *" — the asterisk used to render in the
+  // same muted gray as the rest of the label and was easy to miss. Splitting
+  // it into its own red TextSpan (matching org_profile.dart's
+  // _inputDecoration / org_event_proposals.dart's
+  // _orgEventProposalsInputDecoration) makes it actually stand out.
   static InputDecoration inputDecoration(
     String label, {
     String? hint,
     IconData? icon,
   }) {
+    final trimmed = label.trimRight();
+    final isRequired = trimmed.endsWith('*');
+    final baseLabel = isRequired
+        ? trimmed.substring(0, trimmed.length - 1).trimRight()
+        : label;
+
     return InputDecoration(
-      labelText: label,
+      labelText: isRequired ? null : label,
+      label: isRequired ? requiredLabel(baseLabel) : null,
       hintText: hint,
       prefixIcon: icon != null
           ? Icon(icon, size: 18, color: _C.textFaint)
@@ -108,10 +121,51 @@ class _DS {
   }
 }
 
+// Shared by _DS.inputDecoration and the Category/Target Audience dropdowns
+// (which build their own InputDecoration directly instead of going through
+// _DS.inputDecoration) so every required-field asterisk in this modal is the
+// same red, regardless of which field type renders it.
+Widget requiredLabel(String text) {
+  return RichText(
+    text: TextSpan(
+      children: [
+        TextSpan(
+          text: text,
+          style: GoogleFonts.beVietnamPro(fontSize: 13, color: _C.darkGray),
+        ),
+        TextSpan(
+          text: ' *',
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 13,
+            color: _C.error,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Reusable micro-widgets
 // ─────────────────────────────────────────────────────────────────────────────
 
+String _relativeTime(DateTime dt) {
+  final diff = DateTime.now().difference(dt);
+  if (diff.inMinutes < 1) return 'Just now';
+  if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+  if (diff.inHours < 24) return '${diff.inHours}h ago';
+  if (diff.inDays < 7) return '${diff.inDays}d ago';
+  if (diff.inDays < 30) return '${(diff.inDays / 7).floor()}w ago';
+  return DateFormat('MMM dd, yyyy').format(dt);
+}
+
+// One compact, fully-tappable card per pinned item — the "Pinned" badge,
+// author avatar, and separate "View post" link all used to stack on top of
+// each other per item (5 rows deep) when the panel header already says
+// "Pinned", making three items look like a wall of chips and text. This
+// keeps only what's actually useful at a glance: category, title, snippet,
+// relative time.
 class _PinnedItem extends StatelessWidget {
   final AnnouncementModel announcement;
   final VoidCallback onView;
@@ -120,117 +174,100 @@ class _PinnedItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final a = announcement;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.only(bottom: 14),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: _C.border)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 30,
-                height: 30,
-                decoration: BoxDecoration(
-                  color: _C.primaryDark.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: Center(
-                  child: Text(
-                    a.authorName.isNotEmpty
-                        ? a.authorName[0].toUpperCase()
-                        : '?',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      color: _C.primaryDark,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  a.authorName,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                    color: _C.charcoal,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                decoration: BoxDecoration(
-                  color: _C.warningBg,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-                child: Text(
-                  'Pinned',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w700,
-                    color: _C.warning,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          _categoryBadge(a.category),
-          const SizedBox(height: 6),
-          Text(
-            a.title,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w700,
-              color: _C.charcoal,
+    final theme = _categoryTheme(a.category);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: InkWell(
+          onTap: onView,
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: _C.surface,
+              borderRadius: BorderRadius.circular(10),
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 3),
-          Text(
-            a.content,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 11.5,
-              color: _C.darkGray,
-              height: 1.4,
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 6),
-          MouseRegion(
-            cursor: SystemMouseCursors.click,
-            child: GestureDetector(
-              onTap: onView,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'View post',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
-                      color: _C.primaryDark,
-                    ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 4,
+                  height: 34,
+                  margin: const EdgeInsets.only(top: 2, right: 10),
+                  decoration: BoxDecoration(
+                    color: theme.fg,
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  const SizedBox(width: 3),
-                  Icon(
-                    Icons.arrow_forward_rounded,
-                    size: 12,
-                    color: _C.primaryDark,
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        a.title,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: _C.charcoal,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        a.content,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 11.5,
+                          color: _C.darkGray,
+                          height: 1.4,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Text(
+                            a.category,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w600,
+                              color: theme.fg,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '·',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 10.5,
+                              color: _C.textFaint,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            _relativeTime(a.timestamp.toDate()),
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 10.5,
+                              color: _C.textFaint,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 4),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: _C.textFaint,
+                ),
+              ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -789,11 +826,6 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                       ? Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            SizedBox(
-                              width: 220,
-                              child: _buildCategorySidebar(all),
-                            ),
-                            const SizedBox(width: 20),
                             Expanded(
                               child: _buildCenterColumn(
                                 all,
@@ -805,20 +837,7 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                             SizedBox(width: 280, child: _buildPinnedPanel(all)),
                           ],
                         )
-                      : Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildCategoryChipsRow(all),
-                            const SizedBox(height: 12),
-                            Expanded(
-                              child: _buildCenterColumn(
-                                all,
-                                isMobile,
-                                isTablet,
-                              ),
-                            ),
-                          ],
-                        ),
+                      : _buildCenterColumn(all, isMobile, isTablet),
                 ),
                 const SizedBox(height: 20),
               ],
@@ -882,126 +901,11 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
     );
   }
 
-  // ── Category sidebar (wide layout) ─────────────────────────────────────────
-  Widget _buildCategorySidebar(List<AnnouncementModel> all) {
-    final counts = <String, int>{};
-    for (final a in all) {
-      counts[a.category] = (counts[a.category] ?? 0) + 1;
-    }
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _C.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _C.border),
-        boxShadow: _DS.cardShadow,
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(
-                  'Category',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: _C.charcoal,
-                  ),
-                ),
-                const Spacer(),
-                TextButton.icon(
-                  onPressed: _promptAddCategory,
-                  icon: const Icon(Icons.add_rounded, size: 14),
-                  label: Text(
-                    'Add New',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  style: TextButton.styleFrom(
-                    foregroundColor: _C.primaryDark,
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    minimumSize: Size.zero,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            _categorySidebarItem(
-              'All Announcement',
-              all.length,
-              _selectedCategory == 'All Announcement',
-              () => setState(() => _selectedCategory = 'All Announcement'),
-            ),
-            const Divider(height: 16, color: _C.border),
-            ..._allCategories.map(
-              (c) => _categorySidebarItem(
-                c,
-                counts[c] ?? 0,
-                _selectedCategory == c,
-                () => setState(() => _selectedCategory = c),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _categorySidebarItem(
-    String label,
-    int count,
-    bool selected,
-    VoidCallback onTap,
-  ) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-        decoration: BoxDecoration(
-          color: selected
-              ? _C.primaryDark.withOpacity(0.08)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                label,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  color: selected ? _C.primaryDark : _C.textMid,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-              decoration: BoxDecoration(
-                color: selected ? _C.primaryDark : _C.surface,
-                borderRadius: BorderRadius.circular(99),
-              ),
-              child: Text(
-                '$count',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: selected ? Colors.white : _C.darkGray,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // Category selection now lives in the toolbar (see _buildToolbar) as a
+  // compact dropdown next to the existing Filter dropdown, instead of a
+  // dedicated sidebar column — one less thing competing for attention on
+  // this page. _promptAddCategory (below) is still reachable from the
+  // announcement composer dialog.
 
   Future<String?> _promptAddCategory() async {
     final ctrl = TextEditingController();
@@ -1084,43 +988,6 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
     return (result != null && result.isNotEmpty) ? result : null;
   }
 
-  // ── Category chips row (narrow layouts) ─────────────────────────────────────
-  Widget _buildCategoryChipsRow(List<AnnouncementModel> all) {
-    final categories = ['All Announcement', ..._allCategories];
-    return SizedBox(
-      height: 36,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: categories.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (_, i) {
-          final c = categories[i];
-          final selected = _selectedCategory == c;
-          return ChoiceChip(
-            label: Text(
-              c,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: selected ? Colors.white : _C.textMid,
-              ),
-            ),
-            selected: selected,
-            onSelected: (_) => setState(() => _selectedCategory = c),
-            selectedColor: _C.primaryDark,
-            backgroundColor: _C.white,
-            shape: StadiumBorder(
-              side: BorderSide(
-                color: selected ? _C.primaryDark : _C.borderSoft,
-              ),
-            ),
-            showCheckmark: false,
-          );
-        },
-      ),
-    );
-  }
-
   // ── Pinned panel (wide layout) ──────────────────────────────────────────────
   Widget _buildPinnedPanel(List<AnnouncementModel> all) {
     final pinned = all.where((a) => a.isPinned).take(_maxPinned).toList();
@@ -1141,16 +1008,27 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                 const Icon(Icons.push_pin_rounded, size: 15, color: _C.warning),
                 const SizedBox(width: 6),
                 Text(
-                  'Pinned Announcement',
+                  'Pinned',
                   style: GoogleFonts.beVietnamPro(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
                     color: _C.charcoal,
                   ),
                 ),
+                if (pinned.isNotEmpty) ...[
+                  const SizedBox(width: 6),
+                  Text(
+                    '${pinned.length}/$_maxPinned',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: _C.textFaint,
+                    ),
+                  ),
+                ],
               ],
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             if (pinned.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -1176,6 +1054,17 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
   }
 
   void _showViewPostDialog(AnnouncementModel a) {
+    // base64Decode throws synchronously for malformed data — decode once,
+    // safely, up front instead of inline in the widget tree so a bad image
+    // string can't take the whole dialog down with it.
+    Uint8List? imageBytes;
+    if (a.imageBase64 != null && a.imageBase64!.isNotEmpty) {
+      try {
+        imageBytes = base64Decode(a.imageBase64!);
+      } catch (_) {
+        imageBytes = null;
+      }
+    }
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
@@ -1247,12 +1136,11 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      if (a.imageBase64 != null &&
-                          a.imageBase64!.isNotEmpty) ...[
+                      if (imageBytes != null) ...[
                         ClipRRect(
                           borderRadius: BorderRadius.circular(_DS.radiusSm),
                           child: Image.memory(
-                            base64Decode(a.imageBase64!),
+                            imageBytes,
                             width: double.infinity,
                             fit: BoxFit.cover,
                           ),
@@ -1325,6 +1213,17 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
             children: [
               Expanded(child: searchField),
               const SizedBox(width: 12),
+              if (_allCategories.isNotEmpty) ...[
+                _FilterDropdown(
+                  value: _selectedCategory,
+                  items: ['All Announcement', ..._allCategories],
+                  onChanged: (v) => setState(() {
+                    _selectedCategory = v!;
+                    _currentPage = 1;
+                  }),
+                ),
+                const SizedBox(width: 12),
+              ],
               _FilterDropdown(
                 value: _filterMode,
                 items: const ['All', 'Pinned', 'With Attachments'],
@@ -1341,6 +1240,17 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
           children: [
             searchField,
             const SizedBox(height: 10),
+            if (_allCategories.isNotEmpty) ...[
+              _FilterDropdown(
+                value: _selectedCategory,
+                items: ['All Announcement', ..._allCategories],
+                onChanged: (v) => setState(() {
+                  _selectedCategory = v!;
+                  _currentPage = 1;
+                }),
+              ),
+              const SizedBox(height: 10),
+            ],
             _FilterDropdown(
               value: _filterMode,
               items: const ['All', 'Pinned', 'With Attachments'],
@@ -1713,15 +1623,27 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                         ),
                         const SizedBox(width: 14),
                         Expanded(
-                          child: Text(
-                            isEdit
-                                ? 'Edit Announcement'
-                                : 'Create Announcement',
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                            ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                isEdit
+                                    ? 'Edit Announcement'
+                                    : 'Create Announcement',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              Text(
+                                'Fields marked * are required',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 11,
+                                  color: Colors.white.withAlpha(180),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                         IconButton(
@@ -1776,17 +1698,13 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                                     ? category
                                     : null,
                                 decoration: InputDecoration(
-                                  labelText: 'Category',
+                                  label: requiredLabel('Category'),
                                   hintText: _allCategories.isEmpty
                                       ? 'No categories yet — add one'
                                       : 'Select a category',
                                   hintStyle: GoogleFonts.beVietnamPro(
                                     fontSize: 13,
                                     color: _C.textFaint,
-                                  ),
-                                  labelStyle: GoogleFonts.beVietnamPro(
-                                    fontSize: 13,
-                                    color: _C.darkGray,
                                   ),
                                   prefixIcon: Icon(
                                     category.isNotEmpty
@@ -2966,7 +2884,19 @@ class _PostCardState extends State<_PostCard> {
   @override
   Widget build(BuildContext context) {
     final a = widget.announcement;
-    final hasImage = a.imageBase64 != null && a.imageBase64!.isNotEmpty;
+    // base64Decode throws synchronously for malformed data — Image.memory's
+    // own errorBuilder only ever catches decode/paint failures *after* this
+    // point, so a bad string here used to take the whole card down with it
+    // instead of just hiding the image.
+    Uint8List? imageBytes;
+    if (a.imageBase64 != null && a.imageBase64!.isNotEmpty) {
+      try {
+        imageBytes = base64Decode(a.imageBase64!);
+      } catch (_) {
+        imageBytes = null;
+      }
+    }
+    final hasImage = imageBytes != null;
     final contentLines = a.content.split('\n');
     final isLong = a.content.length > 280 || contentLines.length > 4;
     final truncated = isLong && !_expanded;
@@ -3023,494 +2953,526 @@ class _PostCardState extends State<_PostCard> {
       );
     }
 
+    // A BoxDecoration border can only have a borderRadius when every side is
+    // the same color — mixing a category-colored left edge with a plain
+    // grey/warning border on the other three sides throws
+    // "A borderRadius can only be given on borders with uniform colors" at
+    // paint time, which silently blanks the whole card instead of showing a
+    // build-time error. The category accent is a separate Container instead,
+    // clipped to match by the outer Container's own rounded corners.
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: _C.white,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: a.isPinned ? _C.warning.withOpacity(0.4) : _C.border,
+          color: a.isPinned ? _C.warning.withAlpha(102) : _C.border,
           width: a.isPinned ? 1.5 : 1,
         ),
         boxShadow: _DS.postShadow,
       ),
       clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      // Stack instead of IntrinsicHeight+Row for the accent bar: IntrinsicHeight
+      // computes the Column's height in a separate intrinsic-sizing pass, and
+      // for a Column containing an Image.memory(fit: BoxFit.contain, cacheWidth:
+      // ...) that computed height can be a pixel or two off from the height the
+      // Column actually renders at (aspect-ratio rounding differs between the
+      // intrinsic pass and the real layout pass), which threw a "bottom
+      // overflowed by 2.0 pixels" on any post with an attached image. A
+      // Positioned accent bar over a plain (non-Expanded) Column sizes exactly,
+      // with no separate intrinsic measurement to drift out of sync.
+      child: Stack(
         children: [
-          // ── Pinned indicator strip ──────────────────────────────────────────
-          if (a.isPinned)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              color: _C.warningBg,
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.push_pin_rounded,
-                    size: 13,
-                    color: _C.warning,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Pinned Announcement',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: _C.warning,
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-          // ── Post header ─────────────────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 12, 0),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Author avatar
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Pinned indicator strip ──────────────────────────────────────────
+              if (a.isPinned)
                 Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: _C.primaryDark.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(12),
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 6,
                   ),
-                  child: Center(
-                    child: Text(
-                      a.authorName.isNotEmpty
-                          ? a.authorName[0].toUpperCase()
-                          : '?',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: _C.primaryDark,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                // Author info + timestamp
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  color: _C.warningBg,
+                  child: Row(
                     children: [
+                      const Icon(
+                        Icons.push_pin_rounded,
+                        size: 13,
+                        color: _C.warning,
+                      ),
+                      const SizedBox(width: 6),
                       Text(
-                        a.authorName,
+                        'Pinned Announcement',
                         style: GoogleFonts.beVietnamPro(
-                          fontSize: 14,
+                          fontSize: 11,
                           fontWeight: FontWeight.w700,
-                          color: _C.charcoal,
+                          color: _C.warning,
+                          letterSpacing: 0.3,
                         ),
                       ),
-                      const SizedBox(height: 2),
-                      Wrap(
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        spacing: 8,
-                        runSpacing: 4,
-                        children: [
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                Icons.access_time_rounded,
-                                size: 12,
-                                color: _C.textFaint,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                _timeAgo(a.timestamp),
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 11,
-                                  color: _C.textFaint,
-                                ),
-                              ),
-                            ],
+                    ],
+                  ),
+                ),
+
+              // ── Post header ─────────────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 12, 0),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Author avatar
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: _C.primaryDark.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Center(
+                        child: Text(
+                          a.authorName.isNotEmpty
+                              ? a.authorName[0].toUpperCase()
+                              : '?',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: _C.primaryDark,
                           ),
-                          _categoryBadge(a.category),
-                          _audienceBadge(a.targetAudience),
-                          if (a.isScheduled && !a.isPublished)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: _C.infoBg,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Row(
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // Author info + timestamp
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            a.authorName,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: _C.charcoal,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 8,
+                            runSpacing: 4,
+                            children: [
+                              Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   const Icon(
-                                    Icons.schedule_rounded,
-                                    size: 10,
-                                    color: _C.info,
+                                    Icons.access_time_rounded,
+                                    size: 12,
+                                    color: _C.textFaint,
                                   ),
                                   const SizedBox(width: 4),
                                   Text(
-                                    'Scheduled',
+                                    _timeAgo(a.timestamp),
                                     style: GoogleFonts.beVietnamPro(
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.w700,
-                                      color: _C.info,
+                                      fontSize: 11,
+                                      color: _C.textFaint,
                                     ),
                                   ),
                                 ],
                               ),
-                            ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                // Actions menu
-                PopupMenuButton<String>(
-                  onSelected: (v) {
-                    if (v == 'edit') widget.onEdit();
-                    if (v == 'delete') widget.onDelete();
-                    if (v == 'pin') widget.onTogglePin();
-                  },
-                  icon: Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: _C.surface,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.more_horiz_rounded,
-                      size: 18,
-                      color: _C.darkGray,
-                    ),
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  elevation: 4,
-                  itemBuilder: (_) => [
-                    PopupMenuItem(
-                      value: 'edit',
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.edit_outlined,
-                            size: 15,
-                            color: _C.darkGray,
-                          ),
-                          const SizedBox(width: 10),
-                          Text(
-                            'Edit',
-                            style: GoogleFonts.beVietnamPro(fontSize: 13),
+                              _categoryBadge(a.category),
+                              _audienceBadge(a.targetAudience),
+                              if (a.isScheduled && !a.isPublished)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: _C.infoBg,
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.schedule_rounded,
+                                        size: 10,
+                                        color: _C.info,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'Scheduled',
+                                        style: GoogleFonts.beVietnamPro(
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w700,
+                                          color: _C.info,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
                           ),
                         ],
                       ),
                     ),
-                    PopupMenuItem(
-                      value: 'pin',
-                      child: Row(
-                        children: [
-                          Icon(
-                            a.isPinned
-                                ? Icons.push_pin_outlined
-                                : Icons.push_pin_rounded,
-                            size: 15,
-                            color: _C.warning,
-                          ),
-                          const SizedBox(width: 10),
-                          Text(
-                            a.isPinned ? 'Unpin' : 'Pin',
-                            style: GoogleFonts.beVietnamPro(fontSize: 13),
-                          ),
-                        ],
-                      ),
-                    ),
-                    PopupMenuItem(
-                      value: 'delete',
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.delete_outline_rounded,
-                            size: 15,
-                            color: _C.error,
-                          ),
-                          const SizedBox(width: 10),
-                          Text(
-                            'Delete',
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 13,
-                              color: _C.error,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          // ── Title ───────────────────────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: Text(
-              a.title,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: _C.charcoal,
-                height: 1.3,
-              ),
-            ),
-          ),
-
-          // ── Content (with hyperlink support) ────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                buildContent(
-                  truncated
-                      ? '${a.content.substring(0, a.content.length.clamp(0, 280))}…'
-                      : a.content,
-                ),
-                if (isLong) ...[
-                  const SizedBox(height: 4),
-                  MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    child: GestureDetector(
-                      onTap: () => setState(() => _expanded = !_expanded),
-                      child: Text(
-                        _expanded ? 'See less' : 'See more',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: _C.primaryDark,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-
-          // ── Linked event badge ─────────────────────────────────────────────
-          if (a.linkedProposalId.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: _C.infoBg,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: _C.info.withOpacity(0.25)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.event_available_rounded,
-                      size: 14,
-                      color: _C.info,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Registration linked: ${a.linkedEventTitle}',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w600,
-                        color: _C.info,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-          // ── Banner image (shown in full, never cropped) ───────────────────────
-          if (hasImage) ...[
-            const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              constraints: const BoxConstraints(maxHeight: 480),
-              color: _C.surface,
-              child: Image.memory(
-                base64Decode(a.imageBase64!),
-                width: double.infinity,
-                fit: BoxFit.contain,
-                // Decodes at a feed-card-sized resolution instead of
-                // whatever the org originally uploaded — see
-                // org_merchandise.dart's identical fix for why this matters
-                // for a repeating list of cards.
-                cacheWidth: 960,
-                errorBuilder: (_, __, ___) => Container(
-                  height: 280,
-                  color: _C.surface,
-                  child: const Icon(Icons.broken_image, color: _C.textFaint),
-                ),
-              ),
-            ),
-          ],
-
-          // ── Linked video ───────────────────────────────────────────────────────
-          if (a.videoUrl.isNotEmpty) ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-              child: InkWell(
-                onTap: () => _openVideoLink(a.videoUrl),
-                borderRadius: BorderRadius.circular(_DS.radiusSm),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _C.errorBg,
-                    borderRadius: BorderRadius.circular(_DS.radiusSm),
-                    border: Border.all(color: _C.error.withAlpha(64)),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
+                    // Actions menu
+                    PopupMenuButton<String>(
+                      onSelected: (v) {
+                        if (v == 'edit') widget.onEdit();
+                        if (v == 'delete') widget.onDelete();
+                        if (v == 'pin') widget.onTogglePin();
+                      },
+                      icon: Container(
                         width: 32,
                         height: 32,
                         decoration: BoxDecoration(
-                          color: _C.error.withAlpha(38),
+                          color: _C.surface,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Icon(
-                          Icons.play_arrow_rounded,
-                          color: _C.error,
+                          Icons.more_horiz_rounded,
                           size: 18,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'Watch Video',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: _C.error,
-                          ),
-                        ),
-                      ),
-                      const Icon(
-                        Icons.open_in_new_rounded,
-                        size: 15,
-                        color: _C.error,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-
-          // ── Attachments ──────────────────────────────────────────────────────
-          if (a.attachmentsBase64.isNotEmpty) ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.attach_file_rounded,
-                        size: 14,
-                        color: _C.darkGray,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        '${a.attachmentsBase64.length} attachment${a.attachmentsBase64.length > 1 ? 's' : ''}',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
                           color: _C.darkGray,
                         ),
                       ),
-                    ],
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      elevation: 4,
+                      itemBuilder: (_) => [
+                        PopupMenuItem(
+                          value: 'edit',
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.edit_outlined,
+                                size: 15,
+                                color: _C.darkGray,
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                'Edit',
+                                style: GoogleFonts.beVietnamPro(fontSize: 13),
+                              ),
+                            ],
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'pin',
+                          child: Row(
+                            children: [
+                              Icon(
+                                a.isPinned
+                                    ? Icons.push_pin_outlined
+                                    : Icons.push_pin_rounded,
+                                size: 15,
+                                color: _C.warning,
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                a.isPinned ? 'Unpin' : 'Pin',
+                                style: GoogleFonts.beVietnamPro(fontSize: 13),
+                              ),
+                            ],
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'delete',
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.delete_outline_rounded,
+                                size: 15,
+                                color: _C.error,
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                'Delete',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 13,
+                                  color: _C.error,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              // ── Title ───────────────────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: Text(
+                  a.title,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: _C.charcoal,
+                    height: 1.3,
                   ),
-                  const SizedBox(height: 8),
-                  ...a.attachmentsBase64.map(
-                    (att) => Container(
-                      margin: const EdgeInsets.only(bottom: 6),
+                ),
+              ),
+
+              // ── Content (with hyperlink support) ────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    buildContent(
+                      truncated
+                          ? '${a.content.substring(0, a.content.length.clamp(0, 280))}…'
+                          : a.content,
+                    ),
+                    if (isLong) ...[
+                      const SizedBox(height: 4),
+                      MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          onTap: () => setState(() => _expanded = !_expanded),
+                          child: Text(
+                            _expanded ? 'See less' : 'See more',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: _C.primaryDark,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+
+              // ── Linked event badge ─────────────────────────────────────────────
+              if (a.linkedProposalId.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _C.infoBg,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: _C.info.withOpacity(0.25)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.event_available_rounded,
+                          size: 14,
+                          color: _C.info,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Registration linked: ${a.linkedEventTitle}',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: _C.info,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+              // ── Banner image (shown in full, never cropped) ───────────────────────
+              if (hasImage) ...[
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  constraints: const BoxConstraints(maxHeight: 480),
+                  color: _C.surface,
+                  child: Image.memory(
+                    imageBytes,
+                    width: double.infinity,
+                    fit: BoxFit.contain,
+                    // Decodes at a feed-card-sized resolution instead of
+                    // whatever the org originally uploaded — see
+                    // org_merchandise.dart's identical fix for why this matters
+                    // for a repeating list of cards.
+                    cacheWidth: 960,
+                    errorBuilder: (_, __, ___) => Container(
+                      height: 280,
+                      color: _C.surface,
+                      child: const Icon(
+                        Icons.broken_image,
+                        color: _C.textFaint,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+
+              // ── Linked video ───────────────────────────────────────────────────────
+              if (a.videoUrl.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                  child: InkWell(
+                    onTap: () => _openVideoLink(a.videoUrl),
+                    borderRadius: BorderRadius.circular(_DS.radiusSm),
+                    child: Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
+                        horizontal: 14,
+                        vertical: 12,
                       ),
                       decoration: BoxDecoration(
-                        color: _C.infoBg,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: _C.info.withOpacity(0.2)),
+                        color: _C.errorBg,
+                        borderRadius: BorderRadius.circular(_DS.radiusSm),
+                        border: Border.all(color: _C.error.withAlpha(64)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(
-                            Icons.insert_drive_file_outlined,
-                            size: 16,
-                            color: _C.info,
+                          Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: _C.error.withAlpha(38),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.play_arrow_rounded,
+                              color: _C.error,
+                              size: 18,
+                            ),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              att.name,
+                              'Watch Video',
                               style: GoogleFonts.beVietnamPro(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                                color: _C.info,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: _C.error,
                               ),
                             ),
                           ),
-                          if (att.size != null)
-                            Text(
-                              att.size!,
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 10,
-                                color: _C.textFaint,
-                              ),
-                            ),
+                          const Icon(
+                            Icons.open_in_new_rounded,
+                            size: 15,
+                            color: _C.error,
+                          ),
                         ],
                       ),
                     ),
                   ),
-                ],
-              ),
-            ),
-          ],
-
-          // ── Footer divider + meta ─────────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.calendar_today_rounded,
-                  size: 12,
-                  color: _C.textFaint,
                 ),
-                const SizedBox(width: 5),
-                Text(
-                  DateFormat(
-                    'MMMM dd, yyyy • h:mm a',
-                  ).format(a.timestamp.toDate()),
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 11,
-                    color: _C.textFaint,
+              ],
+
+              // ── Attachments ──────────────────────────────────────────────────────
+              if (a.attachmentsBase64.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.attach_file_rounded,
+                            size: 14,
+                            color: _C.darkGray,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '${a.attachmentsBase64.length} attachment${a.attachmentsBase64.length > 1 ? 's' : ''}',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: _C.darkGray,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      ...a.attachmentsBase64.map(
+                        (att) => Container(
+                          margin: const EdgeInsets.only(bottom: 6),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _C.infoBg,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: _C.info.withOpacity(0.2)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.insert_drive_file_outlined,
+                                size: 16,
+                                color: _C.info,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  att.name,
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: _C.info,
+                                  ),
+                                ),
+                              ),
+                              if (att.size != null)
+                                Text(
+                                  att.size!,
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 10,
+                                    color: _C.textFaint,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
-            ),
+
+              // ── Footer divider + meta ─────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.calendar_today_rounded,
+                      size: 12,
+                      color: _C.textFaint,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      DateFormat(
+                        'MMMM dd, yyyy • h:mm a',
+                      ).format(a.timestamp.toDate()),
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 11,
+                        color: _C.textFaint,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: Container(width: 4, color: _categoryTheme(a.category).fg),
           ),
         ],
       ),
@@ -3585,6 +3547,20 @@ class _PageNumBtn extends StatelessWidget {
       ),
     );
   }
+}
+
+// Test-only hook so test/org_announcements_postcard_test.dart can construct
+// the private _PostCard from outside this file — that test is a regression
+// guard for a real bug (see its file header) that a normal build couldn't
+// catch, since flutter analyze doesn't run widgets through a paint pass.
+@visibleForTesting
+Widget debugPostCardForTest(AnnouncementModel a) {
+  return _PostCard(
+    announcement: a,
+    onEdit: () {},
+    onDelete: () {},
+    onTogglePin: () {},
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

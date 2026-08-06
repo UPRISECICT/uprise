@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'auth_service.dart';
+import 'services/push_notification_service.dart';
 import 'screens/web/admin/admin_login.dart';
 import 'screens/web/admin/admin_dashboard.dart';
 import 'package:uprise/screens/web/org/org_dashboard.dart';
@@ -35,6 +36,9 @@ class _RoleRouterState extends State<RoleRouter> {
     if (_cachedUid != uid || _roleFuture == null) {
       _cachedUid = uid;
       _roleFuture = _auth.getUserRole(uid);
+      // Piggybacks on the same per-uid caching as the role fetch so this
+      // only fires once per signed-in session, not on every stream rebuild.
+      PushNotificationService.register(uid);
     }
     return _roleFuture!;
   }

@@ -8,6 +8,7 @@ import 'package:fl_chart/fl_chart.dart';
 import '../../../widgets/admin_export_button.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/org_action_icon_button.dart';
+import '../../../widgets/org_modal_shell.dart';
 import 'export_util.dart';
 import 'export_pdf.dart';
 import '../../../theme/org_theme.dart';
@@ -404,112 +405,117 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
   }
 
   void _viewTransactionDetails(TransactionModel transaction) {
+    final isIncome = transaction.type == 'income';
+    final accent = isIncome ? OrgColors.success : OrgColors.error;
     showDialog(
       context: context,
       barrierColor: Colors.black54,
-      builder: (ctx) {
-        final isIncome = transaction.type == 'income';
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Container(
-            width: 420,
-            padding: const EdgeInsets.all(28),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: (isIncome ? OrgColors.success : OrgColors.error)
-                            .withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(
-                        isIncome
-                            ? Icons.trending_up_rounded
-                            : Icons.trending_down_rounded,
-                        color: isIncome ? OrgColors.success : OrgColors.error,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Text(
-                        'Transaction Details',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                          color: OrgColors.charcoal,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      icon: const Icon(
-                        Icons.close_rounded,
-                        size: 20,
-                        color: OrgColors.darkGray,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                _viewDetailRow('Event', transaction.eventName),
-                _viewDetailRow('Category', transaction.category),
-                _viewDetailRow(
-                  'Description',
-                  transaction.segment.isNotEmpty ? transaction.segment : '—',
-                ),
-                _viewDetailRow(
-                  'Amount',
-                  '₱${NumberFormat('#,###.00').format(transaction.amount)}',
-                ),
-                _viewDetailRow('Type', isIncome ? 'Income' : 'Expense'),
-                _viewDetailRow(
-                  'Date',
-                  DateFormat('MMMM d, yyyy').format(transaction.date.toDate()),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _viewDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 100,
-            child: Text(
-              label,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 13,
-                color: OrgColors.darkGray,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
+      builder: (ctx) => OrgModalShell(
+        accentColor: accent,
+        icon: isIncome
+            ? Icons.trending_up_rounded
+            : Icons.trending_down_rounded,
+        title: transaction.eventName,
+        subtitle: DateFormat('MMMM d, yyyy').format(transaction.date.toDate()),
+        width: 440,
+        footerActions: [
+          OutlinedButton.icon(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _openEditModal(transaction);
+            },
+            icon: const Icon(Icons.edit_outlined, size: 15),
+            label: Text(
+              'Edit',
               style: GoogleFonts.beVietnamPro(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: OrgColors.charcoal,
+              ),
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: UpriseColors.primaryDark,
+              side: BorderSide(color: UpriseColors.primaryDark.withAlpha(102)),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
               ),
             ),
           ),
         ],
+        body: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            // Column defaults to MainAxisSize.max, so without this it filled
+            // every bit of height OrgModalShell's Flexible offered (up to
+            // its 0.85-of-viewport cap) instead of shrinking to this short
+            // content — leaving a large dead gap below "Event" before the
+            // footer. Confirmed via a widget test: same body measured
+            // 765px (== 900 * 0.85, the cap) without this, 461px with it.
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Amount up front and prominent — the one number an org
+              // actually opens this dialog to double-check — instead of
+              // buried as just another label/value row.
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 16,
+                ),
+                decoration: BoxDecoration(
+                  color: accent.withAlpha(20),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: accent.withAlpha(51)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isIncome ? 'INCOME' : 'EXPENSE',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        color: accent,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${isIncome ? '+' : '-'}₱${NumberFormat('#,###.00').format(transaction.amount)}',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        color: accent,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              OrgDetailItem(
+                label: 'Category',
+                value: transaction.category,
+                icon: Icons.sell_outlined,
+                iconColor: UpriseColors.primaryDark,
+              ),
+              const SizedBox(height: 14),
+              OrgDetailItem(
+                label: 'Description',
+                value: transaction.segment.isNotEmpty
+                    ? transaction.segment
+                    : 'No description added',
+                icon: Icons.notes_rounded,
+              ),
+              const SizedBox(height: 14),
+              OrgDetailItem(
+                label: 'Event',
+                value: transaction.eventName,
+                icon: Icons.event_outlined,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1330,15 +1336,19 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 768;
+    final isTablet = screenWidth < 1200;
+
     return Scaffold(
       backgroundColor: const Color(0xFFFBFCFE),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildStatsRow(),
-          _buildToolbar(),
+          _buildStatsRow(isMobile),
+          _buildToolbar(isMobile, isTablet),
           const SizedBox(height: 16),
-          Expanded(child: _buildMainContent()),
+          Expanded(child: _buildMainContent(isMobile)),
           const SizedBox(height: 24),
         ],
       ),
@@ -1346,7 +1356,7 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
   }
 
   // ── Stats Row ──────────────────────────────────────────────────────
-  Widget _buildStatsRow() {
+  Widget _buildStatsRow(bool isMobile) {
     return StreamBuilder<QuerySnapshot>(
       stream: _transactionsStream,
       builder: (context, snapshot) {
@@ -1381,277 +1391,354 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
           });
         }
 
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(28, 24, 28, 0),
-          child: Row(
-            children: [
-              _StatCard(
-                label: 'Total Income',
-                value: '₱${NumberFormat('#,###').format(income)}',
-                icon: Icons.trending_up_rounded,
-                color: OrgColors.success,
-                isSelected: _selectedStatCard == 0,
-                onTap: () => selectCard(0, 'income'),
-              ),
-              const SizedBox(width: 14),
-              _StatCard(
-                label: 'Total Expenses',
-                value: '₱${NumberFormat('#,###').format(expense)}',
-                icon: Icons.trending_down_rounded,
-                color: OrgColors.error,
-                isSelected: _selectedStatCard == 1,
-                onTap: () => selectCard(1, 'expense'),
-              ),
-              const SizedBox(width: 14),
-              _StatCard(
-                label: 'Net Balance',
-                value: net >= 0
-                    ? '₱${NumberFormat('#,###').format(net)}'
-                    : '-₱${NumberFormat('#,###').format(net.abs())}',
-                icon: Icons.account_balance_wallet_outlined,
-                color: net >= 0 ? OrgColors.info : OrgColors.error,
-                isSelected: _selectedStatCard == 2,
-                onTap: () => selectCard(2, 'all'),
-              ),
-              const SizedBox(width: 14),
-              _StatCard(
-                label: 'Transactions',
-                value: '$activeCount',
-                icon: Icons.receipt_long_outlined,
-                color: UpriseColors.primaryDark,
-                isSelected: _selectedStatCard == 3,
-                onTap: () => selectCard(3, 'all'),
-              ),
-            ],
+        final statCards = [
+          _StatCard(
+            label: 'Total Income',
+            value: '₱${NumberFormat('#,###').format(income)}',
+            icon: Icons.trending_up_rounded,
+            color: OrgColors.success,
+            isSelected: _selectedStatCard == 0,
+            onTap: () => selectCard(0, 'income'),
+            expand: !isMobile,
           ),
+          _StatCard(
+            label: 'Total Expenses',
+            value: '₱${NumberFormat('#,###').format(expense)}',
+            icon: Icons.trending_down_rounded,
+            color: OrgColors.error,
+            isSelected: _selectedStatCard == 1,
+            onTap: () => selectCard(1, 'expense'),
+            expand: !isMobile,
+          ),
+          _StatCard(
+            label: 'Net Balance',
+            value: net >= 0
+                ? '₱${NumberFormat('#,###').format(net)}'
+                : '-₱${NumberFormat('#,###').format(net.abs())}',
+            icon: Icons.account_balance_wallet_outlined,
+            color: net >= 0 ? OrgColors.info : OrgColors.error,
+            isSelected: _selectedStatCard == 2,
+            onTap: () => selectCard(2, 'all'),
+            expand: !isMobile,
+          ),
+          _StatCard(
+            label: 'Transactions',
+            value: '$activeCount',
+            icon: Icons.receipt_long_outlined,
+            color: UpriseColors.primaryDark,
+            isSelected: _selectedStatCard == 3,
+            onTap: () => selectCard(3, 'all'),
+            expand: !isMobile,
+          ),
+        ];
+
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            isMobile ? 16 : 28,
+            isMobile ? 16 : 24,
+            isMobile ? 16 : 28,
+            0,
+          ),
+          child: isMobile
+              ? SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: List.generate(
+                      statCards.length,
+                      (i) => Padding(
+                        padding: EdgeInsets.only(
+                          right: i < statCards.length - 1 ? 8 : 0,
+                        ),
+                        child: SizedBox(width: 170, child: statCards[i]),
+                      ),
+                    ),
+                  ),
+                )
+              : Row(
+                  // _StatCard wraps itself in Expanded when expand:true (the
+                  // desktop case here), and Expanded must be a *direct* Flex
+                  // child — wrapping it in Padding like the mobile branch
+                  // above would throw "Expanded widgets must be placed
+                  // inside a Flex widget". Spacers have to be separate Row
+                  // children instead.
+                  children: [
+                    for (var i = 0; i < statCards.length; i++) ...[
+                      statCards[i],
+                      if (i < statCards.length - 1) const SizedBox(width: 14),
+                    ],
+                  ],
+                ),
         );
       },
     );
   }
 
   // ── Toolbar ────────────────────────────────────────────────────────
-  Widget _buildToolbar() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(28, 20, 28, 0),
-      child: Row(
-        children: [
-          Expanded(
-            child: SizedBox(
-              height: 40,
-              child: TextField(
-                controller: _searchController,
-                style: GoogleFonts.beVietnamPro(fontSize: 13),
-                decoration: InputDecoration(
-                  hintText: 'Search by event, category, description…',
-                  hintStyle: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    color: const Color(0xFF9AA5B4),
-                  ),
-                  prefixIcon: const Icon(
-                    Icons.search_rounded,
-                    size: 18,
-                    color: Color(0xFF9AA5B4),
-                  ),
-                  filled: true,
-                  fillColor: Colors.white,
-                  contentPadding: const EdgeInsets.symmetric(
-                    vertical: 0,
-                    horizontal: 16,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(
-                      color: UpriseColors.primaryDark,
-                      width: 1.5,
-                    ),
-                  ),
-                ),
-                onChanged: (v) => setState(() {
-                  _searchQuery = v;
-                  _currentPage = 1;
-                }),
-              ),
+  Widget _buildSearchField() {
+    return SizedBox(
+      height: 40,
+      child: TextField(
+        controller: _searchController,
+        style: GoogleFonts.beVietnamPro(fontSize: 13),
+        decoration: InputDecoration(
+          hintText: 'Search by event, category, description…',
+          hintStyle: GoogleFonts.beVietnamPro(
+            fontSize: 13,
+            color: const Color(0xFF9AA5B4),
+          ),
+          prefixIcon: const Icon(
+            Icons.search_rounded,
+            size: 18,
+            color: Color(0xFF9AA5B4),
+          ),
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: 0,
+            horizontal: 16,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(
+              color: UpriseColors.primaryDark,
+              width: 1.5,
             ),
           ),
-          const SizedBox(width: 10),
-          _FilterDropdown(
-            value: _filterType,
-            items: const ['all', 'income', 'expense'],
-            labels: const ['All Types', 'Income', 'Expense'],
-            onChanged: (v) => setState(() {
-              _filterType = v!;
-              _selectedStatCard = null;
-              _currentPage = 1;
-            }),
+        ),
+        onChanged: (v) => setState(() {
+          _searchQuery = v;
+          _currentPage = 1;
+        }),
+      ),
+    );
+  }
+
+  Widget _buildTypeFilterDropdown() {
+    return _FilterDropdown(
+      value: _filterType,
+      items: const ['all', 'income', 'expense'],
+      labels: const ['All Types', 'Income', 'Expense'],
+      onChanged: (v) => setState(() {
+        _filterType = v!;
+        _selectedStatCard = null;
+        _currentPage = 1;
+      }),
+    );
+  }
+
+  Widget _buildCategoryFilterDropdown() {
+    return _FilterDropdown(
+      value: _filterCategory,
+      items: _categories,
+      labels: _categories,
+      onChanged: (v) => setState(() {
+        _filterCategory = v!;
+        _currentPage = 1;
+      }),
+    );
+  }
+
+  Widget _buildArchiveToggle() {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => setState(() {
+          _showArchived = !_showArchived;
+          _currentPage = 1;
+        }),
+        child: Container(
+          height: 40,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: _showArchived
+                ? UpriseColors.primaryDark.withAlpha(20)
+                : Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: _showArchived
+                  ? UpriseColors.primaryDark
+                  : const Color(0xFFE2E6EA),
+            ),
           ),
-          const SizedBox(width: 10),
-          _FilterDropdown(
-            value: _filterCategory,
-            items: _categories,
-            labels: _categories,
-            onChanged: (v) => setState(() {
-              _filterCategory = v!;
-              _currentPage = 1;
-            }),
-          ),
-          const SizedBox(width: 10),
-          MouseRegion(
-            cursor: SystemMouseCursors.click,
-            child: GestureDetector(
-              onTap: () => setState(() {
-                _showArchived = !_showArchived;
-                _currentPage = 1;
-              }),
-              child: Container(
-                height: 40,
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                decoration: BoxDecoration(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.archive_outlined,
+                size: 16,
+                color: _showArchived
+                    ? UpriseColors.primaryDark
+                    : const Color(0xFF64748B),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Archived',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
                   color: _showArchived
-                      ? UpriseColors.primaryDark.withAlpha(20)
-                      : Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: _showArchived
-                        ? UpriseColors.primaryDark
-                        : const Color(0xFFE2E6EA),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.archive_outlined,
-                      size: 16,
-                      color: _showArchived
-                          ? UpriseColors.primaryDark
-                          : const Color(0xFF64748B),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Archived',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: _showArchived
-                            ? UpriseColors.primaryDark
-                            : const Color(0xFF64748B),
-                      ),
-                    ),
-                  ],
+                      ? UpriseColors.primaryDark
+                      : const Color(0xFF64748B),
                 ),
               ),
-            ),
+            ],
           ),
-          const SizedBox(width: 10),
-          // Generate Report
-          StreamBuilder<QuerySnapshot>(
-            stream: _transactionsStream,
-            builder: (context, snapshot) {
-              if (snapshot.hasError) {
-                return OutlinedButton.icon(
-                  onPressed: null,
-                  icon: const Icon(Icons.insert_drive_file_outlined, size: 15),
-                  label: Text(
-                    'Generate Report',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: UpriseColors.primaryDark,
-                    side: const BorderSide(color: UpriseColors.primaryDark),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 10,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                );
-              }
-              final transactions = _transactionsFromSnapshot(snapshot.data);
-              return OutlinedButton.icon(
-                onPressed: () =>
-                    _showGenerateReportDialog(context, transactions),
-                icon: const Icon(Icons.insert_drive_file_outlined, size: 15),
-                label: Text(
-                  'Generate Report',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: UpriseColors.primaryDark,
-                  side: const BorderSide(color: UpriseColors.primaryDark),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              );
-            },
-          ),
-          const SizedBox(width: 10),
-          // Export
-          StreamBuilder<QuerySnapshot>(
-            stream: _transactionsStream,
-            builder: (context, snapshot) {
-              if (snapshot.hasError) {
-                return AdminExportButton(label: 'Export', onSelected: (_) {});
-              }
-              final transactions = _transactionsFromSnapshot(snapshot.data);
-              return AdminExportButton(
-                label: 'Export',
-                onSelected: (choice) =>
-                    _exportTransactions(choice, transactions),
-              );
-            },
-          ),
-          const SizedBox(width: 10),
-          // Add Transaction
-          ElevatedButton.icon(
-            onPressed: _openAddModal,
-            icon: const Icon(Icons.add_rounded, size: 15),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGenerateReportButton() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _transactionsStream,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return OutlinedButton.icon(
+            onPressed: null,
+            icon: const Icon(Icons.insert_drive_file_outlined, size: 15),
             label: Text(
-              'Add Transaction',
+              'Generate Report',
               style: GoogleFonts.beVietnamPro(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
             ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: UpriseColors.primaryDark,
-              foregroundColor: Colors.white,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: UpriseColors.primaryDark,
+              side: const BorderSide(color: UpriseColors.primaryDark),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
-              elevation: 0,
+            ),
+          );
+        }
+        final transactions = _transactionsFromSnapshot(snapshot.data);
+        return OutlinedButton.icon(
+          onPressed: () => _showGenerateReportDialog(context, transactions),
+          icon: const Icon(Icons.insert_drive_file_outlined, size: 15),
+          label: Text(
+            'Generate Report',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
             ),
           ),
-        ],
+          style: OutlinedButton.styleFrom(
+            foregroundColor: UpriseColors.primaryDark,
+            side: const BorderSide(color: UpriseColors.primaryDark),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildExportButton() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _transactionsStream,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return AdminExportButton(label: 'Export', onSelected: (_) {});
+        }
+        final transactions = _transactionsFromSnapshot(snapshot.data);
+        return AdminExportButton(
+          label: 'Export',
+          onSelected: (choice) => _exportTransactions(choice, transactions),
+        );
+      },
+    );
+  }
+
+  Widget _buildAddTransactionButton() {
+    return ElevatedButton.icon(
+      onPressed: _openAddModal,
+      icon: const Icon(Icons.add_rounded, size: 15),
+      label: Text(
+        'Add Transaction',
+        style: GoogleFonts.beVietnamPro(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: UpriseColors.primaryDark,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        elevation: 0,
       ),
     );
   }
 
-  // ── Main Content: Table + Side Panel ──────────────────────────────
-  Widget _buildMainContent() {
+  Widget _buildToolbar(bool isMobile, bool isTablet) {
+    final horizontalPadding = isMobile ? 16.0 : 28.0;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 28),
+      padding: EdgeInsets.fromLTRB(
+        horizontalPadding,
+        isMobile ? 14 : 20,
+        horizontalPadding,
+        0,
+      ),
+      child: isMobile
+          ? Column(
+              spacing: 10,
+              children: [
+                _buildSearchField(),
+                Row(
+                  spacing: 10,
+                  children: [
+                    Expanded(child: _buildTypeFilterDropdown()),
+                    Expanded(child: _buildCategoryFilterDropdown()),
+                  ],
+                ),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _buildArchiveToggle(),
+                    _buildGenerateReportButton(),
+                    _buildExportButton(),
+                    _buildAddTransactionButton(),
+                  ],
+                ),
+              ],
+            )
+          : Row(
+              children: [
+                Expanded(child: _buildSearchField()),
+                const SizedBox(width: 10),
+                _buildTypeFilterDropdown(),
+                const SizedBox(width: 10),
+                _buildCategoryFilterDropdown(),
+                const SizedBox(width: 10),
+                _buildArchiveToggle(),
+                const SizedBox(width: 10),
+                _buildGenerateReportButton(),
+                const SizedBox(width: 10),
+                _buildExportButton(),
+                const SizedBox(width: 10),
+                _buildAddTransactionButton(),
+              ],
+            ),
+    );
+  }
+
+  // ── Main Content: Table + Side Panel ──────────────────────────────
+  Widget _buildMainContent(bool isMobile) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 28),
       child: StreamBuilder<QuerySnapshot>(
         stream: _transactionsStream,
         builder: (context, snapshot) {
@@ -1675,65 +1762,87 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
               ? <TransactionModel>[]
               : filtered.sublist(start, end);
 
+          final tableContainer = Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFE8ECF0)),
+              boxShadow: _DS.cardShadow,
+            ),
+            child: Column(
+              children: [
+                _buildTableHeader(filtered.length, transactions.length),
+                Expanded(
+                  child: transactions.isEmpty
+                      ? _buildEmptyState(
+                          icon: Icons.receipt_long_outlined,
+                          title: 'No transactions yet',
+                          subtitle: 'Click "Add Transaction" to get started.',
+                        )
+                      : filtered.isEmpty
+                      ? _buildEmptyState(
+                          icon: Icons.search_off_rounded,
+                          title: 'No matching transactions',
+                          subtitle: 'Try adjusting your search or filters.',
+                        )
+                      : ListView.builder(
+                          controller: _tableScrollController,
+                          itemCount: pageDocs.length,
+                          itemBuilder: (_, i) => _buildTransactionRow(
+                            transaction: pageDocs[i],
+                            isLast: i == pageDocs.length - 1,
+                          ),
+                        ),
+                ),
+                if (filtered.isNotEmpty)
+                  _buildFooter(
+                    filtered.length,
+                    totalPages,
+                    start,
+                    end,
+                    safePage,
+                  ),
+              ],
+            ),
+          );
+
+          // Same fix as org_certificates.dart / org_event_proposals.dart:
+          // the header/rows use Expanded columns, which need a bounded
+          // width to divide up — pin the table to a fixed, readable width
+          // that scrolls sideways on narrow screens instead of squeezing
+          // those columns down to nothing. The summary panel drops below
+          // the table (it has its own internal scroll for its cards, so
+          // nesting it under an outer scroll just displays it at full
+          // natural height instead of a fixed 300px sidebar).
+          if (isMobile) {
+            return SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SizedBox(
+                      width: 900,
+                      height: 480,
+                      child: tableContainer,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  _SummaryPanel(orgId: widget.orgId),
+                ],
+              ),
+            );
+          }
+
           return Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // ── Left: Table ──
-              Expanded(
-                flex: 3,
-                child: Container(
-                  clipBehavior: Clip.antiAlias,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFFE8ECF0)),
-                    boxShadow: _DS.cardShadow,
-                  ),
-                  child: Column(
-                    children: [
-                      _buildTableHeader(filtered.length, transactions.length),
-                      Expanded(
-                        child: transactions.isEmpty
-                            ? _buildEmptyState(
-                                icon: Icons.receipt_long_outlined,
-                                title: 'No transactions yet',
-                                subtitle:
-                                    'Click "Add Transaction" to get started.',
-                              )
-                            : filtered.isEmpty
-                            ? _buildEmptyState(
-                                icon: Icons.search_off_rounded,
-                                title: 'No matching transactions',
-                                subtitle:
-                                    'Try adjusting your search or filters.',
-                              )
-                            : ListView.builder(
-                                controller: _tableScrollController,
-                                itemCount: pageDocs.length,
-                                itemBuilder: (_, i) => _buildTransactionRow(
-                                  transaction: pageDocs[i],
-                                  isLast: i == pageDocs.length - 1,
-                                ),
-                              ),
-                      ),
-                      if (filtered.isNotEmpty)
-                        _buildFooter(
-                          filtered.length,
-                          totalPages,
-                          start,
-                          end,
-                          safePage,
-                        ),
-                    ],
-                  ),
-                ),
-              ),
+              Expanded(flex: 3, child: tableContainer),
               const SizedBox(width: 20),
               // ── Right: Summary Panel ──
-              SizedBox(
-                width: 300,
-                child: _SummaryPanel(stream: _transactionsStream),
-              ),
+              SizedBox(width: 300, child: _SummaryPanel(orgId: widget.orgId)),
             ],
           );
         },
@@ -2067,19 +2176,37 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
 // Takes the parent's already-open transactions stream instead of opening a
 // third independent live listener on the exact same org-scoped query (the
 // stats row above it shared a fourth one until this was consolidated too).
-class _SummaryPanel extends StatelessWidget {
-  final Stream<QuerySnapshot> stream;
-  const _SummaryPanel({required this.stream});
+class _SummaryPanel extends StatefulWidget {
+  final String orgId;
+  const _SummaryPanel({required this.orgId});
+
+  @override
+  State<_SummaryPanel> createState() => _SummaryPanelState();
+}
+
+class _SummaryPanelState extends State<_SummaryPanel> {
+  // Was previously handed the parent's already-shared _transactionsStream
+  // instead of owning its own — that stream object is a `late final` field
+  // on _OrgFinanceScreenState, but every emission from it makes the parent's
+  // StreamBuilder rebuild and reconstruct this whole widget subtree fresh,
+  // including a brand-new StreamBuilder instance here trying to listen to
+  // the same shared stream again. That reconstruction cycle never let this
+  // panel's own subscription settle long enough to receive data — it kept
+  // showing its permanent "waiting" state (empty charts) even though the
+  // table beside it, fed the same underlying data, rendered fine. A
+  // dedicated stream owned by this widget's own State (created once, not
+  // re-created on every parent rebuild) sidesteps that entirely.
+  late final Stream<QuerySnapshot> _stream = FirebaseFirestore.instance
+      .collection('transactions')
+      .where('orgId', isEqualTo: widget.orgId)
+      .snapshots();
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
-      stream: stream,
+      stream: _stream,
       builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final docs = snapshot.data!.docs;
+        final docs = snapshot.data?.docs ?? [];
         Map<String, double> incomeByEvent = {};
         Map<String, double> expenseByEvent = {};
         double totalIncome = 0, totalExpense = 0;
@@ -2387,8 +2514,10 @@ class _TransactionModal extends StatefulWidget {
 }
 
 class _TransactionModalState extends State<_TransactionModal> {
+  final _formKey = GlobalKey<FormState>();
   final _segmentCtrl = TextEditingController();
   final _amountCtrl = TextEditingController();
+  final _manualEventCtrl = TextEditingController();
   String? _selectedEventId;
   String _selectedEventName = '';
   String _category = 'Workshops';
@@ -2419,6 +2548,7 @@ class _TransactionModalState extends State<_TransactionModal> {
       _amountCtrl.text = t.amount.toStringAsFixed(2);
       _selectedEventName = t.eventName;
       _selectedEventId = t.eventId.isNotEmpty ? t.eventId : null;
+      _manualEventCtrl.text = t.eventName;
       _category = t.category;
       _type = t.type;
       _selectedDate = t.date.toDate();
@@ -2493,19 +2623,8 @@ class _TransactionModalState extends State<_TransactionModal> {
   }
 
   Future<void> _submit() async {
+    if (_formKey.currentState?.validate() != true) return;
     final amount = double.tryParse(_amountCtrl.text.trim()) ?? 0;
-    if (_amountCtrl.text.trim().isEmpty) {
-      _showError('Amount is required');
-      return;
-    }
-    if (amount <= 0) {
-      _showError('Amount must be greater than 0');
-      return;
-    }
-    if (_selectedEventId == null && _selectedEventName.isEmpty) {
-      _showError('Please select an event');
-      return;
-    }
     setState(() => _submitting = true);
     final user = FirebaseAuth.instance.currentUser;
     final data = {
@@ -2569,6 +2688,7 @@ class _TransactionModalState extends State<_TransactionModal> {
   void dispose() {
     _segmentCtrl.dispose();
     _amountCtrl.dispose();
+    _manualEventCtrl.dispose();
     super.dispose();
   }
 
@@ -2641,193 +2761,211 @@ class _TransactionModalState extends State<_TransactionModal> {
             Flexible(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Transaction Type Toggle
-                    _FieldLabel('TRANSACTION TYPE'),
-                    const SizedBox(height: 6),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: OrgColors.lightGray,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: OrgColors.mediumGray),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Transaction Type Toggle
+                      _FieldLabel('TRANSACTION TYPE'),
+                      const SizedBox(height: 6),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: OrgColors.lightGray,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: OrgColors.mediumGray),
+                        ),
+                        child: Row(
+                          children: [
+                            _TypeToggle(
+                              label: 'Expense',
+                              isSelected: _type == 'expense',
+                              selectedColor: OrgColors.error,
+                              onTap: () => setState(() => _type = 'expense'),
+                            ),
+                            _TypeToggle(
+                              label: 'Income',
+                              isSelected: _type == 'income',
+                              selectedColor: OrgColors.success,
+                              onTap: () => setState(() => _type = 'income'),
+                            ),
+                          ],
+                        ),
                       ),
-                      child: Row(
+                      const SizedBox(height: 16),
+
+                      // Date & Amount
+                      Row(
                         children: [
-                          _TypeToggle(
-                            label: 'Expense',
-                            isSelected: _type == 'expense',
-                            selectedColor: OrgColors.error,
-                            onTap: () => setState(() => _type = 'expense'),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _FieldLabel('DATE'),
+                                const SizedBox(height: 6),
+                                InkWell(
+                                  onTap: _pickDate,
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 11,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: OrgColors.lightGray,
+                                      border: Border.all(
+                                        color: const Color(0xFFE2E6EA),
+                                      ),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            DateFormat(
+                                              'MM/dd/yyyy',
+                                            ).format(_selectedDate),
+                                            style: GoogleFonts.beVietnamPro(
+                                              fontSize: 13,
+                                              color: OrgColors.charcoal,
+                                            ),
+                                          ),
+                                        ),
+                                        const Icon(
+                                          Icons.calendar_today_outlined,
+                                          size: 15,
+                                          color: OrgColors.darkGray,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                          _TypeToggle(
-                            label: 'Income',
-                            isSelected: _type == 'income',
-                            selectedColor: OrgColors.success,
-                            onTap: () => setState(() => _type = 'income'),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _FieldLabel('AMOUNT (₱)', required: true),
+                                const SizedBox(height: 6),
+                                TextFormField(
+                                  controller: _amountCtrl,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                  style: GoogleFonts.beVietnamPro(fontSize: 13),
+                                  decoration: _inputDecoration('0.00'),
+                                  validator: (v) {
+                                    final trimmed = v?.trim() ?? '';
+                                    if (trimmed.isEmpty) return 'Required';
+                                    final amount = double.tryParse(trimmed);
+                                    if (amount == null || amount <= 0) {
+                                      return 'Must be greater than 0';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
-                    ),
-                    const SizedBox(height: 16),
+                      const SizedBox(height: 16),
 
-                    // Date & Amount
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _FieldLabel('DATE'),
-                              const SizedBox(height: 6),
-                              InkWell(
-                                onTap: _pickDate,
-                                borderRadius: BorderRadius.circular(8),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 11,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: OrgColors.lightGray,
-                                    border: Border.all(
-                                      color: const Color(0xFFE2E6EA),
+                      // Event
+                      _FieldLabel('EVENT', required: true),
+                      const SizedBox(height: 6),
+                      if (_loadingEvents)
+                        const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(8),
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      else if (_events.isEmpty)
+                        TextFormField(
+                          controller: _manualEventCtrl,
+                          onChanged: (v) =>
+                              setState(() => _selectedEventName = v),
+                          style: GoogleFonts.beVietnamPro(fontSize: 13),
+                          decoration: _inputDecoration('Enter event name'),
+                          validator: (v) =>
+                              v?.trim().isEmpty ?? true ? 'Required' : null,
+                        )
+                      else
+                        DropdownButtonFormField<String>(
+                          value: _selectedEventId,
+                          items: _events
+                              .map<DropdownMenuItem<String>>(
+                                (event) => DropdownMenuItem<String>(
+                                  value: event['id'],
+                                  child: Text(
+                                    event['name'],
+                                    style: GoogleFonts.beVietnamPro(
+                                      fontSize: 13,
                                     ),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          DateFormat(
-                                            'MM/dd/yyyy',
-                                          ).format(_selectedDate),
-                                          style: GoogleFonts.beVietnamPro(
-                                            fontSize: 13,
-                                            color: OrgColors.charcoal,
-                                          ),
-                                        ),
-                                      ),
-                                      const Icon(
-                                        Icons.calendar_today_outlined,
-                                        size: 15,
-                                        color: OrgColors.darkGray,
-                                      ),
-                                    ],
                                   ),
                                 ),
-                              ),
-                            ],
+                              )
+                              .toList(),
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedEventId = value;
+                              _selectedEventName = _events.firstWhere(
+                                (e) => e['id'] == value,
+                              )['name'];
+                            });
+                          },
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 13,
+                            color: OrgColors.charcoal,
                           ),
+                          decoration: _inputDecoration('Select event'),
+                          validator: (v) => v == null ? 'Required' : null,
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _FieldLabel('AMOUNT (₱)'),
-                              const SizedBox(height: 6),
-                              TextField(
-                                controller: _amountCtrl,
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
-                                style: GoogleFonts.beVietnamPro(fontSize: 13),
-                                decoration: _inputDecoration('0.00'),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
+                      const SizedBox(height: 16),
 
-                    // Event
-                    _FieldLabel('EVENT'),
-                    const SizedBox(height: 6),
-                    if (_loadingEvents)
-                      const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(8),
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      )
-                    else if (_events.isEmpty)
-                      TextField(
-                        onChanged: (v) =>
-                            setState(() => _selectedEventName = v),
-                        style: GoogleFonts.beVietnamPro(fontSize: 13),
-                        decoration: _inputDecoration('Enter event name'),
-                      )
-                    else
+                      // Category
+                      _FieldLabel('CATEGORY'),
+                      const SizedBox(height: 6),
                       DropdownButtonFormField<String>(
-                        value: _selectedEventId,
-                        items: _events
-                            .map<DropdownMenuItem<String>>(
-                              (event) => DropdownMenuItem<String>(
-                                value: event['id'],
+                        value: _category,
+                        items: _categories
+                            .map(
+                              (c) => DropdownMenuItem(
+                                value: c,
                                 child: Text(
-                                  event['name'],
+                                  c,
                                   style: GoogleFonts.beVietnamPro(fontSize: 13),
                                 ),
                               ),
                             )
                             .toList(),
-                        onChanged: (value) {
-                          setState(() {
-                            _selectedEventId = value;
-                            _selectedEventName = _events.firstWhere(
-                              (e) => e['id'] == value,
-                            )['name'];
-                          });
-                        },
+                        onChanged: (v) => setState(() => _category = v!),
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 13,
                           color: OrgColors.charcoal,
                         ),
-                        decoration: _inputDecoration('Select event'),
+                        decoration: _inputDecoration('Select category'),
                       ),
-                    const SizedBox(height: 16),
+                      const SizedBox(height: 16),
 
-                    // Category
-                    _FieldLabel('CATEGORY'),
-                    const SizedBox(height: 6),
-                    DropdownButtonFormField<String>(
-                      value: _category,
-                      items: _categories
-                          .map(
-                            (c) => DropdownMenuItem(
-                              value: c,
-                              child: Text(
-                                c,
-                                style: GoogleFonts.beVietnamPro(fontSize: 13),
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (v) => setState(() => _category = v!),
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        color: OrgColors.charcoal,
+                      // Description
+                      _FieldLabel('DESCRIPTION (OPTIONAL)'),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: _segmentCtrl,
+                        maxLines: 2,
+                        style: GoogleFonts.beVietnamPro(fontSize: 13),
+                        decoration: _inputDecoration(
+                          'Add notes about this transaction…',
+                        ),
                       ),
-                      decoration: _inputDecoration('Select category'),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Description
-                    _FieldLabel('DESCRIPTION (OPTIONAL)'),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: _segmentCtrl,
-                      maxLines: 2,
-                      style: GoogleFonts.beVietnamPro(fontSize: 13),
-                      decoration: _inputDecoration(
-                        'Add notes about this transaction…',
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -2940,6 +3078,13 @@ class _StatCard extends StatelessWidget {
   final Color color;
   final bool isSelected;
   final VoidCallback? onTap;
+  // Desktop's Row relies on this self-wrapping in Expanded to fill the row
+  // evenly (matches every other stat-card row in the org portal). The
+  // mobile horizontal-scroll layout instead gives each card a fixed
+  // SizedBox width, where an inner Expanded would crash — Expanded needs a
+  // bounded main-axis size to divide up, and a horizontally scrolling Row
+  // is intentionally unbounded on that axis.
+  final bool expand;
 
   const _StatCard({
     required this.label,
@@ -2948,79 +3093,79 @@ class _StatCard extends StatelessWidget {
     required this.color,
     this.isSelected = false,
     this.onTap,
+    this.expand = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          onTap: onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isSelected ? color : const Color(0xFFE8ECF0),
-                width: isSelected ? 2 : 1,
-              ),
-              boxShadow: isSelected
-                  ? [
-                      BoxShadow(
-                        color: color.withAlpha(46),
-                        blurRadius: 16,
-                        offset: const Offset(0, 4),
-                      ),
-                    ]
-                  : _DS.cardShadow,
+    final card = MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected ? color : const Color(0xFFE8ECF0),
+              width: isSelected ? 2 : 1,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: color.withAlpha(26),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(icon, color: color, size: 20),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: color.withAlpha(46),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
                     ),
-                    Flexible(
-                      child: Text(
-                        value,
-                        textAlign: TextAlign.right,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w800,
-                          color: OrgColors.charcoal,
-                        ),
-                      ),
+                  ]
+                : _DS.cardShadow,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: color.withAlpha(26),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  label,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 11,
-                    color: OrgColors.darkGray,
-                    fontWeight: FontWeight.w600,
+                    child: Icon(icon, color: color, size: 20),
                   ),
+                  Flexible(
+                    child: Text(
+                      value,
+                      textAlign: TextAlign.right,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                        color: OrgColors.charcoal,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                label,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 11,
+                  color: OrgColors.darkGray,
+                  fontWeight: FontWeight.w600,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
     );
+    return expand ? Expanded(child: card) : card;
   }
 }
 
@@ -3277,17 +3422,27 @@ class _LegendDot extends StatelessWidget {
 
 class _FieldLabel extends StatelessWidget {
   final String text;
-  const _FieldLabel(this.text);
+  final bool required;
+  const _FieldLabel(this.text, {this.required = false});
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: GoogleFonts.beVietnamPro(
-        fontSize: 10,
-        fontWeight: FontWeight.w700,
-        color: OrgColors.darkGray,
-        letterSpacing: 0.8,
+    final style = GoogleFonts.beVietnamPro(
+      fontSize: 10,
+      fontWeight: FontWeight.w700,
+      color: OrgColors.darkGray,
+      letterSpacing: 0.8,
+    );
+    if (!required) return Text(text, style: style);
+    return RichText(
+      text: TextSpan(
+        children: [
+          TextSpan(text: text, style: style),
+          TextSpan(
+            text: ' *',
+            style: style.copyWith(color: OrgColors.error),
+          ),
+        ],
       ),
     );
   }

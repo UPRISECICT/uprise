@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'firebase_options.dart';
 import 'auth_service.dart';
+import 'services/push_notification_service.dart';
 import 'screens/web/admin/admin_dashboard.dart';
 import 'screens/web/admin/admin_landing_page.dart';
 import 'screens/web/org/org_dashboard.dart';
@@ -112,6 +113,9 @@ class _AuthGateState extends State<AuthGate> {
           }
         });
       }
+      // Piggybacks on the same per-uid caching as the role fetch so this
+      // only fires once per signed-in session, not on every stream rebuild.
+      PushNotificationService.register(uid);
     }
     return _roleFuture!;
   }

@@ -613,16 +613,26 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
               ((d.data() as Map<String, dynamic>)['recipients'] as num? ?? 1)
                   .toInt(),
         );
-        final distributed = docs
-            .where(
-              (d) =>
-                  (d.data() as Map<String, dynamic>)['status'] == 'distributed',
-            )
+        // Counted from the same grouped batches the "Distributed"/"Pending"
+        // cards actually filter to when clicked (selectCard below), instead
+        // of a raw per-record `status` check — each Firestore doc here is
+        // one recipient's certificate, and its `status` field is only ever
+        // 'draft' or 'distributed', never literally 'pending'. Counting raw
+        // docs with status=='pending' always came out to 0 while the click
+        // filter (which operates on grouped-by-event batches) could still
+        // find batches that aren't fully sent yet — the card said 0 while
+        // clicking it showed real rows.
+        final allRecordsForCounts = docs
+            .map((d) => CertificateRecord.fromFirestore(d))
+            .toList();
+        final batchesForCounts = CertificateBatch.groupByEvent(
+          allRecordsForCounts,
+        );
+        final distributed = batchesForCounts
+            .where((b) => b.sentCount > 0)
             .length;
-        final pending = docs
-            .where(
-              (d) => (d.data() as Map<String, dynamic>)['status'] == 'pending',
-            )
+        final pending = batchesForCounts
+            .where((b) => b.sentCount < b.totalRecipients)
             .length;
 
         final horizontalPadding = isMobile ? 16.0 : (isTablet ? 20.0 : 28.0);
@@ -974,7 +984,7 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
             ? <CertificateBatch>[]
             : batches.sublist(start, end);
 
-        return Container(
+        final tableContent = Container(
           margin: EdgeInsets.symmetric(horizontal: horizontalMargin),
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
@@ -985,18 +995,10 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
           ),
           child: Column(
             children: [
-              if (!isMobile) _buildTableHeader(),
+              _buildTableHeader(),
               Expanded(
                 child: batches.isEmpty
                     ? _buildEmptyState()
-                    : isMobile
-                    ? ListView.builder(
-                        itemCount: pageItems.length,
-                        itemBuilder: (_, i) => _buildCardRow(
-                          pageItems[i],
-                          i == pageItems.length - 1,
-                        ),
-                      )
                     : ListView.builder(
                         itemCount: pageItems.length,
                         itemBuilder: (_, i) =>
@@ -1007,6 +1009,22 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
             ],
           ),
         );
+
+        // Same fix as org_event_proposals.dart's table: the columns use
+        // Expanded, which needs a bounded width to divide up — handing this
+        // straight to a horizontal SingleChildScrollView gives it unbounded
+        // width instead (that's what the scroll axis means) and crashes
+        // every Expanded column on narrow screens. Pinning it to a fixed,
+        // comfortably-readable width gives Expanded something concrete to
+        // work with, and that fixed width is what actually scrolls
+        // sideways — same clean table look on mobile as everywhere else,
+        // instead of switching to a different card layout.
+        return isMobile
+            ? SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: SizedBox(width: 900, child: tableContent),
+              )
+            : tableContent;
       },
     );
   }
@@ -1089,25 +1107,35 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
                   fontWeight: FontWeight.w500,
                   color: const Color(0xFF1A202C),
                 ),
-                overflow: TextOverflow.ellipsis,
               ),
             ),
             Expanded(
               flex: 2,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: UpriseColors.primaryDark.withOpacity(0.07),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  b.organization,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: UpriseColors.primaryDark,
+              // Align (not just the bare Container) — Expanded gives its
+              // child a tight width equal to the whole column, so a plain
+              // Container with no width of its own stretches to fill that
+              // instead of hugging the text. Align gives the Container
+              // loose constraints to shrink-wrap while still positioning it
+              // within the column.
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
                   ),
-                  overflow: TextOverflow.ellipsis,
+                  decoration: BoxDecoration(
+                    color: UpriseColors.primaryDark.withOpacity(0.07),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    b.organization,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: UpriseColors.primaryDark,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -1144,7 +1172,13 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
                 ),
               ),
             ),
-            Expanded(flex: 2, child: _batchBadge(b.batchStatus)),
+            Expanded(
+              flex: 2,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: _batchBadge(b.batchStatus),
+              ),
+            ),
             Expanded(
               flex: 3,
               child: Row(
@@ -1164,16 +1198,22 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
                       color: const Color(0xFF2563EB),
                       onTap: () => _sendCertificates(r),
                     ),
-                  const SizedBox(width: 6),
-                  OrgActionIconButton(
-                    icon: Icons.edit_outlined,
-                    tooltip: b.isEditable
-                        ? 'Edit'
-                        : 'Locked — certificates already sent',
-                    color: UpriseColors.primaryDark,
-                    onTap: b.isEditable ? () => _editCert(r) : null,
-                  ),
-                  const SizedBox(width: 6),
+                  // OrgActionIconButton's own InkWell(onTap: null) doesn't
+                  // block the tap from bubbling up to this row's outer
+                  // InkWell (onTap: () => _viewBatch(b)) — a "disabled"
+                  // edit icon on a locked batch still opened the view
+                  // dialog when clicked. Not showing the icon at all for a
+                  // locked batch sidesteps that entirely instead of trying
+                  // to keep a truly inert disabled state.
+                  if (b.isEditable) ...[
+                    OrgActionIconButton(
+                      icon: Icons.edit_outlined,
+                      tooltip: 'Edit',
+                      color: UpriseColors.primaryDark,
+                      onTap: () => _editCert(r),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
                   OrgActionIconButton(
                     icon: b.isArchived
                         ? Icons.unarchive_outlined
@@ -1535,100 +1575,6 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildCardRow(CertificateBatch b, bool isLast) {
-    final r = b.primary;
-    return InkWell(
-      onTap: () => _viewBatch(b),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          border: isLast
-              ? null
-              : const Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          spacing: 10,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Text(
-                    r.certificateId,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: UpriseColors.primaryDark,
-                    ),
-                  ),
-                ),
-                _batchBadge(b.batchStatus),
-              ],
-            ),
-            Text(
-              b.eventName,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: const Color(0xFF1A202C),
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  DateFormat('MMM d, yyyy').format(b.date),
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 11,
-                    color: const Color(0xFF64748B),
-                  ),
-                ),
-                Text(
-                  b.batchStatus == 'draft'
-                      ? '${b.totalRecipients} recipient${b.totalRecipients != 1 ? 's' : ''}'
-                      : '${b.sentCount}/${b.totalRecipients} sent',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 11,
-                    color: const Color(0xFF64748B),
-                  ),
-                ),
-              ],
-            ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              spacing: 6,
-              children: [
-                OrgActionIconButton(
-                  icon: Icons.visibility_outlined,
-                  tooltip: 'View',
-                  color: const Color(0xFF3B82F6),
-                  onTap: () => _viewBatch(b),
-                ),
-                OrgActionIconButton(
-                  icon: Icons.edit_outlined,
-                  tooltip: b.isEditable ? 'Edit' : 'Locked',
-                  color: UpriseColors.primaryDark,
-                  onTap: b.isEditable ? () => _editCert(r) : null,
-                ),
-                OrgActionIconButton(
-                  icon: b.isArchived
-                      ? Icons.unarchive_outlined
-                      : Icons.archive_outlined,
-                  tooltip: b.isArchived ? 'Unarchive' : 'Archive',
-                  color: const Color(0xFF6B7280),
-                  onTap: () => _toggleArchive(b),
-                ),
-              ],
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -2062,161 +2008,241 @@ class _BatchDetailModalState extends State<_BatchDetailModal> {
           ),
         ),
       ],
-      body: FutureBuilder<List<_RecipientStatusRow>>(
-        future: fetchRecipientStatus(eventId),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  'Error: ${snapshot.error}',
-                  style: GoogleFonts.beVietnamPro(color: UpriseColors.error),
-                ),
-              ),
-            );
-          }
-          final rows = snapshot.data ?? [];
-          if (rows.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  'No attendees found for this event.',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 14,
-                    color: const Color(0xFF64748B),
-                  ),
-                ),
-              ),
-            );
-          }
-          return ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: rows.length,
-            separatorBuilder: (_, __) => const Divider(height: 1),
-            itemBuilder: (_, i) {
-              final row = rows[i];
-              final bool canSend = row.evaluated && !row.certSent;
-              final bool awaitingEval = !row.evaluated;
-
-              return Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  color: canSend
-                      ? UpriseColors.warning.withOpacity(0.08)
-                      : (awaitingEval
-                            ? Colors.grey.shade50
-                            : UpriseColors.success.withOpacity(0.05)),
-                ),
-                child: Row(
-                  children: [
-                    // Name
-                    Expanded(
-                      flex: 2,
+      body: Column(
+        children: [
+          _buildTemplatePreview(b),
+          Expanded(
+            child: FutureBuilder<List<_RecipientStatusRow>>(
+              future: fetchRecipientStatus(eventId),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
                       child: Text(
-                        row.name,
+                        'Error: ${snapshot.error}',
                         style: GoogleFonts.beVietnamPro(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: const Color(0xFF1A202C),
+                          color: UpriseColors.error,
                         ),
-                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    // Status badge
-                    Expanded(flex: 1, child: _buildStatusBadge(row)),
-                    const SizedBox(width: 8),
-                    // Action button
-                    if (awaitingEval)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
+                  );
+                }
+                final rows = snapshot.data ?? [];
+                if (rows.isEmpty) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        'No attendees found for this event.',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 14,
+                          color: const Color(0xFF64748B),
                         ),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[200],
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          'Waiting',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 11,
-                            color: Colors.grey[600],
-                            fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  );
+                }
+                return ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: rows.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (_, i) {
+                    final row = rows[i];
+                    final bool canSend = row.evaluated && !row.certSent;
+                    final bool awaitingEval = !row.evaluated;
+
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        color: canSend
+                            ? UpriseColors.warning.withOpacity(0.08)
+                            : (awaitingEval
+                                  ? Colors.grey.shade50
+                                  : UpriseColors.success.withOpacity(0.05)),
+                      ),
+                      child: Row(
+                        children: [
+                          // Name
+                          Expanded(
+                            flex: 2,
+                            child: Text(
+                              row.name,
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                                color: const Color(0xFF1A202C),
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                        ),
-                      )
-                    else if (canSend)
-                      ElevatedButton.icon(
-                        onPressed: () async {
-                          await widget.onSendSingle(
-                            row.key,
-                            row.name,
-                            row.isGuest,
-                          );
-                          if (mounted) setState(() {});
-                        },
-                        icon: const Icon(Icons.send_rounded, size: 14),
-                        label: const Text('Send'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: UpriseColors.primaryDark,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 7,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          elevation: 0,
-                        ),
-                      )
-                    else if (row.certSent)
-                      OutlinedButton.icon(
-                        onPressed: () {
-                          // Find the existing record for this recipient
-                          final record = b.records.firstWhere(
-                            (r) => r.recipientName == row.name,
-                            orElse: () => b.records.first,
-                          );
-                          widget.onResend(record);
-                        },
-                        icon: const Icon(Icons.refresh_rounded, size: 14),
-                        label: Text(
-                          row.resendCount > 0
-                              ? 'Resend ×${row.resendCount + 1}'
-                              : 'Resend',
-                          style: GoogleFonts.beVietnamPro(fontSize: 11),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 7,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          side: BorderSide(
-                            color: UpriseColors.primaryDark.withOpacity(0.4),
-                          ),
-                        ),
-                      )
-                    else
-                      const SizedBox.shrink(),
-                  ],
+                          // Status badge
+                          Expanded(flex: 1, child: _buildStatusBadge(row)),
+                          const SizedBox(width: 8),
+                          // Action button
+                          if (awaitingEval)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[200],
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                'Waiting',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 11,
+                                  color: Colors.grey[600],
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            )
+                          else if (canSend)
+                            ElevatedButton.icon(
+                              onPressed: () async {
+                                await widget.onSendSingle(
+                                  row.key,
+                                  row.name,
+                                  row.isGuest,
+                                );
+                                if (mounted) setState(() {});
+                              },
+                              icon: const Icon(Icons.send_rounded, size: 14),
+                              label: const Text('Send'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: UpriseColors.primaryDark,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 7,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                elevation: 0,
+                              ),
+                            )
+                          else if (row.certSent)
+                            OutlinedButton.icon(
+                              onPressed: () {
+                                // Find the existing record for this recipient
+                                final record = b.records.firstWhere(
+                                  (r) => r.recipientName == row.name,
+                                  orElse: () => b.records.first,
+                                );
+                                widget.onResend(record);
+                              },
+                              icon: const Icon(Icons.refresh_rounded, size: 14),
+                              label: Text(
+                                row.resendCount > 0
+                                    ? 'Resend ×${row.resendCount + 1}'
+                                    : 'Resend',
+                                style: GoogleFonts.beVietnamPro(fontSize: 11),
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 7,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                side: BorderSide(
+                                  color: UpriseColors.primaryDark.withOpacity(
+                                    0.4,
+                                  ),
+                                ),
+                              ),
+                            )
+                          else
+                            const SizedBox.shrink(),
+                        ],
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // A quick glance at what this batch's certificate actually looks like —
+  // the recipient list used to be the entire modal body, which left a big
+  // dead gap under a short list (ListView always claims its full allotted
+  // height regardless of item count). Reuses the exact same
+  // custom-template-vs-generated-theme fallback as the single-certificate
+  // preview dialog below, just without a specific recipient's name overlaid.
+  Widget _buildTemplatePreview(CertificateBatch b) {
+    final r = b.primary;
+    // A fixed height instead of AspectRatio(600/424) — that ratio applied to
+    // this modal's 720px width computed a ~480px-tall preview, which pushed
+    // the header + preview + footer combined past the modal's
+    // maxHeightFraction budget and overflowed by 45px. A fixed height keeps
+    // this predictable regardless of modal width, leaving guaranteed room
+    // for the recipient list below it.
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+      child: SizedBox(
+        height: 200,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: r.templateFileUrl != null
+              ? Image.network(
+                  r.templateFileUrl!,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    color: const Color(0xFFF1F5F9),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.broken_image_outlined,
+                      color: Color(0xFF9AA5B4),
+                    ),
+                  ),
+                )
+              : CertificatePreview(
+                  theme: CertTheme.forType(
+                    r.templateType,
+                    primaryDark: UpriseColors.primaryDark,
+                    primaryLight: UpriseColors.primaryLight,
+                    accentColor: UpriseColors.accent,
+                  ),
+                  orgName: r.organization,
+                  eventTitle: r.eventName,
+                  eventDate: DateFormat('MMMM dd, yyyy').format(r.date),
+                  recipient: '[Recipient Name]',
+                  signatories: r.signatories.isNotEmpty
+                      ? r.signatories
+                            .map(
+                              (s) => CertSignatory(
+                                name: (s['name'] ?? '').toString(),
+                                title: (s['title'] ?? '').toString(),
+                                signatureImageBase64:
+                                    s['signatureImage'] as String?,
+                              ),
+                            )
+                            .toList()
+                      : (r.signatureImage != null
+                            ? [
+                                CertSignatory(
+                                  name: 'Authorized Signatory',
+                                  signatureImageBase64: r.signatureImage,
+                                ),
+                              ]
+                            : const []),
                 ),
-              );
-            },
-          );
-        },
+        ),
       ),
     );
   }
@@ -3546,17 +3572,32 @@ class _FieldWrapper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Every call site passes its label with a literal trailing ' *' for
+    // required fields — split that off and color it so it actually reads as
+    // required instead of just another character in the label string.
+    final isRequired = label.endsWith(' *');
+    final baseLabel = isRequired ? label.substring(0, label.length - 2) : label;
+    final labelStyle = GoogleFonts.beVietnamPro(
+      fontSize: 12,
+      fontWeight: FontWeight.w600,
+      color: const Color(0xFF374151),
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: const Color(0xFF374151),
-          ),
-        ),
+        isRequired
+            ? RichText(
+                text: TextSpan(
+                  children: [
+                    TextSpan(text: baseLabel, style: labelStyle),
+                    TextSpan(
+                      text: ' *',
+                      style: labelStyle.copyWith(color: UpriseColors.error),
+                    ),
+                  ],
+                ),
+              )
+            : Text(label, style: labelStyle),
         const SizedBox(height: 6),
         child,
       ],

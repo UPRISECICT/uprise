@@ -5,15 +5,20 @@
 // which renders the student side of the same `conversations` collection.
 
 import 'dart:convert';
+import 'dart:typed_data';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../services/notification_service.dart';
 import '../../../utils/profanity_filter.dart';
 import '../../../theme/org_theme.dart' as theme;
+import 'export_util.dart';
 
 class _C {
   // Was a stale, more-vivid orange (0xFFEA580C) that didn't match the
@@ -30,9 +35,318 @@ class _C {
   static const Color textFaint = Color(0xFF9AA5B4);
 }
 
+// MemoryImage's cache key is the decoded bytes object itself, not the
+// source string — calling base64Decode() fresh on every build (which
+// happens on every message-list rebuild, e.g. after sending, blocking, or
+// archiving) produced a *new* Uint8List each time, which Flutter's image
+// cache can never recognize as "the same image already loaded." That forced
+// a full re-decode + repaint from scratch on every action, which is exactly
+// what showed up as photos visibly glitching/reloading. Caching the decoded
+// MemoryImage per source string means the same object is reused, so the
+// cache actually hits — mirrors org_profile.dart's identical fix.
+final Map<String, MemoryImage> _memoryImageCache = {};
+
 ImageProvider _imageProviderFromBase64(String data) {
+  return _memoryImageCache.putIfAbsent(data, () {
+    final base64Part = data.contains(',') ? data.split(',').last : data;
+    return MemoryImage(base64Decode(base64Part));
+  });
+}
+
+String _mimeTypeFromFileName(String name) {
+  final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
+  switch (ext) {
+    case 'pdf':
+      return 'application/pdf';
+    case 'doc':
+      return 'application/msword';
+    case 'docx':
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    case 'xls':
+      return 'application/vnd.ms-excel';
+    case 'xlsx':
+      return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    case 'ppt':
+      return 'application/vnd.ms-powerpoint';
+    case 'pptx':
+      return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    case 'zip':
+      return 'application/zip';
+    case 'txt':
+      return 'text/plain';
+    default:
+      return 'application/octet-stream';
+  }
+}
+
+IconData _iconForFileName(String name) {
+  final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
+  switch (ext) {
+    case 'pdf':
+      return Icons.picture_as_pdf_rounded;
+    case 'doc':
+    case 'docx':
+      return Icons.description_rounded;
+    case 'xls':
+    case 'xlsx':
+      return Icons.table_chart_rounded;
+    case 'ppt':
+    case 'pptx':
+      return Icons.slideshow_rounded;
+    case 'zip':
+    case 'rar':
+      return Icons.folder_zip_rounded;
+    default:
+      return Icons.insert_drive_file_rounded;
+  }
+}
+
+Uint8List _bytesFromBase64(String data) {
   final base64Part = data.contains(',') ? data.split(',').last : data;
-  return MemoryImage(base64Decode(base64Part));
+  return base64Decode(base64Part);
+}
+
+// Web download for a received file attachment — mirrors every other
+// "Export" button in the org portal (OrgExportUtil.saveBytes).
+Future<void> _downloadFileAttachment(
+  BuildContext context,
+  String fileBase64,
+  String fileName,
+) async {
+  try {
+    final bytes = _bytesFromBase64(fileBase64);
+    await OrgExportUtil.saveBytes(
+      bytes,
+      fileName,
+      mimeType: _mimeTypeFromFileName(fileName),
+    );
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not download file: $e')));
+    }
+  }
+}
+
+final RegExp _urlPattern = RegExp(
+  r'((https?:\/\/|www\.)[^\s]+)',
+  caseSensitive: false,
+);
+
+Future<void> _openLink(BuildContext context, String rawUrl) async {
+  final url = rawUrl.toLowerCase().startsWith('http')
+      ? rawUrl
+      : 'https://$rawUrl';
+  final uri = Uri.tryParse(url);
+  final opened = uri != null && await canLaunchUrl(uri)
+      ? await launchUrl(uri, mode: LaunchMode.externalApplication)
+      : false;
+  if (!opened && context.mounted) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Could not open that link.')));
+  }
+}
+
+// Splits message text on URLs and renders each match as tappable, launchable
+// text — same tap-to-open treatment as org_profile.dart's social links —
+// instead of a link sitting in a message as inert plain text.
+Widget _linkifiedText(
+  BuildContext context,
+  String text, {
+  required TextStyle style,
+  required Color linkColor,
+}) {
+  final matches = _urlPattern.allMatches(text).toList();
+  if (matches.isEmpty) return Text(text, style: style);
+
+  final spans = <InlineSpan>[];
+  var cursor = 0;
+  for (final match in matches) {
+    if (match.start > cursor) {
+      spans.add(TextSpan(text: text.substring(cursor, match.start)));
+    }
+    final url = match.group(0)!;
+    spans.add(
+      TextSpan(
+        text: url,
+        style: style.copyWith(
+          color: linkColor,
+          decoration: TextDecoration.underline,
+        ),
+        recognizer: TapGestureRecognizer()
+          ..onTap = () => _openLink(context, url),
+      ),
+    );
+    cursor = match.end;
+  }
+  if (cursor < text.length) {
+    spans.add(TextSpan(text: text.substring(cursor)));
+  }
+  return Text.rich(TextSpan(style: style, children: spans));
+}
+
+bool _isSameDay(DateTime a, DateTime b) =>
+    a.year == b.year && a.month == b.month && a.day == b.day;
+
+// A pending server timestamp reads as null for the brief moment before it
+// round-trips — falls back to "now" for grouping purposes only, so a
+// just-sent message doesn't briefly float without a date header.
+String _formatDateSeparator(DateTime d) {
+  final now = DateTime.now();
+  final diff = DateTime(
+    now.year,
+    now.month,
+    now.day,
+  ).difference(DateTime(d.year, d.month, d.day)).inDays;
+  if (diff == 0) return 'Today';
+  if (diff == 1) return 'Yesterday';
+  return DateFormat('MMMM d, yyyy').format(d);
+}
+
+// Marks where a date separator belongs in the interleaved message list —
+// see the "chronological grouping" comment in _ChatThreadState.build().
+class _DateSeparator {
+  final DateTime date;
+  const _DateSeparator(this.date);
+}
+
+Widget _dateSeparatorPill(DateTime date) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 14),
+    child: Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        decoration: BoxDecoration(
+          color: _C.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: _C.border),
+        ),
+        child: Text(
+          _formatDateSeparator(date),
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: _C.darkGray,
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+// Long-press action sheet — Reply is always offered; Report or Delete is
+// whichever one applies to that message (never both, since you can't report
+// your own message or delete someone else's).
+void _showMessageActions(
+  BuildContext context, {
+  required VoidCallback onReply,
+  VoidCallback? onReport,
+  VoidCallback? onDelete,
+}) {
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: Colors.transparent,
+    builder: (ctx) => Container(
+      margin: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _C.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.reply_rounded, color: _C.primaryDark),
+              title: Text(
+                'Reply',
+                style: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w600),
+              ),
+              onTap: () {
+                Navigator.pop(ctx);
+                onReply();
+              },
+            ),
+            if (onReport != null)
+              ListTile(
+                leading: const Icon(
+                  Icons.flag_outlined,
+                  color: Color(0xFFDC2626),
+                ),
+                title: Text(
+                  'Report',
+                  style: GoogleFonts.beVietnamPro(
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFFDC2626),
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  onReport();
+                },
+              ),
+            if (onDelete != null)
+              ListTile(
+                leading: const Icon(
+                  Icons.delete_outline_rounded,
+                  color: Color(0xFFDC2626),
+                ),
+                title: Text(
+                  'Delete',
+                  style: GoogleFonts.beVietnamPro(
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFFDC2626),
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  onDelete();
+                },
+              ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+// Full-size, pinch-to-zoom image viewer — tapping a photo message used to do
+// nothing, the 200px thumbnail was the only way to see it.
+void _showImagePreview(BuildContext context, String imageBase64) {
+  showDialog(
+    context: context,
+    barrierColor: Colors.black87,
+    builder: (ctx) => Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            onTap: () => Navigator.pop(ctx),
+            child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 4,
+              child: Center(
+                child: Image(image: _imageProviderFromBase64(imageBase64)),
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          top: 24,
+          right: 24,
+          child: IconButton(
+            icon: const Icon(
+              Icons.close_rounded,
+              color: Colors.white,
+              size: 28,
+            ),
+            onPressed: () => Navigator.pop(ctx),
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 const List<String> _reportReasons = [
@@ -191,6 +505,7 @@ class _OrgBroadcastScreenState extends State<OrgBroadcastScreen> {
   final TextEditingController _searchCtrl = TextEditingController();
   String _searchQuery = '';
   String _orgName = '';
+  bool _showArchived = false;
 
   @override
   void initState() {
@@ -290,6 +605,9 @@ class _OrgBroadcastScreenState extends State<OrgBroadcastScreen> {
               selectedId: _selectedConversationId,
               onSelect: _openConversation,
               onNewMessage: _openNewMessageDialog,
+              showArchived: _showArchived,
+              onToggleArchivedView: () =>
+                  setState(() => _showArchived = !_showArchived),
             ),
           ),
           const VerticalDivider(width: 1, color: _C.border),
@@ -320,6 +638,8 @@ class _ConversationsList extends StatelessWidget {
   final String? selectedId;
   final void Function(String id, Map<String, dynamic> data) onSelect;
   final VoidCallback onNewMessage;
+  final bool showArchived;
+  final VoidCallback onToggleArchivedView;
 
   const _ConversationsList({
     required this.orgId,
@@ -328,7 +648,16 @@ class _ConversationsList extends StatelessWidget {
     required this.selectedId,
     required this.onSelect,
     required this.onNewMessage,
+    required this.showArchived,
+    required this.onToggleArchivedView,
   });
+
+  Future<void> _toggleArchived(String conversationId, bool currentlyArchived) {
+    return FirebaseFirestore.instance
+        .collection('conversations')
+        .doc(conversationId)
+        .update({'archivedByOrg': !currentlyArchived});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -350,6 +679,15 @@ class _ConversationsList extends StatelessWidget {
                 ),
               ),
               IconButton(
+                onPressed: onToggleArchivedView,
+                tooltip: showArchived ? 'Show active chats' : 'Show archived',
+                icon: Icon(
+                  showArchived ? Icons.inbox_rounded : Icons.archive_outlined,
+                  color: showArchived ? _C.primaryDark : _C.darkGray,
+                  size: 20,
+                ),
+              ),
+              IconButton(
                 onPressed: onNewMessage,
                 tooltip: 'New message',
                 icon: const Icon(
@@ -361,6 +699,18 @@ class _ConversationsList extends StatelessWidget {
             ],
           ),
         ),
+        if (showArchived)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Text(
+              'Viewing archived conversations',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: _C.darkGray,
+              ),
+            ),
+          ),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
           child: SizedBox(
@@ -418,7 +768,11 @@ class _ConversationsList extends StatelessWidget {
                   child: CircularProgressIndicator(color: _C.primaryDark),
                 );
               }
-              var docs = snap.data!.docs;
+              var docs = snap.data!.docs.where((d) {
+                final archived =
+                    (d.data() as Map<String, dynamic>)['archivedByOrg'] == true;
+                return showArchived ? archived : !archived;
+              }).toList();
               if (searchQuery.isNotEmpty) {
                 docs = docs.where((d) {
                   final data = d.data() as Map<String, dynamic>;
@@ -433,9 +787,11 @@ class _ConversationsList extends StatelessWidget {
                   child: Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text(
-                      searchQuery.isEmpty
-                          ? 'No conversations yet.\nTap the compose icon to message a student.'
-                          : 'No students match your search.',
+                      searchQuery.isNotEmpty
+                          ? 'No students match your search.'
+                          : (showArchived
+                                ? 'No archived conversations.'
+                                : 'No conversations yet.\nTap the compose icon to message a student.'),
                       textAlign: TextAlign.center,
                       style: GoogleFonts.beVietnamPro(
                         fontSize: 13,
@@ -548,6 +904,24 @@ class _ConversationsList extends StatelessWidget {
                                 ),
                               ],
                             ],
+                          ),
+                          Tooltip(
+                            message: showArchived ? 'Unarchive' : 'Archive',
+                            child: InkWell(
+                              onTap: () =>
+                                  _toggleArchived(doc.id, showArchived),
+                              borderRadius: BorderRadius.circular(8),
+                              child: Padding(
+                                padding: const EdgeInsets.all(6),
+                                child: Icon(
+                                  showArchived
+                                      ? Icons.unarchive_outlined
+                                      : Icons.archive_outlined,
+                                  size: 17,
+                                  color: _C.textFaint,
+                                ),
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -778,6 +1152,9 @@ class _ChatThreadState extends State<_ChatThread> {
   final TextEditingController _textCtrl = TextEditingController();
   final ScrollController _scrollCtrl = ScrollController();
   bool _sending = false;
+  // Set via the long-press "Reply" action; cleared on send or by the X on
+  // the reply preview bar above the input.
+  Map<String, dynamic>? _replyingTo;
 
   String get _studentName =>
       (widget.conversation['studentName'] ?? 'Student').toString();
@@ -790,17 +1167,38 @@ class _ChatThreadState extends State<_ChatThread> {
     super.dispose();
   }
 
-  Future<void> _sendMessage({String? imageBase64}) async {
+  void _startReply(String messageId, String text, String senderName) {
+    setState(() {
+      _replyingTo = {
+        'id': messageId,
+        'text': text.isEmpty ? 'Attachment' : text,
+        'senderName': senderName,
+      };
+    });
+  }
+
+  Future<void> _sendMessage({
+    String? imageBase64,
+    String? fileBase64,
+    String? fileName,
+  }) async {
     final rawText = _textCtrl.text.trim();
-    if (rawText.isEmpty && imageBase64 == null) return;
+    if (rawText.isEmpty && imageBase64 == null && fileBase64 == null) return;
     final text = ProfanityFilter.filter(rawText);
-    setState(() => _sending = true);
+    final replyingTo = _replyingTo;
+    setState(() {
+      _sending = true;
+      _replyingTo = null;
+    });
     _textCtrl.clear();
 
     final user = FirebaseAuth.instance.currentUser;
     final ref = FirebaseFirestore.instance
         .collection('conversations')
         .doc(widget.conversationId);
+    final previewText = text.isNotEmpty
+        ? text
+        : (imageBase64 != null ? 'Sent an image' : 'Sent a file: $fileName');
     try {
       await ref.collection('messages').add({
         'senderId': user?.uid ?? '',
@@ -808,10 +1206,15 @@ class _ChatThreadState extends State<_ChatThread> {
         'senderName': widget.orgName,
         'text': text,
         'imageBase64': imageBase64,
+        'fileBase64': fileBase64,
+        'fileName': fileName,
+        if (replyingTo != null) 'replyToMessageId': replyingTo['id'],
+        if (replyingTo != null) 'replyToText': replyingTo['text'],
+        if (replyingTo != null) 'replyToSenderName': replyingTo['senderName'],
         'timestamp': FieldValue.serverTimestamp(),
       });
       await ref.update({
-        'lastMessage': text.isEmpty ? 'Sent an image' : text,
+        'lastMessage': previewText,
         'lastMessageAt': FieldValue.serverTimestamp(),
         'lastSenderRole': 'org',
         'unreadForStudent': true,
@@ -820,7 +1223,7 @@ class _ChatThreadState extends State<_ChatThread> {
         await NotificationService.sendToUser(
           userId: _studentId,
           title: widget.orgName,
-          body: text.isEmpty ? 'Sent you an image' : text,
+          body: previewText,
           type: 'private_message',
           orgId: widget.orgId,
           orgName: widget.orgName,
@@ -863,6 +1266,78 @@ class _ChatThreadState extends State<_ChatThread> {
     }
   }
 
+  Future<void> _confirmDeleteMessage(String messageId) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          'Delete message?',
+          style: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w700),
+        ),
+        content: Text(
+          'This removes it for both you and $_studentName. This can\'t be undone.',
+          style: GoogleFonts.beVietnamPro(fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFDC2626),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    try {
+      final ref = FirebaseFirestore.instance
+          .collection('conversations')
+          .doc(widget.conversationId);
+      await ref.collection('messages').doc(messageId).delete();
+      // The conversation list preview shows lastMessage/lastMessageAt — if
+      // the deleted message was the latest one, recompute those from
+      // whatever's now actually the newest remaining message instead of
+      // leaving a stale preview of a message that no longer exists.
+      final latestSnap = await ref
+          .collection('messages')
+          .orderBy('timestamp', descending: true)
+          .limit(1)
+          .get();
+      if (latestSnap.docs.isNotEmpty) {
+        final latest = latestSnap.docs.first.data();
+        final latestText = (latest['text'] ?? '').toString();
+        final latestFileName = (latest['fileName'] ?? '').toString();
+        final preview = latestText.isNotEmpty
+            ? latestText
+            : (latest['imageBase64'] != null
+                  ? 'Sent an image'
+                  : (latestFileName.isNotEmpty
+                        ? 'Sent a file: $latestFileName'
+                        : ''));
+        await ref.update({
+          'lastMessage': preview,
+          'lastMessageAt': latest['timestamp'] ?? FieldValue.serverTimestamp(),
+          'lastSenderRole': latest['senderRole'] ?? 'org',
+        });
+      } else {
+        await ref.update({'lastMessage': '', 'lastSenderRole': 'org'});
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not delete message: $e')));
+      }
+    }
+  }
+
   Future<void> _pickImage() async {
     try {
       final picker = ImagePicker();
@@ -899,6 +1374,39 @@ class _ChatThreadState extends State<_ChatThread> {
     }
   }
 
+  Future<void> _pickFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(withData: true);
+      if (result == null) return;
+      final file = result.files.first;
+      final bytes = file.bytes;
+      if (bytes == null) return;
+      // Same ceiling as images — Firestore caps a single document at ~1MiB
+      // and base64 inflates raw bytes by ~33%.
+      if (bytes.length > 700 * 1024) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'That file is too large to send. Please choose a smaller file (under ~700KB).',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+      final mime = _mimeTypeFromFileName(file.name);
+      final b64 = 'data:$mime;base64,${base64Encode(bytes)}';
+      await _sendMessage(fileBase64: b64, fileName: file.name);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Couldn\'t attach file: $e')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // Streamed (not read from widget.conversation, which is a one-time
@@ -912,12 +1420,31 @@ class _ChatThreadState extends State<_ChatThread> {
       builder: (context, convoSnap) {
         final convoData = convoSnap.data?.data() as Map<String, dynamic>? ?? {};
         final blocked = convoData['blockedByOrg'] == true;
-        return _buildBody(context, blocked);
+        final archived = convoData['archivedByOrg'] == true;
+        return _buildBody(context, blocked, archived);
       },
     );
   }
 
-  Widget _buildBody(BuildContext context, bool blocked) {
+  Future<void> _toggleArchived(bool currentlyArchived) async {
+    await FirebaseFirestore.instance
+        .collection('conversations')
+        .doc(widget.conversationId)
+        .update({'archivedByOrg': !currentlyArchived});
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            !currentlyArchived
+                ? 'Conversation archived.'
+                : 'Conversation unarchived.',
+          ),
+        ),
+      );
+    }
+  }
+
+  Widget _buildBody(BuildContext context, bool blocked, bool archived) {
     return Column(
       children: [
         Container(
@@ -972,6 +1499,15 @@ class _ChatThreadState extends State<_ChatThread> {
                   ),
                 ),
               IconButton(
+                onPressed: () => _toggleArchived(archived),
+                icon: Icon(
+                  archived ? Icons.unarchive_outlined : Icons.archive_outlined,
+                  color: _C.darkGray,
+                  size: 20,
+                ),
+                tooltip: archived ? 'Unarchive' : 'Archive',
+              ),
+              IconButton(
                 onPressed: () => _toggleBlock(blocked),
                 icon: Icon(
                   blocked ? Icons.lock_open_rounded : Icons.block_rounded,
@@ -1013,34 +1549,78 @@ class _ChatThreadState extends State<_ChatThread> {
                     ),
                   );
                 }
+                // docs[0] is newest (query is descending); interleave a
+                // date-separator marker right after the oldest message of
+                // each day so it renders as a header above that day's group
+                // once the reversed ListView lays it out bottom-to-top.
+                final items = <Object>[];
+                for (var i = 0; i < docs.length; i++) {
+                  items.add(docs[i]);
+                  final day =
+                      ((docs[i].data() as Map<String, dynamic>)['timestamp']
+                              as Timestamp?)
+                          ?.toDate() ??
+                      DateTime.now();
+                  final nextDay = i + 1 < docs.length
+                      ? ((docs[i + 1].data()
+                                    as Map<String, dynamic>)['timestamp']
+                                as Timestamp?)
+                            ?.toDate()
+                      : null;
+                  if (nextDay == null || !_isSameDay(day, nextDay)) {
+                    items.add(_DateSeparator(day));
+                  }
+                }
                 return ListView.builder(
                   controller: _scrollCtrl,
                   reverse: true,
                   padding: const EdgeInsets.all(16),
-                  itemCount: docs.length,
+                  itemCount: items.length,
                   itemBuilder: (context, i) {
-                    final data = docs[i].data() as Map<String, dynamic>;
+                    final item = items[i];
+                    if (item is _DateSeparator) {
+                      return _dateSeparatorPill(item.date);
+                    }
+                    final doc = item as QueryDocumentSnapshot;
+                    final data = doc.data() as Map<String, dynamic>;
                     final isOrg = data['senderRole'] == 'org';
                     final text = (data['text'] ?? '').toString();
                     final image = data['imageBase64'] as String?;
+                    final fileBase64 = data['fileBase64'] as String?;
+                    final fileName = data['fileName'] as String?;
                     final ts = (data['timestamp'] as Timestamp?)?.toDate();
+                    final replyToText = data['replyToText'] as String?;
+                    final replyToSenderName =
+                        data['replyToSenderName'] as String?;
                     return _MessageBubble(
                       isMe: isOrg,
                       text: text,
                       imageBase64: image,
+                      fileBase64: fileBase64,
+                      fileName: fileName,
                       time: ts != null ? DateFormat('h:mm a').format(ts) : '',
+                      replyToText: replyToText,
+                      replyToSenderName: replyToSenderName,
                       onReport: isOrg
                           ? null
                           : () => showReportMessageDialog(
                               context,
                               conversationId: widget.conversationId,
-                              messageId: docs[i].id,
+                              messageId: doc.id,
                               messageText: text,
                               reporterRole: 'org',
                               reportedUserId: (data['senderId'] ?? '')
                                   .toString(),
                               reportedUserRole: 'student',
                             ),
+                      onDelete: isOrg
+                          ? () => _confirmDeleteMessage(doc.id)
+                          : null,
+                      onReply: () => _startReply(
+                        doc.id,
+                        text,
+                        isOrg ? widget.orgName : _studentName,
+                      ),
                     );
                   },
                 );
@@ -1048,6 +1628,53 @@ class _ChatThreadState extends State<_ChatThread> {
             ),
           ),
         ),
+        if (_replyingTo != null)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: const BoxDecoration(
+              color: _C.surface,
+              border: Border(top: BorderSide(color: _C.border)),
+            ),
+            child: Row(
+              children: [
+                Container(width: 3, height: 30, color: _C.primaryDark),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Replying to ${_replyingTo!['senderName']}',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: _C.primaryDark,
+                        ),
+                      ),
+                      Text(
+                        (_replyingTo!['text'] ?? '').toString(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 12,
+                          color: _C.darkGray,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => setState(() => _replyingTo = null),
+                  icon: const Icon(
+                    Icons.close_rounded,
+                    size: 18,
+                    color: _C.darkGray,
+                  ),
+                  tooltip: 'Cancel reply',
+                ),
+              ],
+            ),
+          ),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: const BoxDecoration(
@@ -1060,6 +1687,11 @@ class _ChatThreadState extends State<_ChatThread> {
                 onPressed: _sending ? null : _pickImage,
                 icon: const Icon(Icons.image_outlined, color: _C.darkGray),
                 tooltip: 'Attach image',
+              ),
+              IconButton(
+                onPressed: _sending ? null : _pickFile,
+                icon: const Icon(Icons.attach_file_rounded, color: _C.darkGray),
+                tooltip: 'Attach file',
               ),
               Expanded(
                 child: TextField(
@@ -1113,50 +1745,77 @@ class _MessageBubble extends StatelessWidget {
   final bool isMe;
   final String text;
   final String? imageBase64;
+  final String? fileBase64;
+  final String? fileName;
   final String time;
+  final String? replyToText;
+  final String? replyToSenderName;
   // Only set for the other person's messages — reporting your own message
-  // makes no sense, so the long-press menu simply doesn't appear on isMe
-  // bubbles.
+  // makes no sense, so the report option simply doesn't appear on isMe
+  // bubbles' long-press menu.
   final VoidCallback? onReport;
+  // Only set for your own messages — the counterpart of onReport.
+  final VoidCallback? onDelete;
+  final VoidCallback? onReply;
 
   const _MessageBubble({
     required this.isMe,
     required this.text,
     required this.imageBase64,
+    this.fileBase64,
+    this.fileName,
     required this.time,
+    this.replyToText,
+    this.replyToSenderName,
     this.onReport,
+    this.onDelete,
+    this.onReply,
   });
 
   @override
   Widget build(BuildContext context) {
     final bg = isMe ? _C.primaryDark : Colors.white;
     final fg = isMe ? Colors.white : _C.charcoal;
+    final hasImage = imageBase64 != null;
+    final hasFile = fileBase64 != null && fileName != null;
+    final hasText = text.isNotEmpty;
+    final hasReply = (replyToText ?? '').isNotEmpty;
+    final radius = BorderRadius.only(
+      topLeft: const Radius.circular(16),
+      topRight: const Radius.circular(16),
+      bottomLeft: Radius.circular(isMe ? 16 : 4),
+      bottomRight: Radius.circular(isMe ? 4 : 16),
+    );
 
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: GestureDetector(
-        onLongPress: onReport,
+        onLongPress: onReply == null
+            ? (onReport ?? onDelete)
+            : () => _showMessageActions(
+                context,
+                onReply: onReply!,
+                onReport: onReport,
+                onDelete: onDelete,
+              ),
         child: Container(
           margin: const EdgeInsets.symmetric(vertical: 4),
-          constraints: const BoxConstraints(maxWidth: 460),
+          constraints: const BoxConstraints(maxWidth: 320),
           child: Column(
             crossAxisAlignment: isMe
                 ? CrossAxisAlignment.end
                 : CrossAxisAlignment.start,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
-                ),
+                clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
-                  color: bg,
-                  borderRadius: BorderRadius.only(
-                    topLeft: const Radius.circular(16),
-                    topRight: const Radius.circular(16),
-                    bottomLeft: Radius.circular(isMe ? 16 : 4),
-                    bottomRight: Radius.circular(isMe ? 4 : 16),
-                  ),
+                  // An image fills the bubble edge-to-edge like a real photo
+                  // message instead of sitting inside a colored frame — the
+                  // color only applies when there's no image, or as a
+                  // caption strip below one. A file chip or reply quote
+                  // always keeps the colored background, same as plain text.
+                  color: hasImage && !hasText && !hasReply ? null : bg,
+                  borderRadius: radius,
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withAlpha(10),
@@ -1166,25 +1825,130 @@ class _MessageBubble extends StatelessWidget {
                   ],
                 ),
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (imageBase64 != null) ...[
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: Image(
-                          image: _imageProviderFromBase64(imageBase64!),
-                          width: 200,
-                          fit: BoxFit.cover,
+                    if (hasReply)
+                      Container(
+                        margin: const EdgeInsets.fromLTRB(10, 10, 10, 0),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: (isMe ? Colors.white : _C.primaryDark)
+                              .withAlpha(isMe ? 40 : 14),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border(
+                            left: BorderSide(
+                              color: isMe ? Colors.white : _C.primaryDark,
+                              width: 3,
+                            ),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              replyToSenderName ?? '',
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: fg,
+                              ),
+                            ),
+                            Text(
+                              replyToText!,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 11.5,
+                                color: fg.withAlpha(210),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      if (text.isNotEmpty) const SizedBox(height: 6),
-                    ],
-                    if (text.isNotEmpty)
-                      Text(
-                        text,
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 13.5,
-                          color: fg,
+                    if (hasImage)
+                      GestureDetector(
+                        onTap: () => _showImagePreview(context, imageBase64!),
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: Image(
+                            image: _imageProviderFromBase64(imageBase64!),
+                            width: 260,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                    if (hasFile)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            onTap: () => _downloadFileAttachment(
+                              context,
+                              fileBase64!,
+                              fileName!,
+                            ),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: (isMe ? Colors.white : _C.primaryDark)
+                                    .withAlpha(isMe ? 40 : 14),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    _iconForFileName(fileName!),
+                                    size: 20,
+                                    color: fg,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Flexible(
+                                    child: Text(
+                                      fileName!,
+                                      style: GoogleFonts.beVietnamPro(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: fg,
+                                        decoration: TextDecoration.underline,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Icon(
+                                    Icons.download_rounded,
+                                    size: 16,
+                                    color: fg,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (hasText)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
+                        child: _linkifiedText(
+                          context,
+                          text,
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 13.5,
+                            color: fg,
+                          ),
+                          linkColor: isMe ? Colors.white : _C.primaryDark,
                         ),
                       ),
                   ],

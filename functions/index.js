@@ -16,6 +16,63 @@ const transporter = nodemailer.createTransport({
 });
 
 // ─────────────────────────────────────────────
+//  🔔 REAL PUSH NOTIFICATIONS
+//  Fires whenever NotificationService (Flutter) writes a `notifications`
+//  doc — delivers it as an actual OS/browser push via FCM to every token
+//  PushNotificationService (lib/services/push_notification_service.dart)
+//  has saved on users/{userId}.fcmTokens, instead of only showing up in
+//  the in-app notification bell. Any token FCM reports as dead gets pruned
+//  from that array so it isn't retried on every future notification.
+// ─────────────────────────────────────────────
+exports.sendPushForNotification = functions.firestore
+    .document('notifications/{notificationId}')
+    .onCreate(async (snap, context) => {
+        const notif = snap.data();
+        if (!notif || !notif.userId) return null;
+
+        const userRef = admin.firestore().collection('users').doc(notif.userId);
+        const userSnap = await userRef.get();
+        const tokens = userSnap.exists ? (userSnap.data().fcmTokens || []) : [];
+        if (tokens.length === 0) return null;
+
+        const message = {
+            notification: {
+                title: notif.title || 'UPRISE',
+                body: notif.body || '',
+            },
+            data: {
+                type: notif.type || 'general',
+                orgId: notif.orgId || '',
+                notificationId: context.params.notificationId,
+            },
+            tokens: tokens,
+        };
+
+        try {
+            const response = await admin.messaging().sendEachForMulticast(message);
+            const invalidTokens = [];
+            response.responses.forEach((res, idx) => {
+                if (!res.success) {
+                    const code = res.error && res.error.code;
+                    if (code === 'messaging/invalid-registration-token' ||
+                        code === 'messaging/registration-token-not-registered') {
+                        invalidTokens.push(tokens[idx]);
+                    }
+                }
+            });
+            if (invalidTokens.length > 0) {
+                await userRef.update({
+                    fcmTokens: admin.firestore.FieldValue.arrayRemove(...invalidTokens),
+                });
+            }
+            console.log(`🔔 Push for ${context.params.notificationId}: ${response.successCount}/${tokens.length} succeeded`);
+        } catch (err) {
+            console.error('❌ Error sending push notification:', err);
+        }
+        return null;
+    });
+
+// ─────────────────────────────────────────────
 //  🚀 AUTO-ADD slotsLeft TO ANY NEW EVENT
 //  This runs automatically when ANY event is created
 //  (Even from Firebase Console!)

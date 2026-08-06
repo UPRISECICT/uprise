@@ -521,6 +521,13 @@ class OrgDashboard extends StatefulWidget {
 
 class _OrgDashboardState extends State<OrgDashboard> {
   int _selectedIndex = 0;
+  // Mirrors _selectedIndex, but as a listenable — _screens below is built
+  // once (see _buildScreens) and its widget instances are reused for the
+  // rest of the session, so a plain int prop passed at construction time
+  // would never update on tab switches. Screens that need to react to
+  // becoming hidden/visible (e.g. EventManagementScreen stopping its QR
+  // camera when the org navigates away) listen to this instead.
+  final ValueNotifier<int> _selectedIndexNotifier = ValueNotifier(0);
   // Screens are only actually mounted (and start their Firestore queries)
   // the first time their tab is opened, then kept alive in the IndexedStack
   // from then on — otherwise all 13 screens would fire their queries at
@@ -565,6 +572,7 @@ class _OrgDashboardState extends State<OrgDashboard> {
   @override
   void dispose() {
     _searchController.dispose();
+    _selectedIndexNotifier.dispose();
     super.dispose();
   }
 
@@ -677,7 +685,11 @@ class _OrgDashboardState extends State<OrgDashboard> {
       _OrgDashboardHome(orgId: _orgId, orgName: _orgName),
       OrgEventProposalsScreen(orgId: _orgId),
       OrgEventsScheduleScreen(orgId: _orgId),
-      EventManagementScreen(orgId: _orgId),
+      EventManagementScreen(
+        orgId: _orgId,
+        visibleTabIndex: _selectedIndexNotifier,
+        myTabIndex: 3,
+      ),
       OrgCertificatesScreen(orgId: _orgId),
       OrgEventAnalyticsScreen(orgId: _orgId),
       OrgAnnouncementsScreen(orgId: _orgId),
@@ -1037,6 +1049,7 @@ class _OrgDashboardState extends State<OrgDashboard> {
       _selectedIndex = index;
       _visitedIndices.add(index == -1 ? 13 : index);
     });
+    _selectedIndexNotifier.value = index == -1 ? 13 : index;
   }
 
   void _showProfileMenu() {

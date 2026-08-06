@@ -195,13 +195,14 @@ class _OrgMerchandiseScreenState extends State<OrgMerchandiseScreen>
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 768;
     return Scaffold(
       backgroundColor: const Color(0xFFFBFCFE),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildStatsRow(),
-          _buildToolbar(),
+          _buildStatsRow(isMobile),
+          _buildToolbar(isMobile),
           const SizedBox(height: 16),
           Expanded(
             child: TabBarView(
@@ -223,7 +224,7 @@ class _OrgMerchandiseScreenState extends State<OrgMerchandiseScreen>
   // Sales/Revenue/Profit cards were removed along with the checkout flow —
   // merch is a catalog now, so only catalog-shaped stats (count, low stock)
   // are meaningful here. _statsOrdersStream is left defined but unused.
-  Widget _buildStatsRow() {
+  Widget _buildStatsRow(bool isMobile) {
     return StreamBuilder<QuerySnapshot>(
       stream: _statsProductsStream,
       builder: (context, productSnap) {
@@ -238,7 +239,12 @@ class _OrgMerchandiseScreenState extends State<OrgMerchandiseScreen>
         }
 
         return Padding(
-          padding: const EdgeInsets.fromLTRB(28, 24, 28, 0),
+          padding: EdgeInsets.fromLTRB(
+            isMobile ? 16 : 28,
+            isMobile ? 16 : 24,
+            isMobile ? 16 : 28,
+            0,
+          ),
           child: Row(
             children: [
               _StatCard(
@@ -267,14 +273,19 @@ class _OrgMerchandiseScreenState extends State<OrgMerchandiseScreen>
     );
   }
 
-  Widget _buildToolbar() {
+  Widget _buildToolbar(bool isMobile) {
     // The Products/Orders tab toggle and the Sales Report / GCash Settings
     // buttons are hidden now that merch is a catalog, not a checkout flow —
     // the underlying _OrdersTab, GCash dialog, and sales report code are
     // left in place (just unreferenced here) rather than deleted, in case
     // payments come back later.
     return Padding(
-      padding: const EdgeInsets.fromLTRB(28, 20, 28, 0),
+      padding: EdgeInsets.fromLTRB(
+        isMobile ? 16 : 28,
+        isMobile ? 14 : 20,
+        isMobile ? 16 : 28,
+        0,
+      ),
       child: Row(
         children: [
           const Spacer(),
@@ -898,68 +909,124 @@ class _ProductsTabState extends State<_ProductsTab> {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 768;
     return Column(
       children: [
-        _buildToolbar(),
+        _buildToolbar(isMobile),
         const SizedBox(height: 16),
-        Expanded(child: _buildProductGrid()),
+        Expanded(child: _buildProductGrid(isMobile)),
         const SizedBox(height: 24),
       ],
     );
   }
 
-  Widget _buildToolbar() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 28),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 260,
-            height: 40,
-            child: TextField(
-              controller: _searchController,
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value;
-                });
-                _loadProducts(reset: true);
-              },
-              style: GoogleFonts.beVietnamPro(fontSize: 13),
-              decoration: InputDecoration(
-                hintText: 'Search products...',
-                hintStyle: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  color: const Color(0xFF9AA5B4),
-                ),
-                prefixIcon: const Icon(
-                  Icons.search_rounded,
-                  size: 18,
-                  color: Color(0xFF9AA5B4),
-                ),
-                filled: true,
-                fillColor: Colors.white,
-                contentPadding: const EdgeInsets.symmetric(
-                  vertical: 0,
-                  horizontal: 16,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(
-                    color: UpriseColors.primaryDark,
-                    width: 1.5,
+  Widget _buildSearchField() {
+    return SizedBox(
+      height: 40,
+      child: TextField(
+        controller: _searchController,
+        onChanged: (value) {
+          setState(() {
+            _searchQuery = value;
+          });
+          _loadProducts(reset: true);
+        },
+        style: GoogleFonts.beVietnamPro(fontSize: 13),
+        decoration: InputDecoration(
+          hintText: 'Search products...',
+          hintStyle: GoogleFonts.beVietnamPro(
+            fontSize: 13,
+            color: const Color(0xFF9AA5B4),
+          ),
+          prefixIcon: const Icon(
+            Icons.search_rounded,
+            size: 18,
+            color: Color(0xFF9AA5B4),
+          ),
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: 0,
+            horizontal: 16,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: UpriseColors.primaryDark, width: 1.5),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildToolbar(bool isMobile) {
+    final horizontalPadding = isMobile ? 16.0 : 28.0;
+    if (isMobile) {
+      return Padding(
+        padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSearchField(),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: _FilterDropdown(
+                    value: _categoryFilter,
+                    items: _categoryFilters,
+                    hint: 'Category',
+                    icon: Icons.category_outlined,
+                    onChanged: (v) {
+                      setState(() {
+                        _categoryFilter = v!;
+                      });
+                      _loadProducts(reset: true);
+                    },
                   ),
                 ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _FilterDropdown(
+                    value: _statusFilter,
+                    items: _statusFilters,
+                    hint: 'Status',
+                    icon: Icons.circle_outlined,
+                    onChanged: (v) {
+                      setState(() {
+                        _statusFilter = v!;
+                      });
+                      _loadProducts(reset: true);
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${_products.length} products',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                color: const Color(0xFF64748B),
               ),
             ),
-          ),
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+      child: Row(
+        children: [
+          SizedBox(width: 260, child: _buildSearchField()),
           const SizedBox(width: 10),
           _FilterDropdown(
             value: _categoryFilter,
@@ -999,7 +1066,7 @@ class _ProductsTabState extends State<_ProductsTab> {
     );
   }
 
-  Widget _buildProductGrid() {
+  Widget _buildProductGrid(bool isMobile) {
     if (_isInitialLoad) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -1018,12 +1085,19 @@ class _ProductsTabState extends State<_ProductsTab> {
 
     return GridView.builder(
       controller: _scrollController,
-      padding: const EdgeInsets.symmetric(horizontal: 28),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 4,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 16,
-        childAspectRatio: 0.75,
+      padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 28),
+      // A fixed 4-column grid always reserved 4 columns' worth of width even
+      // with only 1-2 products, leaving most of a wide screen blank —
+      // MaxCrossAxisExtent instead sizes each card to a comfortable target
+      // width and lets the column count adapt to whatever's actually there,
+      // like a real product-catalog grid rather than a sparse admin table.
+      // A single column on phone widths gives each card its full target
+      // size (280) instead of squeezing two half-width cards side by side.
+      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: isMobile ? 480 : 280,
+        crossAxisSpacing: 20,
+        mainAxisSpacing: 28,
+        childAspectRatio: 0.68,
       ),
       itemCount: _products.length + (_hasMore ? 1 : 0),
       itemBuilder: (context, index) {
@@ -1032,6 +1106,7 @@ class _ProductsTabState extends State<_ProductsTab> {
         }
         return _ProductCard(
           product: _products[index],
+          alwaysShowActions: isMobile,
           onTap: () => showDialog(
             context: context,
             builder: (_) => _ProductDetailsModal(product: _products[index]),
@@ -1149,215 +1224,223 @@ class _ProductsTabState extends State<_ProductsTab> {
 // ============================================================
 // PRODUCT CARD WIDGET (with Base64 image support)
 // ============================================================
-class _ProductCard extends StatelessWidget {
+class _ProductCard extends StatefulWidget {
   final ProductModel product;
   final VoidCallback onTap;
   final VoidCallback onArchive;
   final VoidCallback onEdit;
+  // Hover has no equivalent on a touch device, so the reveal-on-hover admin
+  // icons would otherwise be permanently unreachable there — narrow/mobile
+  // layouts keep them always visible instead of gating on hover.
+  final bool alwaysShowActions;
 
   const _ProductCard({
     required this.product,
     required this.onTap,
     required this.onArchive,
     required this.onEdit,
+    this.alwaysShowActions = false,
   });
 
   @override
+  State<_ProductCard> createState() => _ProductCardState();
+}
+
+// Restyled from an admin-table-style tile (bordered card, small square
+// image, always-visible edit/archive icons) into a storefront-style
+// listing — bigger square product photo as the hero, plain typography on
+// the page background instead of card chrome, and admin controls that only
+// reveal on hover instead of permanently cluttering the photo. Same data
+// and callbacks as before, purely a presentation change.
+class _ProductCardState extends State<_ProductCard> {
+  bool _hovering = false;
+
+  @override
   Widget build(BuildContext context) {
+    final product = widget.product;
     final totalStock = product.variants.isNotEmpty
         ? product.variants.fold<int>(0, (sum, v) => sum + v.stock)
         : product.stock;
     final isLowStock = totalStock <= 5 && totalStock > 0;
     final isOutOfStock = totalStock == 0;
+    final isDiscontinued = product.status == 'discontinued';
+    final String? statusLabel = isOutOfStock
+        ? 'Out of Stock'
+        : isDiscontinued
+        ? 'Discontinued'
+        : isLowStock
+        ? 'Low Stock'
+        : null;
+    final statusColor = (isOutOfStock || isDiscontinued)
+        ? const Color(0xFFDC2626)
+        : UpriseColors.primaryDark;
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
       child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFE8ECF0)),
-            boxShadow: _DS.cardShadow,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Image Section with Base64 support
-              Expanded(
-                flex: 3,
+        onTap: widget.onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            AspectRatio(
+              aspectRatio: 1,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: _hovering
+                      ? [
+                          BoxShadow(
+                            color: Colors.black.withAlpha(28),
+                            blurRadius: 20,
+                            offset: const Offset(0, 10),
+                          ),
+                        ]
+                      : _DS.cardShadow,
+                ),
                 child: ClipRRect(
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(12),
-                  ),
+                  borderRadius: BorderRadius.circular(16),
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      _buildProductImage(),
-                      if (isOutOfStock ||
-                          isLowStock ||
-                          product.status == 'discontinued')
+                      AnimatedScale(
+                        duration: const Duration(milliseconds: 200),
+                        scale: _hovering ? 1.05 : 1.0,
+                        child: _buildProductImage(),
+                      ),
+                      if (statusLabel != null)
                         Positioned(
-                          top: 8,
-                          right: 8,
+                          left: 10,
+                          top: 10,
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
+                              horizontal: 9,
+                              vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color:
-                                  isOutOfStock ||
-                                      product.status == 'discontinued'
-                                  ? const Color(0xFFFEF2F2)
-                                  : const Color(0xFFFFFBEB),
-                              borderRadius: BorderRadius.circular(20),
+                              color: Colors.white.withAlpha(235),
+                              borderRadius: BorderRadius.circular(
+                                _DS.radiusPill,
+                              ),
                             ),
                             child: Text(
-                              isOutOfStock
-                                  ? 'OUT OF STOCK'
-                                  : product.status == 'discontinued'
-                                  ? 'DISCONTINUED'
-                                  : 'LOW STOCK',
+                              statusLabel.toUpperCase(),
                               style: GoogleFonts.beVietnamPro(
-                                fontSize: 8,
+                                fontSize: 9,
                                 fontWeight: FontWeight.w700,
-                                color:
-                                    isOutOfStock ||
-                                        product.status == 'discontinued'
-                                    ? const Color(0xFFDC2626)
-                                    : const Color(0xFFFB923C),
-                                letterSpacing: 0.5,
+                                color: statusColor,
+                                letterSpacing: 0.6,
                               ),
                             ),
                           ),
                         ),
+                      // Quick-action affordance, like a storefront's
+                      // wishlist/quick-view icons — invisible until hovered
+                      // instead of permanent chrome over the product photo.
                       Positioned(
-                        bottom: 8,
                         right: 8,
-                        child: Row(
-                          children: [
-                            _CardActionButton(
-                              icon: Icons.edit_outlined,
-                              tooltip: 'Edit',
-                              onTap: onEdit,
+                        top: 8,
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 150),
+                          opacity: (_hovering || widget.alwaysShowActions)
+                              ? 1
+                              : 0,
+                          child: IgnorePointer(
+                            ignoring: !(_hovering || widget.alwaysShowActions),
+                            child: Column(
+                              children: [
+                                _CardActionButton(
+                                  icon: Icons.edit_outlined,
+                                  tooltip: 'Edit',
+                                  onTap: widget.onEdit,
+                                ),
+                                const SizedBox(height: 6),
+                                _CardActionButton(
+                                  icon: Icons.archive_outlined,
+                                  tooltip: 'Archive',
+                                  onTap: widget.onArchive,
+                                  color: UpriseColors.warning,
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 4),
-                            _CardActionButton(
-                              icon: Icons.archive_outlined,
-                              tooltip: 'Archive',
-                              onTap: onArchive,
-                              color: UpriseColors.warning,
-                            ),
-                          ],
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
-              // Info Section
-              Expanded(
-                flex: 2,
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            product.name,
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: const Color(0xFF1A202C),
-                              height: 1.2,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: UpriseColors.mediumGray,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              product.category,
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w600,
-                                color: UpriseColors.darkGray,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '₱${NumberFormat('#,###').format(product.price)}',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w700,
-                                  color: UpriseColors.charcoal,
-                                ),
-                              ),
-                              Text(
-                                '$totalStock in stock',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 10,
-                                  color: const Color(0xFF64748B),
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (product.sold > 0)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFECFDF5),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                '${product.sold} sold',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w600,
-                                  color: const Color(0xFF059669),
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              product.category,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF9AA5B4),
+                letterSpacing: 0.5,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 3),
+            Text(
+              product.name,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF1A202C),
+                height: 1.25,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Text(
+                  '₱${NumberFormat('#,###').format(product.price)}',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: UpriseColors.primaryDark,
                   ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '$totalStock in stock',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11,
+                      color: const Color(0xFF9AA5B4),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            if (product.sold > 0) ...[
+              const SizedBox(height: 3),
+              Text(
+                '${product.sold} sold',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF059669),
                 ),
               ),
             ],
-          ),
+          ],
         ),
       ),
     );
   }
 
   Widget _buildProductImage() {
+    final product = widget.product;
     // Check if we have a base64 image
     if (product.imageBase64 != null && product.imageBase64!.isNotEmpty) {
       try {
@@ -1386,6 +1469,7 @@ class _ProductCard extends StatelessWidget {
   }
 
   Widget _buildNetworkImage() {
+    final product = widget.product;
     if (product.imageUrl.isNotEmpty) {
       return Image.network(
         product.imageUrl,
@@ -1742,11 +1826,16 @@ class _ProductModalState extends State<_ProductModal> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    // A fixed 520px width overflowed on phone-width screens (insetPadding
+    // alone doesn't shrink a Container with an explicit width) — cap it to
+    // whatever's actually available instead.
+    final modalWidth = screenWidth < 520 + 64 ? screenWidth - 64 : 520.0;
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: Container(
-        width: 520,
+        width: modalWidth,
         constraints: BoxConstraints(
           maxHeight: MediaQuery.of(context).size.height * 0.85,
         ),
@@ -1814,14 +1903,13 @@ class _ProductModalState extends State<_ProductModal> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildImagePicker(),
-                    const SizedBox(height: 16),
-                    _sectionLabel(
-                      '360° Photos (optional)',
-                      icon: Icons.threesixty_rounded,
-                    ),
-                    _buildRotationPhotosPicker(),
-                    const SizedBox(height: 16),
+                    // Core identifying info first (name, category, price,
+                    // stock) — these used to sit below the image + 360°
+                    // photo uploaders, which pushed every essential field
+                    // out of view on anything but a tall screen, forcing a
+                    // long scroll before reaching Category or Price. Photos
+                    // are the more optional part of listing a product, so
+                    // they move to the end instead.
                     _sectionLabel(
                       'Product Information',
                       icon: Icons.info_outline_rounded,
@@ -2019,6 +2107,15 @@ class _ProductModalState extends State<_ProductModal> {
                         ),
                       ),
                     ),
+                    const SizedBox(height: 16),
+                    _sectionLabel('Product Photo', icon: Icons.image_outlined),
+                    _buildImagePicker(),
+                    const SizedBox(height: 16),
+                    _sectionLabel(
+                      '360° Photos (optional)',
+                      icon: Icons.threesixty_rounded,
+                    ),
+                    _buildRotationPhotosPicker(),
                   ],
                 ),
               ),

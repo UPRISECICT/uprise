@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -343,10 +344,16 @@ _EState _eventState(EventModel e, {bool? activeOverride}) {
 class EventManagementScreen extends StatefulWidget {
   final String orgId;
   final int initialTabIndex;
+  // Passed straight through to AttendanceTab — see its own doc comment for
+  // why this needs to be a ValueListenable rather than a plain bool.
+  final ValueListenable<int>? visibleTabIndex;
+  final int myTabIndex;
   const EventManagementScreen({
     super.key,
     required this.orgId,
     this.initialTabIndex = 0,
+    this.visibleTabIndex,
+    this.myTabIndex = -1,
   });
 
   @override
@@ -526,6 +533,8 @@ class _EventManagementScreenState extends State<EventManagementScreen> {
               orgId: widget.orgId,
               event: _event,
               eventDocId: _eventDocId,
+              visibleTabIndex: widget.visibleTabIndex,
+              myTabIndex: widget.myTabIndex,
             ),
           ),
         ],
@@ -614,11 +623,22 @@ class AttendanceTab extends StatefulWidget {
   final String orgId;
   final EventModel? event;
   final String? eventDocId;
+  // Lets the parent sidebar (org_dashboard.dart's IndexedStack, which
+  // deliberately keeps every section's state alive instead of tearing it
+  // down on tab switch) tell this screen when it's been navigated away from,
+  // so the QR camera can be stopped even though this widget stays mounted.
+  // A ValueListenable (not a plain bool prop) because org_dashboard.dart
+  // builds its screens list once and reuses the same instances — a bool
+  // prop wouldn't update on tab switches without rebuilding that list.
+  final ValueListenable<int>? visibleTabIndex;
+  final int myTabIndex;
   const AttendanceTab({
     super.key,
     required this.orgId,
     this.event,
     this.eventDocId,
+    this.visibleTabIndex,
+    this.myTabIndex = -1,
   });
 
   @override
@@ -626,7 +646,7 @@ class AttendanceTab extends StatefulWidget {
 }
 
 class _AttendanceTabState extends State<AttendanceTab>
-    with AutomaticKeepAliveClientMixin {
+    with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
   @override
   bool get wantKeepAlive => true;
 
@@ -641,6 +661,20 @@ class _AttendanceTabState extends State<AttendanceTab>
   int _inputMode = 0;
   int _subTab = 0;
   bool _sendingEvaluations = false;
+  // Mirrors the `active` value build() computes from the event stream —
+  // cached here so the camera lifecycle handlers (which fire outside
+  // build(), e.g. from app-lifecycle or tab-visibility callbacks) know
+  // whether attendance is even open before trying to restart the scanner.
+  bool _attendanceActive = false;
+
+  // _statusFilter defaults to 'All' so filtering starts unfiltered — but
+  // that same default made the "Total Registrants" stat card render as
+  // visually selected (colored border/shadow) before the org ever clicked
+  // anything, since its isSelected check was just `_statusFilter == 'All'`.
+  // This flag is UI-only and never touches the actual filter value or the
+  // filtering methods below — it only tracks whether a card has genuinely
+  // been clicked yet, so the highlight reflects a real user action.
+  bool _filterTouched = false;
 
   // `registrations` docs only ever carry `userId` (plus whatever the
   // registration form itself asked for) — name/student number/course/year
@@ -723,7 +757,73 @@ class _AttendanceTabState extends State<AttendanceTab>
   }
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    widget.visibleTabIndex?.addListener(_onVisibleTabChanged);
+  }
+
+  void _stopScanner() {
+    // Best-effort: mobile_scanner's own start/stop calls can throw if the
+    // camera is already in the target state or permissions were revoked
+    // mid-session — none of that should ever surface as an app error, this
+    // is just resource cleanup.
+    _scanner.stop().catchError((_) {});
+  }
+
+  void _startScannerIfDue() {
+    if (!mounted || _inputMode != 0 || !_attendanceActive) return;
+    final tabVisible =
+        widget.visibleTabIndex == null ||
+        widget.visibleTabIndex!.value == widget.myTabIndex;
+    if (!tabVisible) return;
+    _scanner.start().catchError((_) {});
+  }
+
+  // org_dashboard.dart's IndexedStack keeps this whole screen mounted when
+  // the org switches to a different sidebar section — so leaving Attendance
+  // never unmounts this widget or its MobileScannerController, and the
+  // camera would otherwise stay on indefinitely in the background.
+  void _onVisibleTabChanged() {
+    if (widget.visibleTabIndex!.value == widget.myTabIndex) {
+      _startScannerIfDue();
+    } else {
+      _stopScanner();
+    }
+  }
+
+  // Same problem as above but for backgrounding the whole app (switching
+  // apps, locking the phone) — the widget stays mounted, so the camera
+  // needs to be stopped explicitly here too.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _startScannerIfDue();
+    } else {
+      _stopScanner();
+    }
+  }
+
+  // Switching the QR Scan / Manual Entry / Roll Call / Webinar Code chips
+  // removes the MobileScanner widget from the tree entirely when leaving QR
+  // mode, but mobile_scanner never stops a controller that was passed in
+  // (rather than created by the widget itself) just because the widget
+  // using it was unmounted — so the camera kept running in the background
+  // after switching to any of the other three modes until this explicit stop.
+  void _setInputMode(int mode) {
+    if (_inputMode == mode) return;
+    setState(() => _inputMode = mode);
+    if (mode == 0) {
+      _startScannerIfDue();
+    } else {
+      _stopScanner();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    widget.visibleTabIndex?.removeListener(_onVisibleTabChanged);
     _scanner.dispose();
     _search.dispose();
     _manualCtrl.dispose();
@@ -1338,6 +1438,7 @@ class _AttendanceTabState extends State<AttendanceTab>
       stream: _eventStream,
       builder: (ctx, evSnap) {
         final active = _isActive(evSnap.data);
+        _attendanceActive = active;
         return StreamBuilder<QuerySnapshot>(
           stream: _attStream,
           builder: (ctx, attSnap) {
@@ -1432,6 +1533,7 @@ class _AttendanceTabState extends State<AttendanceTab>
   Widget _buildStatsRow(int total, int present, int late) {
     void selectStatus(String status) => setState(() {
       _statusFilter = _statusFilter == status ? 'All' : status;
+      _filterTouched = true;
       _subTab = 0;
     });
 
@@ -1442,9 +1544,10 @@ class _AttendanceTabState extends State<AttendanceTab>
           value: '$total',
           icon: Icons.people_alt_rounded,
           color: UpriseColors.primaryDark,
-          isSelected: _statusFilter == 'All',
+          isSelected: _statusFilter == 'All' && _filterTouched,
           onTap: () => setState(() {
             _statusFilter = 'All';
+            _filterTouched = true;
             _subTab = 0;
           }),
         ),
@@ -1668,7 +1771,7 @@ class _AttendanceTabState extends State<AttendanceTab>
               label: lbl,
               icon: ico,
               selected: _inputMode == i,
-              onTap: () => setState(() => _inputMode = i),
+              onTap: () => _setInputMode(i),
             ),
           ),
       ],

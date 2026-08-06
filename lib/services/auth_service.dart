@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_model.dart';
 import '../utils/constants.dart';
+import 'push_notification_service.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -18,6 +19,8 @@ class AuthService {
 
   // Sign out
   Future<void> signOut() async {
+    final uid = _auth.currentUser?.uid;
+    if (uid != null) await PushNotificationService.unregister(uid);
     await _auth.signOut();
   }
 

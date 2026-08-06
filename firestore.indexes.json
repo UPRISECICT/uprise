@@ -37,13 +37,6 @@
       ]
     },
     {
-      "collectionGroup": "attendances",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        { "fieldPath": "studentId", "order": "ASCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "certificate_templates",
       "queryScope": "COLLECTION",
       "fields": [

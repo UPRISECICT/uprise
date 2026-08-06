@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../utils/social_link_util.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../widgets/student/student_app_bar.dart';
 import '../../widgets/student/app_image.dart';
@@ -527,6 +528,7 @@ class _StudentOrganizationsDetailsScreenState
                           org['facebook'],
                           org['instagram'],
                           org['twitter'],
+                          org['tiktok'],
                           org['gmail'],
                         ].any(
                           (v) => (v ?? '').toString().trim().isNotEmpty,
@@ -551,7 +553,10 @@ class _StudentOrganizationsDetailsScreenState
                                 _SocialChip(
                                   icon: Icons.facebook_rounded,
                                   label: 'Facebook',
-                                  url: org['facebook'],
+                                  url: normalizeSocialUrl(
+                                    'facebook',
+                                    org['facebook'].toString(),
+                                  ),
                                 ),
                               if ((org['instagram'] ?? '')
                                   .toString()
@@ -560,7 +565,10 @@ class _StudentOrganizationsDetailsScreenState
                                 _SocialChip(
                                   icon: Icons.camera_alt_outlined,
                                   label: 'Instagram',
-                                  url: org['instagram'],
+                                  url: normalizeSocialUrl(
+                                    'instagram',
+                                    org['instagram'].toString(),
+                                  ),
                                 ),
                               if ((org['twitter'] ?? '')
                                   .toString()
@@ -569,7 +577,22 @@ class _StudentOrganizationsDetailsScreenState
                                 _SocialChip(
                                   icon: Icons.alternate_email_rounded,
                                   label: 'Twitter/X',
-                                  url: org['twitter'],
+                                  url: normalizeSocialUrl(
+                                    'twitter',
+                                    org['twitter'].toString(),
+                                  ),
+                                ),
+                              if ((org['tiktok'] ?? '')
+                                  .toString()
+                                  .trim()
+                                  .isNotEmpty)
+                                _SocialChip(
+                                  icon: Icons.music_note_rounded,
+                                  label: 'TikTok',
+                                  url: normalizeSocialUrl(
+                                    'tiktok',
+                                    org['tiktok'].toString(),
+                                  ),
                                 ),
                               if ((org['gmail'] ?? '')
                                   .toString()
@@ -578,7 +601,10 @@ class _StudentOrganizationsDetailsScreenState
                                 _SocialChip(
                                   icon: Icons.email_outlined,
                                   label: org['gmail'],
-                                  url: 'mailto:${org['gmail']}',
+                                  url: normalizeSocialUrl(
+                                    'gmail',
+                                    org['gmail'].toString(),
+                                  ),
                                 ),
                             ],
                           ),

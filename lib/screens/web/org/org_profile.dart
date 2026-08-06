@@ -23,11 +23,16 @@ import 'package:cross_file/cross_file.dart';
 import 'package:http/http.dart' as http;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:url_launcher/url_launcher.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../theme/org_theme.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/org_modal_shell.dart';
+import '../../../widgets/admin_export_button.dart';
+import '../../../utils/social_link_util.dart';
 import 'export_util.dart';
+import 'export_pdf.dart';
+import 'export_excel.dart';
 
 final RegExp _emailPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
 
@@ -257,20 +262,20 @@ Future<void> _clearMatchingStudentAccountTag({
   } catch (_) {}
 }
 
+// Unlike _clearMatchingStudentAccountTag (a genuinely best-effort lookup by
+// email that may match nothing), this is the actual "remove member" write —
+// its only caller (_untagMember) needs to know if it failed instead of
+// showing a false "removed" success message, so errors propagate to that
+// caller's own try/catch rather than being swallowed here.
 Future<void> _clearStudentAccountTagByUid({
   required String uid,
   required Map<String, dynamic> updates,
 }) async {
-  try {
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .update(updates);
-    await FirebaseFirestore.instance
-        .collection('students')
-        .doc(uid)
-        .update(updates);
-  } catch (_) {}
+  await FirebaseFirestore.instance.collection('users').doc(uid).update(updates);
+  await FirebaseFirestore.instance
+      .collection('students')
+      .doc(uid)
+      .update(updates);
 }
 
 Future<bool> _syncOfficerUserTag({
@@ -348,6 +353,40 @@ class AdviserInfo {
   bool get isEmpty => name.trim().isEmpty;
 }
 
+// Keeps any `adviser_roles` docs for this org (used by the separate adviser
+// login flow) in sync whenever the primary adviser's details change — shared
+// by both the full Edit Profile dialog and the standalone Add Adviser dialog
+// so adding an adviser there doesn't leave those role docs stale.
+Future<void> syncAdviserRoleDocsForOrg(
+  String orgId,
+  String shortName,
+  Map<String, dynamic> payload,
+) async {
+  try {
+    final roleSnap = await FirebaseFirestore.instance
+        .collection('adviser_roles')
+        .where('orgId', isEqualTo: orgId)
+        .get();
+    final updates = <String, dynamic>{
+      'adviserName': payload['adviserName'],
+      'adviserTitle': payload['adviserTitle'],
+      'adviserEmail': payload['adviserEmail'],
+      'adviserPhone': payload['adviserPhone'],
+    };
+    if (payload.containsKey('adviserPhotoUrl'))
+      updates['adviserPhotoUrl'] = payload['adviserPhotoUrl'];
+    if (payload.containsKey('adviserTitle'))
+      updates['adviserRank'] = payload['adviserTitle'];
+    if (shortName.isNotEmpty) updates['shortName'] = shortName;
+    if (payload.containsKey('logoUrl')) updates['logoUrl'] = payload['logoUrl'];
+    for (final doc in roleSnap.docs) {
+      await doc.reference.update(updates);
+    }
+  } catch (e) {
+    debugPrint('Failed to sync adviser_roles: $e');
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Design Tokens — identical to StudentAccounts / OrgAnnouncements
 // ─────────────────────────────────────────────────────────────────────────────
@@ -413,6 +452,34 @@ Widget _card({
       boxShadow: _DS.cardShadow,
     ),
     child: child,
+  );
+}
+
+// Shared visual style for a row-tile's edit/remove actions — mirrors the
+// Officer tile's own _iconBtn exactly (same padding/size/tinted background)
+// so Advisers and Members tiles read as the same action pattern instead of
+// each section inventing its own (a bare text "Remove" button here, icon
+// buttons there).
+Widget _actionIconButton(
+  IconData icon,
+  Color color,
+  VoidCallback onTap,
+  String tooltip,
+) {
+  return Tooltip(
+    message: tooltip,
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.all(7),
+        decoration: BoxDecoration(
+          color: color.withAlpha(20),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(icon, size: 15, color: color),
+      ),
+    ),
   );
 }
 
@@ -531,6 +598,7 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
   String _facebook = '';
   String _instagram = '';
   String _twitter = '';
+  String _tiktok = '';
   String _gmail = '';
   // Orgs can have up to 2 advisers (same cap admin enforces on its side).
   // The photo is only kept for the primary (first) adviser, matching the
@@ -547,6 +615,12 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
     _orgEmail = widget.orgEmail;
     _loadOrgData();
     _backfillOfficerRanks();
+  }
+
+  @override
+  void dispose() {
+    _memberSearchCtrl.dispose();
+    super.dispose();
   }
 
   // One-time self-heal for officers saved before positionRank was derived
@@ -615,6 +689,7 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
           _facebook = data['facebook'] ?? '';
           _instagram = data['instagram'] ?? '';
           _twitter = data['twitter'] ?? '';
+          _tiktok = data['tiktok'] ?? '';
           _gmail = data['gmail'] ?? '';
           _advisers = advisers;
           _adviserPhotoUrl = data['adviserPhotoUrl'] ?? '';
@@ -688,6 +763,9 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
       .where('orgRole', isEqualTo: 'member')
       .snapshots();
 
+  final TextEditingController _memberSearchCtrl = TextEditingController();
+  String _memberSearchQuery = '';
+
   void _snack(String msg, {bool isError = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -720,7 +798,7 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
     );
   }
 
-  void _openEditProfile({bool focusAdvisers = false}) {
+  void _openEditProfile() {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -740,15 +818,192 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
           facebook: _facebook,
           instagram: _instagram,
           twitter: _twitter,
+          tiktok: _tiktok,
           gmail: _gmail,
-          focusAdvisers: focusAdvisers,
           onSaved: _loadOrgData,
         ),
       ),
     );
   }
 
-  void _openAddAdviser() => _openEditProfile(focusAdvisers: true);
+  // A dedicated, adviser-only dialog — "Add Adviser" used to open the whole
+  // Edit Organization Profile form (just scrolled down), which still read as
+  // the wrong screen appearing. Removing an adviser stays exclusively in the
+  // full Edit Profile dialog; this one only ever adds.
+  void _openAddAdviser() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black54,
+      builder: (_) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        child: _AddAdviserDialog(
+          orgId: widget.orgId,
+          shortName: _orgShortName,
+          existingAdvisers: _advisers,
+          adviserPhotoUrl: _adviserPhotoUrl,
+          onSaved: _loadOrgData,
+        ),
+      ),
+    );
+  }
+
+  void _openEditAdviser(int index) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black54,
+      builder: (_) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        child: _AddAdviserDialog(
+          orgId: widget.orgId,
+          shortName: _orgShortName,
+          existingAdvisers: _advisers,
+          adviserPhotoUrl: _adviserPhotoUrl,
+          editIndex: index,
+          onSaved: _loadOrgData,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmRemoveAdviser(int index) async {
+    final adviser = _advisers[index];
+    final confirm = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(_DS.radiusLg),
+        ),
+        child: Container(
+          width: 420,
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: _C.errorBg,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.person_remove_outlined,
+                      color: _C.error,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Remove Adviser',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: _C.charcoal,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'Remove "${adviser.name}" from this organization\'s advisers? This cannot be undone.',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: _C.darkGray,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: _C.borderSoft),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                    ),
+                    child: Text(
+                      'Cancel',
+                      style: GoogleFonts.beVietnamPro(fontSize: 13),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _C.error,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                    ),
+                    child: Text(
+                      'Remove',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (confirm != true) return;
+
+    final updated = [..._advisers]..removeAt(index);
+    final primary = updated.isNotEmpty ? updated.first : const AdviserInfo();
+    final payload = <String, dynamic>{
+      'adviserName': primary.name,
+      'adviserTitle': primary.title,
+      'adviserEmail': primary.email,
+      'adviserPhone': primary.phone,
+      'advisers': updated.map((a) => a.toMap()).toList(),
+      // The stored adviser photo only ever belongs to whoever is in slot 0 —
+      // if that's the adviser being removed, drop the photo too rather than
+      // let it silently carry over to whichever adviser is now primary.
+      if (index == 0) 'adviserPhotoUrl': FieldValue.delete(),
+    };
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('organizations')
+          .doc(widget.orgId)
+          .update(payload);
+      await syncAdviserRoleDocsForOrg(widget.orgId, _orgShortName, payload);
+      await activity_log.ActivityLogger.log(
+        action: 'remove_adviser',
+        module: 'org_profile',
+        details: {'orgId': widget.orgId, 'adviserName': adviser.name},
+      );
+      _loadOrgData();
+      _snack('${adviser.name} removed from advisers.');
+    } catch (e) {
+      _snack('Error: $e', isError: true);
+    }
+  }
 
   void _openOfficerModal({OfficerModel? officer}) {
     showDialog(
@@ -868,23 +1123,27 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
       ),
     );
     if (confirm != true) return;
-    await FirebaseFirestore.instance
-        .collection('organizations')
-        .doc(widget.orgId)
-        .collection('officers')
-        .doc(officer.id)
-        .delete();
-    await _syncOrganizationOfficers();
-    // Best-effort: if this officer was linked to a student account (matched
-    // by email when they were added), clear the officer tag from it so the
-    // mobile app stops showing them as an officer of this org.
-    await _clearOfficerUserTag(orgId: widget.orgId, email: officer.email);
-    await activity_log.ActivityLogger.log(
-      action: 'delete_officer',
-      module: 'org_profile',
-      details: {'orgId': widget.orgId, 'name': officer.name},
-    );
-    if (mounted) setState(() {});
+    try {
+      await FirebaseFirestore.instance
+          .collection('organizations')
+          .doc(widget.orgId)
+          .collection('officers')
+          .doc(officer.id)
+          .delete();
+      await _syncOrganizationOfficers();
+      // Best-effort: if this officer was linked to a student account (matched
+      // by email when they were added), clear the officer tag from it so the
+      // mobile app stops showing them as an officer of this org.
+      await _clearOfficerUserTag(orgId: widget.orgId, email: officer.email);
+      await activity_log.ActivityLogger.log(
+        action: 'delete_officer',
+        module: 'org_profile',
+        details: {'orgId': widget.orgId, 'name': officer.name},
+      );
+      if (mounted) setState(() {});
+    } catch (e) {
+      _snack('Could not remove officer: $e', isError: true);
+    }
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────
@@ -1149,6 +1408,11 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
                   ],
                 ),
                 const SizedBox(height: 6),
+                // This is the org's registered contact email (the account
+                // email on file, not a messaging feature) — it used to
+                // render as a bare icon with nothing after it whenever the
+                // org had no email on file, which read as an unlabeled
+                // mystery icon.
                 Row(
                   children: [
                     const Icon(
@@ -1159,10 +1423,17 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
                     const SizedBox(width: 5),
                     Expanded(
                       child: Text(
-                        _orgEmail,
+                        _orgEmail.isNotEmpty
+                            ? _orgEmail
+                            : 'No contact email on file',
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 12.5,
-                          color: _C.darkGray,
+                          color: _orgEmail.isNotEmpty
+                              ? _C.darkGray
+                              : _C.textFaint,
+                          fontStyle: _orgEmail.isNotEmpty
+                              ? FontStyle.normal
+                              : FontStyle.italic,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -1355,7 +1626,7 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
             Column(
               children: [
                 for (var i = 0; i < _advisers.length; i++) ...[
-                  _adviserTile(_advisers[i], isPrimary: i == 0),
+                  _adviserTile(_advisers[i], index: i, isPrimary: i == 0),
                   if (i != _advisers.length - 1) const SizedBox(height: 12),
                 ],
               ],
@@ -1365,7 +1636,11 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
     );
   }
 
-  Widget _adviserTile(AdviserInfo a, {required bool isPrimary}) {
+  Widget _adviserTile(
+    AdviserInfo a, {
+    required int index,
+    required bool isPrimary,
+  }) {
     final photo = isPrimary ? _adviserPhotoUrl : '';
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1495,6 +1770,20 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
             ],
           ),
         ),
+        const SizedBox(width: 8),
+        _actionIconButton(
+          Icons.edit_outlined,
+          _C.info,
+          () => _openEditAdviser(index),
+          'Edit',
+        ),
+        const SizedBox(width: 4),
+        _actionIconButton(
+          Icons.delete_outline_rounded,
+          _C.error,
+          () => _confirmRemoveAdviser(index),
+          'Remove',
+        ),
       ],
     );
   }
@@ -1549,62 +1838,6 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
             style: GoogleFonts.beVietnamPro(fontSize: 12, color: _C.darkGray),
           ),
           const SizedBox(height: 16),
-
-          // Member count pill
-          StreamBuilder<QuerySnapshot>(
-            stream: _membersStream,
-            builder: (ctx, snap) {
-              final count = snap.data?.docs.length ?? 0;
-              return Container(
-                margin: const EdgeInsets.only(bottom: 16),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 12,
-                ),
-                decoration: BoxDecoration(
-                  color: _C.surface,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: _C.borderSoft),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.people_outline_rounded,
-                      size: 16,
-                      color: _C.darkGray,
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      'Total Members',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        color: _C.darkGray,
-                      ),
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _C.primaryDark.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(_DS.radiusPill),
-                      ),
-                      child: Text(
-                        '$count',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: _C.primaryDark,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
 
           // Officers list
           StreamBuilder<QuerySnapshot>(
@@ -1679,6 +1912,11 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
               Expanded(
                 child: _sectionLabel('Members', icon: Icons.groups_outlined),
               ),
+              AdminExportButton(
+                label: 'Export',
+                onSelected: (format) => _exportMembers(format),
+              ),
+              const SizedBox(width: 10),
               OutlinedButton.icon(
                 onPressed: _showMemberBatchImportDialog,
                 icon: const Icon(Icons.upload_file_outlined, size: 15),
@@ -1736,6 +1974,18 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
           Text(
             'Search the admin-managed student list to add or remove members for this org.',
             style: GoogleFonts.beVietnamPro(fontSize: 12, color: _C.darkGray),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _memberSearchCtrl,
+            style: GoogleFonts.beVietnamPro(fontSize: 13),
+            decoration: _inputDecoration(
+              'Search members',
+              hint: 'Name, email, or student ID…',
+              icon: Icons.search_rounded,
+            ),
+            onChanged: (v) =>
+                setState(() => _memberSearchQuery = v.trim().toLowerCase()),
           ),
           const SizedBox(height: 16),
           StreamBuilder<QuerySnapshot>(
@@ -1819,7 +2069,7 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
                 );
               }
 
-              final docs = snap.data!.docs.toList()
+              var docs = snap.data!.docs.toList()
                 ..sort((a, b) {
                   final an = ((a.data() as Map)['fullName'] ?? '')
                       .toString()
@@ -1829,6 +2079,20 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
                       .toLowerCase();
                   return an.compareTo(bn);
                 });
+              final hadMembersBeforeSearch = docs.isNotEmpty;
+              if (_memberSearchQuery.isNotEmpty) {
+                docs = docs.where((d) {
+                  final m = d.data() as Map<String, dynamic>;
+                  final name = (m['fullName'] ?? '').toString().toLowerCase();
+                  final email = (m['email'] ?? '').toString().toLowerCase();
+                  final memberId = (m['memberId'] ?? '')
+                      .toString()
+                      .toLowerCase();
+                  return name.contains(_memberSearchQuery) ||
+                      email.contains(_memberSearchQuery) ||
+                      memberId.contains(_memberSearchQuery);
+                }).toList();
+              }
 
               if (docs.isEmpty) {
                 return Container(
@@ -1848,7 +2112,9 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'No members yet — add one from the student roster',
+                          hadMembersBeforeSearch
+                              ? 'No members match your search.'
+                              : 'No members yet — add one from the student roster',
                           style: GoogleFonts.beVietnamPro(
                             fontSize: 13,
                             color: _C.darkGray,
@@ -1912,28 +2178,67 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
         children: [
           _sectionLabel('Social Media', icon: Icons.share_outlined),
           const SizedBox(height: 14),
-          _socialRow(Icons.facebook_rounded, 'Facebook', _facebook, _C.info),
+          _socialRow(
+            Icons.facebook_rounded,
+            'Facebook',
+            _facebook,
+            _C.info,
+            'facebook',
+          ),
           _socialRow(
             Icons.camera_alt_outlined,
             'Instagram',
             _instagram,
             const Color(0xFFE1306C),
+            'instagram',
           ),
           _socialRow(
             Icons.alternate_email_rounded,
             'Twitter / X',
             _twitter,
             _C.charcoal,
+            'twitter',
           ),
-          _socialRow(Icons.mail_outline_rounded, 'Gmail', _gmail, _C.error),
+          _socialRow(
+            Icons.music_note_rounded,
+            'TikTok',
+            _tiktok,
+            _C.charcoal,
+            'tiktok',
+          ),
+          _socialRow(
+            Icons.mail_outline_rounded,
+            'Gmail',
+            _gmail,
+            _C.error,
+            'gmail',
+          ),
         ],
       ),
     );
   }
 
-  Widget _socialRow(IconData icon, String label, String value, Color color) {
+  Future<void> _openSocialLink(String platform, String rawValue) async {
+    final url = normalizeSocialUrl(platform, rawValue);
+    if (url.isEmpty) return;
+    final uri = Uri.tryParse(url);
+    final opened = uri != null && await canLaunchUrl(uri)
+        ? await launchUrl(uri, mode: LaunchMode.externalApplication)
+        : false;
+    if (!opened && mounted) {
+      _snack('Could not open that link.', isError: true);
+    }
+  }
+
+  Widget _socialRow(
+    IconData icon,
+    String label,
+    String value,
+    Color color,
+    String platform,
+  ) {
     final hasValue = value.isNotEmpty;
-    return Padding(
+    final row = Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         children: [
@@ -1964,7 +2269,10 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
                   hasValue ? value : 'Not set',
                   style: GoogleFonts.beVietnamPro(
                     fontSize: 12,
-                    color: hasValue ? _C.textMid : _C.textFaint,
+                    color: hasValue ? _C.info : _C.textFaint,
+                    decoration: hasValue
+                        ? TextDecoration.underline
+                        : TextDecoration.none,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -1972,6 +2280,14 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
             ),
           ),
         ],
+      ),
+    );
+    if (!hasValue) return row;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => _openSocialLink(platform, value),
+        child: row,
       ),
     );
   }
@@ -2142,6 +2458,39 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
     return tagged;
   }
 
+  // Used by the "Add/Remove Members" search dialog, which already has the
+  // target student's uid from the loaded roster (unlike _tagMemberAccount's
+  // email lookup, which silently fails whenever a student's stored email
+  // isn't lowercase — email is never normalized at write time anywhere in
+  // this app, but _tagMatchingStudentAccount's query always lowercases
+  // before an exact match). Writing straight to users/{uid} and
+  // students/{uid} sidesteps that mismatch entirely.
+  Future<void> _tagMemberAccountByUid({
+    required String uid,
+    required String memberId,
+  }) async {
+    final updates = {
+      'orgId': widget.orgId,
+      'orgName': _orgName,
+      'orgRole': 'member',
+      'memberId': memberId,
+      'isOrgMember': true,
+    };
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .set(updates, SetOptions(merge: true));
+    await FirebaseFirestore.instance
+        .collection('students')
+        .doc(uid)
+        .set(updates, SetOptions(merge: true));
+    await activity_log.ActivityLogger.log(
+      action: 'tag_member',
+      module: 'org_profile',
+      details: {'orgId': widget.orgId, 'uid': uid},
+    );
+  }
+
   // Removes this org's tag from a member's student account (their account
   // itself is untouched — they simply stop being tagged to this org).
   Future<void> _untagMember(String uid, String name) async {
@@ -2271,6 +2620,185 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
       ),
     );
     if (confirm == true) await _untagMember(uid, name);
+  }
+
+  // Mirrors _confirmUntagMember — adding used to be a single click straight
+  // from the search list with no way to catch a mis-click before it tagged
+  // the wrong student's account.
+  Future<bool> _confirmTagMember(String name) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(_DS.radiusLg),
+        ),
+        child: Container(
+          width: 420,
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: _C.primaryDark.withAlpha(24),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.person_add_alt_1_rounded,
+                      color: _C.primaryDark,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Add Member',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: _C.charcoal,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'Add "$name" as a member of this org? They\'ll be tagged with this org\'s membership right away — double-check this is the right student before confirming.',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: _C.darkGray,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: _C.borderSoft),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                    ),
+                    child: Text(
+                      'Cancel',
+                      style: GoogleFonts.beVietnamPro(fontSize: 13),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _C.primaryDark,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                    ),
+                    child: Text(
+                      'Add',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    return confirm == true;
+  }
+
+  Future<void> _exportMembers(String format) async {
+    try {
+      final snap = await _membersStream.first;
+      var docs = snap.docs.toList()
+        ..sort((a, b) {
+          final an = ((a.data() as Map)['fullName'] ?? '')
+              .toString()
+              .toLowerCase();
+          final bn = ((b.data() as Map)['fullName'] ?? '')
+              .toString()
+              .toLowerCase();
+          return an.compareTo(bn);
+        });
+      if (_memberSearchQuery.isNotEmpty) {
+        docs = docs.where((d) {
+          final m = d.data() as Map<String, dynamic>;
+          final name = (m['fullName'] ?? '').toString().toLowerCase();
+          final email = (m['email'] ?? '').toString().toLowerCase();
+          final memberId = (m['memberId'] ?? '').toString().toLowerCase();
+          return name.contains(_memberSearchQuery) ||
+              email.contains(_memberSearchQuery) ||
+              memberId.contains(_memberSearchQuery);
+        }).toList();
+      }
+
+      if (docs.isEmpty) {
+        _snack('No members to export.', isError: true);
+        return;
+      }
+
+      const headers = ['Name', 'Email', 'Student ID'];
+      final rows = docs.map((d) {
+        final m = d.data() as Map<String, dynamic>;
+        return [
+          (m['fullName'] ?? '').toString(),
+          (m['email'] ?? '').toString(),
+          (m['memberId'] ?? '').toString(),
+        ];
+      }).toList();
+
+      final now = DateTime.now().toString().substring(0, 10);
+      if (format == 'excel') {
+        final bytes = OrgExportExcel.generateStyledTable(
+          title: '$_orgName Members',
+          headers: headers,
+          rows: rows,
+        );
+        await OrgExportUtil.saveBytes(
+          bytes,
+          'members_$now.xlsx',
+          mimeType: orgXlsxMimeType,
+        );
+      } else {
+        final pdfBytes = await OrgExportPdf.generateTablePdf(
+          title: 'Members',
+          headers: headers,
+          rows: rows,
+          orgLogoUrl: _orgLogoUrl,
+        );
+        await OrgExportUtil.saveBytes(
+          pdfBytes,
+          'members_$now.pdf',
+          mimeType: 'application/pdf',
+        );
+      }
+    } catch (e) {
+      _snack('Export failed: $e', isError: true);
+    }
   }
 
   void _showAddMemberDialog() {
@@ -2451,6 +2979,11 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
                           final studentId = (item['studentId'] ?? '')
                               .toString();
                           final isMember = item['isMember'] == true;
+                          // Matches _MemberTile's card/avatar/icon-button
+                          // pattern (the main Members list) instead of this
+                          // modal having its own separate look — a plain
+                          // colored text button here read as a different,
+                          // inconsistent UI from the rest of the page.
                           return Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
@@ -2460,20 +2993,58 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
                             ),
                             child: Row(
                               children: [
+                                Container(
+                                  width: 38,
+                                  height: 38,
+                                  decoration: BoxDecoration(
+                                    color: _C.primaryDark.withAlpha(26),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      name.isNotEmpty
+                                          ? name[0].toUpperCase()
+                                          : '?',
+                                      style: GoogleFonts.beVietnamPro(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w800,
+                                        color: _C.primaryDark,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        name.isNotEmpty
-                                            ? name
-                                            : 'Unnamed student',
-                                        style: GoogleFonts.beVietnamPro(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w700,
-                                          color: _C.charcoal,
-                                        ),
+                                      Row(
+                                        children: [
+                                          Flexible(
+                                            child: Text(
+                                              name.isNotEmpty
+                                                  ? name
+                                                  : 'Unnamed student',
+                                              style: GoogleFonts.beVietnamPro(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w700,
+                                                color: _C.charcoal,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          if (studentId.isNotEmpty) ...[
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              '· $studentId',
+                                              style: GoogleFonts.beVietnamPro(
+                                                fontSize: 11,
+                                                color: _C.textFaint,
+                                              ),
+                                            ),
+                                          ],
+                                        ],
                                       ),
                                       if (email.isNotEmpty) ...[
                                         const SizedBox(height: 2),
@@ -2483,65 +3054,43 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
                                             fontSize: 12,
                                             color: _C.darkGray,
                                           ),
-                                        ),
-                                      ],
-                                      if (studentId.isNotEmpty) ...[
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          'ID: $studentId',
-                                          style: GoogleFonts.beVietnamPro(
-                                            fontSize: 11,
-                                            color: _C.textFaint,
-                                          ),
+                                          overflow: TextOverflow.ellipsis,
                                         ),
                                       ],
                                     ],
                                   ),
                                 ),
                                 const SizedBox(width: 8),
-                                ElevatedButton(
-                                  onPressed: () async {
+                                _actionIconButton(
+                                  isMember
+                                      ? Icons.person_remove_outlined
+                                      : Icons.person_add_alt_1_rounded,
+                                  isMember ? _C.error : _C.primaryDark,
+                                  () async {
                                     final uid = item['uid'].toString();
                                     final memberName = name.isNotEmpty
                                         ? name
                                         : email;
                                     if (isMember) {
-                                      await _untagMember(uid, memberName);
+                                      await _confirmUntagMember(
+                                        uid,
+                                        memberName,
+                                      );
                                     } else {
-                                      final tagged = await _tagMemberAccount(
-                                        email: email,
-                                        memberId: studentId,
+                                      final confirmed = await _confirmTagMember(
+                                        memberName,
                                       );
-                                      _snack(
-                                        tagged
-                                            ? '$memberName added as a member.'
-                                            : 'No student account found for that email yet.',
-                                        isError: !tagged,
-                                      );
+                                      if (confirmed) {
+                                        await _tagMemberAccountByUid(
+                                          uid: uid,
+                                          memberId: studentId,
+                                        );
+                                        _snack('$memberName added as a member.');
+                                      }
                                     }
                                     await localLoad(searchCtrl.text);
                                   },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: isMember
-                                        ? _C.error
-                                        : _C.primaryDark,
-                                    foregroundColor: Colors.white,
-                                    elevation: 0,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 8,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    isMember ? 'Remove' : 'Add',
-                                    style: GoogleFonts.beVietnamPro(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
+                                  isMember ? 'Remove' : 'Add',
                                 ),
                               ],
                             ),
@@ -3011,23 +3560,13 @@ class _MemberTile extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          OutlinedButton(
-            onPressed: onRemove,
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: _C.error),
-              foregroundColor: _C.error,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: Text(
-              'Remove',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+          // Icon-only, matching the Officers/Advisers tiles' action style
+          // instead of a standalone text button.
+          _actionIconButton(
+            Icons.person_remove_outlined,
+            _C.error,
+            onRemove,
+            'Remove',
           ),
         ],
       ),
@@ -3832,12 +4371,7 @@ class _EditOrgProfileSheet extends StatefulWidget {
   final String orgName, shortName, email, description, logoUrl, coverPhotoUrl;
   final List<AdviserInfo> advisers;
   final String adviserPhotoUrl;
-  final String facebook, instagram, twitter, gmail;
-  // Set when this sheet was opened from the "Add Adviser" button rather than
-  // the generic "Edit Profile" entry point — used to jump straight to the
-  // Adviser section instead of surfacing the whole profile form from the top,
-  // which read as the wrong screen opening.
-  final bool focusAdvisers;
+  final String facebook, instagram, twitter, tiktok, gmail;
   final VoidCallback onSaved;
 
   const _EditOrgProfileSheet({
@@ -3853,8 +4387,8 @@ class _EditOrgProfileSheet extends StatefulWidget {
     required this.facebook,
     required this.instagram,
     required this.twitter,
+    required this.tiktok,
     required this.gmail,
-    this.focusAdvisers = false,
     required this.onSaved,
   });
 
@@ -3883,6 +4417,7 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
   final _fbCtrl = TextEditingController();
   final _igCtrl = TextEditingController();
   final _twCtrl = TextEditingController();
+  final _ttCtrl = TextEditingController();
   final _gmCtrl = TextEditingController();
 
   String? _logoUrl;
@@ -3895,7 +4430,6 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
   bool _isUploadingPhoto = false;
   bool _isSaving = false;
   final _formKey = GlobalKey<FormState>();
-  final _adviserSectionKey = GlobalKey();
 
   @override
   void initState() {
@@ -3924,6 +4458,7 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
     _fbCtrl.text = widget.facebook;
     _igCtrl.text = widget.instagram;
     _twCtrl.text = widget.twitter;
+    _ttCtrl.text = widget.tiktok;
     _gmCtrl.text = widget.gmail;
     _logoUrl = widget.logoUrl.isNotEmpty ? widget.logoUrl : null;
     _coverPhotoUrl = widget.coverPhotoUrl.isNotEmpty
@@ -3932,18 +4467,6 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
     _adviserPhotoUrl = widget.adviserPhotoUrl.isNotEmpty
         ? widget.adviserPhotoUrl
         : null;
-    if (widget.focusAdvisers) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final sectionContext = _adviserSectionKey.currentContext;
-        if (sectionContext != null) {
-          Scrollable.ensureVisible(
-            sectionContext,
-            duration: const Duration(milliseconds: 350),
-            curve: Curves.easeOut,
-          );
-        }
-      });
-    }
   }
 
   @override
@@ -3965,6 +4488,7 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
       _fbCtrl,
       _igCtrl,
       _twCtrl,
+      _ttCtrl,
       _gmCtrl,
     ])
       c.dispose();
@@ -4081,6 +4605,7 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
       'facebook': _fbCtrl.text.trim(),
       'instagram': _igCtrl.text.trim(),
       'twitter': _twCtrl.text.trim(),
+      'tiktok': _ttCtrl.text.trim(),
       'gmail': _gmCtrl.text.trim(),
       if (_logoUrl != null) 'logoUrl': _logoUrl,
       if (_coverPhotoUrl != null) 'coverPhotoUrl': _coverPhotoUrl,
@@ -4106,30 +4631,7 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
   }
 
   Future<void> _syncAdviserRoleDocs(Map<String, dynamic> payload) async {
-    try {
-      final roleSnap = await FirebaseFirestore.instance
-          .collection('adviser_roles')
-          .where('orgId', isEqualTo: widget.orgId)
-          .get();
-      final updates = <String, dynamic>{
-        'adviserName': payload['adviserName'],
-        'adviserTitle': payload['adviserTitle'],
-        'adviserEmail': payload['adviserEmail'],
-        'adviserPhone': payload['adviserPhone'],
-      };
-      if (payload.containsKey('adviserPhotoUrl'))
-        updates['adviserPhotoUrl'] = payload['adviserPhotoUrl'];
-      if (payload.containsKey('adviserTitle'))
-        updates['adviserRank'] = payload['adviserTitle'];
-      if (widget.shortName.isNotEmpty) updates['shortName'] = widget.shortName;
-      if (payload.containsKey('logoUrl'))
-        updates['logoUrl'] = payload['logoUrl'];
-      for (final doc in roleSnap.docs) {
-        await doc.reference.update(updates);
-      }
-    } catch (e) {
-      debugPrint('Failed to sync adviser_roles: $e');
-    }
+    await syncAdviserRoleDocsForOrg(widget.orgId, widget.shortName, payload);
   }
 
   void _snack(String msg, {bool isError = false}) {
@@ -4257,10 +4759,8 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
                     color: Colors.white.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(
-                    widget.focusAdvisers
-                        ? Icons.person_add_alt_1_outlined
-                        : Icons.edit_outlined,
+                  child: const Icon(
+                    Icons.edit_outlined,
                     color: Colors.white,
                     size: 18,
                   ),
@@ -4271,9 +4771,7 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        widget.focusAdvisers
-                            ? 'Add Adviser'
-                            : 'Edit Organization Profile',
+                        'Edit Organization Profile',
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 17,
                           fontWeight: FontWeight.w700,
@@ -4281,9 +4779,7 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
                         ),
                       ),
                       Text(
-                        widget.focusAdvisers
-                            ? 'Add or update this organization\'s adviser details'
-                            : 'Update info, adviser details & social links',
+                        'Update info, adviser details & social links',
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 11,
                           color: Colors.white.withOpacity(0.7),
@@ -4476,7 +4972,6 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
 
                     // Adviser section — up to 2 advisers per org
                     Row(
-                      key: _adviserSectionKey,
                       children: [
                         Expanded(
                           child: _sectionLabel(
@@ -4705,6 +5200,19 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
                     ),
                     const SizedBox(height: 12),
                     TextField(
+                      controller: _ttCtrl,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        color: _C.charcoal,
+                      ),
+                      decoration: _inputDecoration(
+                        'TikTok',
+                        hint: '@yourorg',
+                        icon: Icons.music_note_rounded,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
                       controller: _gmCtrl,
                       style: GoogleFonts.beVietnamPro(
                         fontSize: 13,
@@ -4776,6 +5284,445 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
                           )
                         : Text(
                             'Save Changes',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Add Adviser Dialog — adds exactly one adviser, whichever slot is next
+// (primary, co-, or third). Removing an adviser stays exclusively in the
+// full Edit Organization Profile dialog — this one only ever adds.
+// ─────────────────────────────────────────────────────────────────────────────
+class _AddAdviserDialog extends StatefulWidget {
+  final String orgId;
+  final String shortName;
+  final List<AdviserInfo> existingAdvisers;
+  final String adviserPhotoUrl;
+  // Non-null means "edit the adviser already at this index" instead of
+  // appending a new one — same dialog, same fields, different save target.
+  final int? editIndex;
+  final VoidCallback onSaved;
+
+  const _AddAdviserDialog({
+    required this.orgId,
+    required this.shortName,
+    required this.existingAdvisers,
+    this.adviserPhotoUrl = '',
+    this.editIndex,
+    required this.onSaved,
+  });
+
+  @override
+  State<_AddAdviserDialog> createState() => _AddAdviserDialogState();
+}
+
+class _AddAdviserDialogState extends State<_AddAdviserDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameCtrl = TextEditingController();
+  final _titleCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  String? _photoUrl;
+  bool _isUploadingPhoto = false;
+  bool _isSaving = false;
+
+  bool get _isEditing => widget.editIndex != null;
+  // Whichever slot this dialog is acting on — the next open slot when
+  // adding, or the slot being edited. Only the primary (first) adviser gets
+  // a photo, matching the schema the rest of this file already uses.
+  int get _slotIndex => widget.editIndex ?? widget.existingAdvisers.length;
+  bool get _isPrimary => _slotIndex == 0;
+  String get _slotLabel => switch (_slotIndex) {
+    0 => 'primary adviser',
+    1 => 'co-adviser',
+    _ => 'third adviser',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    if (_isEditing) {
+      final existing = widget.existingAdvisers[widget.editIndex!];
+      _nameCtrl.text = existing.name;
+      _titleCtrl.text = existing.title;
+      _phoneCtrl.text = existing.phone;
+      _emailCtrl.text = existing.email;
+      if (_isPrimary && widget.adviserPhotoUrl.isNotEmpty) {
+        _photoUrl = widget.adviserPhotoUrl;
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _titleCtrl.dispose();
+    _phoneCtrl.dispose();
+    _emailCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickPhoto() async {
+    setState(() => _isUploadingPhoto = true);
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        withData: true,
+      );
+      if (result == null) return;
+      final file = result.files.first;
+      if (file.bytes == null) return;
+      final mime = _mimeTypeFromBytes(file.bytes!);
+      setState(
+        () => _photoUrl = 'data:$mime;base64,${base64Encode(file.bytes!)}',
+      );
+    } catch (e) {
+      if (mounted) _snack('Failed to load image: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _isUploadingPhoto = false);
+    }
+  }
+
+  void _snack(String msg, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          msg,
+          style: GoogleFonts.beVietnamPro(fontSize: 13, color: Colors.white),
+        ),
+        backgroundColor: isError ? _C.error : _C.success,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(_DS.radiusSm),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isSaving = true);
+
+    final adviser = AdviserInfo(
+      name: _nameCtrl.text.trim(),
+      title: _titleCtrl.text.trim(),
+      email: _emailCtrl.text.trim(),
+      phone: _phoneCtrl.text.trim(),
+    );
+    final advisers = _isEditing
+        ? ([...widget.existingAdvisers]..[widget.editIndex!] = adviser)
+        : [...widget.existingAdvisers, adviser];
+    final primary = advisers.first;
+
+    final payload = <String, dynamic>{
+      'adviserName': primary.name,
+      'adviserTitle': primary.title,
+      'adviserEmail': primary.email,
+      'adviserPhone': primary.phone,
+      'advisers': advisers.map((a) => a.toMap()).toList(),
+      if (_isPrimary && _photoUrl != null) 'adviserPhotoUrl': _photoUrl,
+    };
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('organizations')
+          .doc(widget.orgId)
+          .update(payload);
+      await syncAdviserRoleDocsForOrg(widget.orgId, widget.shortName, payload);
+      await activity_log.ActivityLogger.log(
+        action: _isEditing ? 'edit_adviser' : 'add_adviser',
+        module: 'org_profile',
+        details: {'orgId': widget.orgId, 'adviserName': adviser.name},
+      );
+      widget.onSaved();
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      _snack('Error: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 480,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.85,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
+            decoration: const BoxDecoration(
+              color: _C.primaryDark,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withAlpha(38),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    _isEditing
+                        ? Icons.edit_outlined
+                        : Icons.person_add_alt_1_rounded,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _isEditing ? 'Edit Adviser' : 'Add Adviser',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                      Text(
+                        _isEditing
+                            ? 'Update this organization\'s $_slotLabel'
+                            : 'Add this organization\'s $_slotLabel',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 11,
+                          color: Colors.white.withOpacity(0.7),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(
+                    Icons.close_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+          ),
+
+          // Body
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_isPrimary) ...[
+                      Row(
+                        children: [
+                          Container(
+                            width: 60,
+                            height: 60,
+                            decoration: BoxDecoration(
+                              color: _C.primaryDark.withOpacity(0.10),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: _C.borderSoft,
+                                width: 2,
+                              ),
+                            ),
+                            clipBehavior: Clip.antiAlias,
+                            child: _photoUrl != null
+                                ? Image.memory(
+                                    base64Decode(
+                                      _photoUrl!.contains(',')
+                                          ? _photoUrl!.split(',').last
+                                          : _photoUrl!,
+                                    ),
+                                    fit: BoxFit.cover,
+                                  )
+                                : const Icon(
+                                    Icons.person,
+                                    color: _C.textFaint,
+                                    size: 28,
+                                  ),
+                          ),
+                          const SizedBox(width: 14),
+                          OutlinedButton.icon(
+                            onPressed: _isUploadingPhoto ? null : _pickPhoto,
+                            icon: _isUploadingPhoto
+                                ? const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.upload_outlined, size: 16),
+                            label: Text(
+                              _isUploadingPhoto ? 'Uploading…' : 'Upload Photo',
+                              style: GoogleFonts.beVietnamPro(fontSize: 12),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: _C.borderSoft),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              foregroundColor: _C.primaryDark,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                    ],
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _nameCtrl,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13,
+                              color: _C.charcoal,
+                            ),
+                            decoration: _inputDecoration(
+                              'Full Name *',
+                              hint: 'Adviser full name',
+                              icon: Icons.person_outline,
+                            ),
+                            validator: (v) => v?.trim().isEmpty == true
+                                ? 'Adviser name is required'
+                                : null,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextFormField(
+                            controller: _titleCtrl,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13,
+                              color: _C.charcoal,
+                            ),
+                            decoration: _inputDecoration(
+                              'Title',
+                              hint: 'e.g. Instructor',
+                              icon: Icons.badge_outlined,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _phoneCtrl,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        color: _C.charcoal,
+                      ),
+                      decoration: _inputDecoration(
+                        'Phone',
+                        hint: '+63 xxx xxx xxxx',
+                        icon: Icons.phone_outlined,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _emailCtrl,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        color: _C.charcoal,
+                      ),
+                      decoration: _inputDecoration(
+                        'Email',
+                        hint: 'adviser@example.com',
+                        icon: Icons.email_outlined,
+                      ),
+                      validator: (v) {
+                        final t = v?.trim() ?? '';
+                        if (t.isEmpty) return null;
+                        return _emailPattern.hasMatch(t)
+                            ? null
+                            : 'Enter a valid email';
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // Footer
+          Container(
+            padding: const EdgeInsets.fromLTRB(24, 14, 24, 20),
+            decoration: const BoxDecoration(
+              border: Border(top: BorderSide(color: _C.border)),
+              color: _C.surface,
+              borderRadius: BorderRadius.vertical(bottom: Radius.circular(18)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: _C.borderSoft),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                    ),
+                    child: Text(
+                      'Cancel',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: _C.textMid,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _isSaving ? null : _save,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _C.primaryDark,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                    ),
+                    child: _isSaving
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : Text(
+                            _isEditing ? 'Save Changes' : 'Add Adviser',
                             style: GoogleFonts.beVietnamPro(
                               fontSize: 13,
                               fontWeight: FontWeight.w700,

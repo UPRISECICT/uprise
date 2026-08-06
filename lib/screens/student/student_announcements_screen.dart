@@ -146,6 +146,7 @@ class AnnouncementData {
   final String title;
   final String org;
   final String orgSub;
+  final String category;
   final String date;
   final String time;
   final DateTime timestamp;
@@ -167,6 +168,7 @@ class AnnouncementData {
     required this.title,
     required this.org,
     required this.orgSub,
+    this.category = '',
     required this.date,
     required this.time,
     required this.timestamp,
@@ -203,6 +205,7 @@ class AnnouncementData {
       title: d['title'] as String? ?? '',
       org: d['authorName'] as String? ?? 'Organization',
       orgSub: (d['category'] as String?)?.toUpperCase() ?? 'ANNOUNCEMENT',
+      category: (d['category'] as String? ?? '').trim(),
       date: DateFormat('MMM dd, yyyy').format(dateTime),
       time: DateFormat('h:mm a').format(dateTime),
       timestamp: dateTime,
@@ -410,6 +413,94 @@ String _timeAgo(DateTime dt) {
   return DateFormat('MMM dd, yyyy').format(dt);
 }
 
+// Same category → color/icon mapping as org_announcements.dart's
+// _categoryThemes, so a post tagged "Training" (say) reads as the same blue
+// on both the org's web feed and here — the only place students could tell
+// posts apart by category before this was the plain-text tag pill.
+class _CategoryTheme {
+  final Color bg, fg;
+  final IconData icon;
+  const _CategoryTheme(this.bg, this.fg, this.icon);
+}
+
+const Map<String, _CategoryTheme> _categoryThemes = {
+  'General': _CategoryTheme(
+    Color(0xFFF1F5F9),
+    Color(0xFF475569),
+    Icons.campaign_outlined,
+  ),
+  'New Hire': _CategoryTheme(
+    Color(0xFFECFDF5),
+    Color(0xFF059669),
+    Icons.person_add_alt_1_rounded,
+  ),
+  'SOP Updates': _CategoryTheme(
+    Color(0xFFEFF6FF),
+    Color(0xFF2563EB),
+    Icons.fact_check_outlined,
+  ),
+  'Policy Updates': _CategoryTheme(
+    Color(0xFFF3E8FF),
+    Color(0xFF7C3AED),
+    Icons.policy_outlined,
+  ),
+  'Promotion': _CategoryTheme(
+    Color(0xFFFFFBEB),
+    Color(0xFFFB923C),
+    Icons.trending_up_rounded,
+  ),
+  'Transfer': _CategoryTheme(
+    Color(0xFFFFE4E6),
+    Color(0xFFE11D48),
+    Icons.swap_horiz_rounded,
+  ),
+  'Training': _CategoryTheme(
+    Color(0xFFE0F2FE),
+    Color(0xFF0284C7),
+    Icons.school_outlined,
+  ),
+  'Special': _CategoryTheme(
+    Color(0xFFFCE7F3),
+    Color(0xFFDB2777),
+    Icons.star_outline_rounded,
+  ),
+};
+
+_CategoryTheme _categoryTheme(String category) =>
+    _categoryThemes[category] ??
+    const _CategoryTheme(
+      Color(0xFFF1F5F9),
+      Color(0xFF475569),
+      Icons.label_outline_rounded,
+    );
+
+Widget _categoryBadge(String category) {
+  final t = _categoryTheme(category);
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: t.bg,
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(t.icon, size: 10, color: t.fg),
+        const SizedBox(width: 4),
+        Text(
+          category,
+          style: TextStyle(
+            fontSize: 9.5,
+            fontWeight: FontWeight.w700,
+            color: t.fg,
+            letterSpacing: 0.3,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 class _AnnouncementCard extends StatefulWidget {
   final AnnouncementData ann;
 
@@ -454,6 +545,14 @@ class _AnnouncementCardState extends State<_AnnouncementCard> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
+          // A BoxDecoration border can only carry a borderRadius when every
+          // side is the same color — mixing a category-colored left edge
+          // with a plain grey/pinned border on the other three sides throws
+          // "A borderRadius can only be given on borders with uniform
+          // colors" at paint time, which silently blanks the whole card
+          // instead of showing a build-time error (this exact mistake broke
+          // the org web feed until traced with a widget test). The category
+          // accent is a separate Container below instead.
           border: Border.all(
             color: ann.isPinned
                 ? AppColors.primaryDark.withOpacity(0.35)
@@ -469,269 +568,291 @@ class _AnnouncementCardState extends State<_AnnouncementCard> {
           ],
         ),
         clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Pinned strip ──
-            if (ann.isPinned)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 6,
-                ),
-                color: const Color(0xFFFFFBEB),
-                child: Row(
+        // IntrinsicHeight — the card's height comes from its own content (it
+        // sits in a ListView, not a fixed-height parent), so a plain
+        // CrossAxisAlignment.stretch Row has no height to stretch *to* and
+        // throws "BoxConstraints forces an infinite height." IntrinsicHeight
+        // measures the content first so the accent bar has something to
+        // match.
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(width: 4, color: _categoryTheme(ann.category).fg),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(
-                      Icons.push_pin_rounded,
-                      size: 13,
-                      color: Color(0xFFD97706),
-                    ),
-                    const SizedBox(width: 6),
-                    const Text(
-                      'Pinned Announcement',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFFD97706),
-                        letterSpacing: 0.3,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-            // ── Post header: avatar + org name + time + tag ──
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppColors.primaryDark.withOpacity(0.1),
-                    ),
-                    child: ClipOval(
-                      child:
-                          (logoUrl != null &&
-                              logoUrl.isNotEmpty &&
-                              AppImage.provider(logoUrl) != null)
-                          ? Image(
-                              image: AppImage.provider(logoUrl)!,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Center(
-                                child: Text(
-                                  ann.org.isNotEmpty
-                                      ? ann.org[0].toUpperCase()
-                                      : '?',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w800,
-                                    color: AppColors.primaryDark,
-                                  ),
-                                ),
-                              ),
-                            )
-                          : Center(
-                              child: Text(
-                                ann.org.isNotEmpty
-                                    ? ann.org[0].toUpperCase()
-                                    : '?',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppColors.primaryDark,
-                                ),
-                              ),
-                            ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          ann.org,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.black87,
-                          ),
+                    // ── Pinned strip ──
+                    if (ann.isPinned)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 6,
                         ),
-                        const SizedBox(height: 3),
-                        Wrap(
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          spacing: 8,
-                          runSpacing: 4,
+                        color: const Color(0xFFFFFBEB),
+                        child: Row(
                           children: [
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.access_time_rounded,
-                                  size: 11,
-                                  color: Colors.grey.shade500,
-                                ),
-                                const SizedBox(width: 3),
-                                Text(
-                                  _timeAgo(ann.timestamp),
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.grey.shade500,
-                                  ),
-                                ),
-                              ],
+                            const Icon(
+                              Icons.push_pin_rounded,
+                              size: 13,
+                              color: Color(0xFFD97706),
                             ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 7,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.primaryDark.withOpacity(0.08),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                ann.tag,
-                                style: TextStyle(
-                                  fontSize: 9.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.primaryDark,
-                                  letterSpacing: 0.3,
-                                ),
+                            const SizedBox(width: 6),
+                            const Text(
+                              'Pinned Announcement',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFFD97706),
+                                letterSpacing: 0.3,
                               ),
                             ),
                           ],
                         ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
+                      ),
 
-            // ── Title ──
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-              child: Text(
-                ann.title,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black87,
-                  height: 1.3,
-                ),
-              ),
-            ),
-
-            // ── Body (expandable, like the web feed) ──
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildRichContent(
-                    truncated
-                        ? '${ann.body.substring(0, ann.body.length.clamp(0, 220))}…'
-                        : ann.body,
-                    TextStyle(
-                      fontSize: 13.5,
-                      color: Colors.grey.shade700,
-                      height: 1.55,
+                    // ── Post header: avatar + org name + time + tag ──
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 42,
+                            height: 42,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: AppColors.primaryDark.withOpacity(0.1),
+                            ),
+                            child: ClipOval(
+                              child:
+                                  (logoUrl != null &&
+                                      logoUrl.isNotEmpty &&
+                                      AppImage.provider(logoUrl) != null)
+                                  ? Image(
+                                      image: AppImage.provider(logoUrl)!,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => Center(
+                                        child: Text(
+                                          ann.org.isNotEmpty
+                                              ? ann.org[0].toUpperCase()
+                                              : '?',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w800,
+                                            color: AppColors.primaryDark,
+                                          ),
+                                        ),
+                                      ),
+                                    )
+                                  : Center(
+                                      child: Text(
+                                        ann.org.isNotEmpty
+                                            ? ann.org[0].toUpperCase()
+                                            : '?',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w800,
+                                          color: AppColors.primaryDark,
+                                        ),
+                                      ),
+                                    ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  ann.org,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Wrap(
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  spacing: 8,
+                                  runSpacing: 4,
+                                  children: [
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.access_time_rounded,
+                                          size: 11,
+                                          color: Colors.grey.shade500,
+                                        ),
+                                        const SizedBox(width: 3),
+                                        Text(
+                                          _timeAgo(ann.timestamp),
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.grey.shade500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    if (ann.category.isNotEmpty)
+                                      _categoryBadge(ann.category),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 7,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primaryDark
+                                            .withOpacity(0.08),
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      child: Text(
+                                        ann.tag,
+                                        style: TextStyle(
+                                          fontSize: 9.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: AppColors.primaryDark,
+                                          letterSpacing: 0.3,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  if (isLong) ...[
-                    const SizedBox(height: 4),
-                    GestureDetector(
-                      onTap: () => setState(() => _expanded = !_expanded),
+
+                    // ── Title ──
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
                       child: Text(
-                        _expanded ? 'See less' : 'See more',
+                        ann.title,
                         style: const TextStyle(
-                          fontSize: 12.5,
+                          fontSize: 16,
                           fontWeight: FontWeight.w700,
-                          color: AppColors.primaryDark,
+                          color: Colors.black87,
+                          height: 1.3,
                         ),
                       ),
                     ),
-                  ],
-                ],
-              ),
-            ),
 
-            // ── Go to linked event ──
-            if (ann.linkedEventId.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () => _goToLinkedEvent(context, ann),
-                    icon: Icon(
-                      Icons.event_available_rounded,
-                      size: 16,
-                      color: AppColors.primaryDark,
-                    ),
-                    label: Text(
-                      'View Event: ${ann.linkedEventTitle}',
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.primaryDark,
-                      side: BorderSide(
-                        color: AppColors.primaryDark.withOpacity(0.3),
+                    // ── Body (expandable, like the web feed) ──
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildRichContent(
+                            truncated
+                                ? '${ann.body.substring(0, ann.body.length.clamp(0, 220))}…'
+                                : ann.body,
+                            TextStyle(
+                              fontSize: 13.5,
+                              color: Colors.grey.shade700,
+                              height: 1.55,
+                            ),
+                          ),
+                          if (isLong) ...[
+                            const SizedBox(height: 4),
+                            GestureDetector(
+                              onTap: () =>
+                                  setState(() => _expanded = !_expanded),
+                              child: Text(
+                                _expanded ? 'See less' : 'See more',
+                                style: const TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.primaryDark,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 10,
-                        horizontal: 12,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
                     ),
-                  ),
-                ),
-              ),
 
-            // ── Photo — shown in full, never cropped or covered ──
-            if (ann.imageUrl.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Container(
-                width: double.infinity,
-                constraints: const BoxConstraints(maxHeight: 420),
-                color: const Color(0xFFF8F9FB),
-                child: AppImage.provider(ann.imageUrl) != null
-                    ? Image(
-                        image: AppImage.provider(ann.imageUrl)!,
-                        width: double.infinity,
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => Container(
-                          height: 200,
-                          color: const Color(0xFFF8F9FB),
-                          child: Icon(
-                            Icons.broken_image_outlined,
-                            color: Colors.grey.shade400,
+                    // ── Go to linked event ──
+                    if (ann.linkedEventId.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () => _goToLinkedEvent(context, ann),
+                            icon: Icon(
+                              Icons.event_available_rounded,
+                              size: 16,
+                              color: AppColors.primaryDark,
+                            ),
+                            label: Text(
+                              'View Event: ${ann.linkedEventTitle}',
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.primaryDark,
+                              side: BorderSide(
+                                color: AppColors.primaryDark.withOpacity(0.3),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 10,
+                                horizontal: 12,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
                           ),
                         ),
-                      )
-                    : Container(
-                        height: 200,
-                        color: const Color(0xFFF8F9FB),
-                        child: Icon(
-                          Icons.broken_image_outlined,
-                          color: Colors.grey.shade400,
-                        ),
                       ),
+
+                    // ── Photo — shown in full, never cropped or covered ──
+                    if (ann.imageUrl.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity,
+                        constraints: const BoxConstraints(maxHeight: 420),
+                        color: const Color(0xFFF8F9FB),
+                        child: AppImage.provider(ann.imageUrl) != null
+                            ? Image(
+                                image: AppImage.provider(ann.imageUrl)!,
+                                width: double.infinity,
+                                fit: BoxFit.contain,
+                                errorBuilder: (_, __, ___) => Container(
+                                  height: 200,
+                                  color: const Color(0xFFF8F9FB),
+                                  child: Icon(
+                                    Icons.broken_image_outlined,
+                                    color: Colors.grey.shade400,
+                                  ),
+                                ),
+                              )
+                            : Container(
+                                height: 200,
+                                color: const Color(0xFFF8F9FB),
+                                child: Icon(
+                                  Icons.broken_image_outlined,
+                                  color: Colors.grey.shade400,
+                                ),
+                              ),
+                      ),
+                    ],
+
+                    const SizedBox(height: 12),
+                  ],
+                ),
               ),
             ],
-
-            const SizedBox(height: 12),
-          ],
+          ),
         ),
       ),
     );

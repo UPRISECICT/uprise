@@ -46,6 +46,35 @@ class NotificationService {
     });
   }
 
+  // Send a notification to just the org's own login account (role: 'org'),
+  // not every member/officer tagged to it — used for private 1:1 messages,
+  // where sendToOrgMembers's broadcast-to-everyone-tagged-to-this-org
+  // behavior would leak a student's private message preview to every other
+  // member and officer of the org via their own notification feed.
+  static Future<void> sendToOrgAccount({
+    required String orgId,
+    required String title,
+    required String body,
+    String type = 'general',
+    Map<String, dynamic>? data,
+  }) async {
+    final snap = await _db
+        .collection('users')
+        .where('orgId', isEqualTo: orgId)
+        .where('role', isEqualTo: 'org')
+        .limit(1)
+        .get();
+    if (snap.docs.isEmpty) return;
+    await sendToUser(
+      userId: snap.docs.first.id,
+      title: title,
+      body: body,
+      type: type,
+      orgId: orgId,
+      data: data,
+    );
+  }
+
   // Send a notification to all members of an organization
   static Future<void> sendToOrgMembers({
     required String orgId,
@@ -93,8 +122,10 @@ class NotificationService {
     String orgId = '',
     Map<String, dynamic>? data,
   }) async {
-    final adminsSnap =
-        await _db.collection('users').where('role', isEqualTo: 'admin').get();
+    final adminsSnap = await _db
+        .collection('users')
+        .where('role', isEqualTo: 'admin')
+        .get();
 
     final enabledFlags = await Future.wait(
       adminsSnap.docs.map((doc) => _isEnabledFor(doc.id)),
@@ -158,10 +189,9 @@ class NotificationService {
 
   // Mark a notification as read
   static Future<void> markAsRead(String notificationId) async {
-    await _db
-        .collection('notifications')
-        .doc(notificationId)
-        .update({'isRead': true});
+    await _db.collection('notifications').doc(notificationId).update({
+      'isRead': true,
+    });
   }
 
   // Mark all notifications as read for a user

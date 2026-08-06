@@ -1,4 +1,4 @@
-// ignore_for_file: unnecessary_cast, unused_field, deprecated_member_use
+﻿// ignore_for_file: unnecessary_cast, unused_field, deprecated_member_use
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -305,6 +305,16 @@ Widget _sectionLabel(String text, {IconData? icon}) {
   );
 }
 
+// Helper to resolve signatory display name. If more context is available
+// this can be updated to look up from a signatory list; fallback to the
+// provided key.
+// Default map of signatory display names. Can be populated from
+// higher-level data when available. Kept private to this file.
+final Map<String, String> _signatoryNames = {};
+String _getSignatoryName(String key) {
+   return _signatoryNames[key] ?? key;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Input decoration helper
 // ─────────────────────────────────────────────────────────────────────────────
@@ -372,15 +382,15 @@ class SignatoryData {
   });
 
   factory SignatoryData.fromDoc(DocumentSnapshot doc) {
-    final d = (doc.data() as Map<String, dynamic>?) ?? {};
-    return SignatoryData(
-      id: doc.id,
-      placeholderKey: (d['placeholderKey'] ?? '').toString(),
-      fullName: (d['fullName'] ?? '').toString(),
-      title: (d['title'] ?? '').toString(),
-      signatureBase64: d['signatureBase64'] as String?,
-    );
-  }
+  final d = (doc.data() as Map<String, dynamic>?) ?? {};
+  return SignatoryData(
+    id: doc.id,
+    placeholderKey: doc.id, // ← CHANGE THIS! Use doc.id instead of reading from document
+    fullName: (d['fullName'] ?? '').toString(),
+    title: (d['title'] ?? '').toString(),
+    signatureBase64: d['signatureBase64'] as String?,
+  );
+}
 }
 
 double _autoFitFontSize({
@@ -1041,10 +1051,7 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
       ),
       child: Row(
         children: [
-          Expanded(flex: 2, child: _headerCell('CERTIFICATE ID')),
           Expanded(flex: 3, child: _headerCell('EVENT NAME')),
-          Expanded(flex: 2, child: _headerCell('ORGANIZATION')),
-          Expanded(flex: 2, child: _headerCell('TYPE')),
           Expanded(flex: 2, child: _headerCell('DATE ISSUED')),
           Expanded(flex: 2, child: _headerCell('RECIPIENTS')),
           Expanded(flex: 2, child: _headerCell('STATUS')),
@@ -1088,18 +1095,7 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
         child: Row(
           children: [
             Expanded(
-              flex: 2,
-              child: Text(
-                r.certificateId,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: UpriseColors.primaryDark,
-                ),
-              ),
-            ),
-            Expanded(
-              flex: 3,
+              flex: 4,
               child: Text(
                 b.eventName,
                 style: GoogleFonts.beVietnamPro(
@@ -1111,12 +1107,6 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
             ),
             Expanded(
               flex: 2,
-              // Align (not just the bare Container) — Expanded gives its
-              // child a tight width equal to the whole column, so a plain
-              // Container with no width of its own stretches to fill that
-              // instead of hugging the text. Align gives the Container
-              // loose constraints to shrink-wrap while still positioning it
-              // within the column.
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Container(
@@ -1128,29 +1118,11 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
                     color: UpriseColors.primaryDark.withOpacity(0.07),
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  child: Text(
-                    b.organization,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: UpriseColors.primaryDark,
-                    ),
-                  ),
                 ),
               ),
             ),
             Expanded(
-              flex: 2,
-              child: Text(
-                r.type,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 12,
-                  color: const Color(0xFF64748B),
-                ),
-              ),
-            ),
-            Expanded(
-              flex: 2,
+              flex: 3,
               child: Text(
                 DateFormat('MMM d, yyyy').format(b.date),
                 style: GoogleFonts.beVietnamPro(
@@ -2558,12 +2530,12 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
             final id = doc.id; // ← This is the key!
             signatories[id] = SignatoryData(
               id: id,
-              placeholderKey: (data['placeholderKey'] ?? '').toString(),
+              placeholderKey: id,  // ← Use the document ID as placeholderKey
               fullName: (data['fullName'] ?? '').toString(),
               title: (data['title'] ?? '').toString(),
               signatureBase64: data['signatureBase64'] as String?,
             );
-          }
+            }
 
           // ⭐ IMPORTANT: Only use placements that have matching signatories
           final validPlacements = <String, CertNamePlacement>{};
@@ -3820,6 +3792,8 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
 
   static const int _maxBytes = 5 * 1024 * 1024; // 5 MB
 
+   final Map<String, String> _signatoryNames = {};
+
   // Which signatory IDs the admin authorized for this event at approval
   // time, resolved once from the proposal doc rather than re-fetched on
   // every rebuild.
@@ -3903,6 +3877,9 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
       final signatoryPlacementsMap = {
         for (final e in _signatoryPlacements.entries) e.key: e.value.toMap(),
       };
+
+      print(' UPLOAD: signatoryPlacementsMap keys: ${signatoryPlacementsMap.keys}');
+    print(' UPLOAD: signatoryPlacementsMap: $signatoryPlacementsMap');
 
       await FirebaseFirestore.instance.collection('certificate_templates').add({
         'orgId': widget.orgId,
@@ -4095,7 +4072,9 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
                                 border: Border.all(color: Colors.white),
                               ),
                               child: Text(
-                                '{{${entry.key}}}',
+
+                                
+                                _getSignatoryName(entry.key),
                                 textAlign: TextAlign.center,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -4250,6 +4229,10 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
                     .map((d) => SignatoryData.fromDoc(d))
                     .where((s) => authorizedIds.contains(s.id))
                     .toList();
+
+                     for (final s in roster) {
+      _signatoryNames[s.id] = s.fullName;
+    }
                 if (roster.isEmpty) {
                   return Text(
                     'The signatory authorized for this event no longer '
@@ -4303,7 +4286,7 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              '{{${s.id}}} — ${s.fullName}',
+                              s.fullName,
                               style: GoogleFonts.beVietnamPro(
                                 fontSize: 11.5,
                                 fontWeight: FontWeight.w600,

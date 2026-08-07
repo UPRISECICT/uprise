@@ -239,21 +239,6 @@ class _CertificatesContentState extends State<CertificatesContent> {
     return timestamp.toString();
   }
 
-  Widget _buildImage(String imageUrl, {double height = 180}) {
-    if (imageUrl.isEmpty) return const SizedBox.shrink();
-    return AppImage(
-      source: imageUrl,
-      height: height,
-      width: double.infinity,
-      fit: BoxFit.cover,
-      placeholder: Container(
-        height: height,
-        color: Colors.grey.shade200,
-        child: const Icon(Icons.broken_image, color: Colors.grey),
-      ),
-    );
-  }
-
   // ── Filter Bottom Sheet ──────────────────────────────────────────
   void _showOrgFilterSheet() {
     showModalBottomSheet(
@@ -808,8 +793,13 @@ class _CertificatesContentState extends State<CertificatesContent> {
     final isDraft = cert['status'] == 'draft';
     final isUploaded = cert['isUploaded'] == true;
     final imageUrl = cert['imageUrl'] as String;
+    // Was `!isUploaded && organization.isNotEmpty` — routing every uploaded
+    // template through the plain _buildImage(imageUrl) below instead, which
+    // draws only the bare background with no recipient name overlay at all.
+    // _buildLivePreview handles the uploaded case correctly (background +
+    // name at its saved namePlacement), so it's fine for either case now.
     final canRenderLive =
-        !isUploaded && (cert['organization'] as String).isNotEmpty;
+        imageUrl.isNotEmpty || (cert['organization'] as String).isNotEmpty;
 
     return GestureDetector(
       onTap: () => _openCertificateDetail(cert),
@@ -833,9 +823,7 @@ class _CertificatesContentState extends State<CertificatesContent> {
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(16),
               ),
-              child: imageUrl.isNotEmpty && isUploaded
-                  ? _buildImage(imageUrl, height: 180)
-                  : canRenderLive
+              child: canRenderLive
                   ? _buildLivePreview(cert)
                   : _placeholderBanner(isDraft, isUploaded, cert),
             ),
@@ -963,47 +951,29 @@ class _CertificatesContentState extends State<CertificatesContent> {
           child: SizedBox(
             width: 500,
             height: 354,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                // Background template image
-                AppImage(
-                  source: templateImageUrl,
-                  fit: BoxFit.cover,
-                  placeholder: Container(
-                    color: Colors.grey.shade200,
-                    child: const Icon(
-                      Icons.broken_image,
-                      size: 50,
-                      color: Colors.grey,
-                    ),
+            // Was a hardcoded Positioned.fill(Center(Text(...))) — always
+            // dead center at a fixed size/color no matter where the org
+            // actually dragged the name during setup, since it never read
+            // cert['namePlacement'] at all. CertificateImageWithName is the
+            // same shared widget the org side's live preview uses, so this
+            // now renders at the position/size/color that was actually saved.
+            child: CertificateImageWithName(
+              background: AppImage(
+                source: templateImageUrl,
+                fit: BoxFit.cover,
+                placeholder: Container(
+                  color: Colors.grey.shade200,
+                  child: const Icon(
+                    Icons.broken_image,
+                    size: 50,
+                    color: Colors.grey,
                   ),
                 ),
-                // Recipient name - no container, just text
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  top: 0,
-                  bottom: 0,
-                  child: Center(
-                    child: Text(
-                      cert['recipientName'] as String? ?? 'Recipient',
-                      style: const TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        shadows: [
-                          Shadow(
-                            offset: Offset(0, 2),
-                            blurRadius: 4,
-                            color: Colors.black38,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+              ),
+              recipientName: cert['recipientName'] as String? ?? 'Recipient',
+              placement: CertNamePlacement.fromMap(
+                cert['namePlacement'] as Map<String, dynamic>?,
+              ),
             ),
           ),
         ),
@@ -1362,22 +1332,6 @@ class CertificateDetailScreen extends StatelessWidget {
 
   const CertificateDetailScreen({super.key, required this.certificate});
 
-  Widget _buildFullImage(String imageUrl) {
-    if (imageUrl.isEmpty) return const SizedBox.shrink();
-    return AppImage(
-      source: imageUrl,
-      width: double.infinity,
-      height: double.infinity,
-      fit: BoxFit.contain,
-      placeholder: Container(
-        color: Colors.grey.shade200,
-        child: const Center(
-          child: Icon(Icons.broken_image, size: 48, color: Colors.grey),
-        ),
-      ),
-    );
-  }
-
   Widget _buildLivePreview(Map<String, dynamic> cert) {
     final templateImageUrl = cert['imageUrl'] as String? ?? '';
 
@@ -1392,41 +1346,23 @@ class CertificateDetailScreen extends StatelessWidget {
           child: SizedBox(
             width: 700,
             height: 495,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                // Background template image
-                AppImage(
-                  source: templateImageUrl,
-                  fit: BoxFit.cover,
-                  placeholder: Container(
-                    color: Colors.grey.shade200,
-                    child: const Icon(
-                      Icons.broken_image,
-                      size: 50,
-                      color: Colors.grey,
-                    ),
+            child: CertificateImageWithName(
+              background: AppImage(
+                source: templateImageUrl,
+                fit: BoxFit.cover,
+                placeholder: Container(
+                  color: Colors.grey.shade200,
+                  child: const Icon(
+                    Icons.broken_image,
+                    size: 50,
+                    color: Colors.grey,
                   ),
                 ),
-                // Recipient name - no container, just text with shadow
-                Center(
-                  child: Text(
-                    cert['recipientName'] as String? ?? 'Recipient',
-                    style: const TextStyle(
-                      fontSize: 40,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      shadows: [
-                        Shadow(
-                          offset: Offset(0, 3),
-                          blurRadius: 6,
-                          color: Colors.black38,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+              ),
+              recipientName: cert['recipientName'] as String? ?? 'Recipient',
+              placement: CertNamePlacement.fromMap(
+                cert['namePlacement'] as Map<String, dynamic>?,
+              ),
             ),
           ),
         ),
@@ -1524,9 +1460,12 @@ class CertificateDetailScreen extends StatelessWidget {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(16),
-                child: imageUrl.isNotEmpty && isUploaded
-                    ? _buildFullImage(imageUrl)
-                    : organization.isNotEmpty
+                // Was routing custom-uploaded templates through
+                // _buildFullImage, which drew only the bare background with
+                // no recipient name overlay at all. _buildLivePreview
+                // handles that case correctly (background + name at its
+                // saved namePlacement), so route through it unconditionally.
+                child: imageUrl.isNotEmpty || organization.isNotEmpty
                     ? _buildLivePreview(certificate)
                     : Container(
                         color: AppColors.primaryDark.shade100,
@@ -1736,7 +1675,6 @@ class _CertificateDownloadPreviewSheetState
   @override
   Widget build(BuildContext context) {
     final cert = widget.certificate;
-    final isUploaded = cert['isUploaded'] == true;
     final imageUrl = cert['imageUrl'] as String? ?? '';
 
     return Container(
@@ -1778,9 +1716,16 @@ class _CertificateDownloadPreviewSheetState
                 borderRadius: BorderRadius.circular(16),
                 child: RepaintBoundary(
                   key: _previewKey,
-                  child: isUploaded && imageUrl.isNotEmpty
-                      ? _buildFullImage(imageUrl) // reuse helper
-                      : (cert['organization'] as String).isNotEmpty
+                  // _buildFullImage rendered only the bare template with no
+                  // recipient name overlay at all, so a downloaded PDF for
+                  // any certificate using a custom uploaded design showed a
+                  // blank template — _buildLivePreview handles the
+                  // isUploaded case correctly too (background + name
+                  // positioned per namePlacement), so route through it
+                  // unconditionally.
+                  child:
+                      (imageUrl.isNotEmpty ||
+                          (cert['organization'] as String).isNotEmpty)
                       ? _buildLivePreview(cert) // reuse helper
                       : Container(
                           color: AppColors.primaryDark.shade100,
@@ -1850,60 +1795,23 @@ class _CertificateDownloadPreviewSheetState
     );
   }
 
-  // Reuse the same helper functions from the main screen
-  Widget _buildFullImage(String imageUrl) {
-    if (imageUrl.isEmpty) return const SizedBox.shrink();
-    return AppImage(
-      source: imageUrl,
-      width: double.infinity,
-      height: double.infinity,
-      fit: BoxFit.contain,
-      placeholder: Container(
-        color: Colors.grey.shade200,
-        child: const Center(
-          child: Icon(Icons.broken_image, size: 48, color: Colors.grey),
-        ),
-      ),
-    );
-  }
-
   Widget _buildLivePreview(Map<String, dynamic> cert) {
     final templateImageUrl = cert['imageUrl'] as String? ?? '';
 
     if (templateImageUrl.isNotEmpty) {
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          AppImage(
-            source: templateImageUrl,
-            fit: BoxFit.cover,
-            placeholder: Container(
-              color: Colors.grey.shade200,
-              child: const Icon(
-                Icons.broken_image,
-                size: 50,
-                color: Colors.grey,
-              ),
-            ),
+      return CertificateImageWithName(
+        background: AppImage(
+          source: templateImageUrl,
+          fit: BoxFit.cover,
+          placeholder: Container(
+            color: Colors.grey.shade200,
+            child: const Icon(Icons.broken_image, size: 50, color: Colors.grey),
           ),
-          Center(
-            child: Text(
-              cert['recipientName'] as String? ?? 'Recipient',
-              style: const TextStyle(
-                fontSize: 40,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-                shadows: [
-                  Shadow(
-                    offset: Offset(0, 3),
-                    blurRadius: 6,
-                    color: Colors.black38,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+        ),
+        recipientName: cert['recipientName'] as String? ?? 'Recipient',
+        placement: CertNamePlacement.fromMap(
+          cert['namePlacement'] as Map<String, dynamic>?,
+        ),
       );
     }
 

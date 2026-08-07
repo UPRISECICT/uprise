@@ -323,16 +323,6 @@ Widget _sectionLabel(String text, {IconData? icon}) {
   );
 }
 
-// Helper to resolve signatory display name. If more context is available
-// this can be updated to look up from a signatory list; fallback to the
-// provided key.
-// Default map of signatory display names. Can be populated from
-// higher-level data when available. Kept private to this file.
-final Map<String, String> _signatoryNames = {};
-String _getSignatoryName(String key) {
-  return _signatoryNames[key] ?? key;
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Input decoration helper
 // ─────────────────────────────────────────────────────────────────────────────
@@ -4227,7 +4217,14 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
                                 border: Border.all(color: Colors.white),
                               ),
                               child: Text(
-                                _getSignatoryName(entry.key),
+                                // A dead top-level helper of the same name
+                                // read an always-empty top-level map here
+                                // instead of this class's own populated
+                                // instance field (a name collision — the
+                                // top-level function has no access to
+                                // `this`), so the on-canvas chip showed the
+                                // raw signatory doc ID instead of their name.
+                                _signatoryNames[entry.key] ?? entry.key,
                                 textAlign: TextAlign.center,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,

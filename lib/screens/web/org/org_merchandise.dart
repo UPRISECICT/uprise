@@ -41,17 +41,32 @@ class _DS {
     String label, {
     String? hint,
     IconData? icon,
+    bool required = false,
   }) {
+    final labelStyle = GoogleFonts.beVietnamPro(
+      fontSize: 13,
+      color: const Color(0xFF64748B),
+    );
     return InputDecoration(
-      labelText: label,
+      label: required
+          ? RichText(
+              text: TextSpan(
+                children: [
+                  TextSpan(text: label, style: labelStyle),
+                  TextSpan(
+                    text: ' *',
+                    style: labelStyle.copyWith(color: UpriseColors.error),
+                  ),
+                ],
+              ),
+            )
+          : null,
+      labelText: required ? null : label,
       hintText: hint,
       prefixIcon: icon != null
           ? Icon(icon, size: 18, color: const Color(0xFF9AA5B4))
           : null,
-      labelStyle: GoogleFonts.beVietnamPro(
-        fontSize: 13,
-        color: const Color(0xFF64748B),
-      ),
+      labelStyle: labelStyle,
       hintStyle: GoogleFonts.beVietnamPro(
         fontSize: 13,
         color: const Color(0xFF9AA5B4),
@@ -1561,6 +1576,7 @@ class _ProductModal extends StatefulWidget {
 }
 
 class _ProductModalState extends State<_ProductModal> {
+  final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   final _costPriceCtrl = TextEditingController();
@@ -1648,35 +1664,17 @@ class _ProductModalState extends State<_ProductModal> {
   }
 
   Future<void> _submit() async {
-    if (_nameCtrl.text.trim().isEmpty) {
-      _showError('Product name is required');
-      return;
-    }
+    if (_formKey.currentState?.validate() != true) return;
     final price = double.tryParse(_priceCtrl.text.trim()) ?? -1;
-    if (price <= 0) {
-      _showError('Enter a valid price');
-      return;
-    }
 
     final hasVariants = _variants.isNotEmpty;
-    int stock;
-    if (hasVariants) {
-      stock = _variants.fold<int>(0, (sum, v) => sum + v.stock);
-    } else {
-      stock = int.tryParse(_stockCtrl.text.trim()) ?? -1;
-      if (stock < 0) {
-        _showError('Enter a valid stock quantity');
-        return;
-      }
-    }
+    final stock = hasVariants
+        ? _variants.fold<int>(0, (sum, v) => sum + v.stock)
+        : int.tryParse(_stockCtrl.text.trim()) ?? 0;
 
     final effectiveCategory = _category == 'Others'
         ? _customCategoryCtrl.text.trim()
         : _category;
-    if (effectiveCategory.isEmpty) {
-      _showError('Enter a custom category name');
-      return;
-    }
 
     final computedStatus = (_isEdit && _isDiscontinued)
         ? 'discontinued'
@@ -1900,223 +1898,251 @@ class _ProductModalState extends State<_ProductModal> {
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Core identifying info first (name, category, price,
-                    // stock) — these used to sit below the image + 360°
-                    // photo uploaders, which pushed every essential field
-                    // out of view on anything but a tall screen, forcing a
-                    // long scroll before reaching Category or Price. Photos
-                    // are the more optional part of listing a product, so
-                    // they move to the end instead.
-                    _sectionLabel(
-                      'Product Information',
-                      icon: Icons.info_outline_rounded,
-                    ),
-                    TextFormField(
-                      controller: _nameCtrl,
-                      decoration: _DS.inputDecoration(
-                        'Product Name',
-                        hint: 'e.g., Premium Shirt 2026',
-                        icon: Icons.label_outline_rounded,
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Core identifying info first (name, category, price,
+                      // stock) — these used to sit below the image + 360°
+                      // photo uploaders, which pushed every essential field
+                      // out of view on anything but a tall screen, forcing a
+                      // long scroll before reaching Category or Price. Photos
+                      // are the more optional part of listing a product, so
+                      // they move to the end instead.
+                      _sectionLabel(
+                        'Product Information',
+                        icon: Icons.info_outline_rounded,
                       ),
-                      style: GoogleFonts.beVietnamPro(fontSize: 13),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Category',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFF374151),
+                      TextFormField(
+                        controller: _nameCtrl,
+                        decoration: _DS.inputDecoration(
+                          'Product Name',
+                          hint: 'e.g., Premium Shirt 2026',
+                          icon: Icons.label_outline_rounded,
+                          required: true,
+                        ),
+                        style: GoogleFonts.beVietnamPro(fontSize: 13),
+                        validator: (v) =>
+                            v?.trim().isEmpty ?? true ? 'Required' : null,
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    Container(
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8F9FB),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: const Color(0xFFE2E6EA)),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Category',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF374151),
+                        ),
                       ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: _category,
-                          isExpanded: true,
-                          icon: const Icon(
-                            Icons.keyboard_arrow_down_rounded,
-                            size: 18,
-                            color: Color(0xFF9AA5B4),
-                          ),
-                          items: _merchandiseCategories
-                              .map(
-                                (c) => DropdownMenuItem(
-                                  value: c,
-                                  child: Text(
-                                    c,
-                                    style: GoogleFonts.beVietnamPro(
-                                      fontSize: 13,
+                      const SizedBox(height: 6),
+                      Container(
+                        height: 44,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8F9FB),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFE2E6EA)),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: _category,
+                            isExpanded: true,
+                            icon: const Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              size: 18,
+                              color: Color(0xFF9AA5B4),
+                            ),
+                            items: _merchandiseCategories
+                                .map(
+                                  (c) => DropdownMenuItem(
+                                    value: c,
+                                    child: Text(
+                                      c,
+                                      style: GoogleFonts.beVietnamPro(
+                                        fontSize: 13,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (value) {
-                            if (value != null)
-                              setState(() => _category = value);
-                          },
-                        ),
-                      ),
-                    ),
-                    if (_category == 'Others') ...[
-                      const SizedBox(height: 8),
-                      TextFormField(
-                        controller: _customCategoryCtrl,
-                        decoration: _DS.inputDecoration(
-                          'Custom Category',
-                          hint: 'Type category name…',
-                          icon: Icons.edit_outlined,
-                        ),
-                        style: GoogleFonts.beVietnamPro(fontSize: 13),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _descCtrl,
-                      maxLines: 3,
-                      decoration: _DS.inputDecoration(
-                        'Description',
-                        hint: 'Product details...',
-                        icon: Icons.description_outlined,
-                      ),
-                      style: GoogleFonts.beVietnamPro(fontSize: 13),
-                    ),
-                    const SizedBox(height: 16),
-                    _sectionLabel('Pricing', icon: Icons.payments_outlined),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: _costPriceCtrl,
-                            keyboardType: TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            decoration: _DS.inputDecoration(
-                              'Cost Price',
-                              hint: '0.00',
-                              icon: Icons.money_off_outlined,
-                            ),
-                            style: GoogleFonts.beVietnamPro(fontSize: 13),
-                            onChanged: (_) => setState(() {}),
+                                )
+                                .toList(),
+                            onChanged: (value) {
+                              if (value != null)
+                                setState(() => _category = value);
+                            },
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextFormField(
-                            controller: _priceCtrl,
-                            keyboardType: TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            decoration: _DS.inputDecoration(
-                              'Base Price',
-                              hint: '0.00',
-                              icon: Icons.payments_outlined,
-                            ),
-                            style: GoogleFonts.beVietnamPro(fontSize: 13),
-                            onChanged: (_) => setState(() {}),
+                      ),
+                      if (_category == 'Others') ...[
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: _customCategoryCtrl,
+                          decoration: _DS.inputDecoration(
+                            'Custom Category',
+                            hint: 'Type category name…',
+                            icon: Icons.edit_outlined,
+                            required: true,
                           ),
+                          style: GoogleFonts.beVietnamPro(fontSize: 13),
+                          validator: (v) =>
+                              v?.trim().isEmpty ?? true ? 'Required' : null,
                         ),
                       ],
-                    ),
-                    _buildProfitMarginLine(),
-                    if (_variants.isEmpty) ...[
-                      const SizedBox(height: 16),
-                      _sectionLabel(
-                        'Inventory',
-                        icon: Icons.inventory_2_outlined,
-                      ),
+                      const SizedBox(height: 12),
                       TextFormField(
-                        controller: _stockCtrl,
-                        keyboardType: TextInputType.number,
+                        controller: _descCtrl,
+                        maxLines: 3,
                         decoration: _DS.inputDecoration(
-                          'Stock Quantity',
-                          hint: '0',
-                          icon: Icons.inventory_2_outlined,
+                          'Description',
+                          hint: 'Product details...',
+                          icon: Icons.description_outlined,
                         ),
                         style: GoogleFonts.beVietnamPro(fontSize: 13),
                       ),
-                    ],
-                    if (_isEdit) ...[
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 16),
+                      _sectionLabel('Pricing', icon: Icons.payments_outlined),
                       Row(
                         children: [
-                          SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: Checkbox(
-                              value: _isDiscontinued,
-                              activeColor: const Color(0xFF6B7280),
-                              materialTapTargetSize:
-                                  MaterialTapTargetSize.shrinkWrap,
-                              onChanged: _submitting
-                                  ? null
-                                  : (v) => setState(
-                                      () => _isDiscontinued = v ?? false,
-                                    ),
+                          Expanded(
+                            child: TextFormField(
+                              controller: _costPriceCtrl,
+                              keyboardType: TextInputType.numberWithOptions(
+                                decimal: true,
+                              ),
+                              decoration: _DS.inputDecoration(
+                                'Cost Price',
+                                hint: '0.00',
+                                icon: Icons.money_off_outlined,
+                              ),
+                              style: GoogleFonts.beVietnamPro(fontSize: 13),
+                              onChanged: (_) => setState(() {}),
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Mark as Discontinued',
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 13,
-                              color: _isDiscontinued
-                                  ? const Color(0xFF6B7280)
-                                  : const Color(0xFF374151),
-                              fontWeight: FontWeight.w500,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextFormField(
+                              controller: _priceCtrl,
+                              keyboardType: TextInputType.numberWithOptions(
+                                decimal: true,
+                              ),
+                              decoration: _DS.inputDecoration(
+                                'Base Price',
+                                hint: '0.00',
+                                icon: Icons.payments_outlined,
+                                required: true,
+                              ),
+                              style: GoogleFonts.beVietnamPro(fontSize: 13),
+                              onChanged: (_) => setState(() {}),
+                              validator: (v) {
+                                final price = double.tryParse(v?.trim() ?? '');
+                                if (price == null || price <= 0) {
+                                  return 'Enter a valid price';
+                                }
+                                return null;
+                              },
                             ),
                           ),
                         ],
                       ),
+                      _buildProfitMarginLine(),
+                      if (_variants.isEmpty) ...[
+                        const SizedBox(height: 16),
+                        _sectionLabel(
+                          'Inventory',
+                          icon: Icons.inventory_2_outlined,
+                        ),
+                        TextFormField(
+                          controller: _stockCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: _DS.inputDecoration(
+                            'Stock Quantity',
+                            hint: '0',
+                            icon: Icons.inventory_2_outlined,
+                            required: true,
+                          ),
+                          style: GoogleFonts.beVietnamPro(fontSize: 13),
+                          validator: (v) {
+                            final stock = int.tryParse(v?.trim() ?? '');
+                            if (stock == null || stock < 0) {
+                              return 'Enter a valid quantity';
+                            }
+                            return null;
+                          },
+                        ),
+                      ],
+                      if (_isEdit) ...[
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: Checkbox(
+                                value: _isDiscontinued,
+                                activeColor: const Color(0xFF6B7280),
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                                onChanged: _submitting
+                                    ? null
+                                    : (v) => setState(
+                                        () => _isDiscontinued = v ?? false,
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Mark as Discontinued',
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 13,
+                                color: _isDiscontinued
+                                    ? const Color(0xFF6B7280)
+                                    : const Color(0xFF374151),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      _sectionLabel('Variants', icon: Icons.tune_rounded),
+                      ..._variants.map((v) => _buildVariantChip(v)),
+                      if (_variants.isNotEmpty) const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: _submitting ? null : _openAddVariantDialog,
+                        icon: const Icon(Icons.add, size: 14),
+                        label: Text(
+                          'Add Variant',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: UpriseColors.primaryDark,
+                          side: BorderSide(color: UpriseColors.primaryDark),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _sectionLabel(
+                        'Product Photo',
+                        icon: Icons.image_outlined,
+                      ),
+                      _buildImagePicker(),
+                      const SizedBox(height: 16),
+                      _sectionLabel(
+                        '360° Photos (optional)',
+                        icon: Icons.threesixty_rounded,
+                      ),
+                      _buildRotationPhotosPicker(),
                     ],
-                    const SizedBox(height: 16),
-                    _sectionLabel('Variants', icon: Icons.tune_rounded),
-                    ..._variants.map((v) => _buildVariantChip(v)),
-                    if (_variants.isNotEmpty) const SizedBox(height: 8),
-                    OutlinedButton.icon(
-                      onPressed: _submitting ? null : _openAddVariantDialog,
-                      icon: const Icon(Icons.add, size: 14),
-                      label: Text(
-                        'Add Variant',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: UpriseColors.primaryDark,
-                        side: BorderSide(color: UpriseColors.primaryDark),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 8,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    _sectionLabel('Product Photo', icon: Icons.image_outlined),
-                    _buildImagePicker(),
-                    const SizedBox(height: 16),
-                    _sectionLabel(
-                      '360° Photos (optional)',
-                      icon: Icons.threesixty_rounded,
-                    ),
-                    _buildRotationPhotosPicker(),
-                  ],
+                  ),
                 ),
               ),
             ),

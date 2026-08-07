@@ -2087,7 +2087,19 @@ class _StudentAccountsState extends State<StudentAccounts> {
 
                                   int success = 0, failed = 0, failedEmails = 0;
                                   final creationErrors = <String>[];
-                                  for (final s in students) {
+                                  for (var i = 0; i < students.length; i++) {
+                                    final s = students[i];
+                                    // A small gap between rows keeps a large
+                                    // roster from bursting into Firebase
+                                    // Auth's per-client abuse throttle,
+                                    // which otherwise fails every row after
+                                    // the first handful with
+                                    // too-many-requests.
+                                    if (i > 0) {
+                                      await Future.delayed(
+                                        const Duration(milliseconds: 400),
+                                      );
+                                    }
                                     try {
                                       // Credentials email is already sent
                                       // (and queued on failure) inside
@@ -2633,6 +2645,12 @@ class _StudentAccountsState extends State<StudentAccounts> {
       await secondaryAuth.signOut();
       if (e.toString().contains('email-already-in-use')) {
         throw Exception('Email already registered: $email');
+      }
+      if (e.toString().contains('too-many-requests')) {
+        throw Exception(
+          'Rate limited by Firebase — pause a minute and re-import this '
+          'row, or split the file into smaller batches: $email',
+        );
       }
       throw Exception('Account creation failed: ${e.toString()}');
     }

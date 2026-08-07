@@ -44,6 +44,21 @@ Uint8List? decodeAppImageBytes(String source) {
 bool isNetworkImageSource(String source) =>
     source.startsWith('http://') || source.startsWith('https://');
 
+// Certificate templates uploaded to Cloudinary as a PDF are stored as-is —
+// the URL points straight at the raw PDF document, which Flutter's Image
+// widgets can't decode as pixels. Cloudinary renders a PDF's first page as
+// an actual image when the same asset is requested with a raster extension
+// instead, so swapping .pdf for .jpg is enough to get a real image back.
+// Scoped to Cloudinary URLs specifically rather than every .pdf source, so
+// this can't affect unrelated network images that happen to end in .pdf.
+String _renderablePdfSafeUrl(String url) {
+  if (url.contains('res.cloudinary.com') &&
+      url.toLowerCase().endsWith('.pdf')) {
+    return '${url.substring(0, url.length - 4)}.jpg';
+  }
+  return url;
+}
+
 class AppImage extends StatefulWidget {
   final String source;
   final double? width;
@@ -88,7 +103,9 @@ class AppImage extends StatefulWidget {
     if (source.isEmpty) return null;
     final bytes = decodeAppImageBytes(source);
     if (bytes != null) return MemoryImage(bytes);
-    if (isNetworkImageSource(source)) return NetworkImage(source);
+    if (isNetworkImageSource(source)) {
+      return NetworkImage(_renderablePdfSafeUrl(source));
+    }
     return null;
   }
 
@@ -127,7 +144,7 @@ class _AppImageState extends State<AppImage> {
     }
 
     if (isNetworkImageSource(source)) {
-      _futureProvider = _fetchNetworkImage(source);
+      _futureProvider = _fetchNetworkImage(_renderablePdfSafeUrl(source));
       return;
     }
 

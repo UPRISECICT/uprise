@@ -1,4 +1,4 @@
-﻿// ignore_for_file: unnecessary_cast, unused_field, deprecated_member_use
+// ignore_for_file: unnecessary_cast, unused_field, deprecated_member_use
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -49,8 +49,13 @@ Future<List<_RecipientStatusRow>> fetchRecipientStatus(String eventId) async {
       .where('status', whereIn: ['present', 'late'])
       .get();
 
+  // Was querying 'feedback' — the actual collection (per every other write
+  // site in this file, e.g. _submit/_sendCertificates) is 'event_feedback'.
+  // Since 'feedback' doesn't exist, this always returned zero docs, so
+  // every recipient in the View modal showed as "Awaiting Eval" regardless
+  // of whether they'd actually submitted their evaluation.
   final fbSnap = await FirebaseFirestore.instance
-      .collection('feedback')
+      .collection('event_feedback')
       .where('eventId', isEqualTo: eventId)
       .get();
 
@@ -127,6 +132,19 @@ class _DS {
       offset: const Offset(0, 4),
     ),
   ];
+}
+
+// Cloudinary stores an uploaded PDF as-is — its secure_url points straight
+// at the raw PDF document, which Flutter's Image widgets can't decode as
+// pixels. New uploads are converted to a renderable URL at upload time (see
+// _ImportTemplateModalState._upload), but any certificate saved before that
+// fix still has the raw .pdf URL stored — applying the same swap here at
+// render time repairs those existing records too, without a data migration.
+String _renderableTemplateUrl(String url) {
+  if (url.toLowerCase().endsWith('.pdf')) {
+    return '${url.substring(0, url.length - 4)}.jpg';
+  }
+  return url;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -312,7 +330,7 @@ Widget _sectionLabel(String text, {IconData? icon}) {
 // higher-level data when available. Kept private to this file.
 final Map<String, String> _signatoryNames = {};
 String _getSignatoryName(String key) {
-   return _signatoryNames[key] ?? key;
+  return _signatoryNames[key] ?? key;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -382,15 +400,16 @@ class SignatoryData {
   });
 
   factory SignatoryData.fromDoc(DocumentSnapshot doc) {
-  final d = (doc.data() as Map<String, dynamic>?) ?? {};
-  return SignatoryData(
-    id: doc.id,
-    placeholderKey: doc.id, // ← CHANGE THIS! Use doc.id instead of reading from document
-    fullName: (d['fullName'] ?? '').toString(),
-    title: (d['title'] ?? '').toString(),
-    signatureBase64: d['signatureBase64'] as String?,
-  );
-}
+    final d = (doc.data() as Map<String, dynamic>?) ?? {};
+    return SignatoryData(
+      id: doc.id,
+      placeholderKey:
+          doc.id, // ← CHANGE THIS! Use doc.id instead of reading from document
+      fullName: (d['fullName'] ?? '').toString(),
+      title: (d['title'] ?? '').toString(),
+      signatureBase64: d['signatureBase64'] as String?,
+    );
+  }
 }
 
 double _autoFitFontSize({
@@ -1412,6 +1431,23 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
     }
     await batch.commit();
 
+    // The draft placeholder doc (one record standing in for N intended
+    // recipients, via its own 'recipients' field) is now superseded by real
+    // per-recipient 'distributed' docs — CertificateBatch counts raw docs
+    // for totalRecipients, not that field, so leaving the draft in place
+    // permanently inflated the count by 1 and kept the batch stuck showing
+    // "Partially Sent" even after every eligible recipient had their
+    // certificate. Safe to delete only when this really is the draft
+    // record (this function also gets called with an already-distributed
+    // record as the metadata source when sending more from a batch that's
+    // already past draft, which shouldn't touch anything here).
+    if (draft.status == 'draft') {
+      await FirebaseFirestore.instance
+          .collection('certificates')
+          .doc(draft.id)
+          .delete();
+    }
+
     for (final key in toIssue) {
       if (!key.contains('@')) {
         await NotificationService.sendToUser(
@@ -2172,7 +2208,7 @@ class _BatchDetailModalState extends State<_BatchDetailModal> {
           borderRadius: BorderRadius.circular(12),
           child: r.templateFileUrl != null
               ? Image.network(
-                  r.templateFileUrl!,
+                  _renderableTemplateUrl(r.templateFileUrl!),
                   fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) => Container(
                     color: const Color(0xFFF1F5F9),
@@ -2183,36 +2219,52 @@ class _BatchDetailModalState extends State<_BatchDetailModal> {
                     ),
                   ),
                 )
-              : CertificatePreview(
-                  theme: CertTheme.forType(
-                    r.templateType,
-                    primaryDark: UpriseColors.primaryDark,
-                    primaryLight: UpriseColors.primaryLight,
-                    accentColor: UpriseColors.accent,
+              // CertificatePreview lays itself out at fixed, hardcoded
+              // sizing (unlike CertificateImageWithName, it doesn't scale
+              // its own content to whatever box it's given) — squeezing it
+              // directly into a 200px-tall box overflowed by however much
+              // its natural content exceeded that. FittedBox lets it render
+              // at its real intended size (matching the 600/424 aspect
+              // ratio used everywhere else this widget appears) and then
+              // uniformly scales the whole thing down to fit, guaranteeing
+              // no overflow regardless of its actual content height.
+              : FittedBox(
+                  fit: BoxFit.contain,
+                  child: SizedBox(
+                    width: 600,
+                    height: 424,
+                    child: CertificatePreview(
+                      theme: CertTheme.forType(
+                        r.templateType,
+                        primaryDark: UpriseColors.primaryDark,
+                        primaryLight: UpriseColors.primaryLight,
+                        accentColor: UpriseColors.accent,
+                      ),
+                      orgName: r.organization,
+                      eventTitle: r.eventName,
+                      eventDate: DateFormat('MMMM dd, yyyy').format(r.date),
+                      recipient: '[Recipient Name]',
+                      signatories: r.signatories.isNotEmpty
+                          ? r.signatories
+                                .map(
+                                  (s) => CertSignatory(
+                                    name: (s['name'] ?? '').toString(),
+                                    title: (s['title'] ?? '').toString(),
+                                    signatureImageBase64:
+                                        s['signatureImage'] as String?,
+                                  ),
+                                )
+                                .toList()
+                          : (r.signatureImage != null
+                                ? [
+                                    CertSignatory(
+                                      name: 'Authorized Signatory',
+                                      signatureImageBase64: r.signatureImage,
+                                    ),
+                                  ]
+                                : const []),
+                    ),
                   ),
-                  orgName: r.organization,
-                  eventTitle: r.eventName,
-                  eventDate: DateFormat('MMMM dd, yyyy').format(r.date),
-                  recipient: '[Recipient Name]',
-                  signatories: r.signatories.isNotEmpty
-                      ? r.signatories
-                            .map(
-                              (s) => CertSignatory(
-                                name: (s['name'] ?? '').toString(),
-                                title: (s['title'] ?? '').toString(),
-                                signatureImageBase64:
-                                    s['signatureImage'] as String?,
-                              ),
-                            )
-                            .toList()
-                      : (r.signatureImage != null
-                            ? [
-                                CertSignatory(
-                                  name: 'Authorized Signatory',
-                                  signatureImageBase64: r.signatureImage,
-                                ),
-                              ]
-                            : const []),
                 ),
         ),
       ),
@@ -2435,6 +2487,50 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
       .orderBy('date', descending: false)
       .snapshots();
 
+  // "Select Event" should only offer events that issue certificates AND
+  // don't already have a certificate batch — generating a second one for
+  // an event that already has one would create a duplicate, orphaned
+  // batch instead of the org just editing the existing one. A `certificate`
+  // doc's `eventId` points at the published `events` doc, not the
+  // `event_proposals` doc this dropdown lists, so this resolves the
+  // proposal -> event -> certificate chain once up front. Resolved once
+  // (not re-fetched every rebuild) since it only needs to reflect state as
+  // of when this modal opened.
+  late final Future<Set<String>> _proposalIdsWithExistingCertFuture =
+      _loadProposalIdsWithExistingCert();
+
+  Future<Set<String>> _loadProposalIdsWithExistingCert() async {
+    try {
+      final eventsSnap = await FirebaseFirestore.instance
+          .collection('events')
+          .where('orgId', isEqualTo: widget.orgId)
+          .get();
+      final eventDocIdToProposalId = <String, String>{};
+      for (final doc in eventsSnap.docs) {
+        final proposalId = doc.data()['createdFromProposalId'] as String?;
+        if (proposalId != null && proposalId.isNotEmpty) {
+          eventDocIdToProposalId[doc.id] = proposalId;
+        }
+      }
+      if (eventDocIdToProposalId.isEmpty) return {};
+
+      final certsSnap = await FirebaseFirestore.instance
+          .collection('certificates')
+          .where('orgId', isEqualTo: widget.orgId)
+          .get();
+      final result = <String>{};
+      for (final doc in certsSnap.docs) {
+        final eventId = doc.data()['eventId'] as String?;
+        if (eventId == null) continue;
+        final proposalId = eventDocIdToProposalId[eventId];
+        if (proposalId != null) result.add(proposalId);
+      }
+      return result;
+    } catch (_) {
+      return {};
+    }
+  }
+
   // NEW: all signatories on file (Admin Settings roster), keyed by
   // placeholderKey, used to resolve _signatoryPlacements to actual
   // name/title/signature at preview & submit time.
@@ -2530,12 +2626,12 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
             final id = doc.id; // ← This is the key!
             signatories[id] = SignatoryData(
               id: id,
-              placeholderKey: id,  // ← Use the document ID as placeholderKey
+              placeholderKey: id, // ← Use the document ID as placeholderKey
               fullName: (data['fullName'] ?? '').toString(),
               title: (data['title'] ?? '').toString(),
               signatureBase64: data['signatureBase64'] as String?,
             );
-            }
+          }
 
           // ⭐ IMPORTANT: Only use placements that have matching signatories
           final validPlacements = <String, CertNamePlacement>{};
@@ -2553,7 +2649,9 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
                   _selectedTemplatePlacement ?? const CertNamePlacement(),
               signatoryPlacements: validPlacements, // ← Use only valid ones!
               signatories: signatories,
-              background: NetworkImage(_selectedTemplateUrl!),
+              background: NetworkImage(
+                _renderableTemplateUrl(_selectedTemplateUrl!),
+              ),
             ),
           );
         },
@@ -2786,6 +2884,28 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
           }, SetOptions(merge: true));
         }
         await batch.commit();
+
+        // Same cleanup as _sendCertificates — a draft placeholder record
+        // for this event (created by an earlier "Save as Draft") would
+        // otherwise stick around and permanently inflate this batch's
+        // totalRecipients count by 1, keeping it stuck on "Partially Sent"
+        // forever even once every eligible recipient has their certificate.
+        if (widget.existingRecord?.status == 'draft') {
+          await FirebaseFirestore.instance
+              .collection('certificates')
+              .doc(widget.existingRecord!.id)
+              .delete();
+        } else if (_selectedEventDocId != null) {
+          final existingDraft = await FirebaseFirestore.instance
+              .collection('certificates')
+              .where('eventId', isEqualTo: _selectedEventDocId)
+              .where('status', isEqualTo: 'draft')
+              .limit(1)
+              .get();
+          if (existingDraft.docs.isNotEmpty) {
+            await existingDraft.docs.first.reference.delete();
+          }
+        }
 
         // Guests have no `users` doc to notify against — only students get
         // an in-app notification that their certificate is ready.
@@ -3054,105 +3174,125 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
                             ),
                             _FieldWrapper(
                               label: 'Select Event *',
-                              child: StreamBuilder<QuerySnapshot>(
-                                stream: _eventsStream,
-                                builder: (context, snapshot) {
-                                  final events = snapshot.data?.docs ?? [];
-                                  return DropdownButtonFormField<String>(
-                                    value: _selectedEventId,
-                                    isExpanded: true,
-                                    hint: Text(
-                                      events.isEmpty
-                                          ? 'No approved certificate events found'
-                                          : 'Choose an approved event',
-                                      style: GoogleFonts.beVietnamPro(
-                                        fontSize: 13,
-                                        color: const Color(0xFF9AA5B4),
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    decoration: _fieldDecoration(),
-                                    style: GoogleFonts.beVietnamPro(
-                                      fontSize: 13,
-                                      color: const Color(0xFF1A202C),
-                                    ),
-                                    validator: (_) => _selectedEventId == null
-                                        ? 'Required'
-                                        : null,
-                                    items: events.map((doc) {
-                                      final data =
-                                          doc.data() as Map<String, dynamic>;
-                                      return DropdownMenuItem(
-                                        value: doc.id,
-                                        child: Text(
-                                          data['title'] as String? ??
-                                              'Untitled',
+                              child: FutureBuilder<Set<String>>(
+                                future: _proposalIdsWithExistingCertFuture,
+                                builder: (context, exclusionSnap) {
+                                  final excluded =
+                                      exclusionSnap.data ?? const <String>{};
+                                  return StreamBuilder<QuerySnapshot>(
+                                    stream: _eventsStream,
+                                    builder: (context, snapshot) {
+                                      final events = (snapshot.data?.docs ?? [])
+                                          .where(
+                                            (d) =>
+                                                d.id == _selectedEventId ||
+                                                !excluded.contains(d.id),
+                                          )
+                                          .toList();
+                                      return DropdownButtonFormField<String>(
+                                        value: _selectedEventId,
+                                        isExpanded: true,
+                                        hint: Text(
+                                          events.isEmpty
+                                              ? 'No approved certificate events found'
+                                              : 'Choose an approved event',
+                                          style: GoogleFonts.beVietnamPro(
+                                            fontSize: 13,
+                                            color: const Color(0xFF9AA5B4),
+                                          ),
                                           overflow: TextOverflow.ellipsis,
                                         ),
-                                      );
-                                    }).toList(),
-                                    onChanged: (v) async {
-                                      if (v == null) return;
-                                      final doc = events.firstWhere(
-                                        (d) => d.id == v,
-                                      );
-                                      final data =
-                                          doc.data() as Map<String, dynamic>;
-                                      setState(() {
-                                        _selectedEventId = v;
-                                        _selectedEventName =
-                                            data['title'] as String?;
-                                        _titleCtrl.text =
-                                            _selectedEventName ?? '';
-                                        _orgCtrl.text =
-                                            (data['orgName'] as String?) ??
-                                            _orgCtrl.text;
-                                        final eventDate =
-                                            (data['date'] as Timestamp?)
-                                                ?.toDate();
-                                        if (eventDate != null)
-                                          _dateCtrl.text = DateFormat(
-                                            'MM/dd/yyyy',
-                                          ).format(eventDate);
-                                        _selectedEventDocId = null;
-                                        _attendeeCount = 0;
-                                        _attendanceSynced = false;
-                                        _eligibleRecipients = [];
-                                      });
+                                        decoration: _fieldDecoration(),
+                                        style: GoogleFonts.beVietnamPro(
+                                          fontSize: 13,
+                                          color: const Color(0xFF1A202C),
+                                        ),
+                                        validator: (_) =>
+                                            _selectedEventId == null
+                                            ? 'Required'
+                                            : null,
+                                        items: events.map((doc) {
+                                          final data =
+                                              doc.data()
+                                                  as Map<String, dynamic>;
+                                          return DropdownMenuItem(
+                                            value: doc.id,
+                                            child: Text(
+                                              data['title'] as String? ??
+                                                  'Untitled',
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          );
+                                        }).toList(),
+                                        onChanged: (v) async {
+                                          if (v == null) return;
+                                          final doc = events.firstWhere(
+                                            (d) => d.id == v,
+                                          );
+                                          final data =
+                                              doc.data()
+                                                  as Map<String, dynamic>;
+                                          setState(() {
+                                            _selectedEventId = v;
+                                            _selectedEventName =
+                                                data['title'] as String?;
+                                            _titleCtrl.text =
+                                                _selectedEventName ?? '';
+                                            _orgCtrl.text =
+                                                (data['orgName'] as String?) ??
+                                                _orgCtrl.text;
+                                            final eventDate =
+                                                (data['date'] as Timestamp?)
+                                                    ?.toDate();
+                                            if (eventDate != null)
+                                              _dateCtrl.text = DateFormat(
+                                                'MM/dd/yyyy',
+                                              ).format(eventDate);
+                                            _selectedEventDocId = null;
+                                            _attendeeCount = 0;
+                                            _attendanceSynced = false;
+                                            _eligibleRecipients = [];
+                                          });
 
-                                      try {
-                                        final evQ = await FirebaseFirestore
-                                            .instance
-                                            .collection('events')
-                                            .where(
-                                              'createdFromProposalId',
-                                              isEqualTo: v,
-                                            )
-                                            .limit(1)
-                                            .get();
+                                          try {
+                                            final evQ = await FirebaseFirestore
+                                                .instance
+                                                .collection('events')
+                                                .where(
+                                                  'createdFromProposalId',
+                                                  isEqualTo: v,
+                                                )
+                                                .limit(1)
+                                                .get();
 
-                                        if (mounted && evQ.docs.isNotEmpty) {
-                                          final eventDoc = evQ.docs.first;
-                                          final attendeeCount =
-                                              await _fetchAttendanceCount(
-                                                eventDoc.id,
-                                              );
-                                          final eligible =
-                                              await _fetchEligibleRecipients(
-                                                eventDoc.id,
-                                              );
-                                          if (mounted) {
-                                            setState(() {
-                                              _selectedEventDocId = eventDoc.id;
-                                              _attendeeCount = attendeeCount;
-                                              _eligibleRecipients = eligible;
-                                              _attendanceSynced = true;
-                                            });
+                                            if (mounted &&
+                                                evQ.docs.isNotEmpty) {
+                                              final eventDoc = evQ.docs.first;
+                                              final attendeeCount =
+                                                  await _fetchAttendanceCount(
+                                                    eventDoc.id,
+                                                  );
+                                              final eligible =
+                                                  await _fetchEligibleRecipients(
+                                                    eventDoc.id,
+                                                  );
+                                              if (mounted) {
+                                                setState(() {
+                                                  _selectedEventDocId =
+                                                      eventDoc.id;
+                                                  _attendeeCount =
+                                                      attendeeCount;
+                                                  _eligibleRecipients =
+                                                      eligible;
+                                                  _attendanceSynced = true;
+                                                });
+                                              }
+                                            }
+                                          } catch (_) {
+                                            // Fall back to proposal-only detection.
                                           }
-                                        }
-                                      } catch (_) {
-                                        // Fall back to proposal-only detection.
-                                      }
+                                        },
+                                      );
                                     },
                                   );
                                 },
@@ -3684,7 +3824,9 @@ class _CertPreviewDialog extends StatelessWidget {
                               ),
                               signatoryPlacements: sigPlacements,
                               signatories: signatories,
-                              background: NetworkImage(record.templateFileUrl!),
+                              background: NetworkImage(
+                                _renderableTemplateUrl(record.templateFileUrl!),
+                              ),
                             );
                           },
                         ),
@@ -3792,7 +3934,7 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
 
   static const int _maxBytes = 5 * 1024 * 1024; // 5 MB
 
-   final Map<String, String> _signatoryNames = {};
+  final Map<String, String> _signatoryNames = {};
 
   // Which signatory IDs the admin authorized for this event at approval
   // time, resolved once from the proposal doc rather than re-fetched on
@@ -3872,14 +4014,27 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
       }
 
       final json = jsonDecode(response.body);
-      final url = json['secure_url'] as String;
+      var url = json['secure_url'] as String;
+      // Cloudinary stores an uploaded PDF as-is — the returned secure_url
+      // points straight at the raw PDF document, which Image.network can't
+      // decode as pixels (it needs an actual raster format). Every place
+      // this URL later gets used as a certificate background — this
+      // modal's own preview, the Generate Certificate preview, the batch
+      // view/print dialogs, and the student's certificate viewer — was
+      // silently failing to render for any org that uploaded a PDF design
+      // (very common, since Canva/Slides export to PDF by default), which
+      // is also why the name/signatory positioning looked broken: with no
+      // image to show, there was nothing to visibly drag against. Cloudinary
+      // renders a PDF's first page as a real image when the same asset is
+      // requested with a raster extension instead — swapping .pdf for .jpg
+      // is enough to get that rendered version instead of the raw document.
+      if (url.toLowerCase().endsWith('.pdf')) {
+        url = '${url.substring(0, url.length - 4)}.jpg';
+      }
 
       final signatoryPlacementsMap = {
         for (final e in _signatoryPlacements.entries) e.key: e.value.toMap(),
       };
-
-      print(' UPLOAD: signatoryPlacementsMap keys: ${signatoryPlacementsMap.keys}');
-    print(' UPLOAD: signatoryPlacementsMap: $signatoryPlacementsMap');
 
       await FirebaseFirestore.instance.collection('certificate_templates').add({
         'orgId': widget.orgId,
@@ -4072,8 +4227,6 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
                                 border: Border.all(color: Colors.white),
                               ),
                               child: Text(
-
-                                
                                 _getSignatoryName(entry.key),
                                 textAlign: TextAlign.center,
                                 maxLines: 1,
@@ -4230,9 +4383,9 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
                     .where((s) => authorizedIds.contains(s.id))
                     .toList();
 
-                     for (final s in roster) {
-      _signatoryNames[s.id] = s.fullName;
-    }
+                for (final s in roster) {
+                  _signatoryNames[s.id] = s.fullName;
+                }
                 if (roster.isEmpty) {
                   return Text(
                     'The signatory authorized for this event no longer '
@@ -4421,6 +4574,17 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
                             ),
                             style: GoogleFonts.beVietnamPro(fontSize: 13),
                             onChanged: (v) => setState(() => _name = v),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'A short internal label for this design — not shown '
+                          'on the certificate itself. Used as the "type" on '
+                          'certificates issued from it, so you can tell them '
+                          'apart later.',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 11,
+                            color: const Color(0xFF94A3B8),
                           ),
                         ),
                         const SizedBox(height: 14),

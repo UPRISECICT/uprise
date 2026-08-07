@@ -1,4 +1,4 @@
-// ignore_for_file: unnecessary_cast, unused_field, deprecated_member_use
+﻿// ignore_for_file: unnecessary_cast, unused_field, deprecated_member_use
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -16,9 +16,58 @@ import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/org_action_icon_button.dart';
 import '../../../widgets/org_modal_shell.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// RECIPIENT STATUS ROW - moved to top level
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── STATUS SUMMARY ITEM ──────────────────────────────────────
+class _StatusSummaryItem extends StatelessWidget {
+  final String label;
+  final int count;
+  final Color color;
+  final IconData? icon;
+
+  const _StatusSummaryItem({
+    required this.label,
+    required this.count,
+    required this.color,
+    this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) Icon(icon, size: 14, color: color),
+              const SizedBox(width: 4),
+              Text(
+                '$count',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+          Text(
+            label,
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 9,
+              color: UpriseColors.darkGray,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 class _RecipientStatusRow {
   final String key;
   final String name;
@@ -48,14 +97,8 @@ Future<List<_RecipientStatusRow>> fetchRecipientStatus(String eventId) async {
       .collection('attendances')
       .where('status', whereIn: ['present', 'late'])
       .get();
-
-  // Was querying 'feedback' — the actual collection (per every other write
-  // site in this file, e.g. _submit/_sendCertificates) is 'event_feedback'.
-  // Since 'feedback' doesn't exist, this always returned zero docs, so
-  // every recipient in the View modal showed as "Awaiting Eval" regardless
-  // of whether they'd actually submitted their evaluation.
   final fbSnap = await FirebaseFirestore.instance
-      .collection('event_feedback')
+      .collection('feedback')
       .where('eventId', isEqualTo: eventId)
       .get();
 
@@ -209,22 +252,22 @@ Widget _batchBadge(String status) {
     'sent': _BadgeStyle(
       UpriseColors.success.withOpacity(0.18),
       UpriseColors.success,
-      'SENT',
+      'All Sent',  // Changed
     ),
     'partially_sent': _BadgeStyle(
       UpriseColors.warning.withOpacity(0.18),
       UpriseColors.warning,
-      'PARTIALLY SENT',
+      'Sending',  // Changed - shorter and clearer
     ),
     'draft': _BadgeStyle(
       UpriseColors.lightGray,
       UpriseColors.darkGray,
-      'DRAFT',
+      'Draft',
     ),
     'archived': _BadgeStyle(
       const Color(0xFFF3F4F6),
       const Color(0xFF6B7280),
-      'ARCHIVED',
+      'Archived',
     ),
   };
   final s =
@@ -524,11 +567,19 @@ class CertificateBatch {
   bool get isArchived => records.every((r) => r.archived);
 
   String get batchStatus {
-    if (isArchived) return 'archived';
-    if (sentCount == 0) return 'draft';
-    if (sentCount < totalRecipients) return 'partially_sent';
-    return 'sent';
-  }
+  if (isArchived) return 'archived';
+  
+  // Count only REAL certificates (not the draft placeholder)
+  final realRecords = records.where((r) => r.status != 'draft').toList();
+  if (realRecords.isEmpty) return 'draft';
+  
+  final sentCount = realRecords.where((r) => r.status == 'distributed').length;
+  final total = realRecords.length;
+  
+  if (sentCount == 0) return 'draft';
+  if (sentCount < total) return 'partially_sent';
+  return 'sent';
+}
 
   bool get isEditable => batchStatus == 'draft';
 
@@ -1219,7 +1270,13 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
       builder: (_) => _BatchDetailModal(
         batch: b,
         eventId: b.eventId ?? '',
-        onSendAll: () => _sendCertificates(b.primary),
+                  onSendAll: () async {
+            await _sendCertificates(b.primary);
+            // Close the modal after sending
+            if (mounted) {
+              Navigator.of(context, rootNavigator: true).pop();
+            }
+          },
         onSendSingle: (key, name, isGuest) => _sendSingleCertificate(
           draftMeta: b.primary,
           eventId: b.eventId ?? '',
@@ -1290,7 +1347,11 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
         data: {'eventId': eventId},
       );
     }
-    if (mounted) setState(() {});
+    if (mounted) {
+  // Close any open dialogs first
+  Navigator.of(context, rootNavigator: true).pop();
+  setState(() {});
+}
   }
 
   Future<void> _toggleArchive(CertificateBatch b) async {
@@ -1332,7 +1393,7 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
         .get();
 
     final fbSnap = await FirebaseFirestore.instance
-        .collection('event_feedback')
+        .collection('feedback')
         .where('eventId', isEqualTo: eventId)
         .get();
 
@@ -1452,7 +1513,13 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
     }
 
     _showToast('Sent ${toIssue.length} certificate(s).');
-    setState(() {});
+    // Close the dialog first before updating state
+    if (mounted) {
+      // Close the current dialog
+      Navigator.of(context, rootNavigator: true).pop();
+      // Then rebuild
+      setState(() {});
+}
   }
 
   Future<void> _resendCertificate(CertificateRecord r) async {
@@ -1499,6 +1566,9 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
   }
 
   void _showToast(String msg, {bool isError = false}) {
+  if (!mounted) return;
+  // Add a small delay to avoid Navigator conflicts
+  WidgetsBinding.instance.addPostFrameCallback((_) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -1508,7 +1578,8 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
-  }
+  });
+}
 
   String _generateVerificationCode() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -1985,219 +2056,284 @@ class _BatchDetailModalState extends State<_BatchDetailModal> {
         ],
       ),
       footerActions: [
-        ElevatedButton.icon(
-          onPressed: widget.onSendAll,
-          icon: const Icon(Icons.send_rounded, size: 15),
-          label: Text(
-            'Send All Eligible',
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: UpriseColors.primaryDark,
-            foregroundColor: Colors.white,
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+  // Use FutureBuilder to check if there are eligible recipients
+  FutureBuilder<List<_RecipientStatusRow>>(
+    future: fetchRecipientStatus(eventId),
+    builder: (context, snapshot) {
+      // Check if there's anyone eligible
+      final hasEligible = snapshot.data?.any(
+        (r) => r.evaluated && !r.certSent
+      ) ?? false;
+      
+      return ElevatedButton.icon(
+        onPressed: hasEligible ? widget.onSendAll : null,
+        icon: const Icon(Icons.send_rounded, size: 15),
+        label: Text(
+          hasEligible ? 'Send All Eligible' : 'No One to Send',
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
           ),
         ),
-      ],
+        style: ElevatedButton.styleFrom(
+          backgroundColor: hasEligible ? UpriseColors.primaryDark : UpriseColors.darkGray,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+        ),
+      );
+    },
+  ),
+],
       body: Column(
         children: [
           _buildTemplatePreview(b),
           Expanded(
             child: FutureBuilder<List<_RecipientStatusRow>>(
-              future: fetchRecipientStatus(eventId),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text(
-                        'Error: ${snapshot.error}',
-                        style: GoogleFonts.beVietnamPro(
-                          color: UpriseColors.error,
-                        ),
-                      ),
-                    ),
-                  );
-                }
-                final rows = snapshot.data ?? [];
-                if (rows.isEmpty) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text(
-                        'No attendees found for this event.',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 14,
-                          color: const Color(0xFF64748B),
-                        ),
-                      ),
-                    ),
-                  );
-                }
-                return ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: rows.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (_, i) {
-                    final row = rows[i];
-                    final bool canSend = row.evaluated && !row.certSent;
-                    final bool awaitingEval = !row.evaluated;
+    future: fetchRecipientStatus(eventId),
+  builder: (context, snapshot) {
+    if (snapshot.connectionState == ConnectionState.waiting) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (snapshot.hasError) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            'Error: ${snapshot.error}',
+            style: GoogleFonts.beVietnamPro(
+              color: UpriseColors.error,
+            ),
+          ),
+        ),
+      );
+    }
+    final rows = snapshot.data ?? [];
+    if (rows.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            'No attendees found for this event.',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 14,
+              color: const Color(0xFF64748B),
+            ),
+          ),
+        ),
+      );
+    }
+    
+    // 👇 THIS IS THE NEW PART - Calculate stats
+    final total = rows.length;
+    final evaluated = rows.where((r) => r.evaluated).length;
+    final sent = rows.where((r) => r.certSent).length;
+    final awaitingEval = total - evaluated;
+    final readyToSend = evaluated - sent;
+    // 👆 NEW PART ENDS HERE
 
-                    return Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
+    // 👇 THIS IS THE UPDATED RETURN - Now with summary
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Summary Cards ──
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: Row(
+            children: [
+              Expanded(
+                child: _StatusSummaryItem(
+                  label: 'Total',
+                  count: total,
+                  color: UpriseColors.charcoal,
+                  icon: Icons.people_outline,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _StatusSummaryItem(
+                  label: 'Evaluated',
+                  count: evaluated,
+                  color: UpriseColors.success,
+                  icon: Icons.check_circle_outline,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _StatusSummaryItem(
+                  label: 'Waiting',
+                  count: awaitingEval,
+                  color: UpriseColors.warning,
+                  icon: Icons.hourglass_empty,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _StatusSummaryItem(
+                  label: 'Ready',
+                  count: readyToSend,
+                  color: UpriseColors.primaryDark,
+                  icon: Icons.send_outlined,
+                ),
+              ),
+            ],
+          ),
+        ),
+        
+        const Divider(),
+        
+        // ── Recipient List ──
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: rows.length,
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (_, i) {
+              final row = rows[i];
+              final bool canSend = row.evaluated && !row.certSent;
+              final bool awaitingEval = !row.evaluated;
+
+              return Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  color: canSend
+                      ? UpriseColors.warning.withOpacity(0.08)
+                      : (awaitingEval
+                            ? Colors.grey.shade50
+                            : UpriseColors.success.withOpacity(0.05)),
+                ),
+                child: Row(
+                  children: [
+                    // Name
+                    Expanded(
+                      flex: 2,
+                      child: Text(
+                        row.name,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: const Color(0xFF1A202C),
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(8),
-                        color: canSend
-                            ? UpriseColors.warning.withOpacity(0.08)
-                            : (awaitingEval
-                                  ? Colors.grey.shade50
-                                  : UpriseColors.success.withOpacity(0.05)),
-                      ),
-                      child: Row(
-                        children: [
-                          // Name
-                          Expanded(
-                            flex: 2,
-                            child: Text(
-                              row.name,
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                                color: const Color(0xFF1A202C),
-                              ),
-                              overflow: TextOverflow.ellipsis,
+                    ),
+                    // Status badge
+                    Expanded(flex: 1, child: _buildStatusBadge(row)),
+                    const SizedBox(width: 8),
+                    // Action button
+                    if (awaitingEval)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200],
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          'Waiting',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 11,
+                            color: Colors.grey[600],
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      )
+                    else if (canSend)
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          await widget.onSendSingle(
+                            row.key,
+                            row.name,
+                            row.isGuest,
+                          );
+                          if (mounted) setState(() {});
+                        },
+                        icon: const Icon(Icons.send_rounded, size: 14),
+                        label: const Text('Send'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: UpriseColors.primaryDark,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 7,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          elevation: 0,
+                        ),
+                      )
+                    else if (row.certSent)
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          // Find the existing record for this recipient
+                          final record = b.records.firstWhere(
+                            (r) => r.recipientName == row.name,
+                            orElse: () => b.records.first,
+                          );
+                          widget.onResend(record);
+                        },
+                        icon: const Icon(Icons.refresh_rounded, size: 14),
+                        label: Text(
+                          row.resendCount > 0
+                              ? 'Resend ×${row.resendCount + 1}'
+                              : 'Resend',
+                          style: GoogleFonts.beVietnamPro(fontSize: 11),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 7,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          side: BorderSide(
+                            color: UpriseColors.primaryDark.withOpacity(
+                              0.4,
                             ),
                           ),
-                          // Status badge
-                          Expanded(flex: 1, child: _buildStatusBadge(row)),
-                          const SizedBox(width: 8),
-                          // Action button
-                          if (awaitingEval)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.grey[200],
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                'Waiting',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 11,
-                                  color: Colors.grey[600],
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            )
-                          else if (canSend)
-                            ElevatedButton.icon(
-                              onPressed: () async {
-                                await widget.onSendSingle(
-                                  row.key,
-                                  row.name,
-                                  row.isGuest,
-                                );
-                                if (mounted) setState(() {});
-                              },
-                              icon: const Icon(Icons.send_rounded, size: 14),
-                              label: const Text('Send'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: UpriseColors.primaryDark,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 7,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                elevation: 0,
-                              ),
-                            )
-                          else if (row.certSent)
-                            OutlinedButton.icon(
-                              onPressed: () {
-                                // Find the existing record for this recipient
-                                final record = b.records.firstWhere(
-                                  (r) => r.recipientName == row.name,
-                                  orElse: () => b.records.first,
-                                );
-                                widget.onResend(record);
-                              },
-                              icon: const Icon(Icons.refresh_rounded, size: 14),
-                              label: Text(
-                                row.resendCount > 0
-                                    ? 'Resend ×${row.resendCount + 1}'
-                                    : 'Resend',
-                                style: GoogleFonts.beVietnamPro(fontSize: 11),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 7,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                side: BorderSide(
-                                  color: UpriseColors.primaryDark.withOpacity(
-                                    0.4,
-                                  ),
-                                ),
-                              ),
-                            )
-                          else
-                            const SizedBox.shrink(),
-                        ],
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
+                        ),
+                      )
+                    else
+                      const SizedBox.shrink(),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  },
+)
           ),
         ],
       ),
     );
   }
 
-  // A quick glance at what this batch's certificate actually looks like —
-  // the recipient list used to be the entire modal body, which left a big
-  // dead gap under a short list (ListView always claims its full allotted
-  // height regardless of item count). Reuses the exact same
-  // custom-template-vs-generated-theme fallback as the single-certificate
-  // preview dialog below, just without a specific recipient's name overlaid.
   Widget _buildTemplatePreview(CertificateBatch b) {
-    final r = b.primary;
-    // A fixed height instead of AspectRatio(600/424) — that ratio applied to
-    // this modal's 720px width computed a ~480px-tall preview, which pushed
-    // the header + preview + footer combined past the modal's
-    // maxHeightFraction budget and overflowed by 45px. A fixed height keeps
-    // this predictable regardless of modal width, leaving guaranteed room
-    // for the recipient list below it.
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-      child: SizedBox(
-        height: 200,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: r.templateFileUrl != null
-              ? Image.network(
+  final r = b.primary;
+  return Padding(
+    padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+    child: SizedBox(
+      height: 200,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: r.templateFileUrl != null
+            ? FittedBox(
+                fit: BoxFit.contain,
+                child: Image.network(
                   _renderableTemplateUrl(r.templateFileUrl!),
                   fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) => Container(
@@ -2208,94 +2344,106 @@ class _BatchDetailModalState extends State<_BatchDetailModal> {
                       color: Color(0xFF9AA5B4),
                     ),
                   ),
-                )
-              // CertificatePreview lays itself out at fixed, hardcoded
-              // sizing (unlike CertificateImageWithName, it doesn't scale
-              // its own content to whatever box it's given) — squeezing it
-              // directly into a 200px-tall box overflowed by however much
-              // its natural content exceeded that. FittedBox lets it render
-              // at its real intended size (matching the 600/424 aspect
-              // ratio used everywhere else this widget appears) and then
-              // uniformly scales the whole thing down to fit, guaranteeing
-              // no overflow regardless of its actual content height.
-              : FittedBox(
-                  fit: BoxFit.contain,
-                  child: SizedBox(
-                    width: 600,
-                    height: 424,
-                    child: CertificatePreview(
-                      theme: CertTheme.forType(
-                        r.templateType,
-                        primaryDark: UpriseColors.primaryDark,
-                        primaryLight: UpriseColors.primaryLight,
-                        accentColor: UpriseColors.accent,
-                      ),
-                      orgName: r.organization,
-                      eventTitle: r.eventName,
-                      eventDate: DateFormat('MMMM dd, yyyy').format(r.date),
-                      recipient: '[Recipient Name]',
-                      signatories: r.signatories.isNotEmpty
-                          ? r.signatories
-                                .map(
-                                  (s) => CertSignatory(
-                                    name: (s['name'] ?? '').toString(),
-                                    title: (s['title'] ?? '').toString(),
-                                    signatureImageBase64:
-                                        s['signatureImage'] as String?,
-                                  ),
-                                )
-                                .toList()
-                          : (r.signatureImage != null
-                                ? [
-                                    CertSignatory(
-                                      name: 'Authorized Signatory',
-                                      signatureImageBase64: r.signatureImage,
-                                    ),
-                                  ]
-                                : const []),
+                ),
+              )
+            // CertificatePreview lays itself out at fixed, hardcoded
+            // sizing (unlike CertificateImageWithName, it doesn't scale
+            // its own content to whatever box it's given) — squeezing it
+            // directly into a 200px-tall box overflowed by however much
+            // its natural content exceeded that. FittedBox lets it render
+            // at its real intended size (matching the 600/424 aspect
+            // ratio used everywhere else this widget appears) and then
+            // uniformly scales the whole thing down to fit, guaranteeing
+            // no overflow regardless of its actual content height.
+            : FittedBox(
+                fit: BoxFit.contain,
+                child: SizedBox(
+                  width: 600,
+                  height: 424,
+                  child: CertificatePreview(
+                    theme: CertTheme.forType(
+                      r.templateType,
+                      primaryDark: UpriseColors.primaryDark,
+                      primaryLight: UpriseColors.primaryLight,
+                      accentColor: UpriseColors.accent,
                     ),
+                    orgName: r.organization,
+                    eventTitle: r.eventName,
+                    eventDate: DateFormat('MMMM dd, yyyy').format(r.date),
+                    recipient: '[Recipient Name]',
+                    signatories: r.signatories.isNotEmpty
+                        ? r.signatories
+                            .map(
+                              (s) => CertSignatory(
+                                name: (s['name'] ?? '').toString(),
+                                title: (s['title'] ?? '').toString(),
+                                signatureImageBase64:
+                                    s['signatureImage'] as String?,
+                              ),
+                            )
+                            .toList()
+                        : (r.signatureImage != null
+                            ? [
+                                CertSignatory(
+                                  name: 'Authorized Signatory',
+                                  signatureImageBase64: r.signatureImage,
+                                ),
+                              ]
+                            : const []),
                   ),
                 ),
+              ),
         ),
       ),
     );
   }
 
   Widget _buildStatusBadge(_RecipientStatusRow row) {
-    String label;
-    Color bg, fg;
+  String label;
+  Color bg, fg;
+  IconData? icon;
 
-    if (!row.evaluated) {
-      label = 'Awaiting Eval';
-      bg = Colors.grey[200]!;
-      fg = Colors.grey[600]!;
-    } else if (!row.certSent) {
-      label = 'Pending';
-      bg = UpriseColors.warning.withOpacity(0.18);
-      fg = UpriseColors.warning;
-    } else {
-      label = 'Sent ✓';
-      bg = UpriseColors.success.withOpacity(0.15);
-      fg = UpriseColors.success;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        label,
-        style: GoogleFonts.beVietnamPro(
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          color: fg,
-          letterSpacing: 0.5,
-        ),
-      ),
-    );
+  if (!row.evaluated) {
+    label = 'Awaiting Eval';
+    bg = Colors.grey[200]!;
+    fg = Colors.grey[600]!;
+    icon = Icons.hourglass_empty;
+  } else if (!row.certSent) {
+    label = 'Ready to Send';
+    bg = UpriseColors.warning.withOpacity(0.18);
+    fg = UpriseColors.warning;
+    icon = Icons.send_outlined;
+  } else {
+    label = 'Sent';
+    bg = UpriseColors.success.withOpacity(0.15);
+    fg = UpriseColors.success;
+    icon = Icons.check_circle_outline;
   }
+
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+    decoration: BoxDecoration(
+      color: bg,
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (icon != null) Icon(icon, size: 12, color: fg),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: fg,
+            letterSpacing: 0.5,
+          ),
+        ),
+      ],
+    ),
+  );
+}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2633,14 +2781,16 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
 
           return ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: _CertificateComposite(
-              recipientName: 'Recipient Name',
-              namePlacement:
-                  _selectedTemplatePlacement ?? const CertNamePlacement(),
-              signatoryPlacements: validPlacements, // ← Use only valid ones!
-              signatories: signatories,
-              background: NetworkImage(
-                _renderableTemplateUrl(_selectedTemplateUrl!),
+            child: FittedBox(   // <-- ADD THIS
+              fit: BoxFit.contain,   // <-- ADD THIS
+              child: _CertificateComposite(
+                recipientName: 'Recipient Name',
+                namePlacement: _selectedTemplatePlacement ?? const CertNamePlacement(),
+                signatoryPlacements: validPlacements,
+                signatories: signatories,
+                background: NetworkImage(
+                  _renderableTemplateUrl(_selectedTemplateUrl!),
+                ),
               ),
             ),
           );
@@ -3706,12 +3856,6 @@ class _FieldWrapper extends StatelessWidget {
     );
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Certificate Preview Dialog (view mode) — now renders through the shared
-// _CertificateComposite so signatories placed on the template appear here
-// too, and the recipient name auto-fits regardless of its length.
-// ─────────────────────────────────────────────────────────────────────────────
 class _CertPreviewDialog extends StatelessWidget {
   final CertificateRecord record;
   const _CertPreviewDialog({required this.record});

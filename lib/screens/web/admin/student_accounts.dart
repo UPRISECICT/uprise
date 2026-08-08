@@ -2447,7 +2447,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
                               }
                               if (!_isMicrosoftEmail(v)) {
                                 return 'Must be the school\'s Microsoft email '
-                                    '(ms.bulsu.edu.ph, outlook.com, hotmail.com, live.com, msn.com)';
+                                    '(ms.bulsu.edu.ph or outlook.com)';
                               }
                               return null;
                             },
@@ -2823,7 +2823,8 @@ class _StudentAccountsState extends State<StudentAccounts> {
         reasons.add('missing Email');
       } else if (!_isMicrosoftEmail(s['email']!)) {
         reasons.add(
-          'Email "${s['email']}" isn\'t the school\'s Microsoft account (ms.bulsu.edu.ph, outlook.com, hotmail.com, live.com, msn.com)',
+          'Email "${s['email']}" isn\'t the school\'s Microsoft account '
+          '(ms.bulsu.edu.ph or outlook.com)',
         );
       }
 
@@ -2885,16 +2886,11 @@ class _StudentAccountsState extends State<StudentAccounts> {
   }
 
   // ms.bulsu.edu.ph is the school's actual Microsoft 365 domain (student
-  // emails look like 2023100467@ms.bulsu.edu.ph) — the generic consumer
-  // domains below aren't tied to the institution at all, but are kept as a
-  // fallback rather than removed outright.
-  static const _microsoftEmailDomains = {
-    'ms.bulsu.edu.ph',
-    'outlook.com',
-    'hotmail.com',
-    'live.com',
-    'msn.com',
-  };
+  // emails look like 2023100467@ms.bulsu.edu.ph). outlook.com is kept as
+  // the one fallback consumer domain — hotmail.com/live.com/msn.com were
+  // dropped since they're not actually used and only widened the surface
+  // for typos to slip through as "valid."
+  static const _microsoftEmailDomains = {'ms.bulsu.edu.ph', 'outlook.com'};
 
   bool _isMicrosoftEmail(String email) {
     final at = email.trim().toLowerCase().lastIndexOf('@');

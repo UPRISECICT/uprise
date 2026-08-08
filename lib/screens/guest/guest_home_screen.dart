@@ -23,6 +23,7 @@ import 'guest_auth_service.dart'; // GuestMode enum
 import 'guest_calendar_screen.dart';
 import 'guest_digital_id_notice.dart';
 import 'guest_events_screen.dart';
+import 'guest_merchandise_screen.dart';
 import 'guest_profile_screen.dart';
 
 // ─────────────────────────────────────────────────────────────
@@ -507,6 +508,21 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
               ],
             ),
             actions: [
+              IconButton(
+                icon: const Icon(
+                  Icons.shopping_bag_outlined,
+                  color: _kPrimary,
+                  size: 22,
+                ),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const GuestMerchandiseScreen(),
+                    ),
+                  );
+                },
+              ),
               if (_isAuthenticated)
                 Padding(
                   padding: const EdgeInsets.only(right: 14),

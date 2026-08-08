@@ -159,6 +159,33 @@ const List<String> _merchandiseCategories = [
   'Others',
 ];
 
+// A fixed color per known category (falls back to a hash-based pick from
+// the same palette for custom "Others" text) so the catalog reads more
+// like a tagged shop than a flat list — each category is recognizable by
+// color at a glance, not just by its label.
+const Map<String, Color> _categoryColors = {
+  'T-Shirts / Uniforms': Color(0xFF2563EB),
+  'Lanyards / IDs': Color(0xFF7C3AED),
+  'Stickers / Pins': Color(0xFFDB2777),
+  'Tumblers / Water Bottles': Color(0xFF0D9488),
+  'Notebooks / Planners': Color(0xFFB45309),
+};
+const List<Color> _fallbackCategoryColors = [
+  Color(0xFF2563EB),
+  Color(0xFF7C3AED),
+  Color(0xFFDB2777),
+  Color(0xFF0D9488),
+  Color(0xFFB45309),
+  Color(0xFF059669),
+];
+
+Color _categoryColor(String category) {
+  final known = _categoryColors[category];
+  if (known != null) return known;
+  return _fallbackCategoryColors[category.hashCode.abs() %
+      _fallbackCategoryColors.length];
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Screen
 // ─────────────────────────────────────────────────────────────────────────────
@@ -174,7 +201,6 @@ class _OrgMerchandiseScreenState extends State<OrgMerchandiseScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   int _selectedTab = 0;
-  int? _selectedStatCard;
 
   // Created once, not inline in build() — _buildStatsRow rebuilds on every
   // tab change, so constructing fresh .snapshots() there each time was
@@ -216,8 +242,7 @@ class _OrgMerchandiseScreenState extends State<OrgMerchandiseScreen>
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildStatsRow(isMobile),
-          _buildToolbar(isMobile),
+          _buildHeader(isMobile),
           const SizedBox(height: 16),
           Expanded(
             child: TabBarView(
@@ -236,10 +261,13 @@ class _OrgMerchandiseScreenState extends State<OrgMerchandiseScreen>
     );
   }
 
-  // Sales/Revenue/Profit cards were removed along with the checkout flow —
-  // merch is a catalog now, so only catalog-shaped stats (count, low stock)
-  // are meaningful here. _statsOrdersStream is left defined but unused.
-  Widget _buildStatsRow(bool isMobile) {
+  // Bordered admin-dashboard-style stat cards + a separate toolbar row read
+  // as a generic CRUD panel, not a shop — merged into one header where the
+  // stats are lightweight inline chips (secondary information) and the
+  // actual visual weight goes to the "Shop" identity and the product grid
+  // below. _statsOrdersStream is left defined but unused (Sales/Revenue
+  // cards were removed along with the checkout flow).
+  Widget _buildHeader(bool isMobile) {
     return StreamBuilder<QuerySnapshot>(
       stream: _statsProductsStream,
       builder: (context, productSnap) {
@@ -249,9 +277,69 @@ class _OrgMerchandiseScreenState extends State<OrgMerchandiseScreen>
             .where((p) => ((p.data() as Map)['stock'] ?? 0) <= 5)
             .length;
 
-        void selectCard(int cardIndex) {
-          setState(() => _selectedStatCard = cardIndex);
-        }
+        final title = Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Shop',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF1A202C),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Container(width: 1, height: 16, color: const Color(0xFFE2E6EA)),
+            const SizedBox(width: 14),
+            _InlineStat(
+              icon: Icons.shopping_bag_outlined,
+              text: '$totalProducts product${totalProducts == 1 ? '' : 's'}',
+              color: UpriseColors.info,
+            ),
+            if (lowStock > 0) ...[
+              const SizedBox(width: 16),
+              _InlineStat(
+                icon: Icons.warning_amber_rounded,
+                text: '$lowStock low stock',
+                color: UpriseColors.error,
+              ),
+            ],
+          ],
+        );
+
+        final actions = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AdminExportButton(
+              onSelected: (format) => _exportCurrentTab(format),
+            ),
+            const SizedBox(width: 10),
+            ElevatedButton.icon(
+              onPressed: () => _openAddProductModal(context),
+              icon: const Icon(Icons.add, size: 18, color: Colors.white),
+              label: Text(
+                'Add Product',
+                style: GoogleFonts.beVietnamPro(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: UpriseColors.primaryDark,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 10,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                elevation: 0,
+              ),
+            ),
+          ],
+        );
 
         return Padding(
           padding: EdgeInsets.fromLTRB(
@@ -260,75 +348,14 @@ class _OrgMerchandiseScreenState extends State<OrgMerchandiseScreen>
             isMobile ? 16 : 28,
             0,
           ),
-          child: Row(
-            children: [
-              _StatCard(
-                label: 'Total Products',
-                value: totalProducts.toString(),
-                icon: Icons.shopping_bag_outlined,
-                color: UpriseColors.info,
-                isSelected: _selectedStatCard == 0,
-                onTap: () => selectCard(0),
-              ),
-              const SizedBox(width: 14),
-              _StatCard(
-                label: 'Low Stock',
-                value: lowStock.toString(),
-                icon: Icons.warning_amber_outlined,
-                color: lowStock > 0
-                    ? UpriseColors.error
-                    : const Color(0xFF6B7280),
-                isSelected: _selectedStatCard == 4,
-                onTap: () => selectCard(4),
-              ),
-            ],
-          ),
+          child: isMobile
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [title, const SizedBox(height: 14), actions],
+                )
+              : Row(children: [title, const Spacer(), actions]),
         );
       },
-    );
-  }
-
-  Widget _buildToolbar(bool isMobile) {
-    // The Products/Orders tab toggle and the Sales Report / GCash Settings
-    // buttons are hidden now that merch is a catalog, not a checkout flow —
-    // the underlying _OrdersTab, GCash dialog, and sales report code are
-    // left in place (just unreferenced here) rather than deleted, in case
-    // payments come back later.
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        isMobile ? 16 : 28,
-        isMobile ? 14 : 20,
-        isMobile ? 16 : 28,
-        0,
-      ),
-      child: Row(
-        children: [
-          const Spacer(),
-          AdminExportButton(onSelected: (format) => _exportCurrentTab(format)),
-          const SizedBox(width: 10),
-
-          ElevatedButton.icon(
-            onPressed: () => _openAddProductModal(context),
-            icon: const Icon(Icons.add, size: 18, color: Colors.white),
-            label: Text(
-              'Add Product',
-              style: GoogleFonts.beVietnamPro(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-              ),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: UpriseColors.primaryDark,
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-              elevation: 0,
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -545,93 +572,36 @@ class _PillTab extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Stat Card (matches student accounts)
+// Inline stat — a small icon+text pair instead of a bordered card, for the
+// merchandise header where the stats are secondary to the "Shop" identity.
 // ─────────────────────────────────────────────────────────────────────────────
-class _StatCard extends StatelessWidget {
-  final String label, value;
+class _InlineStat extends StatelessWidget {
   final IconData icon;
+  final String text;
   final Color color;
-  final bool isSelected;
-  final VoidCallback? onTap;
-  const _StatCard({
-    required this.label,
-    required this.value,
+
+  const _InlineStat({
     required this.icon,
+    required this.text,
     required this.color,
-    this.isSelected = false,
-    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          onTap: onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isSelected ? color : const Color(0xFFE8ECF0),
-                width: isSelected ? 2 : 1,
-              ),
-              boxShadow: isSelected
-                  ? [
-                      BoxShadow(
-                        color: color.withAlpha(46),
-                        blurRadius: 16,
-                        offset: const Offset(0, 4),
-                      ),
-                    ]
-                  : _DS.cardShadow,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: color.withAlpha(26),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(icon, color: color, size: 20),
-                    ),
-                    Flexible(
-                      child: Text(
-                        value,
-                        textAlign: TextAlign.right,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0xFF1A202C),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  label,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 11,
-                    color: const Color(0xFF64748B),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 15, color: color),
+        const SizedBox(width: 5),
+        Text(
+          text,
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w600,
+            color: const Color(0xFF64748B),
           ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -1269,10 +1239,42 @@ class _ProductCard extends StatefulWidget {
 // and callbacks as before, purely a presentation change.
 class _ProductCardState extends State<_ProductCard> {
   bool _hovering = false;
+  // Decoded once and reused — decoding fresh inside build() meant every
+  // hover-triggered setState() re-ran base64Decode and handed Image.memory
+  // a brand-new Uint8List each time. Flutter's image cache keys off that
+  // object's identity, not its bytes, so each hover looked like "a whole
+  // new image" and forced a full re-decode — that was the hover glitch.
+  Uint8List? _decodedImage;
+
+  @override
+  void initState() {
+    super.initState();
+    _decodeImage();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ProductCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.product.imageBase64 != widget.product.imageBase64) {
+      _decodeImage();
+    }
+  }
+
+  void _decodeImage() {
+    final b64 = widget.product.imageBase64;
+    if (b64 != null && b64.isNotEmpty) {
+      try {
+        _decodedImage = base64Decode(b64);
+        return;
+      } catch (_) {}
+    }
+    _decodedImage = null;
+  }
 
   @override
   Widget build(BuildContext context) {
     final product = widget.product;
+    final categoryColor = _categoryColor(product.category);
     final totalStock = product.variants.isNotEmpty
         ? product.variants.fold<int>(0, (sum, v) => sum + v.stock)
         : product.stock;
@@ -1389,18 +1391,25 @@ class _ProductCardState extends State<_ProductCard> {
               ),
             ),
             const SizedBox(height: 12),
-            Text(
-              product.category,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 10.5,
-                fontWeight: FontWeight.w600,
-                color: const Color(0xFF9AA5B4),
-                letterSpacing: 0.5,
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: categoryColor.withAlpha(24),
+                borderRadius: BorderRadius.circular(_DS.radiusPill),
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+              child: Text(
+                product.category,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: categoryColor,
+                  letterSpacing: 0.3,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-            const SizedBox(height: 3),
+            const SizedBox(height: 6),
             Text(
               product.name,
               style: GoogleFonts.beVietnamPro(
@@ -1455,30 +1464,24 @@ class _ProductCardState extends State<_ProductCard> {
   }
 
   Widget _buildProductImage() {
-    final product = widget.product;
-    // Check if we have a base64 image
-    if (product.imageBase64 != null && product.imageBase64!.isNotEmpty) {
-      try {
-        return Image.memory(
-          base64Decode(product.imageBase64!),
-          fit: BoxFit.cover,
-          // Decodes at a card-sized resolution instead of whatever the org
-          // originally uploaded — full camera-resolution photos decoded
-          // for every card in a grid is what was making the list laggy.
-          cacheWidth: 400,
-          errorBuilder: (_, __, ___) => Container(
-            color: const Color(0xFFF8F9FB),
-            child: const Icon(
-              Icons.shopping_bag_outlined,
-              size: 40,
-              color: Color(0xFF9AA5B4),
-            ),
+    final bytes = _decodedImage;
+    if (bytes != null) {
+      return Image.memory(
+        bytes,
+        fit: BoxFit.cover,
+        // Decodes at a card-sized resolution instead of whatever the org
+        // originally uploaded — full camera-resolution photos decoded
+        // for every card in a grid is what was making the list laggy.
+        cacheWidth: 400,
+        errorBuilder: (_, __, ___) => Container(
+          color: const Color(0xFFF8F9FB),
+          child: const Icon(
+            Icons.shopping_bag_outlined,
+            size: 40,
+            color: Color(0xFF9AA5B4),
           ),
-        );
-      } catch (_) {
-        // If base64 decode fails, fallback to network image
-        return _buildNetworkImage();
-      }
+        ),
+      );
     }
     return _buildNetworkImage();
   }
@@ -1502,22 +1505,51 @@ class _ProductCardState extends State<_ProductCard> {
             ),
           );
         },
-        errorBuilder: (_, __, ___) => Container(
-          color: const Color(0xFFF8F9FB),
-          child: const Icon(
-            Icons.shopping_bag_outlined,
-            size: 40,
-            color: Color(0xFF9AA5B4),
-          ),
-        ),
+        errorBuilder: (_, __, ___) => const _NoPhotoPlaceholder(),
       );
     }
+    return const _NoPhotoPlaceholder();
+  }
+}
+
+// A flat gray box + generic bag icon read as "broken image" rather than
+// "no photo yet" — this gives an empty product a deliberate, on-brand look
+// instead of looking like something failed to load.
+class _NoPhotoPlaceholder extends StatelessWidget {
+  const _NoPhotoPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      color: const Color(0xFFF8F9FB),
-      child: const Icon(
-        Icons.shopping_bag_outlined,
-        size: 40,
-        color: Color(0xFF9AA5B4),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            UpriseColors.primaryDark.withAlpha(14),
+            const Color(0xFFF8F9FB),
+          ],
+        ),
+      ),
+      alignment: Alignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.add_photo_alternate_outlined,
+            size: 30,
+            color: UpriseColors.primaryDark.withAlpha(130),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'No photo',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w600,
+              color: UpriseColors.primaryDark.withAlpha(150),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2316,99 +2348,167 @@ class _ProductModalState extends State<_ProductModal> {
     );
   }
 
+  // Was a bare 64x64 "+" square buried after two lines of small gray text —
+  // easy to miss entirely, which is why this read as "not working" rather
+  // than "not yet used." Now a bordered card with a full-width branded CTA
+  // button that's impossible to scroll past without noticing.
   Widget _buildRotationPhotosPicker() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Upload several photos of the product taken from evenly-spaced '
-          'angles (turntable-style) so students can drag to spin it — one '
-          'photo just shows as a still image.',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 11.5,
-            color: const Color(0xFF9AA5B4),
+    final count = _rotationPhotoBytes.length;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8F9FB),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFE2E6EA)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Add photos taken from evenly-spaced angles (turntable-style) '
+            'so students can drag to spin the product. One photo just '
+            'shows as a still image.',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 11.5,
+              color: const Color(0xFF6B7280),
+              height: 1.5,
+            ),
           ),
-        ),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (var i = 0; i < _rotationPhotoBytes.length; i++)
-              Stack(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.memory(
-                      _rotationPhotoBytes[i],
-                      width: 64,
-                      height: 64,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) =>
-                          const SizedBox(width: 64, height: 64),
+          const SizedBox(height: 12),
+          MouseRegion(
+            cursor: (_submitting || _uploadingImage)
+                ? MouseCursor.defer
+                : SystemMouseCursors.click,
+            child: GestureDetector(
+              onTap: (_submitting || _uploadingImage)
+                  ? null
+                  : _pickRotationPhotos,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: UpriseColors.primaryDark,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.threesixty_rounded,
+                      size: 16,
+                      color: Colors.white,
                     ),
-                  ),
-                  Positioned(
-                    top: -6,
-                    right: -6,
-                    child: MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        onTap: () => _removeRotationPhoto(i),
-                        child: Container(
-                          width: 20,
-                          height: 20,
-                          decoration: const BoxDecoration(
-                            color: Colors.black87,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.close_rounded,
-                            size: 13,
-                            color: Colors.white,
-                          ),
-                        ),
+                    const SizedBox(width: 8),
+                    Text(
+                      count == 0 ? 'Add 360° Photos' : 'Add More Photos',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
                       ),
                     ),
-                  ),
-                ],
-              ),
-            MouseRegion(
-              cursor: (_submitting || _uploadingImage)
-                  ? MouseCursor.defer
-                  : SystemMouseCursors.click,
-              child: GestureDetector(
-                onTap: (_submitting || _uploadingImage)
-                    ? null
-                    : _pickRotationPhotos,
-                child: Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8F9FB),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFE2E6EA)),
-                  ),
-                  child: const Icon(
-                    Icons.add_rounded,
-                    color: Color(0xFF9AA5B4),
-                  ),
+                  ],
                 ),
               ),
             ),
-          ],
-        ),
-        if (_rotationPhotoBytes.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          Text(
-            '${_rotationPhotoBytes.length} photo${_rotationPhotoBytes.length == 1 ? '' : 's'}',
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 11,
-              color: const Color(0xFF9AA5B4),
-            ),
           ),
+          if (count > 0) ...[
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Text(
+                  '$count photo${count == 1 ? '' : 's'}',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF374151),
+                  ),
+                ),
+                if (count < 8) ...[
+                  const SizedBox(width: 6),
+                  Text(
+                    '· add ${8 - count} more for a smoother spin',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11.5,
+                      color: const Color(0xFF9AA5B4),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (var i = 0; i < _rotationPhotoBytes.length; i++)
+                  Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.memory(
+                          _rotationPhotoBytes[i],
+                          width: 72,
+                          height: 72,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) =>
+                              const SizedBox(width: 72, height: 72),
+                        ),
+                      ),
+                      // Order matters for the spin sequence — numbering
+                      // makes that visible instead of an unordered pile.
+                      Positioned(
+                        left: 4,
+                        bottom: 4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black87,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            '${i + 1}',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        top: -6,
+                        right: -6,
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            onTap: () => _removeRotationPhoto(i),
+                            child: Container(
+                              width: 20,
+                              height: 20,
+                              decoration: const BoxDecoration(
+                                color: Colors.black87,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.close_rounded,
+                                size: 13,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ],
         ],
-      ],
+      ),
     );
   }
 
@@ -2890,14 +2990,13 @@ class _ProductDetailsModal extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Header
+            // Header — a solid orange block here read as loud/cluttered
+            // next to the plain field grid below it; a bordered-bottom
+            // white header matches the rest of the modal's restraint.
             Container(
-              padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
-              decoration: BoxDecoration(
-                color: UpriseColors.primaryDark,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(18),
-                ),
+              padding: const EdgeInsets.fromLTRB(24, 20, 20, 18),
+              decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: Color(0xFFEEF0F3))),
               ),
               child: Row(
                 children: [
@@ -2905,12 +3004,12 @@ class _ProductDetailsModal extends StatelessWidget {
                     width: 38,
                     height: 38,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.15),
+                      color: UpriseColors.primaryDark.withAlpha(20),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.shopping_bag_outlined,
-                      color: Colors.white,
+                      color: UpriseColors.primaryDark,
                       size: 18,
                     ),
                   ),
@@ -2922,9 +3021,9 @@ class _ProductDetailsModal extends StatelessWidget {
                         Text(
                           product.name,
                           style: GoogleFonts.beVietnamPro(
-                            fontSize: 17,
+                            fontSize: 16,
                             fontWeight: FontWeight.w700,
-                            color: Colors.white,
+                            color: const Color(0xFF1A202C),
                           ),
                         ),
                         const SizedBox(height: 2),
@@ -2932,18 +3031,18 @@ class _ProductDetailsModal extends StatelessWidget {
                           productId,
                           style: GoogleFonts.beVietnamPro(
                             fontSize: 12,
-                            color: Colors.white.withOpacity(0.7),
+                            color: const Color(0xFF9AA5B4),
                           ),
                         ),
                       ],
                     ),
                   ),
                   _statusBadge(product.status),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 4),
                   IconButton(
                     icon: const Icon(
                       Icons.close_rounded,
-                      color: Colors.white,
+                      color: Color(0xFF9AA5B4),
                       size: 20,
                     ),
                     onPressed: () => Navigator.pop(context),
@@ -2958,23 +3057,37 @@ class _ProductDetailsModal extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Product Image with Base64 support
-                    _buildProductImage(),
+                    // A portrait photo inside a full-width 220px-tall box
+                    // (ProductSpinViewer's default) left huge empty gutters
+                    // on either side — capping the width and centering it
+                    // makes the frame match the photo instead of dwarfing
+                    // it.
+                    Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 320),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(14),
+                          child: _buildProductImage(),
+                        ),
+                      ),
+                    ),
                     const SizedBox(height: 20),
-                    // Product Info Grid
+                    // Plain stacked icon+label+value pairs read as a form,
+                    // not a product summary — small tinted cards in a grid
+                    // give each fact its own visual weight.
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
-                          child: _detailItem(
+                          child: _detailCard(
                             'Category',
                             product.category,
                             Icons.category_outlined,
                           ),
                         ),
-                        const SizedBox(width: 16),
+                        const SizedBox(width: 12),
                         Expanded(
-                          child: _detailItem(
+                          child: _detailCard(
                             'Price',
                             '₱${NumberFormat('#,###').format(product.price)}',
                             Icons.payments_outlined,
@@ -2982,20 +3095,20 @@ class _ProductDetailsModal extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
-                          child: _detailItem(
+                          child: _detailCard(
                             'Stock',
                             '$totalStock units',
                             Icons.inventory_2_outlined,
                           ),
                         ),
-                        const SizedBox(width: 16),
+                        const SizedBox(width: 12),
                         Expanded(
-                          child: _detailItem(
+                          child: _detailCard(
                             'Sold',
                             '${product.sold} units',
                             Icons.shopping_cart_outlined,
@@ -3003,14 +3116,18 @@ class _ProductDetailsModal extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 16),
                     if (product.description.isNotEmpty) ...[
-                      _detailItem(
-                        'Description',
+                      _sectionTitle('Description', Icons.notes_rounded),
+                      Text(
                         product.description,
-                        Icons.notes_rounded,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          color: const Color(0xFF475569),
+                          height: 1.55,
+                        ),
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 16),
                     ],
                     // Variants Section
                     if (product.variants.isNotEmpty) ...[
@@ -3028,17 +3145,13 @@ class _ProductDetailsModal extends StatelessWidget {
                                 horizontal: 12,
                                 vertical: 8,
                               ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFFF7ED),
-                                borderRadius: const BorderRadius.vertical(
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFF8F9FB),
+                                borderRadius: BorderRadius.vertical(
                                   top: Radius.circular(10),
                                 ),
                                 border: Border(
-                                  bottom: BorderSide(
-                                    color: UpriseColors.primaryDark.withAlpha(
-                                      60,
-                                    ),
-                                  ),
+                                  bottom: BorderSide(color: Color(0xFFE8ECF0)),
                                 ),
                               ),
                               child: Row(
@@ -3388,35 +3501,45 @@ class _ProductDetailsModal extends StatelessWidget {
     );
   }
 
-  Widget _detailItem(String label, String value, IconData icon) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(icon, size: 14, color: const Color(0xFF9AA5B4)),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: const Color(0xFF64748B),
-                letterSpacing: 0.4,
+  Widget _detailCard(String label, String value, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8F9FB),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFEEF0F3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 13, color: UpriseColors.primaryDark),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF64748B),
+                  letterSpacing: 0.4,
+                ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: const Color(0xFF1A202C),
+            ],
           ),
-        ),
-      ],
+          const SizedBox(height: 6),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF1A202C),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

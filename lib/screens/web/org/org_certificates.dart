@@ -3028,8 +3028,13 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
         .collection('attendances')
         .get();
 
+    // 'event_feedback' is the canonical collection for certificate
+    // eligibility (see fetchRecipientStatus above and guest_feedback_screen
+    // .dart's explicit mirror comment) — 'feedback' is a legacy/duplicate
+    // collection some student submissions never write to at all, which
+    // silently under-counted who'd actually submitted their evaluation.
     final feedbackSnap = await FirebaseFirestore.instance
-        .collection('feedback')
+        .collection('event_feedback')
         .where('eventId', isEqualTo: eventDocId)
         .get();
     final evaluatedUids = feedbackSnap.docs

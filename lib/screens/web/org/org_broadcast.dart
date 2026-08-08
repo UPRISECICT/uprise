@@ -373,32 +373,67 @@ Future<void> showReportMessageDialog(
   final detailsCtrl = TextEditingController();
   final submitted = await showDialog<bool>(
     context: context,
+    barrierColor: Colors.black54,
     builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setDialogState) => AlertDialog(
-        title: Text(
-          'Report message',
-          style: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w700),
-        ),
-        content: SizedBox(
-          width: 360,
+      builder: (ctx, setDialogState) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          width: 400,
+          padding: const EdgeInsets.all(28),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF2F2),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.flag_outlined,
+                      color: Color(0xFFDC2626),
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      'Report Message',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: _C.charcoal,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
               Text(
                 'Why are you reporting this message?',
-                style: GoogleFonts.beVietnamPro(fontSize: 13),
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: _C.darkGray,
+                ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               for (final reason in _reportReasons)
                 RadioListTile<String>(
                   value: reason,
                   groupValue: selectedReason,
                   dense: true,
                   contentPadding: EdgeInsets.zero,
+                  activeColor: const Color(0xFFDC2626),
                   title: Text(
                     reason,
-                    style: GoogleFonts.beVietnamPro(fontSize: 13),
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 13,
+                      color: _C.charcoal,
+                    ),
                   ),
                   onChanged: (v) => setDialogState(() => selectedReason = v!),
                 ),
@@ -409,27 +444,75 @@ Future<void> showReportMessageDialog(
                 style: GoogleFonts.beVietnamPro(fontSize: 13),
                 decoration: InputDecoration(
                   hintText: 'Additional details (optional)',
-                  hintStyle: GoogleFonts.beVietnamPro(fontSize: 12),
-                  border: const OutlineInputBorder(),
+                  hintStyle: GoogleFonts.beVietnamPro(
+                    fontSize: 12,
+                    color: _C.textFaint,
+                  ),
+                  filled: true,
+                  fillColor: _C.surface,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide.none,
+                  ),
                 ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFFE2E6EA)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 11,
+                      ),
+                    ),
+                    child: Text(
+                      'Cancel',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF374151),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFDC2626),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 11,
+                      ),
+                    ),
+                    child: Text(
+                      'Report',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFDC2626),
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Report'),
-          ),
-        ],
       ),
     ),
   );

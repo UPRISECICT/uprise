@@ -414,19 +414,34 @@ class _EventManagementScreenState extends State<EventManagementScreen> {
             child: StreamBuilder<QuerySnapshot>(
               stream: _eventsStream,
               builder: (ctx, snap) {
+                // Every event stays selectable here — including ended ones —
+                // so Registered Participants, form answers, and "Send
+                // Evaluation" all remain reachable after an event is over
+                // instead of vanishing from the switcher the moment it ends.
+                // QR/manual attendance marking is unaffected: that's gated
+                // separately by _isActive()/_eventState(), which already
+                // correctly turns itself off once an event is no longer
+                // `active`, regardless of what's selectable here.
                 final events = (snap.data?.docs ?? [])
                     .map((d) => EventModel.fromDoc(d))
                     .toList();
-                final activeEvents = events
+                // Default selection still prefers an active/upcoming event
+                // exactly as before; only falls back to the most recent
+                // ended one when nothing active/upcoming exists (previously
+                // this showed an empty state instead of a usable screen).
+                final nonEnded = events
                     .where((e) => _eventState(e) != _EState.ended)
                     .toList();
-                if (activeEvents.isNotEmpty && _event == null) {
+                final defaultEvent = nonEnded.isNotEmpty
+                    ? nonEnded.first
+                    : (events.isNotEmpty ? events.last : null);
+                if (defaultEvent != null && _event == null) {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted) _selectEvent(activeEvents.first);
+                    if (mounted) _selectEvent(defaultEvent);
                   });
                 }
 
-                if (activeEvents.isEmpty) {
+                if (events.isEmpty) {
                   return Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
@@ -446,7 +461,7 @@ class _EventManagementScreenState extends State<EventManagementScreen> {
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          'No upcoming or active events available',
+                          'No events available for this organization yet',
                           style: GoogleFonts.beVietnamPro(
                             fontSize: 13,
                             color: const Color(0xFFB0BAC8),
@@ -459,7 +474,7 @@ class _EventManagementScreenState extends State<EventManagementScreen> {
 
                 // A single event is already fully described by the banner below —
                 // no need for a second card just to name it again.
-                if (activeEvents.length == 1) return const SizedBox.shrink();
+                if (events.length == 1) return const SizedBox.shrink();
 
                 return Container(
                   padding: const EdgeInsets.symmetric(
@@ -503,18 +518,23 @@ class _EventManagementScreenState extends State<EventManagementScreen> {
                               fontWeight: FontWeight.w600,
                               color: const Color(0xFF1A202C),
                             ),
-                            items: activeEvents
+                            items: events
                                 .map(
                                   (e) => DropdownMenuItem(
                                     value: e.id,
-                                    child: Text(e.title),
+                                    child: Text(
+                                      _eventState(e) == _EState.ended
+                                          ? '${e.title} (Ended)'
+                                          : e.title,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                   ),
                                 )
                                 .toList(),
                             onChanged: (v) {
                               if (v != null)
                                 _selectEvent(
-                                  activeEvents.firstWhere((e) => e.id == v),
+                                  events.firstWhere((e) => e.id == v),
                                 );
                             },
                           ),
@@ -2562,7 +2582,7 @@ class _RegistrantsTable extends StatelessWidget {
                   icon: Icons.visibility_outlined,
                   tooltip: 'View registration answers',
                   color: const Color(0xFF2563EB),
-                  onTap: () => _showRegistrationAnswers(
+                  onTap: () => showRegistrationAnswers(
                     context,
                     name.isEmpty ? 'Student' : name,
                     m,
@@ -2583,7 +2603,10 @@ class _RegistrantsTable extends StatelessWidget {
 // current student registration flow) or the older `formAnswers` (raw field
 // id -> value, no labels). Handles either shape so older registrations
 // still show something instead of nothing.
-void _showRegistrationAnswers(
+//
+// Public (not `_`-prefixed) so org_registration_forms.dart can reuse this
+// exact dual-field-shape handling instead of duplicating it.
+void showRegistrationAnswers(
   BuildContext context,
   String studentName,
   Map<String, dynamic> regData,

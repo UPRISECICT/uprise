@@ -23,6 +23,7 @@ import '../../auth/change_password_screen.dart';
 import 'org_event_proposals.dart';
 import 'org_events_schedule.dart';
 import 'org_attendance_qr.dart';
+import 'org_registration_forms.dart';
 import 'org_certificates.dart';
 import 'org_event_analytics.dart';
 import 'org_announcements.dart';
@@ -303,6 +304,7 @@ const List<Map<String, dynamic>> _navItems = [
   {'label': 'Report Submissions', 'icon': Icons.summarize_outlined},
   {'label': 'Finance', 'icon': Icons.account_balance_wallet_outlined},
   {'label': 'Merchandise', 'icon': Icons.shopping_bag_outlined},
+  {'label': 'Registration Forms', 'icon': Icons.assignment_outlined},
 ];
 
 // Sidebar groups: standalone items render directly, grouped items nest
@@ -325,7 +327,7 @@ const Map<String, Map<String, dynamic>> _navGroups = {
   'attendance': {
     'label': 'Attendance & Certificates',
     'icon': Icons.fact_check_outlined,
-    'children': [3, 4],
+    'children': [3, 4, 13],
   },
   'finance': {
     'label': 'Finance & Merch',
@@ -530,7 +532,7 @@ class _OrgDashboardState extends State<OrgDashboard> {
   final ValueNotifier<int> _selectedIndexNotifier = ValueNotifier(0);
   // Screens are only actually mounted (and start their Firestore queries)
   // the first time their tab is opened, then kept alive in the IndexedStack
-  // from then on — otherwise all 13 screens would fire their queries at
+  // from then on — otherwise all 15 screens would fire their queries at
   // once on dashboard load instead of spreading that cost out over time.
   final Set<int> _visitedIndices = {0};
   final GlobalKey _bellKey = GlobalKey();
@@ -704,12 +706,13 @@ class _OrgDashboardState extends State<OrgDashboard> {
       OrgReportsScreen(orgId: _orgId),
       OrgFinanceScreen(orgId: _orgId),
       OrgMerchandiseScreen(orgId: _orgId),
+      OrgRegistrationFormsScreen(orgId: _orgId), // index 13
       OrgSettingsScreen(
         orgId: _orgId,
         orgName: _orgName,
         orgShortName: _orgShortName,
         orgEmail: _orgEmail,
-      ), // index 13 — settings
+      ), // index 14 — settings
     ];
     _screensBuilt = true;
   }
@@ -1047,9 +1050,9 @@ class _OrgDashboardState extends State<OrgDashboard> {
   void _selectTab(int index) {
     setState(() {
       _selectedIndex = index;
-      _visitedIndices.add(index == -1 ? 13 : index);
+      _visitedIndices.add(index == -1 ? 14 : index);
     });
-    _selectedIndexNotifier.value = index == -1 ? 13 : index;
+    _selectedIndexNotifier.value = index == -1 ? 14 : index;
   }
 
   void _showProfileMenu() {
@@ -1439,7 +1442,7 @@ class _OrgDashboardState extends State<OrgDashboard> {
                       child: !_screensBuilt
                           ? const SizedBox()
                           : IndexedStack(
-                              index: _selectedIndex == -1 ? 13 : _selectedIndex,
+                              index: _selectedIndex == -1 ? 14 : _selectedIndex,
                               children: List.generate(
                                 _screens.length,
                                 (i) => _visitedIndices.contains(i)

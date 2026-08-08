@@ -1,34 +1,39 @@
-// lib/screens/student/student_merchandise_screen.dart
+// lib/screens/guest/guest_merchandise_screen.dart
+//
+// View-only merchandise catalog for guests — mirrors
+// student_merchandise_screen.dart's showcase model (no cart/checkout,
+// browsing only), styled with the guest scope's own color tokens instead
+// of importing the student AppColors.
 
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../../widgets/student/app_colors.dart';
-import '../../widgets/student/student_app_bar.dart';
-import '../../widgets/common/loading_widget.dart';
-import '../../widgets/product_spin_viewer.dart';
 import 'package:intl/intl.dart';
+import '../../widgets/product_spin_viewer.dart';
 
 // ─────────────────────────────────────────────────────────────
-// Models (kept for display purposes)
+// Theme (matches guest_events_screen.dart's palette)
 // ─────────────────────────────────────────────────────────────
-class ProductVariant {
-  final String id;
+const _kPrimary = Color(0xFFBE4700);
+const _kBg = Color(0xFFF5F5F5);
+
+// ─────────────────────────────────────────────────────────────
+// Models (display-only)
+// ─────────────────────────────────────────────────────────────
+class _ProductVariant {
   final String size;
   final String color;
   final int stock;
   final double? priceOffset;
 
-  const ProductVariant({
-    required this.id,
+  const _ProductVariant({
     required this.size,
     required this.color,
     required this.stock,
     this.priceOffset,
   });
 
-  factory ProductVariant.fromMap(Map<String, dynamic> m) => ProductVariant(
-    id: m['id'] as String? ?? '',
+  factory _ProductVariant.fromMap(Map<String, dynamic> m) => _ProductVariant(
     size: m['size'] as String? ?? '',
     color: m['color'] as String? ?? '',
     stock: ((m['stock'] ?? 0) as num).toInt(),
@@ -47,9 +52,8 @@ class _Product {
   final double price;
   final int stock;
   final String imageBase64;
-  final String imageFormat;
   final String status;
-  final List<ProductVariant> variants;
+  final List<_ProductVariant> variants;
   final List<String> rotationPhotos;
 
   const _Product({
@@ -61,7 +65,6 @@ class _Product {
     required this.price,
     required this.stock,
     required this.imageBase64,
-    required this.imageFormat,
     this.status = 'available',
     this.variants = const [],
     this.rotationPhotos = const [],
@@ -75,15 +78,12 @@ class _Product {
     final d = doc.data() as Map<String, dynamic>;
 
     String imageBase64 = d['imageBase64'] as String? ?? '';
-    String imageFormat = d['imageFormat'] as String? ?? 'jpg';
-
+    final imageFormat = d['imageFormat'] as String? ?? 'jpg';
     String imageDataUrl = '';
     if (imageBase64.isNotEmpty) {
-      if (imageBase64.startsWith('data:image')) {
-        imageDataUrl = imageBase64;
-      } else {
-        imageDataUrl = 'data:image/$imageFormat;base64,$imageBase64';
-      }
+      imageDataUrl = imageBase64.startsWith('data:image')
+          ? imageBase64
+          : 'data:image/$imageFormat;base64,$imageBase64';
     }
 
     return _Product(
@@ -95,12 +95,11 @@ class _Product {
       price: (d['price'] ?? 0).toDouble(),
       stock: (d['stock'] ?? 0) as int,
       imageBase64: imageDataUrl,
-      imageFormat: imageFormat,
       status: d['status'] as String? ?? 'available',
       variants: (d['variants'] is List)
           ? (d['variants'] as List)
                 .whereType<Map<String, dynamic>>()
-                .map(ProductVariant.fromMap)
+                .map(_ProductVariant.fromMap)
                 .toList()
           : const [],
       rotationPhotos: ((d['rotationPhotos'] as List?) ?? []).cast<String>(),
@@ -114,23 +113,23 @@ class _Product {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Main Screen (promotional catalogue – no purchase flow)
+// Main Screen
 // ─────────────────────────────────────────────────────────────
-class StudentMerchandiseScreen extends StatelessWidget {
-  const StudentMerchandiseScreen({super.key});
+class GuestMerchandiseScreen extends StatelessWidget {
+  const GuestMerchandiseScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: const StudentAppBar(title: 'Merchandise'),
+      backgroundColor: _kBg,
+      appBar: AppBar(title: const Text('Merchandise')),
       body: const _ProductsTab(),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────
-// Products Tab – catalogue with search, categories, org filter
+// Products Tab — catalogue with search, categories, org filter
 // ─────────────────────────────────────────────────────────────
 class _ProductsTab extends StatefulWidget {
   const _ProductsTab();
@@ -255,7 +254,7 @@ class _ProductsTabState extends State<_ProductsTab> {
                           )
                         : null,
                     filled: true,
-                    fillColor: AppColors.background,
+                    fillColor: _kBg,
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 10,
@@ -273,23 +272,17 @@ class _ProductsTabState extends State<_ProductsTab> {
                 child: Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: _hasOrgFilter
-                        ? AppColors.primaryDark.withOpacity(0.1)
-                        : AppColors.background,
+                    color: _hasOrgFilter ? _kPrimary.withAlpha(26) : _kBg,
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: _hasOrgFilter
-                          ? AppColors.primaryDark
-                          : Colors.transparent,
+                      color: _hasOrgFilter ? _kPrimary : Colors.transparent,
                       width: 1.5,
                     ),
                   ),
                   child: Icon(
                     Icons.filter_list_rounded,
                     size: 22,
-                    color: _hasOrgFilter
-                        ? AppColors.primaryDark
-                        : Colors.black38,
+                    color: _hasOrgFilter ? _kPrimary : Colors.black38,
                   ),
                 ),
               ),
@@ -318,10 +311,10 @@ class _ProductsTabState extends State<_ProductsTab> {
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: sel ? AppColors.primaryDark : Colors.transparent,
+                      color: sel ? _kPrimary : Colors.transparent,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: sel ? AppColors.primaryDark : Colors.black12,
+                        color: sel ? _kPrimary : Colors.black12,
                         width: 1,
                       ),
                     ),
@@ -344,10 +337,7 @@ class _ProductsTabState extends State<_ProductsTab> {
             stream: _stream,
             builder: (ctx, snap) {
               if (snap.connectionState == ConnectionState.waiting) {
-                return const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: SkeletonLoader(count: 4, height: 100),
-                );
+                return const Center(child: CircularProgressIndicator());
               }
               if (snap.hasError) {
                 return _EmptyHint(
@@ -363,9 +353,7 @@ class _ProductsTabState extends State<_ProductsTab> {
 
               final activeOrgIds = _activeOrgIds;
               if (activeOrgIds != null) {
-                // Hide merch from organizations the admin has deactivated —
-                // otherwise a suspended org's catalog stays fully visible to
-                // students, it just becomes unreachable via the org filter.
+                // Hide merch from organizations the admin has deactivated.
                 products = products
                     .where((p) => activeOrgIds.contains(p.orgId))
                     .toList();
@@ -409,11 +397,6 @@ class _ProductsTabState extends State<_ProductsTab> {
 
               return GridView.builder(
                 padding: const EdgeInsets.all(16),
-                // A fixed 2-column count looks fine on a typical phone but
-                // leaves cards oddly narrow on a small phone and wastes
-                // space on a tablet/landscape/foldable — max-extent lets
-                // the column count adapt to whatever width is actually
-                // available instead of a single hardcoded number.
                 gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                   maxCrossAxisExtent: 200,
                   childAspectRatio: 0.72,
@@ -511,7 +494,7 @@ class _ProductsTabState extends State<_ProductsTab> {
                         Navigator.pop(context);
                       }
                     },
-                    activeColor: AppColors.primaryDark,
+                    activeColor: _kPrimary,
                   ),
                   title: Text(
                     org,
@@ -519,24 +502,18 @@ class _ProductsTabState extends State<_ProductsTab> {
                       fontWeight: isSelected
                           ? FontWeight.w600
                           : FontWeight.normal,
-                      color: isSelected
-                          ? AppColors.primaryDark
-                          : Colors.black87,
+                      color: isSelected ? _kPrimary : Colors.black87,
                     ),
                   ),
                   trailing: isSelected
-                      ? const Icon(
-                          Icons.check_circle,
-                          color: AppColors.primaryDark,
-                          size: 20,
-                        )
+                      ? Icon(Icons.check_circle, color: _kPrimary, size: 20)
                       : null,
                   onTap: () {
                     setState(() => _selectedOrg = org);
                     Navigator.pop(context);
                   },
                 );
-              }).toList(),
+              }),
             const SizedBox(height: 16),
           ],
         ),
@@ -546,7 +523,7 @@ class _ProductsTabState extends State<_ProductsTab> {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Product Card (no cart interaction)
+// Product Card (view-only)
 // ─────────────────────────────────────────────────────────────
 class _ProductCard extends StatelessWidget {
   final _Product product;
@@ -565,7 +542,7 @@ class _ProductCard extends StatelessWidget {
           border: Border.all(color: const Color(0xFFF0F0F0)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withAlpha(13),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -578,11 +555,6 @@ class _ProductCard extends StatelessWidget {
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(16),
               ),
-              // A fixed 120px image height inside a grid whose card width
-              // already varies (2 columns on a small phone, more on a
-              // tablet) meant the photo's proportions shifted from card to
-              // card instead of staying consistent — square keeps it tied
-              // to the card's own width instead.
               child: AspectRatio(
                 aspectRatio: 1,
                 child: Stack(
@@ -628,14 +600,14 @@ class _ProductCard extends StatelessWidget {
                       vertical: 2,
                     ),
                     decoration: BoxDecoration(
-                      color: AppColors.primaryDark.withOpacity(0.08),
+                      color: _kPrimary.withAlpha(20),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
                       product.category.toUpperCase(),
                       style: const TextStyle(
                         fontSize: 8.5,
-                        color: AppColors.primaryDark,
+                        color: _kPrimary,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0.4,
                       ),
@@ -653,34 +625,21 @@ class _ProductCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 7),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (hasVariants)
-                              Text(
-                                'Starts at',
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  color: Colors.grey.shade500,
-                                ),
-                              ),
-                            Text(
-                              '₱${fmt.format(product.price)}',
-                              style: const TextStyle(
-                                fontSize: 15.5,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.deepOrange,
-                              ),
-                            ),
-                          ],
-                        ),
+                  if (hasVariants)
+                    Text(
+                      'Starts at',
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: Colors.grey.shade500,
                       ),
-                    ],
+                    ),
+                  Text(
+                    '₱${fmt.format(product.price)}',
+                    style: const TextStyle(
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.deepOrange,
+                    ),
                   ),
                   const SizedBox(height: 7),
                   Container(
@@ -690,8 +649,8 @@ class _ProductCard extends StatelessWidget {
                     ),
                     decoration: BoxDecoration(
                       color: product.inStock
-                          ? Colors.green.withOpacity(0.1)
-                          : Colors.red.withOpacity(0.08),
+                          ? Colors.green.withAlpha(26)
+                          : Colors.red.withAlpha(20),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Row(
@@ -733,46 +692,32 @@ class _ProductCard extends StatelessWidget {
 
   Widget _buildProductImage() {
     final imageData = product.imageBase64;
-
-    if (imageData.isEmpty) {
-      return _imgPlaceholder(product.name);
-    }
+    if (imageData.isEmpty) return _imgPlaceholder(product.name);
 
     try {
-      // No fixed height/width here — the parent AspectRatio + Stack(fit:
-      // StackFit.expand) already sizes this to fill the square photo area,
-      // whatever that ends up being for the current card width.
-      if (imageData.startsWith('data:image')) {
-        final base64String = imageData.split(',').last;
-        final bytes = base64Decode(base64String);
-        return Image.memory(
-          bytes,
-          fit: BoxFit.cover,
-          cacheWidth: 400,
-          errorBuilder: (_, __, ___) => _imgPlaceholder(product.name),
-        );
-      } else {
-        final bytes = base64Decode(imageData);
-        return Image.memory(
-          bytes,
-          fit: BoxFit.cover,
-          cacheWidth: 400,
-          errorBuilder: (_, __, ___) => _imgPlaceholder(product.name),
-        );
-      }
+      final base64String = imageData.startsWith('data:image')
+          ? imageData.split(',').last
+          : imageData;
+      final bytes = base64Decode(base64String);
+      return Image.memory(
+        bytes,
+        fit: BoxFit.cover,
+        cacheWidth: 400,
+        errorBuilder: (_, __, ___) => _imgPlaceholder(product.name),
+      );
     } catch (e) {
       return _imgPlaceholder(product.name);
     }
   }
 
   Widget _imgPlaceholder(String name) => Container(
-    color: AppColors.primaryDark.withOpacity(0.1),
+    color: _kPrimary.withAlpha(26),
     child: Center(
       child: Text(
         name.isNotEmpty ? name[0].toUpperCase() : '?',
         style: const TextStyle(
           fontSize: 36,
-          color: AppColors.primaryDark,
+          color: _kPrimary,
           fontWeight: FontWeight.bold,
         ),
       ),
@@ -840,7 +785,7 @@ class _ProductCard extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w800,
-                    color: AppColors.primaryDark,
+                    color: _kPrimary,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -891,7 +836,7 @@ class _ProductCard extends StatelessWidget {
   Widget _detailPlaceholder() => Container(
     height: 200,
     decoration: BoxDecoration(
-      color: AppColors.primaryDark.withOpacity(0.1),
+      color: _kPrimary.withAlpha(26),
       borderRadius: BorderRadius.circular(12),
     ),
     child: Column(
@@ -913,7 +858,7 @@ class _ProductCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Variant info shown in detail sheet (no cart action)
+// Shared small widgets
 // ─────────────────────────────────────────────────────────────
 class _StatusBadge extends StatelessWidget {
   final String status;
@@ -965,7 +910,7 @@ class _DetailChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: AppColors.background,
+        color: _kBg,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -1002,7 +947,7 @@ class _VariantsTable extends StatelessWidget {
         },
         children: [
           TableRow(
-            decoration: const BoxDecoration(color: AppColors.background),
+            decoration: const BoxDecoration(color: _kBg),
             children: [
               _cell('SIZE', header: true),
               _cell('COLOR', header: true),

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 /// A drag-to-rotate product viewer — the classic e-commerce "360 view"
@@ -33,11 +34,43 @@ class _ProductSpinViewerState extends State<ProductSpinViewer> {
   // more sensitive spinning.
   static const double _pxPerFrame = 12;
 
+  // Decoded once per photo list instead of inline in build() — decoding
+  // fresh on every frame change meant every pixel of drag motion triggered
+  // a full base64 decode + a brand-new MemoryImage (whose cache key is the
+  // Uint8List's identity, not its bytes), so the "cache" never actually
+  // hit and every frame repainted from a decode instead of a lookup. That
+  // was the dragging jank.
+  List<ImageProvider?> _decodedFrames = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _decodeFrames();
+  }
+
   @override
   void didUpdateWidget(covariant ProductSpinViewer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.photosBase64.length != oldWidget.photosBase64.length) {
-      _frame = 0;
+    if (!listEquals(widget.photosBase64, oldWidget.photosBase64)) {
+      _decodeFrames();
+      if (_frame >= widget.photosBase64.length) _frame = 0;
+    }
+  }
+
+  void _decodeFrames() {
+    _decodedFrames = widget.photosBase64.map(_decode).toList();
+  }
+
+  ImageProvider? _decode(String b64) {
+    try {
+      var clean = b64;
+      final comma = clean.indexOf(',');
+      if (clean.startsWith('data:') && comma != -1) {
+        clean = clean.substring(comma + 1);
+      }
+      return MemoryImage(base64Decode(clean));
+    } catch (_) {
+      return null;
     }
   }
 
@@ -53,19 +86,6 @@ class _ProductSpinViewerState extends State<ProductSpinViewer> {
       _frame = (_frame - step) % count;
       if (_frame < 0) _frame += count;
     });
-  }
-
-  ImageProvider? _decode(String b64) {
-    try {
-      var clean = b64;
-      final comma = clean.indexOf(',');
-      if (clean.startsWith('data:') && comma != -1) {
-        clean = clean.substring(comma + 1);
-      }
-      return MemoryImage(base64Decode(clean));
-    } catch (_) {
-      return null;
-    }
   }
 
   @override
@@ -87,7 +107,7 @@ class _ProductSpinViewerState extends State<ProductSpinViewer> {
     }
 
     final canSpin = photos.length > 1;
-    final image = _decode(photos[_frame.clamp(0, photos.length - 1)]);
+    final image = _decodedFrames[_frame.clamp(0, _decodedFrames.length - 1)];
 
     return ClipRRect(
       borderRadius: radius,

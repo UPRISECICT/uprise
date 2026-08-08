@@ -101,7 +101,7 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -151,6 +151,7 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen>
               ),
               tabs: const [
                 Tab(height: 38, text: 'Profile'),
+                Tab(height: 38, text: 'Notifications'),
                 Tab(height: 38, text: 'Security'),
               ],
             ),
@@ -169,6 +170,7 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen>
                 orgShortName: widget.orgShortName,
                 orgEmail: widget.orgEmail,
               ),
+              _NotificationsTab(orgId: widget.orgId),
               _SecurityTab(orgId: widget.orgId),
             ],
           ),
@@ -179,7 +181,7 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Notifications Tab
+// Profile Tab
 // ─────────────────────────────────────────────────────────────────────────────
 class _ProfileTab extends StatelessWidget {
   final String orgId;
@@ -261,7 +263,6 @@ class _ProfileTab extends StatelessWidget {
               ],
             ),
           ),
-          _GcashSettingsCard(orgId: orgId),
         ],
       ),
     );
@@ -269,104 +270,38 @@ class _ProfileTab extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GCash Settings — the GCash number/name students are told to pay to during
-// merchandise checkout. There's no payment gateway behind this (PayMongo
-// requires business docs/Blaze billing the org doesn't have); the org just
-// publishes where to send money and manually verifies each order's
-// reference number in org_merchandise.dart before fulfilling it.
+// Notifications Tab
 // ─────────────────────────────────────────────────────────────────────────────
-class _GcashSettingsCard extends StatefulWidget {
+// NotificationService already gates every send (registrations, proposal
+// decisions, letter requests, broadcasts, etc.) behind
+// users/{uid}/settings/notifications#push_notifications — but until now no
+// screen anywhere wrote to that doc, so orgs had no way to actually mute it.
+class _NotificationsTab extends StatefulWidget {
   final String orgId;
-  const _GcashSettingsCard({required this.orgId});
+  const _NotificationsTab({required this.orgId});
 
   @override
-  State<_GcashSettingsCard> createState() => _GcashSettingsCardState();
+  State<_NotificationsTab> createState() => _NotificationsTabState();
 }
 
-class _GcashSettingsCardState extends State<_GcashSettingsCard> {
-  final _numberCtrl = TextEditingController();
-  final _nameCtrl = TextEditingController();
-  bool _loading = true;
+class _NotificationsTabState extends State<_NotificationsTab> {
   bool _saving = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _load();
+  DocumentReference<Map<String, dynamic>> get _prefsDoc {
+    final uid = FirebaseAuth.instance.currentUser!.uid;
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('settings')
+        .doc('notifications');
   }
 
-  @override
-  void dispose() {
-    _numberCtrl.dispose();
-    _nameCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _load() async {
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('organizations')
-          .doc(widget.orgId)
-          .get();
-      final d = doc.data() ?? {};
-      _numberCtrl.text = (d['gcashNumber'] as String?) ?? '';
-      _nameCtrl.text = (d['gcashName'] as String?) ?? '';
-    } catch (_) {}
-    if (mounted) setState(() => _loading = false);
-  }
-
-  Future<void> _save() async {
-    final number = _numberCtrl.text.trim();
-    final name = _nameCtrl.text.trim();
-    if (number.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter a GCash number.'),
-          backgroundColor: UpriseColors.error,
-        ),
-      );
-      return;
-    }
-    if (!RegExp(r'^09\d{9}$').hasMatch(number)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Enter a valid 11-digit GCash number (e.g., 09171234567).',
-          ),
-          backgroundColor: UpriseColors.error,
-        ),
-      );
-      return;
-    }
-    if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter the GCash account name.'),
-          backgroundColor: UpriseColors.error,
-        ),
-      );
-      return;
-    }
-
+  Future<void> _setEnabled(bool value) async {
     setState(() => _saving = true);
     try {
-      await FirebaseFirestore.instance
-          .collection('organizations')
-          .doc(widget.orgId)
-          .update({'gcashNumber': number, 'gcashName': name});
-      await activity_log.ActivityLogger.log(
-        action: 'update_gcash_settings',
-        module: 'settings',
-        details: {'orgId': widget.orgId},
-      );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('GCash details saved'),
-            backgroundColor: UpriseColors.success,
-          ),
-        );
-      }
+      await _prefsDoc.set({
+        'push_notifications': value,
+      }, SetOptions(merge: true));
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -383,94 +318,113 @@ class _GcashSettingsCardState extends State<_GcashSettingsCard> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 20),
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE8ECF0)),
-        boxShadow: _DS.cardShadow,
-      ),
+    final width = MediaQuery.of(context).size.width;
+    final horizontalPadding = width < 720 ? 16.0 : 28.0;
+    return SingleChildScrollView(
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'GCash Payment Details',
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: const Color(0xFF1A202C),
+          Container(
+            margin: const EdgeInsets.only(bottom: 20),
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFE8ECF0)),
+              boxShadow: _DS.cardShadow,
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Shown to students at merchandise checkout so they know where to send GCash payments. You confirm each payment manually in Merchandise > Orders.',
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 12,
-              color: const Color(0xFF64748B),
-            ),
-          ),
-          const SizedBox(height: 20),
-          if (_loading)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: CircularProgressIndicator(),
-              ),
-            )
-          else ...[
-            TextFormField(
-              controller: _numberCtrl,
-              decoration: _DS.inputDecoration(
-                'GCash Number',
-                hint: 'e.g. 0917xxxxxxx',
-                icon: Icons.phone_iphone_rounded,
-              ),
-            ),
-            const SizedBox(height: 14),
-            TextFormField(
-              controller: _nameCtrl,
-              decoration: _DS.inputDecoration(
-                'GCash Account Name',
-                hint: 'e.g. Juan Dela Cruz',
-                icon: Icons.person_outline_rounded,
-              ),
-            ),
-            const SizedBox(height: 18),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: ElevatedButton(
-                onPressed: _saving ? null : _save,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: UpriseColors.primaryDark,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 13,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Notifications',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF1A202C),
                   ),
                 ),
-                child: _saving
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : Text(
-                        'Save',
-                        style: GoogleFonts.beVietnamPro(
-                          fontWeight: FontWeight.w600,
-                        ),
+                const SizedBox(height: 4),
+                Text(
+                  'Control the in-app notifications this account receives — '
+                  'new registrations, proposal decisions, letter requests, '
+                  'student broadcasts, and more.',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 12,
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                  stream: _prefsDoc.snapshots(),
+                  builder: (context, snap) {
+                    final enabled =
+                        (snap.data?.data()?['push_notifications'] as bool?) ??
+                        true;
+                    return Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8F9FB),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFE8ECF0)),
                       ),
-              ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            enabled
+                                ? Icons.notifications_active_outlined
+                                : Icons.notifications_off_outlined,
+                            size: 20,
+                            color: enabled
+                                ? UpriseColors.primaryDark
+                                : const Color(0xFF94A3B8),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'In-app notifications',
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: const Color(0xFF1A202C),
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  enabled
+                                      ? 'You\'ll be notified of new activity involving your organization.'
+                                      : 'Notifications are muted for this account.',
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 11.5,
+                                    color: const Color(0xFF64748B),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (_saving)
+                            const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          else
+                            Switch(
+                              value: enabled,
+                              activeThumbColor: UpriseColors.primaryDark,
+                              onChanged: _setEnabled,
+                            ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ],
             ),
-          ],
+          ),
         ],
       ),
     );
@@ -498,12 +452,116 @@ class _SecurityTabState extends State<_SecurityTab> {
   bool _obscureNew = true;
   bool _obscureConfirm = true;
 
+  final _emailFormKey = GlobalKey<FormState>();
+  final _newEmailCtrl = TextEditingController();
+  final _emailPasswordCtrl = TextEditingController();
+  bool _obscureEmailPassword = true;
+  bool _isChangingEmail = false;
+
   @override
   void dispose() {
     _currentPasswordCtrl.dispose();
     _newPasswordCtrl.dispose();
     _confirmPasswordCtrl.dispose();
+    _newEmailCtrl.dispose();
+    _emailPasswordCtrl.dispose();
     super.dispose();
+  }
+
+  // Sensitive Firebase Auth operations (password/email changes) fail with
+  // requires-recent-login if the session is more than a few minutes old —
+  // reauthenticating up front means the form succeeds on the first try
+  // instead of failing partway through with a cryptic error.
+  Future<void> _reauthenticate(String currentPassword) async {
+    final user = FirebaseAuth.instance.currentUser;
+    final email = user?.email;
+    if (user == null || email == null || email.isEmpty) {
+      throw FirebaseAuthException(
+        code: 'no-current-email',
+        message: 'No email on this account to reauthenticate with.',
+      );
+    }
+    final credential = EmailAuthProvider.credential(
+      email: email,
+      password: currentPassword,
+    );
+    await user.reauthenticateWithCredential(credential);
+  }
+
+  String _authErrorMessage(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'wrong-password':
+      case 'invalid-credential':
+        return 'Current password is incorrect.';
+      case 'requires-recent-login':
+        return 'Please sign out and sign back in, then try again.';
+      case 'email-already-in-use':
+        return 'That email is already in use by another account.';
+      case 'invalid-email':
+        return 'Enter a valid email address.';
+      case 'weak-password':
+        return 'Password is too weak.';
+      case 'too-many-requests':
+        return 'Too many attempts. Please wait a moment and try again.';
+      default:
+        return e.message ?? 'Something went wrong (${e.code}).';
+    }
+  }
+
+  // Uses verifyBeforeUpdateEmail (not the deprecated updateEmail) — Firebase
+  // requires the new address to be verified via an emailed link before the
+  // login email actually changes, so the auth email and the address typed
+  // here diverge until that link is clicked. The `users` doc's email mirror
+  // is deliberately left untouched until then, matching the admin flow.
+  Future<void> _changeEmail() async {
+    if (!_emailFormKey.currentState!.validate()) return;
+    final newEmail = _newEmailCtrl.text.trim();
+    setState(() => _isChangingEmail = true);
+    try {
+      await _reauthenticate(_emailPasswordCtrl.text.trim());
+      await FirebaseAuth.instance.currentUser!.verifyBeforeUpdateEmail(
+        newEmail,
+      );
+      await activity_log.ActivityLogger.log(
+        action: 'request_email_change',
+        module: 'settings',
+        severity: 'security',
+        details: {'orgId': widget.orgId, 'newEmail': newEmail},
+      );
+      if (mounted) {
+        _newEmailCtrl.clear();
+        _emailPasswordCtrl.clear();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Verification link sent to $newEmail. Your login email '
+              'updates once you confirm it there.',
+            ),
+            backgroundColor: UpriseColors.success,
+          ),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_authErrorMessage(e)),
+            backgroundColor: UpriseColors.error,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: UpriseColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isChangingEmail = false);
+    }
   }
 
   Future<void> _updatePassword() async {
@@ -678,6 +736,126 @@ class _SecurityTabState extends State<_SecurityTab> {
                               : const Icon(Icons.lock_outline, size: 16),
                           label: Text(
                             'Update Password',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: UpriseColors.primaryDark,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Change email card
+          Container(
+            margin: const EdgeInsets.only(bottom: 20),
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFE8ECF0)),
+              boxShadow: _DS.cardShadow,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Login Email',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF1A202C),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Current: ${FirebaseAuth.instance.currentUser?.email ?? '—'}',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 12,
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Form(
+                  key: _emailFormKey,
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        controller: _newEmailCtrl,
+                        decoration: _DS.inputDecoration('New Email'),
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty) {
+                            return 'Required';
+                          }
+                          final ok = RegExp(
+                            r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                          ).hasMatch(v.trim());
+                          return ok ? null : 'Enter a valid email address';
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: _emailPasswordCtrl,
+                        obscureText: _obscureEmailPassword,
+                        decoration: _DS.inputDecoration(
+                          'Current Password',
+                          suffix: IconButton(
+                            icon: Icon(
+                              _obscureEmailPassword
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.visibility_outlined,
+                              size: 18,
+                              color: const Color(0xFF64748B),
+                            ),
+                            onPressed: () => setState(
+                              () => _obscureEmailPassword =
+                                  !_obscureEmailPassword,
+                            ),
+                          ),
+                        ),
+                        validator: (v) =>
+                            v == null || v.isEmpty ? 'Required' : null,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'We\'ll email a verification link to the new address — '
+                        'your login email only updates once you confirm it there.',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 11.5,
+                          color: const Color(0xFF94A3B8),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: ElevatedButton.icon(
+                          onPressed: _isChangingEmail ? null : _changeEmail,
+                          icon: _isChangingEmail
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.mail_outline_rounded,
+                                  size: 16,
+                                ),
+                          label: Text(
+                            'Change Email',
                             style: GoogleFonts.beVietnamPro(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,

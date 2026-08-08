@@ -11,6 +11,9 @@ import 'package:uprise/screens/web/org/org_dashboard.dart';
 import 'screens/student/student_login.dart';
 import 'screens/student/student_home_screen.dart';
 import 'screens/student/student_change_password_screen.dart';
+import 'screens/guest/guest_access_gateway_screen.dart';
+import 'screens/guest/guest_home_screen.dart';
+import 'screens/guest/guest_auth_service.dart';
 
 class RoleRouter extends StatefulWidget {
   const RoleRouter({super.key});
@@ -43,6 +46,41 @@ class _RoleRouterState extends State<RoleRouter> {
     return _roleFuture!;
   }
 
+  String? _cachedGuestUid;
+  Future<QuerySnapshot?>? _guestSessionFuture;
+
+  Future<QuerySnapshot?> _getGuestSessionFuture(String uid) {
+    if (_cachedGuestUid != uid || _guestSessionFuture == null) {
+      _cachedGuestUid = uid;
+      _guestSessionFuture = _loadGuestSession(uid);
+    }
+    return _guestSessionFuture!;
+  }
+
+  // Bridges Firebase Auth's persisted session back into GuestAuthService's
+  // SharedPreferences-backed session. The gateway login flow
+  // (guest_access_gateway_screen.dart) populates GuestAuthService itself,
+  // but that never runs on an app relaunch — Firebase Auth silently
+  // restores the signed-in user and RoleRouter takes over instead, so
+  // without this, guest screens reading GuestAuthService().docId would
+  // find it null even though the guest is validly signed in.
+  Future<QuerySnapshot?> _loadGuestSession(String uid) async {
+    final snap = await FirebaseFirestore.instance
+        .collection('external_requests')
+        .where('uid', isEqualTo: uid)
+        .where('status', isEqualTo: 'approved')
+        .limit(1)
+        .get();
+    if (snap.docs.isEmpty) return null;
+    final data = snap.docs.first.data();
+    await GuestAuthService.saveSession(
+      docId: snap.docs.first.id,
+      email: (data['email'] as String?) ?? '',
+      fullName: (data['userName'] as String?) ?? '',
+    );
+    return snap;
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
@@ -50,7 +88,8 @@ class _RoleRouterState extends State<RoleRouter> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
-              body: Center(child: CircularProgressIndicator()));
+            body: Center(child: CircularProgressIndicator()),
+          );
         }
 
         if (!snapshot.hasData) {
@@ -68,70 +107,103 @@ class _RoleRouterState extends State<RoleRouter> {
           builder: (context, roleSnapshot) {
             if (roleSnapshot.connectionState == ConnectionState.waiting) {
               return const Scaffold(
-                  body: Center(child: CircularProgressIndicator()));
+                body: Center(child: CircularProgressIndicator()),
+              );
             }
 
-            final String role =
-                (roleSnapshot.data ?? 'guest').toLowerCase();
+            final String role = (roleSnapshot.data ?? 'guest').toLowerCase();
             debugPrint('📋 Role: $role');
 
             Widget screen;
             if (!kIsWeb) {
-  // Mobile
-  if (role == 'student') {
-    screen = FutureBuilder<QuerySnapshot>(
-      future: FirebaseFirestore.instance
-          .collection('students')
-          .where('uid', isEqualTo: user.uid)
-          .limit(1)
-          .get(),
-      builder: (context, userDocSnapshot) {
-        if (userDocSnapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-              body: Center(child: CircularProgressIndicator()));
-        }
+              // Mobile
+              if (role == 'student') {
+                screen = FutureBuilder<QuerySnapshot>(
+                  future: FirebaseFirestore.instance
+                      .collection('students')
+                      .where('uid', isEqualTo: user.uid)
+                      .limit(1)
+                      .get(),
+                  builder: (context, userDocSnapshot) {
+                    if (userDocSnapshot.connectionState ==
+                        ConnectionState.waiting) {
+                      return const Scaffold(
+                        body: Center(child: CircularProgressIndicator()),
+                      );
+                    }
 
-        if (userDocSnapshot.hasData &&
-            userDocSnapshot.data!.docs.isNotEmpty) {
-          final data = userDocSnapshot.data!.docs.first.data()
-              as Map<String, dynamic>;
-          final mustChange = data['mustChangePassword'] ?? false;
-          final archived = data['archived'] == true;
-          debugPrint(
-              '📋 Student doc: $data, mustChangePassword: $mustChange, archived: $archived');
+                    if (userDocSnapshot.hasData &&
+                        userDocSnapshot.data!.docs.isNotEmpty) {
+                      final data =
+                          userDocSnapshot.data!.docs.first.data()
+                              as Map<String, dynamic>;
+                      final mustChange = data['mustChangePassword'] ?? false;
+                      final archived = data['archived'] == true;
+                      debugPrint(
+                        '📋 Student doc: $data, mustChangePassword: $mustChange, archived: $archived',
+                      );
 
-          // Checked here (not just at the login screen) so a session that
-          // was already signed in when an admin archived the account also
-          // gets bounced, instead of only blocking fresh sign-ins.
-          if (archived) {
-            return const WrongPlatformScreen(
-              message: 'This account has been archived. Contact your administrator.',
-              icon: Icons.lock_outline,
-            );
-          } else if (mustChange == true) {
-            return const StudentChangePasswordScreen();
-          } else {
-            return const StudentHomeScreen();
-          }
-        } else {
-          return const StudentHomeScreen();
-        }
-      },
-    );
-  } else if (role == 'admin') {
-    screen = const WrongPlatformScreen(
-      message: 'Admin accounts are only available on Web.',
-      icon: Icons.computer,
-    );
-  } else if (role == 'org') {
-    screen = const WrongPlatformScreen(
-      message: 'Organization accounts are only available on Web.',
-      icon: Icons.business,
-    );
-  } else {
-    screen = const StudentLogin();
-  }
-} else {
+                      // Checked here (not just at the login screen) so a session that
+                      // was already signed in when an admin archived the account also
+                      // gets bounced, instead of only blocking fresh sign-ins.
+                      if (archived) {
+                        return const WrongPlatformScreen(
+                          message:
+                              'This account has been archived. Contact your administrator.',
+                          icon: Icons.lock_outline,
+                        );
+                      } else if (mustChange == true) {
+                        return const StudentChangePasswordScreen();
+                      } else {
+                        return const StudentHomeScreen();
+                      }
+                    } else {
+                      return const StudentHomeScreen();
+                    }
+                  },
+                );
+              } else if (role == 'admin') {
+                screen = const WrongPlatformScreen(
+                  message: 'Admin accounts are only available on Web.',
+                  icon: Icons.computer,
+                );
+              } else if (role == 'org') {
+                screen = const WrongPlatformScreen(
+                  message: 'Organization accounts are only available on Web.',
+                  icon: Icons.business,
+                );
+              } else if (role == 'guest') {
+                screen = FutureBuilder<QuerySnapshot?>(
+                  future: _getGuestSessionFuture(user.uid),
+                  builder: (context, guestSnapshot) {
+                    if (guestSnapshot.connectionState ==
+                        ConnectionState.waiting) {
+                      return const Scaffold(
+                        body: Center(child: CircularProgressIndicator()),
+                      );
+                    }
+                    final docs = guestSnapshot.data?.docs;
+                    if (docs == null || docs.isEmpty) {
+                      // No approved external_requests doc for this uid — don't trust
+                      // a role claim we can't verify; send them back through the
+                      // gateway instead of into the app.
+                      return const GuestAccessGatewayScreen();
+                    }
+                    final data = docs.first.data() as Map<String, dynamic>;
+                    final mustChange = data['mustChangePassword'] == true;
+                    if (mustChange) {
+                      return GuestChangePasswordScreen(
+                        uid: user.uid,
+                        docId: docs.first.id,
+                      );
+                    }
+                    return const GuestHomeScreen(mode: GuestMode.authenticated);
+                  },
+                );
+              } else {
+                screen = const StudentLogin();
+              }
+            } else {
               // Web
               if (role == 'admin') {
                 screen = const AdminDashboard();
@@ -139,8 +211,12 @@ class _RoleRouterState extends State<RoleRouter> {
                 screen = OrgDashboard();
               } else if (role == 'student') {
                 screen = const WrongPlatformScreen(
-                  message:
-                      'Student accounts are only available on Mobile.',
+                  message: 'Student accounts are only available on Mobile.',
+                  icon: Icons.phone_android,
+                );
+              } else if (role == 'guest') {
+                screen = const WrongPlatformScreen(
+                  message: 'Guest accounts are only available on Mobile.',
                   icon: Icons.phone_android,
                 );
               } else {
@@ -163,8 +239,11 @@ class _RoleRouterState extends State<RoleRouter> {
 class WrongPlatformScreen extends StatelessWidget {
   final String message;
   final IconData icon;
-  const WrongPlatformScreen(
-      {super.key, required this.message, required this.icon});
+  const WrongPlatformScreen({
+    super.key,
+    required this.message,
+    required this.icon,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -178,17 +257,18 @@ class WrongPlatformScreen extends StatelessWidget {
             children: [
               Icon(icon, size: 70, color: Colors.orange),
               const SizedBox(height: 20),
-              Text(message,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 18)),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 18),
+              ),
               const SizedBox(height: 30),
               ElevatedButton(
                 onPressed: () async {
                   await auth.logout();
                   if (context.mounted) {
                     Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(
-                          builder: (_) => const RoleRouter()),
+                      MaterialPageRoute(builder: (_) => const RoleRouter()),
                     );
                   }
                 },

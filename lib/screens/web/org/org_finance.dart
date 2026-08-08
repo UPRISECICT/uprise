@@ -1900,7 +1900,7 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
 
     return InkWell(
       hoverColor: const Color(0xFFF8F9FB),
-      onTap: () {},
+      onTap: () => _viewTransactionDetails(transaction),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         decoration: BoxDecoration(

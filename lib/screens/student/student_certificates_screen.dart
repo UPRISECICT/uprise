@@ -21,6 +21,34 @@ import '../../widgets/common/loading_widget.dart';
 import 'dart:math' as math;
 import 'package:google_fonts/google_fonts.dart';
 
+// Add this class
+class SignatoryData {
+  final String id;
+  final String placeholderKey;
+  final String fullName;
+  final String title;
+  final String? signatureBase64;
+
+  SignatoryData({
+    required this.id,
+    required this.placeholderKey,
+    required this.fullName,
+    required this.title,
+    this.signatureBase64,
+  });
+
+  factory SignatoryData.fromDoc(DocumentSnapshot doc) {
+    final d = (doc.data() as Map<String, dynamic>?) ?? {};
+    return SignatoryData(
+      id: doc.id,
+      placeholderKey: doc.id,
+      fullName: (d['fullName'] ?? '').toString(),
+      title: (d['title'] ?? '').toString(),
+      signatureBase64: d['signatureBase64'] as String?,
+    );
+  }
+}
+
 class _ImageSourceTile extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -925,62 +953,12 @@ class _CertificatesContentState extends State<CertificatesContent> {
     );
   }
 
-  // ─── LIVE PREVIEW FOR CERTIFICATES ────────────────────────────
   Widget _buildLivePreview(Map<String, dynamic> cert) {
-    final signatories = (cert['signatories'] as List)
-        .whereType<Map>()
-        .map(
-          (s) => CertSignatory(
-            name: (s['name'] ?? '').toString(),
-            title: (s['title'] ?? '').toString(),
-            signatureImageBase64: s['signatureImage'] as String?,
-          ),
-        )
-        .toList();
-
-    final templateImageUrl = cert['imageUrl'] as String? ?? '';
-
-    if (templateImageUrl.isNotEmpty) {
-      return Container(
-        height: 180,
-        width: double.infinity,
-        color: const Color(0xFFF7F8FA),
-        padding: const EdgeInsets.all(8),
-        child: FittedBox(
-          fit: BoxFit.contain,
-          child: SizedBox(
-            width: 500,
-            height: 354,
-            // Was a hardcoded Positioned.fill(Center(Text(...))) — always
-            // dead center at a fixed size/color no matter where the org
-            // actually dragged the name during setup, since it never read
-            // cert['namePlacement'] at all. CertificateImageWithName is the
-            // same shared widget the org side's live preview uses, so this
-            // now renders at the position/size/color that was actually saved.
-            child: CertificateImageWithName(
-              background: AppImage(
-                source: templateImageUrl,
-                fit: BoxFit.cover,
-                placeholder: Container(
-                  color: Colors.grey.shade200,
-                  child: const Icon(
-                    Icons.broken_image,
-                    size: 50,
-                    color: Colors.grey,
-                  ),
-                ),
-              ),
-              recipientName: cert['recipientName'] as String? ?? 'Recipient',
-              placement: CertNamePlacement.fromMap(
-                cert['namePlacement'] as Map<String, dynamic>?,
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    // Fallback
+  final templateImageUrl = cert['imageUrl'] as String? ?? '';
+  
+  // If no image, show the fallback preview (keep this part the same)
+  if (templateImageUrl.isEmpty) {
+    // Your existing fallback code here - I'll show you below
     String templateType = cert['templateType'] as String? ?? '';
     if (templateType.isEmpty) {
       templateType = cert['type'] as String? ?? '';
@@ -994,6 +972,17 @@ class _CertificatesContentState extends State<CertificatesContent> {
     if (templateType.isEmpty) {
       templateType = 'modern';
     }
+
+    final signatories = (cert['signatories'] as List)
+        .whereType<Map>()
+        .map(
+          (s) => CertSignatory(
+            name: (s['name'] ?? '').toString(),
+            title: (s['title'] ?? '').toString(),
+            signatureImageBase64: s['signatureImage'] as String?,
+          ),
+        )
+        .toList();
 
     return Container(
       height: 180,
@@ -1025,6 +1014,156 @@ class _CertificatesContentState extends State<CertificatesContent> {
       ),
     );
   }
+
+  // 👇 THIS IS THE NEW PART - For uploaded templates with signatories
+  return FutureBuilder<Map<String, dynamic>>(
+    future: _fetchSignatories(),
+    builder: (context, snapshot) {
+      if (!snapshot.hasData) {
+        // Show loading indicator while fetching signatories
+        return Container(
+          height: 180,
+          width: double.infinity,
+          color: const Color(0xFFF7F8FA),
+          padding: const EdgeInsets.all(8),
+          child: const Center(child: CircularProgressIndicator()),
+        );
+      }
+
+      // Get the signatories data
+      final signatoryData = snapshot.data!;
+      
+      // Get the placements (where each signatory should go)
+      final placements = cert['signatoryPlacements'] as Map<String, dynamic>? ?? {};
+      
+      // Build the certificate with signatories
+      return Container(
+        height: 180,
+        width: double.infinity,
+        color: const Color(0xFFF7F8FA),
+        padding: const EdgeInsets.all(8),
+        child: FittedBox(
+          fit: BoxFit.contain,
+          child: SizedBox(
+            width: 500,
+            height: 354,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // 1. The certificate background with the student's name
+                CertificateImageWithName(
+                  background: AppImage(
+                    source: templateImageUrl,
+                    fit: BoxFit.cover,
+                    placeholder: Container(
+                      color: Colors.grey.shade200,
+                      child: const Icon(
+                        Icons.broken_image,
+                        size: 50,
+                        color: Colors.grey,
+                      ),
+                    ),
+                  ),
+                  recipientName: cert['recipientName'] as String? ?? 'Recipient',
+                  placement: CertNamePlacement.fromMap(
+                    cert['namePlacement'] as Map<String, dynamic>?,
+                  ),
+                ),
+                
+                // 2. The signatories on top (if any)
+                ...placements.entries.map((entry) {
+                  // Get the signatory ID (this is the key)
+                  final signatoryId = entry.key;
+                  
+                  // Get the signatory data from our fetched map
+                  final signatory = signatoryData[signatoryId];
+                  if (signatory == null) return const SizedBox.shrink();
+                  
+                  // Get the position where this signatory should go
+                  final placement = CertNamePlacement.fromMap(
+                    Map<String, dynamic>.from(entry.value as Map),
+                  );
+                  
+                  // Calculate the position on the certificate
+                  final left = ((placement.xPct * 500 - 65).clamp(0.0, 500 - 130) as num).toDouble();
+                  final top = ((placement.yPct * 354 - 30).clamp(0.0, 354 - 60) as num).toDouble();
+                  
+                  return Positioned(
+                    left: left,
+                    top: top,
+                    width: 130,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Show the signature image if available
+                        if (signatory['signatureBase64'] != null && signatory['signatureBase64'].isNotEmpty)
+                          SizedBox(
+                            height: 35,
+                            child: Image.memory(
+                              base64Decode(signatory['signatureBase64']),
+                              fit: BoxFit.contain,
+                            ),
+                          ),
+                        // Show the signatory name
+                        Text(
+                          signatory['fullName'] ?? '',
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: placement.light ? Colors.white : const Color(0xFF1A202C),
+                          ),
+                        ),
+                        // Show the signatory title
+                        if (signatory['title'] != null && signatory['title'].isNotEmpty)
+                          Text(
+                            signatory['title'],
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 9,
+                              color: placement.light ? Colors.white70 : Colors.black54,
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+// This function fetches all signatories from the database
+Future<Map<String, dynamic>> _fetchSignatories() async {
+  try {
+    final snap = await FirebaseFirestore.instance
+        .collection('signatories')
+        .get();
+    
+    // Convert the documents to a Map: ID -> signatory data
+    final Map<String, dynamic> result = {};
+    for (final doc in snap.docs) {
+      final data = doc.data();
+      result[doc.id] = {
+        'fullName': data['fullName'] ?? '',
+        'title': data['title'] ?? '',
+        'signatureBase64': data['signatureBase64'] ?? '',
+      };
+    }
+    return result;
+  } catch (e) {
+    print('Error fetching signatories: $e');
+    return {};
+  }
+}
 
   Widget _placeholderBanner(
     bool isDraft,

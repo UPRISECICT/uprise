@@ -1255,13 +1255,33 @@ class RegistrationScreenState extends State<RegistrationScreen>
   final _lastNameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
-  final _schoolCtrl = TextEditingController();
-  final _courseCtrl = TextEditingController();
+  // BulSUan-only fields.
+  final _collegeCtrl = TextEditingController();
+  final _sectionCtrl = TextEditingController();
+  // Outsider-only field — replaces "School/University", since an outsider
+  // guest isn't necessarily a student anywhere.
+  final _affiliationCtrl = TextEditingController();
   final _reasonCtrl = TextEditingController();
+
+  static const List<String> yearLevels = [
+    '1st Year',
+    '2nd Year',
+    '3rd Year',
+    '4th Year',
+    '5th Year',
+  ];
+  String _yearLevel = yearLevels.first;
 
   bool _isLoading = false;
   bool _agreedToTerms = false;
   int _currentStep = 0;
+  // Drives both which fields this signup collects (BulSUan needs
+  // college/year/section; Outsider needs an affiliation instead) and which
+  // event/announcement audiences the guest can see once approved
+  // (guest_events_screen.dart's classificationAllowsAudience) — previously
+  // this field was only ever read, never written anywhere, so every guest
+  // was permanently 'Outsider' regardless of real affiliation.
+  String _classification = 'Outsider';
 
   late AnimationController _fadeCtrl;
   late Animation<double> _fadeAnim;
@@ -1286,8 +1306,9 @@ class RegistrationScreenState extends State<RegistrationScreen>
       _lastNameCtrl,
       _emailCtrl,
       _phoneCtrl,
-      _schoolCtrl,
-      _courseCtrl,
+      _collegeCtrl,
+      _sectionCtrl,
+      _affiliationCtrl,
       _reasonCtrl,
     ]) {
       c.dispose();
@@ -1295,6 +1316,11 @@ class RegistrationScreenState extends State<RegistrationScreen>
     _scrollCtrl.dispose();
     super.dispose();
   }
+
+  bool get _isBulSUanEmail =>
+      _emailCtrl.text.trim().toLowerCase().endsWith('@ms.bulsu.edu.ph');
+  bool get _isGmailEmail =>
+      _emailCtrl.text.trim().toLowerCase().endsWith('@gmail.com');
 
   void _nextStep() {
     if (_currentStep == 0) {
@@ -1305,11 +1331,39 @@ class RegistrationScreenState extends State<RegistrationScreen>
         _snack('Please complete all personal information fields.');
         return;
       }
+      // The email domain has to match the selected guest type — a BulSUan
+      // guest is claiming a real BulSU Microsoft account, and an outsider
+      // must use a Gmail address instead.
+      if (_classification == 'BulSUan' && !_isBulSUanEmail) {
+        _snack('BulSUan guests must sign up with an @ms.bulsu.edu.ph email.');
+        return;
+      }
+      if (_classification == 'Outsider' && !_isGmailEmail) {
+        _snack(
+          _isBulSUanEmail
+              ? 'This looks like a BulSU email — switch your guest type to '
+                    'BulSUan, or use a Gmail address instead.'
+              : 'Outsider guests must sign up with a @gmail.com email.',
+        );
+        return;
+      }
     }
     if (_currentStep == 1) {
-      if (_schoolCtrl.text.trim().isEmpty || _reasonCtrl.text.trim().isEmpty) {
+      if (_reasonCtrl.text.trim().isEmpty) {
         _snack('Please complete all fields before proceeding.');
         return;
+      }
+      if (_classification == 'BulSUan') {
+        if (_collegeCtrl.text.trim().isEmpty ||
+            _sectionCtrl.text.trim().isEmpty) {
+          _snack('Please complete all fields before proceeding.');
+          return;
+        }
+      } else {
+        if (_affiliationCtrl.text.trim().isEmpty) {
+          _snack('Please complete all fields before proceeding.');
+          return;
+        }
       }
       if (_reasonCtrl.text.trim().length < 20) {
         _snack('Please describe your purpose in at least 20 characters.');
@@ -1382,15 +1436,27 @@ class RegistrationScreenState extends State<RegistrationScreen>
             'userId': '',
             'userName': userName,
             'email': email,
-            'university': _schoolCtrl.text.trim(),
+            // 'university' is kept populated for the Outsider guest — the
+            // existing, already-working Outsider credentials email template
+            // reads {{university}} and must not break — it now carries
+            // whatever the guest entered as their affiliation/organization
+            // instead of a school name, since an outsider isn't necessarily
+            // a student anywhere.
+            'university': _classification == 'Outsider'
+                ? _affiliationCtrl.text.trim()
+                : 'Bulacan State University',
+            'affiliation': _affiliationCtrl.text.trim(),
+            'college': _collegeCtrl.text.trim(),
+            'yearLevel': _classification == 'BulSUan' ? _yearLevel : '',
+            'section': _sectionCtrl.text.trim(),
             'purpose': _reasonCtrl.text.trim(),
             'status': 'pending',
             'requestDate': FieldValue.serverTimestamp(),
             'firstName': _firstNameCtrl.text.trim(),
             'lastName': _lastNameCtrl.text.trim(),
             'phone': _phoneCtrl.text.trim(),
-            'course': _courseCtrl.text.trim(),
             'type': 'guest',
+            'classification': _classification,
           });
 
       await activity_log.ActivityLogger.log(
@@ -1468,13 +1534,19 @@ class RegistrationScreenState extends State<RegistrationScreen>
           lastNameCtrl: _lastNameCtrl,
           emailCtrl: _emailCtrl,
           phoneCtrl: _phoneCtrl,
+          classification: _classification,
+          onClassificationChanged: (v) => setState(() => _classification = v),
           onNext: _nextStep,
         );
       case 1:
         return _DetailsStep(
-          schoolCtrl: _schoolCtrl,
-          courseCtrl: _courseCtrl,
+          collegeCtrl: _collegeCtrl,
+          sectionCtrl: _sectionCtrl,
+          affiliationCtrl: _affiliationCtrl,
           reasonCtrl: _reasonCtrl,
+          classification: _classification,
+          yearLevel: _yearLevel,
+          onYearLevelChanged: (v) => setState(() => _yearLevel = v),
           onNext: _nextStep,
           onBack: _prevStep,
         );
@@ -1484,9 +1556,12 @@ class RegistrationScreenState extends State<RegistrationScreen>
           lastName: _lastNameCtrl.text.trim(),
           email: _emailCtrl.text.trim(),
           phone: _phoneCtrl.text.trim(),
-          school: _schoolCtrl.text.trim(),
-          course: _courseCtrl.text.trim(),
+          college: _collegeCtrl.text.trim(),
+          yearLevel: _yearLevel,
+          section: _sectionCtrl.text.trim(),
+          affiliation: _affiliationCtrl.text.trim(),
           reason: _reasonCtrl.text.trim(),
+          classification: _classification,
           isLoading: _isLoading,
           agreedToTerms: _agreedToTerms,
           onAgreedChanged: (v) => setState(() => _agreedToTerms = v),
@@ -1504,20 +1579,61 @@ class RegistrationScreenState extends State<RegistrationScreen>
 // ─────────────────────────────────────────────────────────────
 class _PersonalStep extends StatelessWidget {
   final TextEditingController firstNameCtrl, lastNameCtrl, emailCtrl, phoneCtrl;
+  final String classification;
+  final ValueChanged<String> onClassificationChanged;
   final VoidCallback onNext;
   const _PersonalStep({
     required this.firstNameCtrl,
     required this.lastNameCtrl,
     required this.emailCtrl,
     required this.phoneCtrl,
+    required this.classification,
+    required this.onClassificationChanged,
     required this.onNext,
   });
 
   @override
   Widget build(BuildContext context) {
+    final isBulSUan = classification == 'BulSUan';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _FormCard(
+          title: 'Guest Type',
+          icon: Icons.badge_outlined,
+          children: [
+            Text(
+              'This determines your email requirement and which events/'
+              'announcements you can see.',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 11.5,
+                color: Colors.grey.shade600,
+              ),
+            ),
+            const SizedBox(height: 12),
+            _ClassificationOption(
+              label: 'BulSUan',
+              description:
+                  'I\'m affiliated with Bulacan State University — alumni, '
+                  'family of a student/faculty, or similar. Requires an '
+                  '@ms.bulsu.edu.ph email.',
+              icon: Icons.school_rounded,
+              selected: isBulSUan,
+              onTap: () => onClassificationChanged('BulSUan'),
+            ),
+            const SizedBox(height: 10),
+            _ClassificationOption(
+              label: 'Outsider',
+              description:
+                  'I have no affiliation with Bulacan State University. '
+                  'Requires a @gmail.com email.',
+              icon: Icons.public_rounded,
+              selected: !isBulSUan,
+              onTap: () => onClassificationChanged('Outsider'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
         _FormCard(
           title: 'Personal Information',
           icon: Icons.person_outline_rounded,
@@ -1547,7 +1663,9 @@ class _PersonalStep extends StatelessWidget {
             _Field(
               label: 'Email Address',
               controller: emailCtrl,
-              hint: 'your@email.com',
+              hint: isBulSUan
+                  ? 'yourname@ms.bulsu.edu.ph'
+                  : 'yourname@gmail.com',
               icon: Icons.email_outlined,
               keyboardType: TextInputType.emailAddress,
             ),
@@ -1570,41 +1688,108 @@ class _PersonalStep extends StatelessWidget {
 }
 
 class _DetailsStep extends StatelessWidget {
-  final TextEditingController schoolCtrl, courseCtrl, reasonCtrl;
+  final TextEditingController collegeCtrl, sectionCtrl, affiliationCtrl;
+  final TextEditingController reasonCtrl;
+  final String classification;
+  final String yearLevel;
+  final ValueChanged<String> onYearLevelChanged;
   final VoidCallback onNext, onBack;
   const _DetailsStep({
-    required this.schoolCtrl,
-    required this.courseCtrl,
+    required this.collegeCtrl,
+    required this.sectionCtrl,
+    required this.affiliationCtrl,
     required this.reasonCtrl,
+    required this.classification,
+    required this.yearLevel,
+    required this.onYearLevelChanged,
     required this.onNext,
     required this.onBack,
   });
 
   @override
   Widget build(BuildContext context) {
+    final isBulSUan = classification == 'BulSUan';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _FormCard(
-          title: 'School / Affiliation',
-          icon: Icons.school_outlined,
-          children: [
-            _Field(
-              label: 'School or Institution',
-              controller: schoolCtrl,
-              hint: 'e.g. BulSU, DLSU, PLM, FEU',
-              icon: Icons.account_balance_outlined,
-            ),
-            const SizedBox(height: 14),
-            _Field(
-              label: 'Program / Course',
-              controller: courseCtrl,
-              hint: 'e.g. BSIT, BSCS, BSCPE',
-              icon: Icons.menu_book_outlined,
-              isRequired: false,
-            ),
-          ],
-        ),
+        if (isBulSUan)
+          _FormCard(
+            title: 'BulSU Details',
+            icon: Icons.school_outlined,
+            children: [
+              _Field(
+                label: 'College',
+                controller: collegeCtrl,
+                hint:
+                    'e.g. College of Information and Communications Technology',
+                icon: Icons.account_balance_outlined,
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'Year Level',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 6),
+              DropdownButtonFormField<String>(
+                initialValue: yearLevel,
+                items: RegistrationScreenState.yearLevels
+                    .map(
+                      (y) => DropdownMenuItem(
+                        value: y,
+                        child: Text(
+                          y,
+                          style: GoogleFonts.beVietnamPro(fontSize: 14),
+                        ),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (v) {
+                  if (v != null) onYearLevelChanged(v);
+                },
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(
+                    Icons.stairs_outlined,
+                    size: 18,
+                    color: Colors.grey,
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xFFF8F8F8),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 14,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              _Field(
+                label: 'Section',
+                controller: sectionCtrl,
+                hint: 'e.g. 4H-G1',
+                icon: Icons.groups_outlined,
+              ),
+            ],
+          )
+        else
+          _FormCard(
+            title: 'Affiliation',
+            icon: Icons.school_outlined,
+            children: [
+              _Field(
+                label: 'Affiliation / Organization',
+                controller: affiliationCtrl,
+                hint: 'e.g. DLSU, ABC Company, Self-employed',
+                icon: Icons.account_balance_outlined,
+              ),
+            ],
+          ),
         const SizedBox(height: 14),
         _FormCard(
           title: 'Purpose',
@@ -1637,8 +1822,84 @@ class _DetailsStep extends StatelessWidget {
   }
 }
 
+class _ClassificationOption extends StatelessWidget {
+  final String label, description;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+  const _ClassificationOption({
+    required this.label,
+    required this.description,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: selected ? _kOrangeLight : Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? _kOrange : Colors.grey.shade200,
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: 20,
+              color: selected ? _kOrange : Colors.grey.shade500,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                      color: selected ? _kOrange : Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    description,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11,
+                      color: Colors.grey.shade600,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              selected
+                  ? Icons.radio_button_checked_rounded
+                  : Icons.radio_button_off_rounded,
+              size: 20,
+              color: selected ? _kOrange : Colors.grey.shade400,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ReviewStep extends StatelessWidget {
-  final String firstName, lastName, email, phone, school, course, reason;
+  final String firstName, lastName, email, phone, reason;
+  final String college, yearLevel, section, affiliation;
+  final String classification;
   final bool isLoading;
   final bool agreedToTerms;
   final ValueChanged<bool> onAgreedChanged;
@@ -1648,9 +1909,12 @@ class _ReviewStep extends StatelessWidget {
     required this.lastName,
     required this.email,
     required this.phone,
-    required this.school,
-    required this.course,
+    required this.college,
+    required this.yearLevel,
+    required this.section,
+    required this.affiliation,
     required this.reason,
+    required this.classification,
     required this.isLoading,
     required this.agreedToTerms,
     required this.onAgreedChanged,
@@ -1764,10 +2028,17 @@ class _ReviewStep extends StatelessWidget {
         const SizedBox(height: 10),
         _ReviewGroup(
           title: 'Affiliation',
-          rows: [
-            _ReviewPair('School', school),
-            _ReviewPair('Course', course.isEmpty ? 'Not provided' : course),
-          ],
+          rows: classification == 'BulSUan'
+              ? [
+                  _ReviewPair('Guest Type', classification),
+                  _ReviewPair('College', college),
+                  _ReviewPair('Year Level', yearLevel),
+                  _ReviewPair('Section', section),
+                ]
+              : [
+                  _ReviewPair('Guest Type', classification),
+                  _ReviewPair('Affiliation', affiliation),
+                ],
         ),
         const SizedBox(height: 10),
         _ReviewGroup(title: 'Purpose', rows: [_ReviewPair('Reason', reason)]),

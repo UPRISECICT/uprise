@@ -30,28 +30,28 @@ class _OrgRegistrationFormsScreenState
   String _query = '';
   final Map<String, Map<String, dynamic>> _studentCache = {};
 
-  // All approved proposals, most recent first — unlike EventManagementScreen
-  // this deliberately does NOT filter out events whose date has passed.
+  // Queries `events` directly (most recent first), not `event_proposals` —
+  // unlike EventManagementScreen this deliberately does NOT filter out
+  // events whose date has passed. Previously this queried `event_proposals`
+  // and then looked up the matching `events` doc via `createdFromProposalId`
+  // — but a proposal can be deleted/archived after its event is published
+  // (event_proposals and events are independent docs once publish creates
+  // the events doc), so any event whose source proposal was removed simply
+  // never appeared in this dropdown at all, silently hiding its
+  // registrations/forms. Querying `events` directly means every published
+  // event shows up regardless of what happened to the proposal it came from.
   late final Stream<QuerySnapshot> _eventsStream = FirebaseFirestore.instance
-      .collection('event_proposals')
+      .collection('events')
       .where('orgId', isEqualTo: widget.orgId)
       .where('status', isEqualTo: 'approved')
       .orderBy('date', descending: true)
       .snapshots();
 
-  Future<void> _selectEvent(EventModel e) async {
+  void _selectEvent(EventModel e) {
     setState(() {
       _event = e;
-      _eventDocId = null;
+      _eventDocId = e.id;
     });
-    final q = await FirebaseFirestore.instance
-        .collection('events')
-        .where('createdFromProposalId', isEqualTo: e.id)
-        .limit(1)
-        .get();
-    if (mounted && q.docs.isNotEmpty) {
-      setState(() => _eventDocId = q.docs.first.id);
-    }
   }
 
   Future<void> _ensureStudentsLoaded(Iterable<String> uids) async {
@@ -126,13 +126,31 @@ class _OrgRegistrationFormsScreenState
   }
 
   Widget _buildHeader() {
-    return Text(
-      'Registration Forms',
-      style: GoogleFonts.beVietnamPro(
-        fontSize: 22,
-        fontWeight: FontWeight.w700,
-        color: const Color(0xFF1A202C),
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Registration Forms',
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            color: const Color(0xFF1A202C),
+          ),
+        ),
+        const SizedBox(height: 4),
+        // The page used to just drop you into a dropdown + bare list with
+        // no explanation of what you were looking at — this one line plus
+        // the "Registrants for <event>" label above the table (see
+        // _buildTable) ties the picker to the results so it reads as one
+        // flow instead of two disconnected pieces.
+        Text(
+          'Pick an event to see who registered and review their submitted answers — even after the event has ended.',
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 13,
+            color: const Color(0xFF64748B),
+          ),
+        ),
+      ],
     );
   }
 
@@ -277,10 +295,7 @@ class _OrgRegistrationFormsScreenState
         padding: const EdgeInsets.symmetric(vertical: 40),
         child: Center(
           child: Text(
-            _event == null
-                ? 'Select an event above to view its submitted forms.'
-                : 'This event hasn\'t been published yet, so it has no '
-                      'registrations.',
+            'Select an event above to view its submitted forms.',
             style: GoogleFonts.beVietnamPro(
               fontSize: 13,
               color: const Color(0xFF94A3B8),
@@ -329,49 +344,91 @@ class _OrgRegistrationFormsScreenState
               idOf(m).toLowerCase().contains(_query);
         }).toList();
 
+        // Explicitly names which event these rows belong to — the dropdown
+        // above and this list used to have no visible connection to each
+        // other, which is what made the page hard to follow at a glance.
+        final resultsLabel = Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: RichText(
+            text: TextSpan(
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF64748B),
+              ),
+              children: [
+                const TextSpan(text: 'Registrants for '),
+                TextSpan(
+                  text: _event?.title ?? 'this event',
+                  style: const TextStyle(color: Color(0xFF1A202C)),
+                ),
+                TextSpan(text: ' · ${regs.length} submitted'),
+              ],
+            ),
+          ),
+        );
+
         if (filtered.isEmpty) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 40),
-            child: Center(
-              child: Text(
-                regs.isEmpty
-                    ? 'No one has registered for this event yet.'
-                    : 'No records match your search.',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  color: const Color(0xFF94A3B8),
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              resultsLabel,
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 40),
+                child: Center(
+                  child: Text(
+                    regs.isEmpty
+                        ? 'No one has registered for this event yet.'
+                        : 'No records match your search.',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 13,
+                      color: const Color(0xFF94A3B8),
+                    ),
+                  ),
                 ),
               ),
-            ),
+            ],
           );
         }
 
-        return Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFEBEEF3)),
-          ),
-          child: Column(
-            children: [
-              for (var i = 0; i < filtered.length; i++)
-                _FormRow(
-                  name: nameOf(filtered[i].data() as Map<String, dynamic>),
-                  studentId: idOf(filtered[i].data() as Map<String, dynamic>),
-                  hasAnswers: hasAnswers(
-                    filtered[i].data() as Map<String, dynamic>,
-                  ),
-                  isLast: i == filtered.length - 1,
-                  onView: () => showRegistrationAnswers(
-                    context,
-                    nameOf(filtered[i].data() as Map<String, dynamic>).isEmpty
-                        ? 'Student'
-                        : nameOf(filtered[i].data() as Map<String, dynamic>),
-                    filtered[i].data() as Map<String, dynamic>,
-                  ),
-                ),
-            ],
-          ),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            resultsLabel,
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFEBEEF3)),
+              ),
+              child: Column(
+                children: [
+                  for (var i = 0; i < filtered.length; i++)
+                    _FormRow(
+                      name: nameOf(filtered[i].data() as Map<String, dynamic>),
+                      studentId: idOf(
+                        filtered[i].data() as Map<String, dynamic>,
+                      ),
+                      hasAnswers: hasAnswers(
+                        filtered[i].data() as Map<String, dynamic>,
+                      ),
+                      isLast: i == filtered.length - 1,
+                      onView: () => showRegistrationAnswers(
+                        context,
+                        nameOf(
+                              filtered[i].data() as Map<String, dynamic>,
+                            ).isEmpty
+                            ? 'Student'
+                            : nameOf(
+                                filtered[i].data() as Map<String, dynamic>,
+                              ),
+                        filtered[i].data() as Map<String, dynamic>,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
         );
       },
     );

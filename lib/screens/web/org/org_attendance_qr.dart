@@ -508,6 +508,12 @@ class _EventManagementScreenState extends State<EventManagementScreen> {
                           child: DropdownButton<String>(
                             value: _event?.id,
                             isExpanded: true,
+                            // Bounded + rounded so an org with a long event
+                            // history gets a scrollable list here instead of
+                            // one giant unstyled menu dumping every event at
+                            // once.
+                            menuMaxHeight: 320,
+                            borderRadius: BorderRadius.circular(_DS.radiusMd),
                             icon: const Icon(
                               Icons.keyboard_arrow_down_rounded,
                               size: 18,
@@ -2639,122 +2645,195 @@ void showRegistrationAnswers(
   showDialog(
     context: context,
     builder: (ctx) => Dialog(
+      // The dialog's direct child had no explicit background, letting
+      // Flutter's default unseeded Material surface bleed through as a
+      // dull lavender tint — same root cause fixed elsewhere in the app.
+      backgroundColor: Colors.transparent,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxHeight: 520),
+        constraints: const BoxConstraints(maxHeight: 560, maxWidth: 440),
         child: Container(
-          width: 440,
-          padding: const EdgeInsets.all(22),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 18, 16, 16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      UpriseColors.primaryDark.withAlpha(16),
+                      Colors.white,
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Text(
-                        'Registration Answers',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFF1A202C),
-                        ),
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: UpriseColors.primaryDark.withAlpha(28),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.assignment_outlined,
+                        color: UpriseColors.primaryDark,
+                        size: 18,
                       ),
                     ),
-                    InkWell(
-                      onTap: () => Navigator.pop(ctx),
-                      borderRadius: BorderRadius.circular(8),
-                      child: const Padding(
-                        padding: EdgeInsets.all(4),
-                        child: Icon(
-                          Icons.close_rounded,
-                          size: 20,
-                          color: Color(0xFF94A3B8),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Registration Answers',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 15.5,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF1A202C),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            studentName,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 12.5,
+                              color: const Color(0xFF64748B),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: GestureDetector(
+                        onTap: () => Navigator.pop(ctx),
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8F9FB),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            Icons.close_rounded,
+                            size: 16,
+                            color: Color(0xFF64748B),
+                          ),
                         ),
                       ),
                     ),
                   ],
                 ),
-                Text(
-                  studentName,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 12.5,
-                    color: const Color(0xFF64748B),
+              ),
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (entries.isEmpty)
+                        Text(
+                          'No additional info was collected for this registration.',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 13,
+                            color: const Color(0xFF94A3B8),
+                          ),
+                        )
+                      else
+                        ...entries.map((e) {
+                          final isLink =
+                              e.value.startsWith('http://') ||
+                              e.value.startsWith('https://');
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8F9FB),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(
+                                  isLink
+                                      ? Icons.attach_file_rounded
+                                      : Icons.short_text_rounded,
+                                  size: 16,
+                                  color: const Color(0xFF64748B),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        e.key.toUpperCase(),
+                                        style: GoogleFonts.beVietnamPro(
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: const Color(0xFF9AA5B4),
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      if (isLink)
+                                        InkWell(
+                                          onTap: () async {
+                                            final uri = Uri.tryParse(e.value);
+                                            if (uri != null &&
+                                                await canLaunchUrl(uri)) {
+                                              await launchUrl(
+                                                uri,
+                                                mode: LaunchMode
+                                                    .externalApplication,
+                                              );
+                                            }
+                                          },
+                                          child: Text(
+                                            'View uploaded photo/video',
+                                            style: GoogleFonts.beVietnamPro(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                              color: UpriseColors.info,
+                                              decoration:
+                                                  TextDecoration.underline,
+                                            ),
+                                          ),
+                                        )
+                                      else
+                                        Text(
+                                          e.value,
+                                          style: GoogleFonts.beVietnamPro(
+                                            fontSize: 13.5,
+                                            color: const Color(0xFF1A202C),
+                                            height: 1.4,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 16),
-                if (entries.isEmpty)
-                  Text(
-                    'No additional info was collected for this registration.',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 13,
-                      color: const Color(0xFF94A3B8),
-                    ),
-                  )
-                else
-                  ...entries.map(
-                    (e) => Padding(
-                      padding: const EdgeInsets.only(bottom: 14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            e.key,
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: const Color(0xFF9AA5B4),
-                            ),
-                          ),
-                          const SizedBox(height: 3),
-                          if (e.value.startsWith('http://') ||
-                              e.value.startsWith('https://'))
-                            InkWell(
-                              onTap: () async {
-                                final uri = Uri.tryParse(e.value);
-                                if (uri != null && await canLaunchUrl(uri)) {
-                                  await launchUrl(
-                                    uri,
-                                    mode: LaunchMode.externalApplication,
-                                  );
-                                }
-                              },
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(
-                                    Icons.attach_file_rounded,
-                                    size: 14,
-                                    color: UpriseColors.info,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    'View uploaded photo/video',
-                                    style: GoogleFonts.beVietnamPro(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      color: UpriseColors.info,
-                                      decoration: TextDecoration.underline,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )
-                          else
-                            Text(
-                              e.value,
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 13.5,
-                                color: const Color(0xFF1A202C),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -3029,6 +3108,9 @@ class _MethodBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isManual = method == 'manual';
+    // Was a squared-off (radius 6) box next to STATUS's fully-pilled
+    // badge — same padding/border structure but a different corner
+    // radius read as "plain" beside it. Matched to _attBadge's shape.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
       decoration: BoxDecoration(
@@ -3036,14 +3118,15 @@ class _MethodBadge extends StatelessWidget {
         border: Border.all(
           color: isManual ? const Color(0xFFFDE68A) : const Color(0xFFBFD7FF),
         ),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(_DS.radiusPill),
       ),
       child: Text(
-        isManual ? 'Manual' : 'QR Scan',
+        isManual ? 'MANUAL' : 'QR SCAN',
         style: GoogleFonts.beVietnamPro(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
           color: isManual ? const Color(0xFFFB923C) : const Color(0xFF2563EB),
+          letterSpacing: 0.6,
         ),
       ),
     );

@@ -118,46 +118,39 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 20),
-
-        // ── Tab bar (rounded pill, smooth sliding indicator) ──
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-          child: Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8F9FB),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFE2E6EA)),
-            ),
+        // ── Tab bar — plain underline style, matching admin/settings.dart
+        // instead of the rounded-pill look this used before.
+        Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(bottom: BorderSide(color: Color(0xFFE8ECF0))),
+          ),
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
             child: TabBar(
               controller: _tabController,
-              indicator: BoxDecoration(
-                color: UpriseColors.primaryDark,
-                borderRadius: BorderRadius.circular(9),
-              ),
-              indicatorSize: TabBarIndicatorSize.tab,
-              dividerColor: Colors.transparent,
-              splashBorderRadius: BorderRadius.circular(9),
-              labelColor: Colors.white,
+              isScrollable: false,
+              labelColor: UpriseColors.primaryDark,
               unselectedLabelColor: const Color(0xFF64748B),
+              indicatorColor: UpriseColors.primaryDark,
+              indicatorWeight: 2.5,
+              indicatorSize: TabBarIndicatorSize.label,
               labelStyle: GoogleFonts.beVietnamPro(
                 fontSize: 13,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
               ),
               unselectedLabelStyle: GoogleFonts.beVietnamPro(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
               ),
               tabs: const [
-                Tab(height: 38, text: 'Profile'),
-                Tab(height: 38, text: 'Notifications'),
-                Tab(height: 38, text: 'Security'),
+                Tab(text: 'Profile'),
+                Tab(text: 'Notifications'),
+                Tab(text: 'Security'),
               ],
             ),
           ),
         ),
-        const SizedBox(height: 20),
 
         // ── Tab views ────────────────────────────────────────
         Expanded(
@@ -171,7 +164,7 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen>
                 orgEmail: widget.orgEmail,
               ),
               _NotificationsTab(orgId: widget.orgId),
-              _SecurityTab(orgId: widget.orgId),
+              _SecurityTab(orgId: widget.orgId, orgName: widget.orgName),
             ],
           ),
         ),
@@ -225,45 +218,71 @@ class _ProfileTab extends StatelessWidget {
     final width = MediaQuery.of(context).size.width;
     final horizontalPadding = width < 720 ? 16.0 : 28.0;
     return SingleChildScrollView(
-      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-      child: Column(
-        children: [
-          Container(
-            margin: const EdgeInsets.only(bottom: 20),
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFE8ECF0)),
-              boxShadow: _DS.cardShadow,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Organization Information',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF1A202C),
-                  ),
+      padding: EdgeInsets.symmetric(
+        horizontal: horizontalPadding,
+        vertical: 28,
+      ),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 680),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Organization Settings',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF1A202C),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'To update your logo, cover photo, or description, use the Profile page.',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 12,
-                    color: const Color(0xFF64748B),
-                  ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                "Your organization's basic account information.",
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: const Color(0xFF64748B),
                 ),
-                const SizedBox(height: 20),
-                _infoRow('Organization Name', orgName),
-                _infoRow('Short Name', orgShortName),
-                _infoRow('Email Address', orgEmail),
-              ],
-            ),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                margin: const EdgeInsets.only(bottom: 20),
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFE8ECF0)),
+                  boxShadow: _DS.cardShadow,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Organization Information',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF1A202C),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'To update your logo, cover photo, or description, use the Profile page.',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12,
+                        color: const Color(0xFF64748B),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    _infoRow('Organization Name', orgName),
+                    _infoRow('Short Name', orgShortName),
+                    _infoRow('Email Address', orgEmail),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -321,111 +340,140 @@ class _NotificationsTabState extends State<_NotificationsTab> {
     final width = MediaQuery.of(context).size.width;
     final horizontalPadding = width < 720 ? 16.0 : 28.0;
     return SingleChildScrollView(
-      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-      child: Column(
-        children: [
-          Container(
-            margin: const EdgeInsets.only(bottom: 20),
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFE8ECF0)),
-              boxShadow: _DS.cardShadow,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Notifications',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF1A202C),
-                  ),
+      padding: EdgeInsets.symmetric(
+        horizontal: horizontalPadding,
+        vertical: 28,
+      ),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 680),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Notifications',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF1A202C),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'Control the in-app notifications this account receives — '
-                  'new registrations, proposal decisions, letter requests, '
-                  'student broadcasts, and more.',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 12,
-                    color: const Color(0xFF64748B),
-                  ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Control what this account gets notified about.',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: const Color(0xFF64748B),
                 ),
-                const SizedBox(height: 20),
-                StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                  stream: _prefsDoc.snapshots(),
-                  builder: (context, snap) {
-                    final enabled =
-                        (snap.data?.data()?['push_notifications'] as bool?) ??
-                        true;
-                    return Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8F9FB),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFE8ECF0)),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                margin: const EdgeInsets.only(bottom: 20),
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFE8ECF0)),
+                  boxShadow: _DS.cardShadow,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'In-App Notifications',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF1A202C),
                       ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            enabled
-                                ? Icons.notifications_active_outlined
-                                : Icons.notifications_off_outlined,
-                            size: 20,
-                            color: enabled
-                                ? UpriseColors.primaryDark
-                                : const Color(0xFF94A3B8),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'In-app notifications',
-                                  style: GoogleFonts.beVietnamPro(
-                                    fontSize: 13.5,
-                                    fontWeight: FontWeight.w600,
-                                    color: const Color(0xFF1A202C),
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  enabled
-                                      ? 'You\'ll be notified of new activity involving your organization.'
-                                      : 'Notifications are muted for this account.',
-                                  style: GoogleFonts.beVietnamPro(
-                                    fontSize: 11.5,
-                                    color: const Color(0xFF64748B),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (_saving)
-                            const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          else
-                            Switch(
-                              value: enabled,
-                              activeThumbColor: UpriseColors.primaryDark,
-                              onChanged: _setEnabled,
-                            ),
-                        ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Control the in-app notifications this account receives — '
+                      'new registrations, proposal decisions, letter requests, '
+                      'student broadcasts, and more.',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12,
+                        color: const Color(0xFF64748B),
                       ),
-                    );
-                  },
+                    ),
+                    const SizedBox(height: 20),
+                    StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                      stream: _prefsDoc.snapshots(),
+                      builder: (context, snap) {
+                        final enabled =
+                            (snap.data?.data()?['push_notifications']
+                                as bool?) ??
+                            true;
+                        return Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8F9FB),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFE8ECF0)),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                enabled
+                                    ? Icons.notifications_active_outlined
+                                    : Icons.notifications_off_outlined,
+                                size: 20,
+                                color: enabled
+                                    ? UpriseColors.primaryDark
+                                    : const Color(0xFF94A3B8),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'In-app notifications',
+                                      style: GoogleFonts.beVietnamPro(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: const Color(0xFF1A202C),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      enabled
+                                          ? 'You\'ll be notified of new activity involving your organization.'
+                                          : 'Notifications are muted for this account.',
+                                      style: GoogleFonts.beVietnamPro(
+                                        fontSize: 11.5,
+                                        color: const Color(0xFF64748B),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (_saving)
+                                const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              else
+                                Switch(
+                                  value: enabled,
+                                  activeThumbColor: UpriseColors.primaryDark,
+                                  onChanged: _setEnabled,
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -436,7 +484,8 @@ class _NotificationsTabState extends State<_NotificationsTab> {
 // ─────────────────────────────────────────────────────────────────────────────
 class _SecurityTab extends StatefulWidget {
   final String orgId;
-  const _SecurityTab({required this.orgId});
+  final String orgName;
+  const _SecurityTab({required this.orgId, required this.orgName});
 
   @override
   State<_SecurityTab> createState() => _SecurityTabState();
@@ -612,392 +661,481 @@ class _SecurityTabState extends State<_SecurityTab> {
     final width = MediaQuery.of(context).size.width;
     final horizontalPadding = width < 720 ? 16.0 : 28.0;
     return SingleChildScrollView(
-      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-      child: Column(
-        children: [
-          // Password change card
-          Container(
-            margin: const EdgeInsets.only(bottom: 20),
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFE8ECF0)),
-              boxShadow: _DS.cardShadow,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Password & Security',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF1A202C),
-                  ),
+      padding: EdgeInsets.symmetric(
+        horizontal: horizontalPadding,
+        vertical: 28,
+      ),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 680),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Account Security',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF1A202C),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'Update your password regularly to keep your account secure.',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 12,
-                    color: const Color(0xFF64748B),
-                  ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Keep your login credentials current and protected.',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: const Color(0xFF64748B),
                 ),
-                const SizedBox(height: 20),
-                Form(
-                  key: _formKey,
-                  child: Column(
-                    children: [
-                      TextFormField(
-                        controller: _currentPasswordCtrl,
-                        obscureText: _obscureCurrent,
-                        decoration: _DS.inputDecoration(
-                          'Current Password',
-                          suffix: IconButton(
-                            icon: Icon(
-                              _obscureCurrent
-                                  ? Icons.visibility_off_outlined
-                                  : Icons.visibility_outlined,
-                              size: 18,
-                              color: const Color(0xFF64748B),
-                            ),
-                            onPressed: () => setState(
-                              () => _obscureCurrent = !_obscureCurrent,
-                            ),
-                          ),
-                        ),
-                        validator: (v) =>
-                            v == null || v.isEmpty ? 'Required' : null,
-                      ),
-                      const SizedBox(height: 14),
-                      TextFormField(
-                        controller: _newPasswordCtrl,
-                        obscureText: _obscureNew,
-                        decoration: _DS.inputDecoration(
-                          'New Password',
-                          suffix: IconButton(
-                            icon: Icon(
-                              _obscureNew
-                                  ? Icons.visibility_off_outlined
-                                  : Icons.visibility_outlined,
-                              size: 18,
-                              color: const Color(0xFF64748B),
-                            ),
-                            onPressed: () =>
-                                setState(() => _obscureNew = !_obscureNew),
-                          ),
-                        ),
-                        validator: (v) {
-                          if (v == null || v.isEmpty) return 'Required';
-                          if (v.length < 6) {
-                            return 'Must be at least 6 characters';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 14),
-                      TextFormField(
-                        controller: _confirmPasswordCtrl,
-                        obscureText: _obscureConfirm,
-                        decoration: _DS.inputDecoration(
-                          'Confirm New Password',
-                          suffix: IconButton(
-                            icon: Icon(
-                              _obscureConfirm
-                                  ? Icons.visibility_off_outlined
-                                  : Icons.visibility_outlined,
-                              size: 18,
-                              color: const Color(0xFF64748B),
-                            ),
-                            onPressed: () => setState(
-                              () => _obscureConfirm = !_obscureConfirm,
-                            ),
-                          ),
-                        ),
-                        validator: (v) => v != _newPasswordCtrl.text
-                            ? 'Passwords do not match'
-                            : null,
-                      ),
-                      const SizedBox(height: 24),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: ElevatedButton.icon(
-                          onPressed: _isUpdating ? null : _updatePassword,
-                          icon: _isUpdating
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Icon(Icons.lock_outline, size: 16),
-                          label: Text(
-                            'Update Password',
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: UpriseColors.primaryDark,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
+              ),
+              const SizedBox(height: 20),
 
-          // Change email card
-          Container(
-            margin: const EdgeInsets.only(bottom: 20),
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFE8ECF0)),
-              boxShadow: _DS.cardShadow,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Login Email',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF1A202C),
-                  ),
+              // Account identity card
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 20),
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFE8ECF0)),
+                  boxShadow: _DS.cardShadow,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'Current: ${FirebaseAuth.instance.currentUser?.email ?? '—'}',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 12,
-                    color: const Color(0xFF64748B),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Form(
-                  key: _emailFormKey,
-                  child: Column(
-                    children: [
-                      TextFormField(
-                        controller: _newEmailCtrl,
-                        decoration: _DS.inputDecoration('New Email'),
-                        validator: (v) {
-                          if (v == null || v.trim().isEmpty) {
-                            return 'Required';
-                          }
-                          final ok = RegExp(
-                            r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
-                          ).hasMatch(v.trim());
-                          return ok ? null : 'Enter a valid email address';
-                        },
+                child: Row(
+                  children: [
+                    Container(
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: UpriseColors.primaryDark.withAlpha(20),
+                        border: Border.all(
+                          color: UpriseColors.primaryDark.withAlpha(60),
+                          width: 2,
+                        ),
                       ),
-                      const SizedBox(height: 14),
-                      TextFormField(
-                        controller: _emailPasswordCtrl,
-                        obscureText: _obscureEmailPassword,
-                        decoration: _DS.inputDecoration(
-                          'Current Password',
-                          suffix: IconButton(
-                            icon: Icon(
-                              _obscureEmailPassword
-                                  ? Icons.visibility_off_outlined
-                                  : Icons.visibility_outlined,
-                              size: 18,
-                              color: const Color(0xFF64748B),
-                            ),
-                            onPressed: () => setState(
-                              () => _obscureEmailPassword =
-                                  !_obscureEmailPassword,
+                      child: Icon(
+                        Icons.groups_rounded,
+                        size: 26,
+                        color: UpriseColors.primaryDark.withAlpha(160),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.orgName.isNotEmpty
+                                ? widget.orgName
+                                : 'Organization',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF1A202C),
                             ),
                           ),
-                        ),
-                        validator: (v) =>
-                            v == null || v.isEmpty ? 'Required' : null,
+                          const SizedBox(height: 2),
+                          Text(
+                            FirebaseAuth.instance.currentUser?.email ?? '—',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 12,
+                              color: const Color(0xFF64748B),
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'We\'ll email a verification link to the new address — '
-                        'your login email only updates once you confirm it there.',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 11.5,
-                          color: const Color(0xFF94A3B8),
-                        ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Password change card
+              Container(
+                margin: const EdgeInsets.only(bottom: 20),
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFE8ECF0)),
+                  boxShadow: _DS.cardShadow,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Password & Security',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF1A202C),
                       ),
-                      const SizedBox(height: 20),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: ElevatedButton.icon(
-                          onPressed: _isChangingEmail ? null : _changeEmail,
-                          icon: _isChangingEmail
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Icon(
-                                  Icons.mail_outline_rounded,
-                                  size: 16,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Update your password regularly to keep your account secure.',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12,
+                        color: const Color(0xFF64748B),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Form(
+                      key: _formKey,
+                      child: Column(
+                        children: [
+                          TextFormField(
+                            controller: _currentPasswordCtrl,
+                            obscureText: _obscureCurrent,
+                            decoration: _DS.inputDecoration(
+                              'Current Password',
+                              suffix: IconButton(
+                                icon: Icon(
+                                  _obscureCurrent
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  size: 18,
+                                  color: const Color(0xFF64748B),
                                 ),
-                          label: Text(
-                            'Change Email',
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
+                                onPressed: () => setState(
+                                  () => _obscureCurrent = !_obscureCurrent,
+                                ),
+                              ),
+                            ),
+                            validator: (v) =>
+                                v == null || v.isEmpty ? 'Required' : null,
+                          ),
+                          const SizedBox(height: 14),
+                          TextFormField(
+                            controller: _newPasswordCtrl,
+                            obscureText: _obscureNew,
+                            decoration: _DS.inputDecoration(
+                              'New Password',
+                              suffix: IconButton(
+                                icon: Icon(
+                                  _obscureNew
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  size: 18,
+                                  color: const Color(0xFF64748B),
+                                ),
+                                onPressed: () =>
+                                    setState(() => _obscureNew = !_obscureNew),
+                              ),
+                            ),
+                            validator: (v) {
+                              if (v == null || v.isEmpty) return 'Required';
+                              if (v.length < 6) {
+                                return 'Must be at least 6 characters';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 14),
+                          TextFormField(
+                            controller: _confirmPasswordCtrl,
+                            obscureText: _obscureConfirm,
+                            decoration: _DS.inputDecoration(
+                              'Confirm New Password',
+                              suffix: IconButton(
+                                icon: Icon(
+                                  _obscureConfirm
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  size: 18,
+                                  color: const Color(0xFF64748B),
+                                ),
+                                onPressed: () => setState(
+                                  () => _obscureConfirm = !_obscureConfirm,
+                                ),
+                              ),
+                            ),
+                            validator: (v) => v != _newPasswordCtrl.text
+                                ? 'Passwords do not match'
+                                : null,
+                          ),
+                          const SizedBox(height: 24),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: ElevatedButton.icon(
+                              onPressed: _isUpdating ? null : _updatePassword,
+                              icon: _isUpdating
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Icon(Icons.lock_outline, size: 16),
+                              label: Text(
+                                'Update Password',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: UpriseColors.primaryDark,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
                             ),
                           ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: UpriseColors.primaryDark,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
+              ),
 
-          // Recent security activity card
-          Container(
-            margin: const EdgeInsets.only(bottom: 24),
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFE8ECF0)),
-              boxShadow: _DS.cardShadow,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Recent Security Activity',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF1A202C),
-                  ),
+              // Change email card
+              Container(
+                margin: const EdgeInsets.only(bottom: 20),
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFE8ECF0)),
+                  boxShadow: _DS.cardShadow,
                 ),
-                const SizedBox(height: 16),
-                StreamBuilder<QuerySnapshot>(
-                  // Filtered by orgId (matches the existing orgId+timestamp
-                  // composite index) instead of user+severity, which has no
-                  // index and previously made this query fail silently and
-                  // spin forever.
-                  stream: FirebaseFirestore.instance
-                      .collection('activity_logs')
-                      .where('orgId', isEqualTo: widget.orgId)
-                      .orderBy('timestamp', descending: true)
-                      .limit(50)
-                      .snapshots(),
-                  builder: (context, snap) {
-                    if (snap.hasError) {
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 24),
-                        child: Center(
-                          child: Text(
-                            'Could not load security activity',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Login Email',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF1A202C),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Current: ${FirebaseAuth.instance.currentUser?.email ?? '—'}',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12,
+                        color: const Color(0xFF64748B),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Form(
+                      key: _emailFormKey,
+                      child: Column(
+                        children: [
+                          TextFormField(
+                            controller: _newEmailCtrl,
+                            decoration: _DS.inputDecoration('New Email'),
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) {
+                                return 'Required';
+                              }
+                              final ok = RegExp(
+                                r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                              ).hasMatch(v.trim());
+                              return ok ? null : 'Enter a valid email address';
+                            },
+                          ),
+                          const SizedBox(height: 14),
+                          TextFormField(
+                            controller: _emailPasswordCtrl,
+                            obscureText: _obscureEmailPassword,
+                            decoration: _DS.inputDecoration(
+                              'Current Password',
+                              suffix: IconButton(
+                                icon: Icon(
+                                  _obscureEmailPassword
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  size: 18,
+                                  color: const Color(0xFF64748B),
+                                ),
+                                onPressed: () => setState(
+                                  () => _obscureEmailPassword =
+                                      !_obscureEmailPassword,
+                                ),
+                              ),
+                            ),
+                            validator: (v) =>
+                                v == null || v.isEmpty ? 'Required' : null,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'We\'ll email a verification link to the new address — '
+                            'your login email only updates once you confirm it there.',
                             style: GoogleFonts.beVietnamPro(
-                              color: UpriseColors.error,
-                              fontSize: 13,
+                              fontSize: 11.5,
+                              color: const Color(0xFF94A3B8),
                             ),
                           ),
-                        ),
-                      );
-                    }
-                    if (!snap.hasData) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    final currentEmail =
-                        FirebaseAuth.instance.currentUser?.email ?? '';
-                    final docs = snap.data!.docs
-                        .where((d) {
-                          final data = d.data() as Map<String, dynamic>;
-                          return data['user'] == currentEmail &&
-                              data['severity'] == 'security';
-                        })
-                        .take(10)
-                        .toList();
-                    if (docs.isEmpty) {
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 24),
-                        child: Center(
-                          child: Text(
-                            'No security activity recorded',
-                            style: GoogleFonts.beVietnamPro(
-                              color: const Color(0xFF64748B),
-                              fontSize: 13,
+                          const SizedBox(height: 20),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: ElevatedButton.icon(
+                              onPressed: _isChangingEmail ? null : _changeEmail,
+                              icon: _isChangingEmail
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.mail_outline_rounded,
+                                      size: 16,
+                                    ),
+                              label: Text(
+                                'Change Email',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: UpriseColors.primaryDark,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                      );
-                    }
-                    return ListView.separated(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: docs.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
-                      itemBuilder: (context, i) {
-                        final data = docs[i].data() as Map<String, dynamic>;
-                        final action = data['action'] ?? 'Unknown action';
-                        final timestamp =
-                            (data['timestamp'] as Timestamp?)?.toDate() ??
-                            DateTime.now();
-                        final details =
-                            data['details'] as Map<String, dynamic>?;
-                        final location =
-                            details?['location'] ?? 'Unknown location';
-                        return ListTile(
-                          leading: const Icon(
-                            Icons.security,
-                            color: UpriseColors.info,
-                            size: 20,
-                          ),
-                          title: Text(
-                            action,
-                            style: GoogleFonts.beVietnamPro(
-                              fontWeight: FontWeight.w500,
-                              fontSize: 13,
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Recent security activity card
+              Container(
+                margin: const EdgeInsets.only(bottom: 24),
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFE8ECF0)),
+                  boxShadow: _DS.cardShadow,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Recent Security Activity',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF1A202C),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    StreamBuilder<QuerySnapshot>(
+                      // Filtered by orgId (matches the existing orgId+timestamp
+                      // composite index) instead of user+severity, which has no
+                      // index and previously made this query fail silently and
+                      // spin forever.
+                      stream: FirebaseFirestore.instance
+                          .collection('activity_logs')
+                          .where('orgId', isEqualTo: widget.orgId)
+                          .orderBy('timestamp', descending: true)
+                          .limit(50)
+                          .snapshots(),
+                      builder: (context, snap) {
+                        if (snap.hasError) {
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 24),
+                            child: Center(
+                              child: Text(
+                                'Could not load security activity',
+                                style: GoogleFonts.beVietnamPro(
+                                  color: UpriseColors.error,
+                                  fontSize: 13,
+                                ),
+                              ),
                             ),
-                          ),
-                          subtitle: Text(
-                            '$location • ${DateFormat('MMM dd, yyyy h:mm a').format(timestamp)}',
-                            style: GoogleFonts.beVietnamPro(fontSize: 11),
-                          ),
-                          trailing: const Icon(
-                            Icons.devices,
-                            size: 16,
-                            color: Color(0xFF64748B),
-                          ),
+                          );
+                        }
+                        if (!snap.hasData) {
+                          return const Center(
+                            child: CircularProgressIndicator(),
+                          );
+                        }
+                        final currentEmail =
+                            FirebaseAuth.instance.currentUser?.email ?? '';
+                        final docs = snap.data!.docs
+                            .where((d) {
+                              final data = d.data() as Map<String, dynamic>;
+                              return data['user'] == currentEmail &&
+                                  data['severity'] == 'security';
+                            })
+                            .take(10)
+                            .toList();
+                        if (docs.isEmpty) {
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 24),
+                            child: Center(
+                              child: Text(
+                                'No security activity recorded',
+                                style: GoogleFonts.beVietnamPro(
+                                  color: const Color(0xFF64748B),
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          );
+                        }
+                        return ListView.separated(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: docs.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          itemBuilder: (context, i) {
+                            final data = docs[i].data() as Map<String, dynamic>;
+                            final action = data['action'] ?? 'Unknown action';
+                            final timestamp =
+                                (data['timestamp'] as Timestamp?)?.toDate() ??
+                                DateTime.now();
+                            final details =
+                                data['details'] as Map<String, dynamic>?;
+                            final location =
+                                details?['location'] ?? 'Unknown location';
+                            return ListTile(
+                              leading: const Icon(
+                                Icons.security,
+                                color: UpriseColors.info,
+                                size: 20,
+                              ),
+                              title: Text(
+                                action,
+                                style: GoogleFonts.beVietnamPro(
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              subtitle: Text(
+                                '$location • ${DateFormat('MMM dd, yyyy h:mm a').format(timestamp)}',
+                                style: GoogleFonts.beVietnamPro(fontSize: 11),
+                              ),
+                              trailing: const Icon(
+                                Icons.devices,
+                                size: 16,
+                                color: Color(0xFF64748B),
+                              ),
+                            );
+                          },
                         );
                       },
-                    );
-                  },
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

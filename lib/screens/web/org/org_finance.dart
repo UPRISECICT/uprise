@@ -2622,9 +2622,49 @@ class _TransactionModalState extends State<_TransactionModal> {
     if (picked != null) setState(() => _selectedDate = picked);
   }
 
+  // Orgs can't spend money they haven't recorded — an expense that would
+  // push the balance negative is blocked here rather than letting the
+  // finance totals go negative silently. Mirrors the same income-minus-
+  // expense calculation the stats row uses (including archived
+  // transactions, since archiving is just a display filter, not a "this
+  // didn't happen" flag). When editing an existing expense, its own prior
+  // amount is excluded so raising it slightly isn't double-penalized.
+  Future<double> _availableBalance() async {
+    final snap = await FirebaseFirestore.instance
+        .collection('transactions')
+        .where('orgId', isEqualTo: widget.orgId)
+        .get();
+    double income = 0, expense = 0;
+    for (final doc in snap.docs) {
+      if (_isEdit && doc.id == widget.existingTransaction!.id) continue;
+      final data = doc.data();
+      final amt = (data['amount'] ?? 0).toDouble();
+      if (data['type'] == 'income') {
+        income += amt;
+      } else {
+        expense += amt;
+      }
+    }
+    return income - expense;
+  }
+
   Future<void> _submit() async {
     if (_formKey.currentState?.validate() != true) return;
     final amount = double.tryParse(_amountCtrl.text.trim()) ?? 0;
+
+    if (_type == 'expense') {
+      final balance = await _availableBalance();
+      if (amount > balance) {
+        final money = NumberFormat('#,##0.00');
+        _showError(
+          balance <= 0
+              ? 'This organization has no recorded funds yet. Add an income transaction for your starting funds before logging expenses.'
+              : 'This expense (₱${money.format(amount)}) exceeds the available balance (₱${money.format(balance)}). Record more income first.',
+        );
+        return;
+      }
+    }
+
     setState(() => _submitting = true);
     final user = FirebaseAuth.instance.currentUser;
     final data = {

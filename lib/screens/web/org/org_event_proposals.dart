@@ -515,9 +515,17 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
       barrierColor: Colors.black54,
       builder: (ctx) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        // No explicit background on this Container let Flutter's default
+        // (unseeded, purple-leaning) Material surface color bleed through —
+        // same root cause fixed in the Announcements composer and the
+        // dashboard's detail modal.
         child: Container(
           width: 420,
           padding: const EdgeInsets.all(28),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -673,6 +681,10 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
         child: Container(
           width: 420,
           padding: const EdgeInsets.all(28),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,

@@ -231,6 +231,55 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
   DateTime _currentMonth = DateTime.now();
   List<EventModel> _cachedEvents = [];
 
+  // Jump straight to a month/year instead of paging one month at a time —
+  // mirrors admin's event_calendar.dart _pickMonth.
+  Future<void> _pickMonth(BuildContext context) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _currentMonth,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+      initialDatePickerMode: DatePickerMode.year,
+      helpText: 'Jump to month',
+      builder: (context, child) {
+        final baseTheme = Theme.of(context);
+        final scheme =
+            ColorScheme.fromSeed(
+              seedColor: UpriseColors.primaryDark,
+              brightness: Brightness.light,
+            ).copyWith(
+              primary: UpriseColors.primaryDark,
+              onPrimary: Colors.white,
+              secondary: UpriseColors.accent,
+              surface: Colors.white,
+              onSurface: const Color(0xFF1A202C),
+              surfaceTint: Colors.transparent,
+            );
+        return Theme(
+          data: baseTheme.copyWith(
+            colorScheme: scheme,
+            dialogTheme: baseTheme.dialogTheme.copyWith(
+              backgroundColor: Colors.white,
+            ),
+            textTheme: GoogleFonts.beVietnamProTextTheme(baseTheme.textTheme),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: UpriseColors.primaryDark,
+                textStyle: GoogleFonts.beVietnamPro(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null) {
+      setState(() => _currentMonth = DateTime(picked.year, picked.month));
+    }
+  }
+
   bool _showOrgEventsOnly = true;
 
   late final Stream<QuerySnapshot> _orgEventsStream = FirebaseFirestore.instance
@@ -339,14 +388,32 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                     ),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Text(
-                    DateFormat('MMMM yyyy').format(_currentMonth),
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF1A202C),
+                InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => _pickMonth(context),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          DateFormat('MMMM yyyy').format(_currentMonth),
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF1A202C),
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        const Icon(
+                          Icons.arrow_drop_down_rounded,
+                          size: 18,
+                          color: Color(0xFF9AA5B4),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -539,12 +606,17 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
       ),
       child: Column(
         children: [
+          // Was a solid saturated-orange banner (#FFF7ED / primaryLight
+          // border) that dominated the top of the grid — softened to a
+          // neutral header with a slim accent underline, same fix as the
+          // dashboard's table headers, so the brand color reads as a hint
+          // rather than a flat crayon-colored strip.
           Container(
             decoration: const BoxDecoration(
-              color: Color(0xFFFFF7ED),
+              color: Color(0xFFF8F9FB),
               borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
               border: Border(
-                bottom: BorderSide(color: UpriseColors.primaryLight),
+                bottom: BorderSide(color: UpriseColors.primaryDark, width: 2),
               ),
             ),
             child: Row(
@@ -552,15 +624,15 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                   .map(
                     (d) => Expanded(
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 11),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
                         child: Text(
                           d,
                           textAlign: TextAlign.center,
                           style: GoogleFonts.beVietnamPro(
-                            fontSize: 11,
+                            fontSize: 10.5,
                             fontWeight: FontWeight.w700,
                             color: const Color(0xFF64748B),
-                            letterSpacing: 0.7,
+                            letterSpacing: 0.8,
                           ),
                         ),
                       ),
@@ -644,12 +716,19 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
             day ==
                 DateTime(_currentMonth.year, _currentMonth.month + 1, 0).day);
 
+    // A subtle weekend tint gives the grid some depth instead of every
+    // non-today cell being flat, identical white — a common calendar
+    // affordance (Sun/Sat columns) that costs nothing in clarity.
+    final isWeekend = colIndex == 0 || colIndex == 6;
+
     return InkWell(
       onTap: () => _showDayEventsSheet(day, sorted),
       hoverColor: UpriseColors.primaryDark.withAlpha(8),
       child: Container(
         decoration: BoxDecoration(
-          color: isToday ? UpriseColors.primaryDark.withAlpha(10) : null,
+          color: isToday
+              ? UpriseColors.primaryDark.withAlpha(10)
+              : (isWeekend ? const Color(0xFFFBFCFE) : null),
           border: Border(
             right: colIndex < 6
                 ? const BorderSide(color: Color(0xFFF1F5F9))

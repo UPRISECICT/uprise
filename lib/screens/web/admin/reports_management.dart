@@ -370,8 +370,12 @@ class OrgSubmission {
         : '${schoolYear ?? '—'} (Whole Year)';
   }
 
-  bool get hasApprovedEvent =>
-      isPeriodScope || (eventDate != null && eventTitle != null);
+  // Previously required eventDate too, which excluded submissions whose
+  // source event was deleted after the report was uploaded (eventDate is
+  // only ever populated by joining against the live `events` collection —
+  // an orphaned submission has no event to join against, but the title
+  // baked into the report doc itself is still real, submitted evidence).
+  bool get hasApprovedEvent => isPeriodScope || eventTitle != null;
 
   // Submission deadline rule: automatically 1 week AFTER the event date,
   // unless an admin has set a per-org override for this report type.
@@ -1727,6 +1731,12 @@ class _ReportsManagementState extends State<ReportsManagement>
       final eventId = data['eventId']?.toString() ?? '';
       if (orgId.isEmpty || eventId.isEmpty) continue;
       subsMap['${orgId}_$eventId'] = {
+        'orgId': orgId,
+        'eventId': eventId,
+        // The event's title at submission time — org_reports.dart bakes this
+        // in directly rather than joining against `events` on read, so it
+        // survives even if the event doc is later deleted.
+        'title': data['title']?.toString() ?? 'Untitled Event',
         'submittedAt': (data['submittedAt'] as Timestamp?)?.toDate(),
         'fileBase64': data['fileBase64'],
         'fileName': data['fileName'],
@@ -1734,7 +1744,13 @@ class _ReportsManagementState extends State<ReportsManagement>
       };
     }
 
+    final orgNames = {for (final org in allOrgs) org['id']!: org['name']!};
+    final orgAbbrevs = {
+      for (final org in allOrgs) org['id']!: org['shortName'] ?? '',
+    };
+
     final rows = <OrgSubmission>[];
+    final usedKeys = <String>{};
     for (final org in allOrgs) {
       final orgId = org['id']!;
       final events = eventsByOrg[orgId];
@@ -1743,6 +1759,7 @@ class _ReportsManagementState extends State<ReportsManagement>
         final eventId = ev['eventId'] as String;
         final key = '${orgId}_$eventId';
         final sub = subsMap[key];
+        usedKeys.add(key);
         rows.add(
           OrgSubmission(
             orgId: orgId,
@@ -1761,13 +1778,35 @@ class _ReportsManagementState extends State<ReportsManagement>
       }
     }
 
+    // A submission's event can be deleted after the report was uploaded
+    // (event_proposals/events are independent of the reports doc, and
+    // nothing stops an org or admin from removing an old event) — without
+    // this, that submission's key never matched anything in the loop above
+    // and just silently vanished, even though the org genuinely submitted
+    // it. Surfaced here using the title/eventId baked into the report doc
+    // itself, with no event date/deadline since the source event is gone.
+    for (final key in subsMap.keys) {
+      if (usedKeys.contains(key)) continue;
+      final sub = subsMap[key]!;
+      final orgId = sub['orgId'] as String;
+      rows.add(
+        OrgSubmission(
+          orgId: orgId,
+          orgName: orgNames[orgId] ?? 'Unknown',
+          orgAbbrev: orgAbbrevs[orgId] ?? '',
+          submittedAt: sub['submittedAt'] as DateTime?,
+          fileBase64: sub['fileBase64'] as String?,
+          fileName: sub['fileName'] as String?,
+          submissionId: sub['submissionId'] as String?,
+          eventId: sub['eventId'] as String?,
+          eventTitle: sub['title'] as String?,
+        ),
+      );
+    }
+
     // Semester/whole-year submissions only ever appear here if an org
     // actually uploaded one — unlike events, there's no fixed date to
     // proactively chase a "pending" placeholder for every period.
-    final orgNames = {for (final org in allOrgs) org['id']!: org['name']!};
-    final orgAbbrevs = {
-      for (final org in allOrgs) org['id']!: org['shortName'] ?? '',
-    };
     for (final doc in periodDocs) {
       final data = doc.data();
       final orgId = data['orgId']?.toString() ?? '';

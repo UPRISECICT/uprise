@@ -265,7 +265,10 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
   late Future<_AnalyticsData> _dataFuture;
   late TabController _tabCtrl;
 
+  // Feedback is currently split across two collections from an incomplete
+  // migration — see the comment in _loadAll() — so both are watched.
   StreamSubscription<QuerySnapshot>? _feedbackSubscription;
+  StreamSubscription<QuerySnapshot>? _eventFeedbackSubscription;
 
   final TextEditingController _eventsSearchCtrl = TextEditingController();
   String _eventsSearchQuery = '';
@@ -300,6 +303,7 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
     _tabCtrl.dispose();
     _eventsSearchCtrl.dispose();
     _feedbackSubscription?.cancel();
+    _eventFeedbackSubscription?.cancel();
     super.dispose();
   }
 
@@ -332,13 +336,19 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
           if ((e['eventId'] as String).isNotEmpty) e['eventId'] as String,
       };
 
-      // 'feedback' is where real submissions actually live (confirmed by
-      // inspecting the live data — 'event_feedback' currently has zero
-      // documents in this project, despite being the collection some
-      // newer write paths target). Feedback docs don't carry an orgId
-      // field, so scope by event membership instead: every event here is
-      // already known to belong to this org.
-      final feedbackSnapshot = await db.collection('feedback').get();
+      // Feedback is split across two collections from an incomplete
+      // migration — three mobile screens submit event feedback, and only
+      // some were ever switched to the newer 'event_feedback'. The one most
+      // students actually complete in practice (via the "rate this event"
+      // notification) still writes to the older 'feedback' collection,
+      // which — live-data-checked — currently holds real submissions while
+      // 'event_feedback' holds none. Neither carries an orgId field, so
+      // scope by event membership instead: every event here is already
+      // known to belong to this org.
+      final feedbackSnapshots = await Future.wait([
+        db.collection('feedback').get(),
+        db.collection('event_feedback').get(),
+      ]);
 
       final evalFormsSnapshot = await db
           .collection('eval_forms')
@@ -350,7 +360,8 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
           .where('orgId', isEqualTo: widget.orgId)
           .get();
 
-      final feedbacks = feedbackSnapshot.docs
+      final feedbacks = feedbackSnapshots
+          .expand((snap) => snap.docs)
           .map(
             (d) => {
               ...d.data(),
@@ -383,9 +394,11 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
 
   void _listenForUpdates() {
     _feedbackSubscription?.cancel();
+    _eventFeedbackSubscription?.cancel();
     // Unfiltered — this only triggers a full _loadAll() re-fetch on any
     // change, and _loadAll() itself does the real event-membership
     // filtering (feedback docs have no orgId field to filter by here).
+    // Both collections are watched — see _loadAll() for why.
     _feedbackSubscription = FirebaseFirestore.instance
         .collection('feedback')
         .snapshots()
@@ -401,12 +414,65 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
             debugPrint('Feedback listener error: $error');
           },
         );
+    _eventFeedbackSubscription = FirebaseFirestore.instance
+        .collection('event_feedback')
+        .snapshots()
+        .listen(
+          (snapshot) {
+            if (mounted) {
+              setState(() {
+                _dataFuture = _loadAll();
+              });
+            }
+          },
+          onError: (error) {
+            debugPrint('Event feedback listener error: $error');
+          },
+        );
   }
 
   void _refresh() {
     setState(() {
       _dataFuture = _loadAll();
     });
+  }
+
+  // Feedback is split across two collections (see _loadAll() for why) — this
+  // merges live updates from both into one stream so this dialog's counts
+  // don't silently miss whichever collection the real submissions landed in.
+  Stream<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
+  _mergedFeedbackStream(String eventId) {
+    final controller =
+        StreamController<
+          List<QueryDocumentSnapshot<Map<String, dynamic>>>
+        >.broadcast();
+    var latestOld = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+    var latestNew = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+    void emit() {
+      if (!controller.isClosed) controller.add([...latestOld, ...latestNew]);
+    }
+
+    final sub1 = FirebaseFirestore.instance
+        .collection('feedback')
+        .where('eventId', isEqualTo: eventId)
+        .snapshots()
+        .listen((snap) {
+          latestOld = snap.docs;
+          emit();
+        });
+    final sub2 = FirebaseFirestore.instance
+        .collection('event_feedback')
+        .where('eventId', isEqualTo: eventId)
+        .snapshots()
+        .listen((snap) {
+          latestNew = snap.docs;
+          emit();
+        });
+    controller.onCancel = () async {
+      await sub1.cancel();
+      await sub2.cancel();
+    };
+    return controller.stream;
   }
 
   // ── Event Summary Dialog ──────────────────────────────────────────────────
@@ -500,27 +566,18 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                           final absent = (totalAttendees - present - late)
                               .clamp(0, totalAttendees);
 
-                          return StreamBuilder<QuerySnapshot>(
-                            stream: FirebaseFirestore.instance
-                                .collection('feedback')
-                                .where('eventId', isEqualTo: eventId)
-                                .snapshots(),
+                          return StreamBuilder<
+                            List<QueryDocumentSnapshot<Map<String, dynamic>>>
+                          >(
+                            stream: _mergedFeedbackStream(eventId),
                             builder: (ctx, feedbackSnap) {
-                              final feedbackDocs =
-                                  feedbackSnap.data?.docs ?? [];
+                              final feedbackDocs = feedbackSnap.data ?? [];
                               final feedbackCount = feedbackDocs.length;
                               final notYetFeedback = checkedIn - feedbackCount;
 
                               final studentIdsWithFeedback = feedbackDocs
                                   .map(
-                                    (d) =>
-                                        (d.data()
-                                                as Map<
-                                                  String,
-                                                  dynamic
-                                                >)['userId']
-                                            ?.toString() ??
-                                        '',
+                                    (d) => d.data()['userId']?.toString() ?? '',
                                   )
                                   .where((id) => id.isNotEmpty)
                                   .toSet();
@@ -534,9 +591,7 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                                   // comments/finance for THIS event only,
                                   // not a cross-event "best vs worst" pick.
                                   final feedbackMaps = feedbackDocs
-                                      .map(
-                                        (d) => d.data() as Map<String, dynamic>,
-                                      )
+                                      .map((d) => d.data())
                                       .toList();
                                   final ratings = feedbackMaps
                                       .map((f) => f['rating'] as int? ?? 0)
@@ -577,6 +632,12 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                                         ? 'Average rating: ${avgRating.toStringAsFixed(1)}★ from ${ratings.length} response${ratings.length == 1 ? '' : 's'}.'
                                         : 'No feedback submitted for this event yet.',
                                   );
+                                  if (checkedIn > 0) {
+                                    insightBody.write(
+                                      '\n$feedbackCount of $checkedIn checked-in attendee${checkedIn == 1 ? '' : 's'} '
+                                      'have submitted feedback${notYetFeedback > 0 ? ' ($notYetFeedback still pending)' : ''}.',
+                                    );
+                                  }
                                   if (topComment != null) {
                                     insightBody.write(
                                       '\n"$topComment" — highest-rated response.',
@@ -636,50 +697,7 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                                           ),
                                         ],
                                       ),
-                                      const SizedBox(height: 12),
-                                      Container(
-                                        padding: const EdgeInsets.all(10),
-                                        decoration: BoxDecoration(
-                                          color: _C.surface,
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                        ),
-                                        child: Row(
-                                          children: [
-                                            Icon(
-                                              Icons.feedback_rounded,
-                                              size: 16,
-                                              color: _C.blue,
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Text(
-                                              '$feedbackCount gave feedback',
-                                              style: GoogleFonts.inter(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w500,
-                                                color: _C.charcoal,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 16),
-                                            Icon(
-                                              Icons.pending_rounded,
-                                              size: 16,
-                                              color: _C.amber,
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Text(
-                                              '$notYetFeedback pending',
-                                              style: GoogleFonts.inter(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w500,
-                                                color: _C.charcoal,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      const SizedBox(height: 12),
+                                      const SizedBox(height: 16),
                                       _InsightTile(
                                         icon: Icons.auto_awesome_rounded,
                                         color: avgRating == null
@@ -689,7 +707,12 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                                         body: insightBody.toString(),
                                         note: insightNote,
                                       ),
-                                      const SizedBox(height: 12),
+                                      const SizedBox(height: 20),
+                                      const Divider(
+                                        height: 1,
+                                        color: _C.border,
+                                      ),
+                                      const SizedBox(height: 16),
                                       Row(
                                         children: [
                                           Text(
@@ -1260,8 +1283,6 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildStatsRow(data, isMobile),
-                    SizedBox(height: isMobile ? 14 : 20),
                     Container(
                       decoration: BoxDecoration(
                         color: Colors.white,
@@ -1287,57 +1308,6 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
           ),
         );
       },
-    );
-  }
-
-  Widget _buildStatsRow(_AnalyticsData data, bool isMobile) {
-    void goToTab(int index) => setState(() => _tabCtrl.animateTo(index));
-
-    // Kept to just these two — "Events reviewed" and "% positive" were
-    // dropped after feedback that they weren't earning their space; the
-    // full per-event breakdown (including highest/lowest) is still one
-    // click away in the Events tab's insights section.
-    final cards = [
-      _StatCardData(
-        'Total evaluations',
-        data.totalFeedbacks.toString(),
-        Icons.assignment_outlined,
-        _C.blue,
-        onTap: () => goToTab(1),
-      ),
-      _StatCardData(
-        'Average rating',
-        data.totalFeedbacks > 0 ? data.avgRating.toStringAsFixed(1) : '—',
-        Icons.star_outline,
-        _C.amber,
-        onTap: () => goToTab(1),
-      ),
-    ];
-
-    if (isMobile) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: cards
-            .map(
-              (c) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _StatCard(c),
-              ),
-            )
-            .toList(),
-      );
-    }
-
-    return Row(
-      children: cards.asMap().entries.map((e) {
-        final c = e.value;
-        return Expanded(
-          child: Padding(
-            padding: EdgeInsets.only(left: e.key == 0 ? 0 : 14),
-            child: _StatCard(c),
-          ),
-        );
-      }).toList(),
     );
   }
 
@@ -1815,91 +1785,6 @@ class _RefreshButton extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
     ),
   );
-}
-
-class _StatCardData {
-  final String label, value;
-  final IconData icon;
-  final Color color;
-  final VoidCallback? onTap;
-  const _StatCardData(
-    this.label,
-    this.value,
-    this.icon,
-    this.color, {
-    this.onTap,
-  });
-}
-
-// Plain InkWell hover (matches every other card/row in the org portal)
-// instead of a bespoke border-recolor + shadow-boost hover treatment.
-class _StatCard extends StatelessWidget {
-  final _StatCardData c;
-  const _StatCard(this.c);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: _C.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _C.border.withAlpha(128)),
-        boxShadow: _DS.cardShadow,
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: c.onTap,
-          hoverColor: const Color(0xFFF8F9FB),
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: c.color.withAlpha(26),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(c.icon, color: c.color, size: 20),
-                    ),
-                    Flexible(
-                      child: Text(
-                        c.value,
-                        textAlign: TextAlign.right,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w800,
-                          color: _C.charcoal,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  c.label,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 11,
-                    color: _C.muted,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 // Color for a 1-5 rating, shared by every rating pill/bar in this file.

@@ -111,6 +111,14 @@ class ExternalRequest {
   final String? uid;
   final bool accountCreated;
   final bool isArchived;
+  // 'BulSUan' | 'Outsider' — drives which fields below are meaningful, and
+  // which credentials email template gets used on approval. Defaults to
+  // 'Outsider' to match guest_events_screen.dart's same fallback default.
+  final String classification;
+  final String college;
+  final String yearLevel;
+  final String section;
+  final String affiliation;
 
   const ExternalRequest({
     required this.id,
@@ -125,7 +133,14 @@ class ExternalRequest {
     this.uid,
     this.accountCreated = false,
     this.isArchived = false,
+    this.classification = 'Outsider',
+    this.college = '',
+    this.yearLevel = '',
+    this.section = '',
+    this.affiliation = '',
   });
+
+  bool get isBulSUan => classification == 'BulSUan';
 
   factory ExternalRequest.fromFirestore(String id, Map<String, dynamic> d) {
     return ExternalRequest(
@@ -141,6 +156,11 @@ class ExternalRequest {
       uid: d['uid'] as String?,
       accountCreated: d['accountCreated'] == true,
       isArchived: d['isArchived'] == true,
+      classification: (d['classification'] as String?) ?? 'Outsider',
+      college: (d['college'] as String?) ?? '',
+      yearLevel: (d['yearLevel'] as String?) ?? '',
+      section: (d['section'] as String?) ?? '',
+      affiliation: (d['affiliation'] as String?) ?? '',
     );
   }
 }
@@ -921,6 +941,10 @@ class _ExternalAccountState extends State<ExternalAccount> {
             .trim()
             .toLowerCase();
     final university = (data['university'] as String?) ?? '';
+    final classification = (data['classification'] as String?) ?? 'Outsider';
+    final college = (data['college'] as String?) ?? '';
+    final yearLevel = (data['yearLevel'] as String?) ?? '';
+    final section = (data['section'] as String?) ?? '';
 
     if (resolvedEmail.isEmpty) {
       if (mounted) {
@@ -1020,19 +1044,29 @@ class _ExternalAccountState extends State<ExternalAccount> {
     await batch.commit();
     await secondaryAuth.signOut();
 
-    // Send credentials (falls back to a queued email doc on failure)
+    // Send credentials (falls back to a queued email doc on failure) —
+    // classification decides which EmailJS template/params get used, so a
+    // BulSUan guest never receives the Outsider-shaped email and vice versa.
     final sent = await _sendGuestCredentialsEmail(
       resolvedEmail,
       userName,
       password,
-      university,
+      classification: classification,
+      university: university,
+      college: college,
+      yearLevel: yearLevel,
+      section: section,
     );
     if (!sent) {
       await _queueGuestCredentialEmail(
         resolvedEmail,
         userName,
         password,
-        university,
+        classification: classification,
+        university: university,
+        college: college,
+        yearLevel: yearLevel,
+        section: section,
       );
     }
 
@@ -1067,18 +1101,56 @@ class _ExternalAccountState extends State<ExternalAccount> {
     return 'GST-${List.generate(6, (_) => chars[rng.nextInt(chars.length)]).join()}';
   }
 
-  // Dedicated EmailJS service for guest credentials (separate from the
-  // student_accounts.dart service/template).
-  static const String _guestEmailServiceId = 'service_vdfi3uo';
+  // Two separate EmailJS *services* under the same account (same public/
+  // private key pair) — not just two templates on one service. BulSUan
+  // guests use @ms.bulsu.edu.ph addresses, and this app's earlier
+  // deliverability investigation found that mail to that M365 tenant only
+  // reliably lands when sent intra-tenant; the BulSUan service is connected
+  // to a real bulsu.edu.ph sender for exactly that reason, while Outsider
+  // guests (arbitrary external domains) keep using the original, already-
+  // working service unchanged.
   static const String _guestEmailUserId = 'h6tBNFtWohoZr_B18';
-  static const String _guestCredentialsTemplateId = 'template_kqryg75';
+  static const String _guestEmailPrivateKey = 'VTu-IcY7Q3djUcvapaFWq';
+
+  static const String _outsiderEmailServiceId = 'service_vdfi3uo';
+  static const String _outsiderCredentialsTemplateId = 'template_kqryg75';
+
+  static const String _bulsuanEmailServiceId = 'service_oabn19f';
+  static const String _bulsuanCredentialsTemplateId = 'template_okaw519';
 
   Future<bool> _sendGuestCredentialsEmail(
     String email,
     String fullName,
-    String password, [
+    String password, {
+    String classification = 'Outsider',
     String university = '',
-  ]) async {
+    String college = '',
+    String yearLevel = '',
+    String section = '',
+  }) async {
+    final isBulSUan = classification == 'BulSUan';
+    final serviceId = isBulSUan
+        ? _bulsuanEmailServiceId
+        : _outsiderEmailServiceId;
+    final templateId = isBulSUan
+        ? _bulsuanCredentialsTemplateId
+        : _outsiderCredentialsTemplateId;
+    final templateParams = isBulSUan
+        ? {
+            'to_email': email,
+            'guest_name': fullName,
+            'college': college,
+            'year_level': yearLevel,
+            'section': section,
+            'password': password,
+          }
+        : {
+            'to_email': email,
+            'guest_name': fullName,
+            'university': university,
+            'password': password,
+          };
+
     const int maxAttempts = 3;
     for (int attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
@@ -1089,20 +1161,16 @@ class _ExternalAccountState extends State<ExternalAccount> {
             'origin': 'http://localhost',
           },
           body: jsonEncode({
-            'service_id': _guestEmailServiceId,
-            'template_id': _guestCredentialsTemplateId,
+            'service_id': serviceId,
+            'template_id': templateId,
             'user_id': _guestEmailUserId,
-            'template_params': {
-              'to_email': email,
-              'guest_name': fullName,
-              'university': university,
-              'password': password,
-            },
+            'accessToken': _guestEmailPrivateKey,
+            'template_params': templateParams,
           }),
         );
         if (response.statusCode == 200) {
           debugPrint(
-            '✅ Guest credentials email sent to $email (attempt $attempt)',
+            '✅ Guest ($classification) credentials email sent to $email (attempt $attempt)',
           );
           return true;
         }
@@ -1123,16 +1191,24 @@ class _ExternalAccountState extends State<ExternalAccount> {
   Future<void> _queueGuestCredentialEmail(
     String email,
     String fullName,
-    String password, [
+    String password, {
+    String classification = 'Outsider',
     String university = '',
-  ]) async {
+    String college = '',
+    String yearLevel = '',
+    String section = '',
+  }) async {
     try {
       await FirebaseFirestore.instance.collection('email_queue').add({
         'to_email': email,
         'guest_name': fullName,
         'university': university,
+        'college': college,
+        'year_level': yearLevel,
+        'section': section,
         'password': password,
         'type': 'guest_credentials',
+        'classification': classification,
         'attempts': 0,
         'createdAt': FieldValue.serverTimestamp(),
       });
@@ -1298,14 +1374,22 @@ class _ExternalAccountState extends State<ExternalAccount> {
         req.email,
         req.userName,
         req.tempPassword!,
-        req.university,
+        classification: req.classification,
+        university: req.university,
+        college: req.college,
+        yearLevel: req.yearLevel,
+        section: req.section,
       );
       if (!sent) {
         await _queueGuestCredentialEmail(
           req.email,
           req.userName,
           req.tempPassword!,
-          req.university,
+          classification: req.classification,
+          university: req.university,
+          college: req.college,
+          yearLevel: req.yearLevel,
+          section: req.section,
         );
       }
       await activity_log.ActivityLogger.log(
@@ -1517,10 +1601,29 @@ class _ExternalAccountState extends State<ExternalAccount> {
                           req.userName.isNotEmpty ? req.userName : '—',
                         ),
                         ('Email', req.email.isNotEmpty ? req.email : '—'),
-                        (
-                          'University / Organization',
-                          req.university.isNotEmpty ? req.university : '—',
-                        ),
+                        ('Guest Type', req.classification),
+                        if (req.isBulSUan) ...[
+                          (
+                            'College',
+                            req.college.isNotEmpty ? req.college : '—',
+                          ),
+                          (
+                            'Year Level',
+                            req.yearLevel.isNotEmpty ? req.yearLevel : '—',
+                          ),
+                          (
+                            'Section',
+                            req.section.isNotEmpty ? req.section : '—',
+                          ),
+                        ] else
+                          (
+                            'Affiliation / Organization',
+                            req.affiliation.isNotEmpty
+                                ? req.affiliation
+                                : (req.university.isNotEmpty
+                                      ? req.university
+                                      : '—'),
+                          ),
                         ('User ID', req.userId.isNotEmpty ? req.userId : '—'),
                         (
                           'Account Status',

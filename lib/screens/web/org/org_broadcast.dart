@@ -106,6 +106,39 @@ Uint8List _bytesFromBase64(String data) {
   return base64Decode(base64Part);
 }
 
+// Shared by the sidebar header, chat header, and input bar — a bare
+// IconButton has no visual weight against a white toolbar, which was most
+// of what read as "plain" about this page. A soft circular background gives
+// every action a consistent, tappable-looking chip instead.
+Widget _roundIconButton({
+  required IconData icon,
+  required VoidCallback? onPressed,
+  required String tooltip,
+  Color? iconColor,
+  Color? background,
+  double size = 36,
+}) {
+  return Tooltip(
+    message: tooltip,
+    child: MouseRegion(
+      cursor: onPressed == null ? MouseCursor.defer : SystemMouseCursors.click,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(size / 2),
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            color: background ?? _C.surface,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: size * 0.5, color: iconColor ?? _C.darkGray),
+        ),
+      ),
+    ),
+  );
+}
+
 // Web download for a received file attachment — mirrors every other
 // "Export" button in the org portal (OrgExportUtil.saveBytes).
 Future<void> _downloadFileAttachment(
@@ -761,23 +794,22 @@ class _ConversationsList extends StatelessWidget {
                   ),
                 ),
               ),
-              IconButton(
+              _roundIconButton(
                 onPressed: onToggleArchivedView,
                 tooltip: showArchived ? 'Show active chats' : 'Show archived',
-                icon: Icon(
-                  showArchived ? Icons.inbox_rounded : Icons.archive_outlined,
-                  color: showArchived ? _C.primaryDark : _C.darkGray,
-                  size: 20,
-                ),
+                icon: showArchived
+                    ? Icons.inbox_rounded
+                    : Icons.archive_outlined,
+                iconColor: showArchived ? Colors.white : _C.darkGray,
+                background: showArchived ? _C.primaryDark : _C.surface,
               ),
-              IconButton(
+              const SizedBox(width: 8),
+              _roundIconButton(
                 onPressed: onNewMessage,
                 tooltip: 'New message',
-                icon: const Icon(
-                  Icons.edit_square,
-                  color: _C.primaryDark,
-                  size: 20,
-                ),
+                icon: Icons.edit_square,
+                iconColor: Colors.white,
+                background: _C.primaryDark,
               ),
             ],
           ),
@@ -869,17 +901,40 @@ class _ConversationsList extends StatelessWidget {
                 return Center(
                   child: Padding(
                     padding: const EdgeInsets.all(24),
-                    child: Text(
-                      searchQuery.isNotEmpty
-                          ? 'No students match your search.'
-                          : (showArchived
-                                ? 'No archived conversations.'
-                                : 'No conversations yet.\nTap the compose icon to message a student.'),
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        color: _C.textFaint,
-                      ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 56,
+                          height: 56,
+                          decoration: BoxDecoration(
+                            color: _C.surface,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            searchQuery.isNotEmpty
+                                ? Icons.search_off_rounded
+                                : (showArchived
+                                      ? Icons.inbox_rounded
+                                      : Icons.forum_outlined),
+                            size: 26,
+                            color: _C.textFaint,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          searchQuery.isNotEmpty
+                              ? 'No students match your search.'
+                              : (showArchived
+                                    ? 'No archived conversations.'
+                                    : 'No conversations yet.\nTap the compose icon to message a student.'),
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 13,
+                            color: _C.textFaint,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 );
@@ -902,18 +957,31 @@ class _ConversationsList extends StatelessWidget {
                   return InkWell(
                     onTap: () => onSelect(doc.id, data),
                     child: Container(
-                      color: isSelected
-                          ? _C.primaryDark.withAlpha(15)
-                          : Colors.transparent,
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? _C.primaryDark.withAlpha(15)
+                            : Colors.transparent,
+                        border: Border(
+                          left: BorderSide(
+                            color: isSelected
+                                ? _C.primaryDark
+                                : Colors.transparent,
+                            width: 3,
+                          ),
+                          bottom: const BorderSide(color: Color(0xFFF1F5F9)),
+                        ),
+                      ),
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
+                        horizontal: 17,
                         vertical: 12,
                       ),
                       child: Row(
                         children: [
                           CircleAvatar(
                             radius: 20,
-                            backgroundColor: _C.primaryDark.withAlpha(28),
+                            backgroundColor: unread
+                                ? _C.primaryDark.withAlpha(40)
+                                : _C.primaryDark.withAlpha(20),
                             child: Text(
                               _initials(studentName),
                               style: GoogleFonts.beVietnamPro(
@@ -1030,31 +1098,42 @@ class _EmptyThreadState extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 72,
-            height: 72,
+            width: 84,
+            height: 84,
             decoration: BoxDecoration(
-              color: _C.primaryDark.withAlpha(20),
+              gradient: LinearGradient(
+                colors: [
+                  _C.primaryDark.withAlpha(30),
+                  _C.primaryDark.withAlpha(10),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
               shape: BoxShape.circle,
             ),
             child: const Icon(
               Icons.chat_bubble_outline_rounded,
-              size: 32,
+              size: 34,
               color: _C.primaryDark,
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           Text(
             'Select a conversation',
             style: GoogleFonts.beVietnamPro(
-              fontSize: 15,
+              fontSize: 16,
               fontWeight: FontWeight.w700,
               color: _C.charcoal,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 5),
+          // Was "...they can view them here but can't reply" — stale copy
+          // left over from when this was a one-way broadcast channel. This
+          // is a real two-way inbox now (see the file header), so the old
+          // wording actively misled orgs about what students can do.
           Text(
-            'Send announcements straight to a student — they can\n'
-            'view them here but can\'t reply.',
+            'Message a student directly — they\'ll see it in their\n'
+            'inbox and can reply right back.',
             textAlign: TextAlign.center,
             style: GoogleFonts.beVietnamPro(
               fontSize: 12.5,
@@ -1531,20 +1610,24 @@ class _ChatThreadState extends State<_ChatThread> {
     return Column(
       children: [
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          decoration: const BoxDecoration(
-            color: _C.white,
-            border: Border(bottom: BorderSide(color: _C.border)),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [_C.primaryDark.withAlpha(16), _C.white],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            border: const Border(bottom: BorderSide(color: _C.border)),
           ),
           child: Row(
             children: [
               CircleAvatar(
-                radius: 18,
+                radius: 19,
                 backgroundColor: _C.primaryDark.withAlpha(28),
                 child: Text(
                   _initials(_studentName),
                   style: GoogleFonts.beVietnamPro(
-                    fontSize: 12,
+                    fontSize: 12.5,
                     fontWeight: FontWeight.w700,
                     color: _C.primaryDark,
                   ),
@@ -1581,22 +1664,21 @@ class _ChatThreadState extends State<_ChatThread> {
                     ),
                   ),
                 ),
-              IconButton(
+              _roundIconButton(
                 onPressed: () => _toggleArchived(archived),
-                icon: Icon(
-                  archived ? Icons.unarchive_outlined : Icons.archive_outlined,
-                  color: _C.darkGray,
-                  size: 20,
-                ),
+                icon: archived
+                    ? Icons.unarchive_outlined
+                    : Icons.archive_outlined,
                 tooltip: archived ? 'Unarchive' : 'Archive',
               ),
-              IconButton(
+              const SizedBox(width: 6),
+              _roundIconButton(
                 onPressed: () => _toggleBlock(blocked),
-                icon: Icon(
-                  blocked ? Icons.lock_open_rounded : Icons.block_rounded,
-                  color: blocked ? _C.darkGray : const Color(0xFFDC2626),
-                  size: 20,
-                ),
+                icon: blocked ? Icons.lock_open_rounded : Icons.block_rounded,
+                iconColor: blocked ? _C.darkGray : const Color(0xFFDC2626),
+                background: blocked
+                    ? _C.surface
+                    : const Color(0xFFDC2626).withAlpha(20),
                 tooltip: blocked
                     ? 'Unblock $_studentName'
                     : 'Block $_studentName',
@@ -1746,36 +1828,42 @@ class _ChatThreadState extends State<_ChatThread> {
                     ],
                   ),
                 ),
-                IconButton(
+                _roundIconButton(
                   onPressed: () => setState(() => _replyingTo = null),
-                  icon: const Icon(
-                    Icons.close_rounded,
-                    size: 18,
-                    color: _C.darkGray,
-                  ),
+                  icon: Icons.close_rounded,
                   tooltip: 'Cancel reply',
+                  size: 30,
                 ),
               ],
             ),
           ),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: _C.white,
-            border: Border(top: BorderSide(color: _C.border)),
+            border: const Border(top: BorderSide(color: _C.border)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withAlpha(8),
+                blurRadius: 10,
+                offset: const Offset(0, -2),
+              ),
+            ],
           ),
           child: Row(
             children: [
-              IconButton(
+              _roundIconButton(
                 onPressed: _sending ? null : _pickImage,
-                icon: const Icon(Icons.image_outlined, color: _C.darkGray),
+                icon: Icons.image_outlined,
                 tooltip: 'Attach image',
               ),
-              IconButton(
+              const SizedBox(width: 4),
+              _roundIconButton(
                 onPressed: _sending ? null : _pickFile,
-                icon: const Icon(Icons.attach_file_rounded, color: _C.darkGray),
+                icon: Icons.attach_file_rounded,
                 tooltip: 'Attach file',
               ),
+              const SizedBox(width: 8),
               Expanded(
                 child: TextField(
                   controller: _textCtrl,
@@ -1870,185 +1958,245 @@ class _MessageBubble extends StatelessWidget {
       bottomRight: Radius.circular(isMe ? 4 : 16),
     );
 
-    return Align(
-      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: GestureDetector(
-        onLongPress: onReply == null
-            ? (onReport ?? onDelete)
-            : () => _showMessageActions(
-                context,
-                onReply: onReply!,
-                onReport: onReport,
-                onDelete: onDelete,
+    final bubble = GestureDetector(
+      onLongPress: onReply == null
+          ? (onReport ?? onDelete)
+          : () => _showMessageActions(
+              context,
+              onReply: onReply!,
+              onReport: onReport,
+              onDelete: onDelete,
+            ),
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        constraints: const BoxConstraints(maxWidth: 320),
+        child: Column(
+          crossAxisAlignment: isMe
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
+          children: [
+            Container(
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                // An image fills the bubble edge-to-edge like a real photo
+                // message instead of sitting inside a colored frame — the
+                // color only applies when there's no image, or as a
+                // caption strip below one. A file chip or reply quote
+                // always keeps the colored background, same as plain text.
+                color: hasImage && !hasText && !hasReply ? null : bg,
+                borderRadius: radius,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withAlpha(10),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
-        child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 4),
-          constraints: const BoxConstraints(maxWidth: 320),
-          child: Column(
-            crossAxisAlignment: isMe
-                ? CrossAxisAlignment.end
-                : CrossAxisAlignment.start,
-            children: [
-              Container(
-                clipBehavior: Clip.antiAlias,
-                decoration: BoxDecoration(
-                  // An image fills the bubble edge-to-edge like a real photo
-                  // message instead of sitting inside a colored frame — the
-                  // color only applies when there's no image, or as a
-                  // caption strip below one. A file chip or reply quote
-                  // always keeps the colored background, same as plain text.
-                  color: hasImage && !hasText && !hasReply ? null : bg,
-                  borderRadius: radius,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(10),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (hasReply)
+                    Container(
+                      margin: const EdgeInsets.fromLTRB(10, 10, 10, 0),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: (isMe ? Colors.white : _C.primaryDark).withAlpha(
+                          isMe ? 40 : 14,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border(
+                          left: BorderSide(
+                            color: isMe ? Colors.white : _C.primaryDark,
+                            width: 3,
+                          ),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            replyToSenderName ?? '',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: fg,
+                            ),
+                          ),
+                          Text(
+                            replyToText!,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 11.5,
+                              color: fg.withAlpha(210),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (hasReply)
-                      Container(
-                        margin: const EdgeInsets.fromLTRB(10, 10, 10, 0),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: (isMe ? Colors.white : _C.primaryDark)
-                              .withAlpha(isMe ? 40 : 14),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border(
-                            left: BorderSide(
-                              color: isMe ? Colors.white : _C.primaryDark,
-                              width: 3,
-                            ),
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              replyToSenderName ?? '',
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: fg,
-                              ),
-                            ),
-                            Text(
-                              replyToText!,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 11.5,
-                                color: fg.withAlpha(210),
-                              ),
-                            ),
-                          ],
+                  if (hasImage)
+                    GestureDetector(
+                      onTap: () => _showImagePreview(context, imageBase64!),
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: Image(
+                          image: _imageProviderFromBase64(imageBase64!),
+                          width: 260,
+                          fit: BoxFit.cover,
                         ),
                       ),
-                    if (hasImage)
-                      GestureDetector(
-                        onTap: () => _showImagePreview(context, imageBase64!),
-                        child: MouseRegion(
-                          cursor: SystemMouseCursors.click,
-                          child: Image(
-                            image: _imageProviderFromBase64(imageBase64!),
-                            width: 260,
-                            fit: BoxFit.cover,
+                    ),
+                  if (hasFile)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          onTap: () => _downloadFileAttachment(
+                            context,
+                            fileBase64!,
+                            fileName!,
                           ),
-                        ),
-                      ),
-                    if (hasFile)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-                        child: MouseRegion(
-                          cursor: SystemMouseCursors.click,
-                          child: GestureDetector(
-                            onTap: () => _downloadFileAttachment(
-                              context,
-                              fileBase64!,
-                              fileName!,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
                             ),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: (isMe ? Colors.white : _C.primaryDark)
-                                    .withAlpha(isMe ? 40 : 14),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    _iconForFileName(fileName!),
-                                    size: 20,
-                                    color: fg,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Flexible(
-                                    child: Text(
-                                      fileName!,
-                                      style: GoogleFonts.beVietnamPro(
-                                        fontSize: 12.5,
-                                        fontWeight: FontWeight.w600,
-                                        color: fg,
-                                        decoration: TextDecoration.underline,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
+                            decoration: BoxDecoration(
+                              color: (isMe ? Colors.white : _C.primaryDark)
+                                  .withAlpha(isMe ? 40 : 14),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  _iconForFileName(fileName!),
+                                  size: 20,
+                                  color: fg,
+                                ),
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    fileName!,
+                                    style: GoogleFonts.beVietnamPro(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: fg,
+                                      decoration: TextDecoration.underline,
                                     ),
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                  const SizedBox(width: 6),
-                                  Icon(
-                                    Icons.download_rounded,
-                                    size: 16,
-                                    color: fg,
-                                  ),
-                                ],
-                              ),
+                                ),
+                                const SizedBox(width: 6),
+                                Icon(
+                                  Icons.download_rounded,
+                                  size: 16,
+                                  color: fg,
+                                ),
+                              ],
                             ),
                           ),
                         ),
                       ),
-                    if (hasText)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 10,
-                        ),
-                        child: _linkifiedText(
-                          context,
-                          text,
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13.5,
-                            color: fg,
-                          ),
-                          linkColor: isMe ? Colors.white : _C.primaryDark,
-                        ),
+                    ),
+                  if (hasText)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
                       ),
-                  ],
-                ),
+                      child: _linkifiedText(
+                        context,
+                        text,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13.5,
+                          color: fg,
+                        ),
+                        linkColor: isMe ? Colors.white : _C.primaryDark,
+                      ),
+                    ),
+                ],
               ),
-              const SizedBox(height: 3),
-              Text(
-                time,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 10,
-                  color: _C.textFaint,
-                ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              time,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 10,
+                color: _C.textFaint,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
+    );
+    // A visible affordance for Reply/Report/Delete — onLongPress alone
+    // technically works with a held mouse click, but nothing on the bubble
+    // hints it's interactive, so the action was undiscoverable on this
+    // desktop-only surface. Mirrors the hover-menu pattern used elsewhere
+    // (the announcement post card's "..." button) instead of relying on a
+    // touch gesture no one would think to try.
+    final actionsButton =
+        (onReport != null || onDelete != null || onReply != null)
+        ? MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              onTap: onReply == null
+                  ? (onReport ?? onDelete)
+                  : () => _showMessageActions(
+                      context,
+                      onReply: onReply!,
+                      onReport: onReport,
+                      onDelete: onDelete,
+                    ),
+              child: Container(
+                width: 26,
+                height: 26,
+                decoration: const BoxDecoration(
+                  color: _C.surface,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.more_vert_rounded,
+                  size: 14,
+                  color: _C.darkGray,
+                ),
+              ),
+            ),
+          )
+        : null;
+
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: actionsButton == null
+          ? bubble
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: isMe
+                  ? [
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 18),
+                        child: actionsButton,
+                      ),
+                      const SizedBox(width: 4),
+                      bubble,
+                    ]
+                  : [
+                      bubble,
+                      const SizedBox(width: 4),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 18),
+                        child: actionsButton,
+                      ),
+                    ],
+            ),
     );
   }
 }

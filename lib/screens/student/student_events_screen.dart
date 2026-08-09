@@ -2727,6 +2727,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   final TextEditingController _feedbackCtrl = TextEditingController();
   String? _existingFeedbackDocId;
   bool _feedbackSubmitted = false;
+  bool _isAnonymous = false;
   bool _checkingFeedback = true;
   bool _submittingFeedback = false;
 
@@ -2856,6 +2857,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             _feedbackSubmitted = true;
             _rating = (d['rating'] ?? 0) as int;
             _feedbackCtrl.text = (d['comment'] ?? '').toString();
+            _isAnonymous = d['isAnonymous'] == true;
           }
           _checkingFeedback = false;
         });
@@ -2904,7 +2906,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         'rating': _rating,
         'comment': _feedbackCtrl.text.trim(),
         'userId': user.uid,
-        'isAnonymous': false,
+        'isAnonymous': _isAnonymous,
         'submittedAt': FieldValue.serverTimestamp(),
       };
       final feedbackCol = FirebaseFirestore.instance.collection(
@@ -3061,8 +3063,38 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               ),
             ),
           ),
+          const SizedBox(height: 4),
+          InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: _feedbackSubmitted
+                ? null
+                : () => setState(() => _isAnonymous = !_isAnonymous),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Checkbox(
+                    value: _isAnonymous,
+                    activeColor: AppColors.primaryDark,
+                    onChanged: _feedbackSubmitted
+                        ? null
+                        : (v) => setState(() => _isAnonymous = v ?? false),
+                  ),
+                  Expanded(
+                    child: Text(
+                      'Submit anonymously (your name won\'t be shown to the organization)',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
           if (!_feedbackSubmitted) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(

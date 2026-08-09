@@ -277,21 +277,22 @@ class _FilterDropdown extends StatelessWidget {
   final String value;
   final List<String> items;
   final ValueChanged<String?> onChanged;
+  final IconData? icon;
   const _FilterDropdown({
     required this.value,
     required this.items,
     required this.onChanged,
+    this.icon,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 40,
+      height: 42,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: _C.white,
+        color: _C.surface,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _C.borderSoft),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
@@ -301,6 +302,29 @@ class _FilterDropdown extends StatelessWidget {
             size: 18,
             color: _C.textFaint,
           ),
+          // A leading icon is the only thing that told these two dropdowns
+          // apart at a glance — before this they were two identical bordered
+          // boxes with no visual cue for which one was category vs filter.
+          selectedItemBuilder: icon == null
+              ? null
+              : (context) => items
+                    .map(
+                      (s) => Row(
+                        children: [
+                          Icon(icon, size: 14, color: _C.textFaint),
+                          const SizedBox(width: 8),
+                          Text(
+                            s,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13,
+                              color: _C.textMid,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                    .toList(),
           style: GoogleFonts.beVietnamPro(fontSize: 13, color: _C.textMid),
           items: items
               .map(
@@ -560,6 +584,9 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
   String _filterMode = 'All';
   int _currentPage = 1;
   static const int _pageSize = 5;
+  // Folded into the filter dropdown as an "Archived" option instead of a
+  // separate standalone toggle button — one less floating control.
+  bool get _showArchived => _filterMode == 'Archived';
 
   // Category sidebar selection + any custom categories added this session.
   String _selectedCategory = 'All Announcement';
@@ -635,112 +662,123 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
     );
   }
 
-  Future<void> _deleteAnnouncement(AnnouncementModel a) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(_DS.radiusLg),
-        ),
-        child: Container(
-          width: 420,
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: _C.errorBg,
-                      borderRadius: BorderRadius.circular(10),
+  // Replaces the old hard-delete flow — announcements are soft-removed via
+  // `isArchived` (mirrors OrgFinance's / OrgBroadcast's archive pattern)
+  // instead of being permanently deleted, so a mis-click doesn't lose the
+  // post's content and history for good.
+  Future<void> _toggleArchive(AnnouncementModel a) async {
+    final archiving = !a.isArchived;
+    if (archiving) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(_DS.radiusLg),
+          ),
+          child: Container(
+            width: 420,
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: _C.warningBg,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.archive_outlined,
+                        color: _C.warning,
+                        size: 20,
+                      ),
                     ),
-                    child: const Icon(
-                      Icons.delete_outline_rounded,
-                      color: _C.error,
-                      size: 20,
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Text(
+                        'Archive Announcement',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: _C.charcoal,
+                        ),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 14),
-                  Text(
-                    'Delete Announcement',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: _C.charcoal,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Text(
-                'Are you sure you want to delete "${a.title}"? This action cannot be undone.',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 14,
-                  color: _C.darkGray,
+                  ],
                 ),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  OutlinedButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: _C.borderSoft),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: Text(
-                      'Cancel',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        color: _C.textMid,
-                      ),
-                    ),
+                const SizedBox(height: 14),
+                Text(
+                  'Archive "${a.title}"? It\'ll be hidden from the feed, but you can restore it anytime from the archive view.',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 14,
+                    color: _C.darkGray,
                   ),
-                  const SizedBox(width: 10),
-                  ElevatedButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _C.error,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    OutlinedButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: _C.borderSoft),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: Text(
+                        'Cancel',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          color: _C.textMid,
+                        ),
                       ),
                     ),
-                    child: Text(
-                      'Delete',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
+                    const SizedBox(width: 10),
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _C.warning,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: Text(
+                        'Archive',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
-      ),
-    );
-    if (confirm != true) return;
+      );
+      if (confirm != true) return;
+    }
     try {
       await FirebaseFirestore.instance
           .collection('announcements')
           .doc(a.id)
-          .delete();
+          .update({'isArchived': archiving});
       await activity_log.ActivityLogger.log(
-        action: 'delete_announcement',
+        action: archiving ? 'archive_announcement' : 'unarchive_announcement',
         module: 'announcements',
         details: {'orgId': widget.orgId, 'announcementId': a.id},
       );
-      if (mounted) _snack('Announcement deleted successfully');
+      if (mounted) {
+        _snack(archiving ? 'Announcement archived' : 'Announcement restored');
+      }
     } catch (e) {
       if (mounted) _snack('Error: $e', isError: true);
     }
@@ -784,72 +822,89 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
 
     return Scaffold(
       backgroundColor: _C.pageBg,
-      body: StreamBuilder<QuerySnapshot>(
-        stream: _stream,
-        builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(color: _C.primaryDark),
-            );
-          }
-          if (snap.hasError) {
-            return Center(
-              child: Text(
-                'Error: ${snap.error}',
-                style: GoogleFonts.beVietnamPro(),
-              ),
-            );
-          }
+      // The toolbar (search/filter/category, "Create Post") doesn't read
+      // from the Firestore stream at all, so it used to sit behind the
+      // StreamBuilder's full-page spinner for no reason — every first visit
+      // to this tab blanked the entire page instead of just the feed while
+      // the network round-trip completed. Hoisting it above the stream
+      // means the page paints instantly; only the feed card itself waits.
+      body: Padding(
+        padding: EdgeInsets.fromLTRB(
+          horizontalPadding,
+          20,
+          horizontalPadding,
+          0,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildToolbar(isMobile, isTablet),
+            const SizedBox(height: 16),
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                stream: _stream,
+                builder: (context, snap) {
+                  if (snap.connectionState == ConnectionState.waiting) {
+                    return _buildFeedSkeleton();
+                  }
+                  if (snap.hasError) {
+                    return Center(
+                      child: Text(
+                        'Error: ${snap.error}',
+                        style: GoogleFonts.beVietnamPro(),
+                      ),
+                    );
+                  }
 
-          final all = (snap.data?.docs ?? [])
-              .map((d) => AnnouncementModel.fromFirestore(d))
-              .toList();
-          all.sort((a, b) {
-            // Pinned always first
-            if (a.isPinned && !b.isPinned) return -1;
-            if (!a.isPinned && b.isPinned) return 1;
-            return b.timestamp.toDate().compareTo(a.timestamp.toDate());
-          });
+                  final all = (snap.data?.docs ?? [])
+                      .map((d) => AnnouncementModel.fromFirestore(d))
+                      .toList();
+                  all.sort((a, b) {
+                    // Pinned always first
+                    if (a.isPinned && !b.isPinned) return -1;
+                    if (!a.isPinned && b.isPinned) return 1;
+                    return b.timestamp.toDate().compareTo(a.timestamp.toDate());
+                  });
 
-          return Padding(
-            padding: EdgeInsets.fromLTRB(
-              horizontalPadding,
-              20,
-              horizontalPadding,
-              0,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: isWide
+                  // Archived posts never surface in the normal feed or the
+                  // Pinned panel — only in the dedicated archive view.
+                  final visible = all
+                      .where((a) => a.isArchived == _showArchived)
+                      .toList();
+                  final pinnable = all.where((a) => !a.isArchived).toList();
+
+                  return isWide
                       ? Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Expanded(
-                              child: _buildCenterColumn(
-                                all,
+                              child: _buildFeedArea(
+                                visible,
                                 isMobile,
                                 isTablet,
                               ),
                             ),
                             const SizedBox(width: 20),
-                            SizedBox(width: 280, child: _buildPinnedPanel(all)),
+                            SizedBox(
+                              width: 280,
+                              child: _buildPinnedPanel(pinnable),
+                            ),
                           ],
                         )
-                      : _buildCenterColumn(all, isMobile, isTablet),
-                ),
-                const SizedBox(height: 20),
-              ],
+                      : _buildFeedArea(visible, isMobile, isTablet);
+                },
+              ),
             ),
-          );
-        },
+            const SizedBox(height: 20),
+          ],
+        ),
       ),
     );
   }
 
-  // ── Center column: toolbar + feed (shared by wide and narrow layouts) ─────
-  Widget _buildCenterColumn(
+  // ── Feed area: just the card + pagination (toolbar now lives above the
+  // stream so it renders instantly, see build()) ─────────────────────────
+  Widget _buildFeedArea(
     List<AnnouncementModel> all,
     bool isMobile,
     bool isTablet,
@@ -865,39 +920,41 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
         ? <AnnouncementModel>[]
         : filtered.sublist(start, end);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildToolbar(isMobile, isTablet),
-        const SizedBox(height: 16),
-        Expanded(
-          child: all.isEmpty
-              ? _buildEmptyState()
-              : Container(
-                  decoration: BoxDecoration(
-                    color: _C.white,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: _C.border),
-                    boxShadow: _DS.cardShadow,
-                  ),
-                  child: Column(
-                    children: [
-                      Expanded(
-                        child: pageItems.isEmpty
-                            ? _buildEmptySearchState()
-                            : _buildFeedContent(pageItems, all),
-                      ),
-                      _buildPaginationFooter(
-                        filtered.length,
-                        totalPages,
-                        start,
-                        end,
-                      ),
-                    ],
-                  ),
+    return all.isEmpty
+        ? (_showArchived ? _buildEmptyArchiveState() : _buildEmptyState())
+        : Container(
+            decoration: BoxDecoration(
+              color: _C.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _C.border),
+              boxShadow: _DS.cardShadow,
+            ),
+            child: Column(
+              children: [
+                Expanded(
+                  child: pageItems.isEmpty
+                      ? _buildEmptySearchState()
+                      : _buildFeedContent(pageItems, all),
                 ),
-        ),
-      ],
+                _buildPaginationFooter(filtered.length, totalPages, start, end),
+              ],
+            ),
+          );
+  }
+
+  // Mirrors the feed card's shape/border so the loading state reads as
+  // "this section is loading" rather than a jarring full-page blank flash.
+  Widget _buildFeedSkeleton() {
+    return Container(
+      decoration: BoxDecoration(
+        color: _C.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _C.border),
+        boxShadow: _DS.cardShadow,
+      ),
+      child: const Center(
+        child: CircularProgressIndicator(color: _C.primaryDark),
+      ),
     );
   }
 
@@ -1160,11 +1217,13 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
     );
   }
 
-  // ── Toolbar (mirrors StudentAccounts toolbar exactly) ─────────────────────
+  // ── Toolbar: search + filters, grouped into one elevated card instead of
+  // loose controls floating directly on the page background — that bare
+  // look was the "awful" complaint. Also hosts the archive-view toggle.
   Widget _buildToolbar(bool isMobile, bool isTablet) {
     final searchField = SizedBox(
       width: isMobile ? double.infinity : 280,
-      height: 40,
+      height: 42,
       child: TextField(
         controller: _searchController,
         style: GoogleFonts.beVietnamPro(fontSize: 13),
@@ -1180,18 +1239,18 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
             color: _C.textFaint,
           ),
           filled: true,
-          fillColor: Colors.white,
+          fillColor: _C.surface,
           contentPadding: const EdgeInsets.symmetric(
             vertical: 0,
             horizontal: 16,
           ),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
-            borderSide: const BorderSide(color: _C.borderSoft),
+            borderSide: BorderSide.none,
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
-            borderSide: const BorderSide(color: _C.borderSoft),
+            borderSide: BorderSide.none,
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
@@ -1205,16 +1264,21 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
       ),
     );
 
-    return LayoutBuilder(
+    // "Archived" now lives as a fourth option in the same dropdown instead
+    // of a separate standalone toggle button next to it.
+    const filterModes = ['All', 'Pinned', 'With Attachments', 'Archived'];
+
+    final content = LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth > 680) {
           return Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(child: searchField),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               if (_allCategories.isNotEmpty) ...[
                 _FilterDropdown(
+                  icon: Icons.label_outline_rounded,
                   value: _selectedCategory,
                   items: ['All Announcement', ..._allCategories],
                   onChanged: (v) => setState(() {
@@ -1222,11 +1286,12 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                     _currentPage = 1;
                   }),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
               ],
               _FilterDropdown(
+                icon: Icons.filter_list_rounded,
                 value: _filterMode,
-                items: const ['All', 'Pinned', 'With Attachments'],
+                items: filterModes,
                 onChanged: (v) => setState(() {
                   _filterMode = v!;
                   _currentPage = 1;
@@ -1242,6 +1307,7 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
             const SizedBox(height: 10),
             if (_allCategories.isNotEmpty) ...[
               _FilterDropdown(
+                icon: Icons.label_outline_rounded,
                 value: _selectedCategory,
                 items: ['All Announcement', ..._allCategories],
                 onChanged: (v) => setState(() {
@@ -1252,8 +1318,9 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
               const SizedBox(height: 10),
             ],
             _FilterDropdown(
+              icon: Icons.filter_list_rounded,
               value: _filterMode,
-              items: const ['All', 'Pinned', 'With Attachments'],
+              items: filterModes,
               onChanged: (v) => setState(() {
                 _filterMode = v!;
                 _currentPage = 1;
@@ -1262,6 +1329,50 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
           ],
         );
       },
+    );
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _C.white,
+        borderRadius: BorderRadius.circular(_DS.radiusLg),
+        boxShadow: _DS.cardShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          content,
+          if (_showArchived) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              decoration: BoxDecoration(
+                color: _C.warningBg,
+                borderRadius: BorderRadius.circular(_DS.radiusSm),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.archive_outlined,
+                    size: 15,
+                    color: _C.warning,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Viewing archived announcements — hidden from students and org members.',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12,
+                        color: _C.darkGray,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -1281,7 +1392,7 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
               (ctx, i) => _PostCard(
                 announcement: items[i],
                 onEdit: () => _showAnnouncementDialog(existing: items[i]),
-                onDelete: () => _deleteAnnouncement(items[i]),
+                onArchive: () => _toggleArchive(items[i]),
                 onTogglePin: () => _togglePin(items[i], allAnnouncements),
               ),
               childCount: items.length,
@@ -1451,6 +1562,52 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
     );
   }
 
+  Widget _buildEmptyArchiveState() {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: _C.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _C.border),
+        boxShadow: _DS.cardShadow,
+      ),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: _C.surface,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Icon(
+                Icons.inbox_outlined,
+                size: 40,
+                color: _C.textFaint,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Nothing Archived',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: _C.charcoal,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Posts you archive will show up here.',
+              style: GoogleFonts.beVietnamPro(fontSize: 13, color: _C.darkGray),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildEmptySearchState() {
     return Center(
       child: Column(
@@ -1592,64 +1749,55 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
               constraints: BoxConstraints(
                 maxHeight: MediaQuery.of(context).size.height * 0.88,
               ),
+              // Explicit background + clip — without this, Dialog's own
+              // default Material surface color (which skews purple/lavender
+              // on this app's unseeded theme, same root cause noted in the
+              // calendar date pickers elsewhere) was showing through the
+              // body area and muddying every tint layered on top of it.
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: _C.surface,
+                borderRadius: BorderRadius.circular(18),
+              ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   // ── Header ──────────────────────────────────────────────────
+                  // Title sits at the exact same 24px inset as the body's
+                  // "What's on your mind?" text below it — it used to be
+                  // centered over the full dialog width while the body text
+                  // started flush left, so the two never actually lined up.
                   Container(
                     padding: const EdgeInsets.fromLTRB(24, 18, 16, 18),
-                    decoration: const BoxDecoration(
-                      color: _C.primaryDark,
-                      borderRadius: BorderRadius.vertical(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [_C.primaryDark.withAlpha(14), _C.white],
+                      ),
+                      border: const Border(
+                        bottom: BorderSide(color: _C.borderSoft),
+                      ),
+                      borderRadius: const BorderRadius.vertical(
                         top: Radius.circular(18),
                       ),
                     ),
                     child: Row(
                       children: [
-                        Container(
-                          width: 38,
-                          height: 38,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Icon(
-                            isEdit
-                                ? Icons.edit_rounded
-                                : Icons.campaign_rounded,
-                            color: Colors.white,
-                            size: 18,
-                          ),
-                        ),
-                        const SizedBox(width: 14),
                         Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                isEdit
-                                    ? 'Edit Announcement'
-                                    : 'Create Announcement',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              Text(
-                                'Fields marked * are required',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 11,
-                                  color: Colors.white.withAlpha(180),
-                                ),
-                              ),
-                            ],
+                          child: Text(
+                            isEdit ? 'Edit Post' : 'Create Post',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800,
+                              color: _C.charcoal,
+                            ),
                           ),
                         ),
                         IconButton(
                           icon: const Icon(
                             Icons.close_rounded,
-                            color: Colors.white,
+                            color: _C.darkGray,
                             size: 20,
                           ),
                           onPressed: () => Navigator.pop(ctx),
@@ -1667,123 +1815,227 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            // ── FB-style compose box: large, the first thing
+                            // you type into — matching the "What's on your
+                            // mind?" teaser on the feed instead of dropping
+                            // straight into a form. White + a colored left
+                            // accent rule + shadow reads as premium and lifts
+                            // cleanly off the surface background, instead of
+                            // the flat tinted fill this had before.
+                            Container(
+                              decoration: BoxDecoration(
+                                color: _C.white,
+                                borderRadius: BorderRadius.circular(
+                                  _DS.radiusLg,
+                                ),
+                                border: Border(
+                                  left: BorderSide(
+                                    color: _C.primaryDark,
+                                    width: 4,
+                                  ),
+                                ),
+                                boxShadow: _DS.cardShadow,
+                              ),
+                              padding: const EdgeInsets.fromLTRB(
+                                16,
+                                16,
+                                16,
+                                16,
+                              ),
+                              child: TextFormField(
+                                controller: contentCtrl,
+                                maxLines: 6,
+                                minLines: 3,
+                                autofocus: !isEdit,
+                                decoration: InputDecoration(
+                                  hintText: "What's on your mind?",
+                                  hintStyle: GoogleFonts.beVietnamPro(
+                                    fontSize: 17,
+                                    color: _C.textFaint,
+                                  ),
+                                  border: InputBorder.none,
+                                  contentPadding: EdgeInsets.zero,
+                                ),
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 17,
+                                  color: _C.charcoal,
+                                ),
+                                onChanged: (_) => setDlg(() {}),
+                                validator: (v) => v?.trim().isEmpty == true
+                                    ? 'Content is required'
+                                    : null,
+                              ),
+                            ),
+                            const SizedBox(height: 22),
                             _sectionLabel(
                               'Post Details',
                               icon: Icons.article_outlined,
                             ),
-                            TextFormField(
-                              controller: titleCtrl,
-                              decoration: _DS.inputDecoration(
-                                'Title *',
-                                hint: 'Enter announcement title',
-                                icon: Icons.title_rounded,
-                              ),
-                              style: GoogleFonts.beVietnamPro(fontSize: 13),
-                              onChanged: (_) => setDlg(() {}),
-                              validator: (v) => v?.trim().isEmpty == true
-                                  ? 'Title is required'
-                                  : null,
-                            ),
-                            const SizedBox(height: 14),
-                            Container(
-                              decoration: BoxDecoration(
-                                color: _C.surface,
-                                borderRadius: BorderRadius.circular(
-                                  _DS.radiusSm,
-                                ),
-                                border: Border.all(color: _C.borderSoft),
-                              ),
-                              child: DropdownButtonFormField<String>(
-                                value: _allCategories.contains(category)
-                                    ? category
-                                    : null,
-                                decoration: InputDecoration(
-                                  label: requiredLabel('Category'),
-                                  hintText: _allCategories.isEmpty
-                                      ? 'No categories yet — add one'
-                                      : 'Select a category',
-                                  hintStyle: GoogleFonts.beVietnamPro(
-                                    fontSize: 13,
-                                    color: _C.textFaint,
-                                  ),
-                                  prefixIcon: Icon(
-                                    category.isNotEmpty
-                                        ? _categoryTheme(category).icon
-                                        : Icons.label_outline_rounded,
-                                    size: 18,
-                                    color: _C.textFaint,
-                                  ),
-                                  border: InputBorder.none,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 14,
-                                  ),
-                                ),
-                                items: [
-                                  ..._allCategories.map(
-                                    (c) => DropdownMenuItem(
-                                      value: c,
-                                      child: Text(
-                                        c,
-                                        style: GoogleFonts.beVietnamPro(
-                                          fontSize: 13,
-                                        ),
+                            // Side-by-side instead of stacked: Category's
+                            // dropdown label floats the moment a value is
+                            // selected while Title's only floats once typed
+                            // into, so stacking them with just a divider let
+                            // Category's floated label collide with Title's
+                            // bottom edge. Placing them as separate columns
+                            // sidesteps that entirely — each field owns its
+                            // own vertical space to float into.
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  flex: 3,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: _C.white,
+                                      borderRadius: BorderRadius.circular(
+                                        _DS.radiusLg,
                                       ),
+                                      boxShadow: _DS.cardShadow,
+                                    ),
+                                    child: TextFormField(
+                                      controller: titleCtrl,
+                                      decoration: _DS
+                                          .inputDecoration(
+                                            'Title *',
+                                            hint: 'A short, catchy headline',
+                                            icon: Icons.title_rounded,
+                                          )
+                                          .copyWith(
+                                            fillColor: _C.white,
+                                            border: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(
+                                                    _DS.radiusLg,
+                                                  ),
+                                              borderSide: BorderSide.none,
+                                            ),
+                                            enabledBorder: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(
+                                                    _DS.radiusLg,
+                                                  ),
+                                              borderSide: BorderSide.none,
+                                            ),
+                                          ),
+                                      style: GoogleFonts.beVietnamPro(
+                                        fontSize: 13,
+                                      ),
+                                      onChanged: (_) => setDlg(() {}),
+                                      validator: (v) =>
+                                          v?.trim().isEmpty == true
+                                          ? 'Title is required'
+                                          : null,
                                     ),
                                   ),
-                                  DropdownMenuItem(
-                                    value: '__add_new__',
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(
-                                          Icons.add_rounded,
-                                          size: 16,
-                                          color: _C.primaryDark,
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  flex: 2,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: _C.white,
+                                      borderRadius: BorderRadius.circular(
+                                        _DS.radiusLg,
+                                      ),
+                                      boxShadow: _DS.cardShadow,
+                                    ),
+                                    child: DropdownButtonFormField<String>(
+                                      value: _allCategories.contains(category)
+                                          ? category
+                                          : null,
+                                      isExpanded: true,
+                                      decoration: InputDecoration(
+                                        label: requiredLabel('Category'),
+                                        hintText: _allCategories.isEmpty
+                                            ? 'No categories yet'
+                                            : 'Select one',
+                                        hintStyle: GoogleFonts.beVietnamPro(
+                                          fontSize: 13,
+                                          color: _C.textFaint,
                                         ),
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          'Add new category',
-                                          style: GoogleFonts.beVietnamPro(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w600,
-                                            color: _C.primaryDark,
+                                        prefixIcon: Icon(
+                                          category.isNotEmpty
+                                              ? _categoryTheme(category).icon
+                                              : Icons.label_outline_rounded,
+                                          size: 18,
+                                          color: _C.textFaint,
+                                        ),
+                                        filled: true,
+                                        fillColor: _C.white,
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            _DS.radiusLg,
+                                          ),
+                                          borderSide: BorderSide.none,
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            _DS.radiusLg,
+                                          ),
+                                          borderSide: BorderSide.none,
+                                        ),
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                              horizontal: 16,
+                                              vertical: 14,
+                                            ),
+                                      ),
+                                      items: [
+                                        ..._allCategories.map(
+                                          (c) => DropdownMenuItem(
+                                            value: c,
+                                            child: Text(
+                                              c,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: GoogleFonts.beVietnamPro(
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: '__add_new__',
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              const Icon(
+                                                Icons.add_rounded,
+                                                size: 16,
+                                                color: _C.primaryDark,
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Text(
+                                                'Add new',
+                                                style: GoogleFonts.beVietnamPro(
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: _C.primaryDark,
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ),
                                       ],
+                                      onChanged: (v) async {
+                                        if (v == '__add_new__') {
+                                          final added =
+                                              await _promptAddCategory();
+                                          if (added != null) {
+                                            setDlg(() => category = added);
+                                          }
+                                        } else if (v != null) {
+                                          setDlg(() => category = v);
+                                        }
+                                      },
+                                      validator: (_) => category.trim().isEmpty
+                                          ? 'Please select or add a category'
+                                          : null,
                                     ),
                                   ),
-                                ],
-                                onChanged: (v) async {
-                                  if (v == '__add_new__') {
-                                    final added = await _promptAddCategory();
-                                    if (added != null)
-                                      setDlg(() => category = added);
-                                  } else if (v != null) {
-                                    setDlg(() => category = v);
-                                  }
-                                },
-                                validator: (_) => category.trim().isEmpty
-                                    ? 'Please select or add a category'
-                                    : null,
-                              ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 14),
-                            TextFormField(
-                              controller: contentCtrl,
-                              maxLines: 5,
-                              decoration: _DS.inputDecoration(
-                                'Content *',
-                                hint: 'Write your announcement here…',
-                                icon: Icons.description_outlined,
-                              ),
-                              style: GoogleFonts.beVietnamPro(fontSize: 13),
-                              onChanged: (_) => setDlg(() {}),
-                              validator: (v) => v?.trim().isEmpty == true
-                                  ? 'Content is required'
-                                  : null,
-                            ),
-                            const SizedBox(height: 20),
+                            const SizedBox(height: 22),
 
                             // ── Live preview — mirrors the exact card the feed
                             // will render, so the org sees the real output
@@ -1793,39 +2045,52 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                               'Preview',
                               icon: Icons.visibility_outlined,
                             ),
-                            IgnorePointer(
-                              child: _PostCard(
-                                announcement: AnnouncementModel(
-                                  id: 'preview',
-                                  title: titleCtrl.text.trim().isEmpty
-                                      ? 'Your title will appear here'
-                                      : titleCtrl.text.trim(),
-                                  content: contentCtrl.text.trim().isEmpty
-                                      ? 'Your announcement content will appear here…'
-                                      : contentCtrl.text.trim(),
-                                  authorId: '',
-                                  authorName:
-                                      FirebaseAuth
-                                          .instance
-                                          .currentUser
-                                          ?.displayName ??
-                                      FirebaseAuth
-                                          .instance
-                                          .currentUser
-                                          ?.email ??
-                                      'You',
-                                  timestamp: Timestamp.now(),
-                                  attachmentsBase64: attachments,
-                                  imageBase64: imageBase64,
-                                  isPinned: isPinned,
-                                  targetAudience: targetAudience,
-                                  category: category.isEmpty
-                                      ? 'General'
-                                      : category,
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: _C.surface,
+                                borderRadius: BorderRadius.circular(
+                                  _DS.radiusLg,
                                 ),
-                                onEdit: () {},
-                                onDelete: () {},
-                                onTogglePin: () {},
+                                border: Border.all(
+                                  color: _C.borderSoft,
+                                  style: BorderStyle.solid,
+                                ),
+                              ),
+                              child: IgnorePointer(
+                                child: _PostCard(
+                                  announcement: AnnouncementModel(
+                                    id: 'preview',
+                                    title: titleCtrl.text.trim().isEmpty
+                                        ? 'Your title will appear here'
+                                        : titleCtrl.text.trim(),
+                                    content: contentCtrl.text.trim().isEmpty
+                                        ? 'Your announcement content will appear here…'
+                                        : contentCtrl.text.trim(),
+                                    authorId: '',
+                                    authorName:
+                                        FirebaseAuth
+                                            .instance
+                                            .currentUser
+                                            ?.displayName ??
+                                        FirebaseAuth
+                                            .instance
+                                            .currentUser
+                                            ?.email ??
+                                        'You',
+                                    timestamp: Timestamp.now(),
+                                    attachmentsBase64: attachments,
+                                    imageBase64: imageBase64,
+                                    isPinned: isPinned,
+                                    targetAudience: targetAudience,
+                                    category: category.isEmpty
+                                        ? 'General'
+                                        : category,
+                                  ),
+                                  onEdit: () {},
+                                  onArchive: () {},
+                                  onTogglePin: () {},
+                                ),
                               ),
                             ),
                             const SizedBox(height: 20),
@@ -2842,13 +3107,13 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
 class _PostCard extends StatefulWidget {
   final AnnouncementModel announcement;
   final VoidCallback onEdit;
-  final VoidCallback onDelete;
+  final VoidCallback onArchive;
   final VoidCallback onTogglePin;
 
   const _PostCard({
     required this.announcement,
     required this.onEdit,
-    required this.onDelete,
+    required this.onArchive,
     required this.onTogglePin,
   });
 
@@ -3122,7 +3387,7 @@ class _PostCardState extends State<_PostCard> {
                     PopupMenuButton<String>(
                       onSelected: (v) {
                         if (v == 'edit') widget.onEdit();
-                        if (v == 'delete') widget.onDelete();
+                        if (v == 'archive') widget.onArchive();
                         if (v == 'pin') widget.onTogglePin();
                       },
                       icon: Container(
@@ -3180,20 +3445,22 @@ class _PostCardState extends State<_PostCard> {
                           ),
                         ),
                         PopupMenuItem(
-                          value: 'delete',
+                          value: 'archive',
                           child: Row(
                             children: [
-                              const Icon(
-                                Icons.delete_outline_rounded,
+                              Icon(
+                                a.isArchived
+                                    ? Icons.unarchive_outlined
+                                    : Icons.archive_outlined,
                                 size: 15,
-                                color: _C.error,
+                                color: _C.darkGray,
                               ),
                               const SizedBox(width: 10),
                               Text(
-                                'Delete',
+                                a.isArchived ? 'Unarchive' : 'Archive',
                                 style: GoogleFonts.beVietnamPro(
                                   fontSize: 13,
-                                  color: _C.error,
+                                  color: _C.darkGray,
                                 ),
                               ),
                             ],
@@ -3558,7 +3825,7 @@ Widget debugPostCardForTest(AnnouncementModel a) {
   return _PostCard(
     announcement: a,
     onEdit: () {},
-    onDelete: () {},
+    onArchive: () {},
     onTogglePin: () {},
   );
 }
@@ -3588,6 +3855,7 @@ class AnnouncementModel {
   final String linkedProposalId;
   final String linkedEventTitle;
   final String videoUrl;
+  final bool isArchived;
 
   const AnnouncementModel({
     required this.id,
@@ -3608,6 +3876,7 @@ class AnnouncementModel {
     this.linkedProposalId = '',
     this.linkedEventTitle = '',
     this.videoUrl = '',
+    this.isArchived = false,
   });
 
   factory AnnouncementModel.fromFirestore(DocumentSnapshot doc) {
@@ -3644,6 +3913,7 @@ class AnnouncementModel {
       linkedProposalId: d['linkedProposalId'] as String? ?? '',
       linkedEventTitle: d['linkedEventTitle'] as String? ?? '',
       videoUrl: d['videoUrl'] as String? ?? '',
+      isArchived: d['isArchived'] as bool? ?? false,
     );
   }
 }

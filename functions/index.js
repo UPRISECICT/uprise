@@ -268,7 +268,12 @@ function buildQueuedEmailMailOptions(payload) {
 
   if (payload.type === 'guest_credentials') {
     const guestName = payload.guest_name || 'Guest';
-    const university = payload.university || '';
+    const isBulSUan = payload.classification === 'BulSUan';
+    const detailsHtml = isBulSUan
+      ? `<p><strong>College:</strong> ${payload.college || ''}</p>
+        <p><strong>Year Level:</strong> ${payload.year_level || ''}</p>
+        <p><strong>Section:</strong> ${payload.section || ''}</p>`
+      : (payload.university ? `<p><strong>University/Affiliation:</strong> ${payload.university}</p>` : '');
     return {
       from: from,
       to: to,
@@ -277,7 +282,7 @@ function buildQueuedEmailMailOptions(payload) {
         <h2>UPRISE – Guest Account Approved</h2>
         <p>Your guest account has been approved.</p>
         <p><strong>Name:</strong> ${guestName}</p>
-        ${university ? `<p><strong>University:</strong> ${university}</p>` : ''}
+        ${detailsHtml}
         <p><strong>Email:</strong> ${to}</p>
         <p><strong>Temporary Password:</strong> ${password}</p>
         <p>Please change your password after first login.</p>

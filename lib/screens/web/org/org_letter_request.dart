@@ -1065,6 +1065,10 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
         child: Container(
           width: 420,
           padding: const EdgeInsets.all(28),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,

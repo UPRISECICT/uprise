@@ -622,6 +622,54 @@ class _GuestLoginScreenState extends State<GuestLoginScreen> {
     );
   }
 
+  // Guests previously had no self-service way to recover a forgotten
+  // password once past their forced first-login change — only an admin
+  // could trigger a reset for them from external_account.dart. Same
+  // mechanism (Firebase's own password-reset email), just self-service.
+  Future<void> _forgotPassword() async {
+    final email = _emailCtrl.text.trim().toLowerCase();
+    if (email.isEmpty || !email.contains('@')) {
+      _snack('Enter your email above first, then tap "Forgot password?".');
+      return;
+    }
+    setState(() => _isLoading = true);
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      await activity_log.ActivityLogger.log(
+        action: 'Guest requested password reset',
+        module: 'Authentication',
+        severity: 'security',
+        details: {'email': email},
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Password reset link sent to $email.',
+              style: GoogleFonts.beVietnamPro(fontSize: 13),
+            ),
+            backgroundColor: _kOrange,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      final msg = switch (e.code) {
+        'user-not-found' => 'No account found for this email.',
+        'invalid-email' => 'Invalid email address.',
+        _ => e.message ?? 'Could not send reset email.',
+      };
+      _snack(msg);
+    } catch (e) {
+      _snack('Could not send reset email: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -796,7 +844,27 @@ class _GuestLoginScreenState extends State<GuestLoginScreen> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 10),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: _isLoading ? null : _forgotPassword,
+                            style: TextButton.styleFrom(
+                              foregroundColor: _kOrange,
+                              padding: EdgeInsets.zero,
+                              minimumSize: const Size(0, 0),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            child: const Text(
+                              'Forgot password?',
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
                         SizedBox(
                           width: double.infinity,
                           height: 52,

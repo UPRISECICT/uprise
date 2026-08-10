@@ -17,6 +17,7 @@ import '../../../theme/org_theme.dart';
 import '../../../widgets/admin_export_button.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/org_action_icon_button.dart';
+import '../../../widgets/org_modal_shell.dart';
 import 'export_pdf.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../services/notification_service.dart';
@@ -2417,7 +2418,9 @@ class _AttendanceTable extends StatelessWidget {
           ? 'No check-ins yet. Open attendance and start scanning.'
           : 'No records match your filter.',
       footer: '${docs.length} attendee${docs.length == 1 ? '' : 's'} recorded',
-      rows: filtered.map((d) {
+      rows: filtered.asMap().entries.map((entry) {
+        final i = entry.key;
+        final d = entry.value;
         final m = d.data() as Map<String, dynamic>;
         final ts = (m['timestamp'] as Timestamp?)?.toDate();
         // ---- START CHANGE ----
@@ -2455,10 +2458,17 @@ class _AttendanceTable extends StatelessWidget {
                 color: const Color(0xFF1A202C),
               ),
             ),
-            _MethodBadge(m['method'] ?? 'qr'),
-            _attBadge(m['status'] ?? 'present'),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _MethodBadge(m['method'] ?? 'qr'),
+            ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _attBadge(m['status'] ?? 'present'),
+            ),
           ],
           flex: const [4, 2, 3, 2, 2, 2, 2],
+          isEven: i.isEven,
         );
       }).toList(),
     );
@@ -2550,7 +2560,9 @@ class _RegistrantsTable extends StatelessWidget {
               : 'No records match your filter.',
           footer:
               '${regs.length} registered participant${regs.length == 1 ? '' : 's'}',
-          rows: filtered.map((d) {
+          rows: filtered.asMap().entries.map((entry) {
+            final i = entry.key;
+            final d = entry.value;
             final m = d.data() as Map<String, dynamic>;
             final student = studentOf(m);
             final uid = (m['userId'] ?? '').toString();
@@ -2583,7 +2595,10 @@ class _RegistrantsTable extends StatelessWidget {
                     color: const Color(0xFF64748B),
                   ),
                 ),
-                _attBadge(status),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: _attBadge(status),
+                ),
                 OrgActionIconButton(
                   icon: Icons.visibility_outlined,
                   tooltip: 'View registration answers',
@@ -2596,12 +2611,38 @@ class _RegistrantsTable extends StatelessWidget {
                 ),
               ],
               flex: const [4, 2, 3, 3, 2, 1],
+              isEven: i.isEven,
             );
           }).toList(),
         );
       },
     );
   }
+}
+
+// Best-effort icon per form question label — every row used to render with
+// the same generic "short text" icon regardless of what it was actually
+// asking, which made a list of 3+ answers look repetitive at a glance.
+// Falls back gracefully for any label this doesn't recognize (form
+// questions are free-text org input, so labels vary widely).
+IconData _registrationFieldIcon(String label) {
+  final l = label.toLowerCase();
+  if (l.contains('name')) return Icons.person_outline_rounded;
+  if (l.contains('student') || l.contains('id number') || l.contains('id no')) {
+    return Icons.badge_outlined;
+  }
+  if (l.contains('year') || l.contains('grade')) {
+    return Icons.school_outlined;
+  }
+  if (l.contains('program') || l.contains('course') || l.contains('section')) {
+    return Icons.menu_book_outlined;
+  }
+  if (l.contains('email')) return Icons.email_outlined;
+  if (l.contains('phone') || l.contains('contact') || l.contains('number')) {
+    return Icons.phone_outlined;
+  }
+  if (l.contains('address')) return Icons.location_on_outlined;
+  return Icons.short_text_rounded;
 }
 
 // Registration form answers are stored on the registration doc itself —
@@ -2642,203 +2683,123 @@ void showRegistrationAnswers(
     );
   }
 
+  // Uses the same OrgModalShell/OrgDetailItem components as Event Proposals
+  // and Letter Request's view-details modals, instead of hand-rolling an
+  // approximation of that look — so restyling the shell in one place
+  // updates every modal that uses it, this one included.
   showDialog(
     context: context,
-    builder: (ctx) => Dialog(
-      // The dialog's direct child had no explicit background, letting
-      // Flutter's default unseeded Material surface bleed through as a
-      // dull lavender tint — same root cause fixed elsewhere in the app.
-      backgroundColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxHeight: 560, maxWidth: 440),
-        child: Container(
-          clipBehavior: Clip.antiAlias,
+    builder: (ctx) => OrgModalShell(
+      accentColor: UpriseColors.primaryDark,
+      icon: Icons.assignment_outlined,
+      title: 'Registration Answers',
+      subtitle: studentName,
+      width: 460,
+      maxHeightFraction: 0.75,
+      body: Padding(
+        padding: const EdgeInsets.all(20),
+        child: entries.isEmpty
+            ? Text(
+                'No additional info was collected for this registration.',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: const Color(0xFF94A3B8),
+                ),
+              )
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final e in entries) ...[
+                    if (e.value.startsWith('http://') ||
+                        e.value.startsWith('https://'))
+                      _LinkDetailItem(label: e.key, url: e.value)
+                    else
+                      OrgDetailItem(
+                        label: e.key.toUpperCase(),
+                        value: e.value,
+                        icon: _registrationFieldIcon(e.key),
+                      ),
+                    const SizedBox(height: 14),
+                  ],
+                ],
+              ),
+      ),
+    ),
+  );
+}
+
+// OrgDetailItem shows a value as plain text, which isn't tappable — this
+// mirrors its layout exactly but renders the value as an underlined link
+// that opens the uploaded file/photo/video instead.
+class _LinkDetailItem extends StatelessWidget {
+  final String label;
+  final String url;
+  const _LinkDetailItem({required this.label, required this.url});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 26,
+          height: 26,
+          margin: const EdgeInsets.only(top: 1),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
+            color: const Color(0xFF9AA5B4).withAlpha(28),
+            borderRadius: BorderRadius.circular(7),
           ),
+          child: const Icon(
+            Icons.attach_file_rounded,
+            size: 13,
+            color: Color(0xFF9AA5B4),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.fromLTRB(20, 18, 16, 16),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      UpriseColors.primaryDark.withAlpha(16),
-                      Colors.white,
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 38,
-                      height: 38,
-                      decoration: BoxDecoration(
-                        color: UpriseColors.primaryDark.withAlpha(28),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(
-                        Icons.assignment_outlined,
-                        color: UpriseColors.primaryDark,
-                        size: 18,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Registration Answers',
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 15.5,
-                              fontWeight: FontWeight.w700,
-                              color: const Color(0xFF1A202C),
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            studentName,
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 12.5,
-                              color: const Color(0xFF64748B),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        onTap: () => Navigator.pop(ctx),
-                        child: Container(
-                          width: 28,
-                          height: 28,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF8F9FB),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(
-                            Icons.close_rounded,
-                            size: 16,
-                            color: Color(0xFF64748B),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+              Text(
+                label.toUpperCase(),
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF9AA5B4),
+                  letterSpacing: 0.4,
                 ),
               ),
-              Flexible(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (entries.isEmpty)
-                        Text(
-                          'No additional info was collected for this registration.',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13,
-                            color: const Color(0xFF94A3B8),
-                          ),
-                        )
-                      else
-                        ...entries.map((e) {
-                          final isLink =
-                              e.value.startsWith('http://') ||
-                              e.value.startsWith('https://');
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 10),
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF8F9FB),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Icon(
-                                  isLink
-                                      ? Icons.attach_file_rounded
-                                      : Icons.short_text_rounded,
-                                  size: 16,
-                                  color: const Color(0xFF64748B),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        e.key.toUpperCase(),
-                                        style: GoogleFonts.beVietnamPro(
-                                          fontSize: 10.5,
-                                          fontWeight: FontWeight.w700,
-                                          color: const Color(0xFF9AA5B4),
-                                          letterSpacing: 0.5,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      if (isLink)
-                                        InkWell(
-                                          onTap: () async {
-                                            final uri = Uri.tryParse(e.value);
-                                            if (uri != null &&
-                                                await canLaunchUrl(uri)) {
-                                              await launchUrl(
-                                                uri,
-                                                mode: LaunchMode
-                                                    .externalApplication,
-                                              );
-                                            }
-                                          },
-                                          child: Text(
-                                            'View uploaded photo/video',
-                                            style: GoogleFonts.beVietnamPro(
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.w600,
-                                              color: UpriseColors.info,
-                                              decoration:
-                                                  TextDecoration.underline,
-                                            ),
-                                          ),
-                                        )
-                                      else
-                                        Text(
-                                          e.value,
-                                          style: GoogleFonts.beVietnamPro(
-                                            fontSize: 13.5,
-                                            color: const Color(0xFF1A202C),
-                                            height: 1.4,
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }),
-                    ],
+              const SizedBox(height: 2),
+              MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  onTap: () async {
+                    final uri = Uri.tryParse(url);
+                    if (uri != null && await canLaunchUrl(uri)) {
+                      await launchUrl(
+                        uri,
+                        mode: LaunchMode.externalApplication,
+                      );
+                    }
+                  },
+                  child: Text(
+                    'View uploaded photo/video',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: UpriseColors.info,
+                      decoration: TextDecoration.underline,
+                    ),
                   ),
                 ),
               ),
             ],
           ),
         ),
-      ),
-    ),
-  );
+      ],
+    );
+  }
 }
 
 // =============================================================================
@@ -2886,18 +2847,17 @@ class _DataTable extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Header
+          // Header — was a solid saturated-orange banner that dominated the
+          // top of every table using this shared widget; softened to a
+          // neutral header with a slim accent underline, same fix already
+          // applied to the dashboard's and certificates' table headers.
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFF7ED),
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(14),
-              ),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            decoration: const BoxDecoration(
+              color: Color(0xFFF8F9FB),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
               border: Border(
-                bottom: BorderSide(
-                  color: UpriseColors.primaryDark.withAlpha(60),
-                ),
+                bottom: BorderSide(color: UpriseColors.primaryDark, width: 2),
               ),
             ),
             child: Row(
@@ -3137,16 +3097,25 @@ class _TableRow extends StatelessWidget {
   final List<Widget> cells;
   final List<int> flex;
   final VoidCallback? onTap;
-  const _TableRow({required this.cells, required this.flex, this.onTap});
+  final bool isEven;
+  const _TableRow({
+    required this.cells,
+    required this.flex,
+    this.onTap,
+    this.isEven = false,
+  });
 
   @override
   Widget build(BuildContext context) => InkWell(
     onTap: onTap,
-    hoverColor: const Color(0xFFF8F9FB),
+    hoverColor: UpriseColors.primaryDark.withAlpha(12),
     child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+      decoration: BoxDecoration(
+        // Faint zebra tint — makes wide rows easier to track across,
+        // same treatment already used on the dashboard's tables.
+        color: isEven ? Colors.white : const Color(0xFFFBFBFC),
+        border: const Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
       ),
       child: Row(
         children: [

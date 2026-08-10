@@ -26,6 +26,10 @@ class EventModel {
   final String? logoUrl;
   final String? bannerUrl;
 
+  /// Max registrants, org-set and optional — null (or omitted) means
+  /// unlimited slots, matching the org proposal form's default.
+  final int? capacity;
+
   EventModel({
     required this.id,
     required this.title,
@@ -44,6 +48,7 @@ class EventModel {
     this.createdFromProposalId,
     this.logoUrl,
     this.bannerUrl,
+    this.capacity,
   });
 
   /// Combines the event date and start time
@@ -159,6 +164,7 @@ class EventModel {
       createdFromProposalId: d['createdFromProposalId'] as String?,
       logoUrl: d['logoUrl'] as String?,
       bannerUrl: d['bannerUrl'] as String?,
+      capacity: (d['capacity'] as num?)?.toInt(),
     );
   }
 
@@ -179,6 +185,7 @@ class EventModel {
     'createdFromProposalId': createdFromProposalId,
     'logoUrl': logoUrl,
     'bannerUrl': bannerUrl,
+    'capacity': capacity,
   };
 
   /// Uses full date + start time

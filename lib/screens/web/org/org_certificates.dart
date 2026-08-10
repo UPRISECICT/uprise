@@ -2359,74 +2359,107 @@ class _BatchDetailModalState extends State<_BatchDetailModal> {
     final r = b.primary;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-      child: SizedBox(
-        height: 200,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: r.templateFileUrl != null
-              ? FittedBox(
-                  fit: BoxFit.contain,
-                  child: Image.network(
-                    _renderableTemplateUrl(r.templateFileUrl!),
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      color: const Color(0xFFF1F5F9),
-                      alignment: Alignment.center,
-                      child: const Icon(
-                        Icons.broken_image_outlined,
-                        color: Color(0xFF9AA5B4),
-                      ),
-                    ),
-                  ),
-                )
-              // CertificatePreview lays itself out at fixed, hardcoded
-              // sizing (unlike CertificateImageWithName, it doesn't scale
-              // its own content to whatever box it's given) — squeezing it
-              // directly into a 200px-tall box overflowed by however much
-              // its natural content exceeded that. FittedBox lets it render
-              // at its real intended size (matching the 600/424 aspect
-              // ratio used everywhere else this widget appears) and then
-              // uniformly scales the whole thing down to fit, guaranteeing
-              // no overflow regardless of its actual content height.
-              : FittedBox(
-                  fit: BoxFit.contain,
-                  child: SizedBox(
-                    width: 600,
-                    height: 424,
-                    child: CertificatePreview(
-                      theme: CertTheme.forType(
-                        r.templateType,
-                        primaryDark: UpriseColors.primaryDark,
-                        primaryLight: UpriseColors.primaryLight,
-                        accentColor: UpriseColors.accent,
-                      ),
-                      orgName: r.organization,
-                      eventTitle: r.eventName,
-                      eventDate: DateFormat('MMMM dd, yyyy').format(r.date),
-                      recipient: '[Recipient Name]',
-                      signatories: r.signatories.isNotEmpty
-                          ? r.signatories
-                                .map(
-                                  (s) => CertSignatory(
-                                    name: (s['name'] ?? '').toString(),
-                                    title: (s['title'] ?? '').toString(),
-                                    signatureImageBase64:
-                                        s['signatureImage'] as String?,
-                                  ),
-                                )
-                                .toList()
-                          : (r.signatureImage != null
-                                ? [
-                                    CertSignatory(
-                                      name: 'Authorized Signatory',
-                                      signatureImageBase64: r.signatureImage,
-                                    ),
-                                  ]
-                                : const []),
-                    ),
-                  ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'CERTIFICATE PREVIEW',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w700,
+              color: UpriseColors.darkGray,
+              letterSpacing: 0.6,
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Was a raw image floating flush against the modal's gray body
+          // with nothing separating it — a white card frame gives it the
+          // same visual weight as every other content block in this modal.
+          Container(
+            height: 200,
+            width: double.infinity,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFE8ECF0)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withAlpha(15),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
                 ),
-        ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: r.templateFileUrl != null
+                  ? FittedBox(
+                      fit: BoxFit.contain,
+                      child: Image.network(
+                        _renderableTemplateUrl(r.templateFileUrl!),
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          color: const Color(0xFFF1F5F9),
+                          alignment: Alignment.center,
+                          child: const Icon(
+                            Icons.broken_image_outlined,
+                            color: Color(0xFF9AA5B4),
+                          ),
+                        ),
+                      ),
+                    )
+                  // CertificatePreview lays itself out at fixed, hardcoded
+                  // sizing (unlike CertificateImageWithName, it doesn't scale
+                  // its own content to whatever box it's given) — squeezing it
+                  // directly into a 200px-tall box overflowed by however much
+                  // its natural content exceeded that. FittedBox lets it render
+                  // at its real intended size (matching the 600/424 aspect
+                  // ratio used everywhere else this widget appears) and then
+                  // uniformly scales the whole thing down to fit, guaranteeing
+                  // no overflow regardless of its actual content height.
+                  : FittedBox(
+                      fit: BoxFit.contain,
+                      child: SizedBox(
+                        width: 600,
+                        height: 424,
+                        child: CertificatePreview(
+                          theme: CertTheme.forType(
+                            r.templateType,
+                            primaryDark: UpriseColors.primaryDark,
+                            primaryLight: UpriseColors.primaryLight,
+                            accentColor: UpriseColors.accent,
+                          ),
+                          orgName: r.organization,
+                          eventTitle: r.eventName,
+                          eventDate: DateFormat('MMMM dd, yyyy').format(r.date),
+                          recipient: '[Recipient Name]',
+                          signatories: r.signatories.isNotEmpty
+                              ? r.signatories
+                                    .map(
+                                      (s) => CertSignatory(
+                                        name: (s['name'] ?? '').toString(),
+                                        title: (s['title'] ?? '').toString(),
+                                        signatureImageBase64:
+                                            s['signatureImage'] as String?,
+                                      ),
+                                    )
+                                    .toList()
+                              : (r.signatureImage != null
+                                    ? [
+                                        CertSignatory(
+                                          name: 'Authorized Signatory',
+                                          signatureImageBase64:
+                                              r.signatureImage,
+                                        ),
+                                      ]
+                                    : const []),
+                        ),
+                      ),
+                    ),
+            ),
+          ),
+        ],
       ),
     );
   }

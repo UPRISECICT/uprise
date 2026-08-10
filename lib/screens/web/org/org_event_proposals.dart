@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:async';
 import '../../../utils/platform_file_utils.dart' as platform_file_utils;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -862,6 +863,9 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
         'isPublic': true,
         'logoUrl': logoUrl,
         'createdFromProposalId': proposalId,
+        // Carried over as-is — null means unlimited slots, same as on the
+        // proposal.
+        'capacity': (data['capacity'] as num?)?.toInt(),
         // bannerUrl will be added later
       };
 
@@ -2870,6 +2874,8 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
   final _startTimeCtrl = TextEditingController();
   final _endTimeCtrl = TextEditingController();
   final _otherCategoryCtrl = TextEditingController();
+  // Optional — blank means unlimited slots (current/default behavior).
+  final _capacityCtrl = TextEditingController();
   // The picked DateTime is kept directly instead of only round-tripping
   // through _dateCtrl's "MM/dd/yyyy" text — parsing that text back with
   // intl's DateFormat.parse() at submit time was throwing on some devices
@@ -2930,6 +2936,8 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
       _locCtrl.text = e['location'] ?? '';
       _startTimeCtrl.text = e['startTime'] ?? '';
       _endTimeCtrl.text = e['endTime'] ?? '';
+      final cap = e['capacity'];
+      _capacityCtrl.text = cap == null ? '' : cap.toString();
       // Dedicated image
       _imageBase64 = e['imageBase64'];
       _imageName = e['imageName'];
@@ -2973,6 +2981,7 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
     _startTimeCtrl.dispose();
     _endTimeCtrl.dispose();
     _otherCategoryCtrl.dispose();
+    _capacityCtrl.dispose();
     super.dispose();
   }
 
@@ -3145,6 +3154,18 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
       setState(() => _errorMsg = 'Select at least one audience.');
       return;
     }
+    final capacityText = _capacityCtrl.text.trim();
+    int? capacity;
+    if (capacityText.isNotEmpty) {
+      capacity = int.tryParse(capacityText);
+      if (capacity == null || capacity <= 0) {
+        setState(
+          () => _errorMsg =
+              'Capacity must be a whole number greater than 0, or left blank for unlimited slots.',
+        );
+        return;
+      }
+    }
     setState(() {
       _isSubmitting = true;
       _errorMsg = null;
@@ -3176,6 +3197,8 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
         'location': _locCtrl.text.trim(),
         'startTime': _startTimeCtrl.text.trim(),
         'endTime': _endTimeCtrl.text.trim(),
+        // null/omitted means unlimited slots.
+        'capacity': capacity,
         'submittedBy': user?.uid ?? '',
         'submittedByEmail': user?.email ?? '',
         'issuesCertificate': _issuesCertificate,
@@ -3743,6 +3766,26 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
                       style: GoogleFonts.beVietnamPro(fontSize: 13),
                       validator: (v) =>
                           v?.trim().isEmpty == true ? 'Required' : null,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _capacityCtrl,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      decoration: _orgEventProposalsInputDecoration(
+                        'Capacity',
+                        hint: 'Leave blank for unlimited slots',
+                        icon: Icons.groups_outlined,
+                      ),
+                      style: GoogleFonts.beVietnamPro(fontSize: 13),
+                      validator: (v) {
+                        final t = v?.trim() ?? '';
+                        if (t.isEmpty) return null;
+                        final n = int.tryParse(t);
+                        return (n == null || n <= 0)
+                            ? 'Enter a whole number greater than 0'
+                            : null;
+                      },
                     ),
                     const SizedBox(height: 12),
                     CheckboxListTile(
@@ -4442,6 +4485,23 @@ class _ViewProposalModal extends StatelessWidget {
                               : const Color(0xFF6B7280),
                         ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: OrgDetailItem(
+                          label: 'Capacity',
+                          value: data['capacity'] == null
+                              ? 'Unlimited'
+                              : '${data['capacity']} slots',
+                          icon: Icons.groups_outlined,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(child: SizedBox.shrink()),
                     ],
                   ),
                 ],

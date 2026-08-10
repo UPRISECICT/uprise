@@ -265,6 +265,10 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
         child: Container(
           width: 420,
           padding: const EdgeInsets.all(28),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1387,6 +1391,10 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
               _selectedStatCard = index;
               _filterType = type;
             }
+            // Stat cards reflect live (non-archived) totals — jumping into
+            // one while the Archived view was active would otherwise leave
+            // you looking at an empty/confusing intersection.
+            _showArchived = false;
             _currentPage = 1;
           });
         }
@@ -1521,13 +1529,22 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
     );
   }
 
+  // "Archived" now lives as a value in this same dropdown instead of a
+  // separate standalone toggle chip next to it — one less floating control,
+  // matching the Announcements page's filter dropdown.
   Widget _buildTypeFilterDropdown() {
     return _FilterDropdown(
-      value: _filterType,
-      items: const ['all', 'income', 'expense'],
-      labels: const ['All Types', 'Income', 'Expense'],
+      value: _showArchived ? 'archived' : _filterType,
+      items: const ['all', 'income', 'expense', 'archived'],
+      labels: const ['All Types', 'Income', 'Expense', 'Archived'],
       onChanged: (v) => setState(() {
-        _filterType = v!;
+        if (v == 'archived') {
+          _showArchived = true;
+          _filterType = 'all';
+        } else {
+          _showArchived = false;
+          _filterType = v!;
+        }
         _selectedStatCard = null;
         _currentPage = 1;
       }),
@@ -1543,56 +1560,6 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
         _filterCategory = v!;
         _currentPage = 1;
       }),
-    );
-  }
-
-  Widget _buildArchiveToggle() {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () => setState(() {
-          _showArchived = !_showArchived;
-          _currentPage = 1;
-        }),
-        child: Container(
-          height: 40,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          decoration: BoxDecoration(
-            color: _showArchived
-                ? UpriseColors.primaryDark.withAlpha(20)
-                : Colors.white,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: _showArchived
-                  ? UpriseColors.primaryDark
-                  : const Color(0xFFE2E6EA),
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.archive_outlined,
-                size: 16,
-                color: _showArchived
-                    ? UpriseColors.primaryDark
-                    : const Color(0xFF64748B),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                'Archived',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: _showArchived
-                      ? UpriseColors.primaryDark
-                      : const Color(0xFF64748B),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 
@@ -1707,7 +1674,6 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    _buildArchiveToggle(),
                     _buildGenerateReportButton(),
                     _buildExportButton(),
                     _buildAddTransactionButton(),
@@ -1722,8 +1688,6 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
                 _buildTypeFilterDropdown(),
                 const SizedBox(width: 10),
                 _buildCategoryFilterDropdown(),
-                const SizedBox(width: 10),
-                _buildArchiveToggle(),
                 const SizedBox(width: 10),
                 _buildGenerateReportButton(),
                 const SizedBox(width: 10),

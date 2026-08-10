@@ -951,102 +951,110 @@ class _ProductsTabState extends State<_ProductsTab> {
     );
   }
 
+  // Was search + dropdowns floating loose directly on the page background,
+  // no unifying surface — same "awful" bare-controls look fixed on the
+  // Announcements toolbar. One elevated card now groups them.
   Widget _buildToolbar(bool isMobile) {
     final horizontalPadding = isMobile ? 16.0 : 28.0;
-    if (isMobile) {
-      return Padding(
-        padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildSearchField(),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: _FilterDropdown(
-                    value: _categoryFilter,
-                    items: _categoryFilters,
-                    hint: 'Category',
-                    icon: Icons.category_outlined,
-                    onChanged: (v) {
-                      setState(() {
-                        _categoryFilter = v!;
-                      });
-                      _loadProducts(reset: true);
-                    },
+    final content = isMobile
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSearchField(),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: _FilterDropdown(
+                      value: _categoryFilter,
+                      items: _categoryFilters,
+                      hint: 'Category',
+                      icon: Icons.category_outlined,
+                      onChanged: (v) {
+                        setState(() {
+                          _categoryFilter = v!;
+                        });
+                        _loadProducts(reset: true);
+                      },
+                    ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _FilterDropdown(
-                    value: _statusFilter,
-                    items: _statusFilters,
-                    hint: 'Status',
-                    icon: Icons.circle_outlined,
-                    onChanged: (v) {
-                      setState(() {
-                        _statusFilter = v!;
-                      });
-                      _loadProducts(reset: true);
-                    },
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _FilterDropdown(
+                      value: _statusFilter,
+                      items: _statusFilters,
+                      hint: 'Status',
+                      icon: Icons.circle_outlined,
+                      onChanged: (v) {
+                        setState(() {
+                          _statusFilter = v!;
+                        });
+                        _loadProducts(reset: true);
+                      },
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '${_products.length} products',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 13,
-                color: const Color(0xFF64748B),
+                ],
               ),
-            ),
-          ],
-        ),
-      );
-    }
+              const SizedBox(height: 8),
+              Text(
+                '${_products.length} products',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+            ],
+          )
+        : Row(
+            children: [
+              SizedBox(width: 260, child: _buildSearchField()),
+              const SizedBox(width: 10),
+              _FilterDropdown(
+                value: _categoryFilter,
+                items: _categoryFilters,
+                hint: 'Category',
+                icon: Icons.category_outlined,
+                onChanged: (v) {
+                  setState(() {
+                    _categoryFilter = v!;
+                  });
+                  _loadProducts(reset: true);
+                },
+              ),
+              const SizedBox(width: 10),
+              _FilterDropdown(
+                value: _statusFilter,
+                items: _statusFilters,
+                hint: 'Status',
+                icon: Icons.circle_outlined,
+                onChanged: (v) {
+                  setState(() {
+                    _statusFilter = v!;
+                  });
+                  _loadProducts(reset: true);
+                },
+              ),
+              const Spacer(),
+              Text(
+                '${_products.length} products',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+            ],
+          );
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-      child: Row(
-        children: [
-          SizedBox(width: 260, child: _buildSearchField()),
-          const SizedBox(width: 10),
-          _FilterDropdown(
-            value: _categoryFilter,
-            items: _categoryFilters,
-            hint: 'Category',
-            icon: Icons.category_outlined,
-            onChanged: (v) {
-              setState(() {
-                _categoryFilter = v!;
-              });
-              _loadProducts(reset: true);
-            },
-          ),
-          const SizedBox(width: 10),
-          _FilterDropdown(
-            value: _statusFilter,
-            items: _statusFilters,
-            hint: 'Status',
-            icon: Icons.circle_outlined,
-            onChanged: (v) {
-              setState(() {
-                _statusFilter = v!;
-              });
-              _loadProducts(reset: true);
-            },
-          ),
-          const Spacer(),
-          Text(
-            '${_products.length} products',
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 13,
-              color: const Color(0xFF64748B),
-            ),
-          ),
-        ],
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: _DS.cardShadow,
+        ),
+        child: content,
       ),
     );
   }
@@ -1869,6 +1877,15 @@ class _ProductModalState extends State<_ProductModal> {
         constraints: BoxConstraints(
           maxHeight: MediaQuery.of(context).size.height * 0.85,
         ),
+        // Only the header strip below had an explicit background — the
+        // scrollable body had none, so Flutter's default unseeded Material
+        // surface bled through there. Same root cause fixed on every other
+        // modal in this app.
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        clipBehavior: Clip.antiAlias,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -2987,16 +3004,37 @@ class _ProductDetailsModal extends StatelessWidget {
         constraints: BoxConstraints(
           maxHeight: MediaQuery.of(context).size.height * 0.85,
         ),
+        // Neither the header nor body had an explicit background, so
+        // Flutter's default unseeded Material surface bled through the
+        // whole dialog — same root cause fixed elsewhere in this app.
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        clipBehavior: Clip.antiAlias,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Header — a solid orange block here read as loud/cluttered
-            // next to the plain field grid below it; a bordered-bottom
-            // white header matches the rest of the modal's restraint.
+            // A flat white header here used to be a deliberate choice to
+            // avoid a "loud" solid color block — but a soft gradient tint
+            // (not a solid fill) gets the same restraint while actually
+            // matching every other modal's header treatment in this app
+            // (Registration Answers, the dashboard's detail modal, etc.),
+            // instead of being the one plain-white outlier next to them.
             Container(
               padding: const EdgeInsets.fromLTRB(24, 20, 20, 18),
-              decoration: const BoxDecoration(
-                border: Border(bottom: BorderSide(color: Color(0xFFEEF0F3))),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    UpriseColors.primaryDark.withAlpha(20),
+                    Colors.white,
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                border: const Border(
+                  bottom: BorderSide(color: Color(0xFFEEF0F3)),
+                ),
               ),
               child: Row(
                 children: [
@@ -3004,7 +3042,7 @@ class _ProductDetailsModal extends StatelessWidget {
                     width: 38,
                     height: 38,
                     decoration: BoxDecoration(
-                      color: UpriseColors.primaryDark.withAlpha(20),
+                      color: UpriseColors.primaryDark.withAlpha(28),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(
@@ -4737,6 +4775,10 @@ class _FilterDropdown extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // [icon] used to be accepted but never actually rendered —
+            // Category and Status looked identical at a glance.
+            Icon(icon, size: 15, color: const Color(0xFF9AA5B4)),
+            const SizedBox(width: 8),
             Text(
               value,
               style: GoogleFonts.beVietnamPro(

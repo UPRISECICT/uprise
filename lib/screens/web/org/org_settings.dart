@@ -186,26 +186,55 @@ class _ProfileTab extends StatelessWidget {
     required this.orgEmail,
   });
 
-  Widget _infoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Column(
+  // Was a bare label-above-value text stack, no icon or background — the
+  // one plain part of this tab next to the card that frames it. Matches
+  // the icon-tagged detail-row pattern (OrgDetailItem) used everywhere
+  // else this info-display shape appears in the app.
+  Widget _infoRow(String label, String value, IconData icon) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8F9FB),
+        borderRadius: BorderRadius.circular(_DS.radiusSm),
+      ),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: const Color(0xFF9AA5B4),
+          Container(
+            width: 26,
+            height: 26,
+            margin: const EdgeInsets.only(top: 1),
+            decoration: BoxDecoration(
+              color: UpriseColors.primaryDark.withAlpha(28),
+              borderRadius: BorderRadius.circular(7),
             ),
+            child: Icon(icon, size: 13, color: UpriseColors.primaryDark),
           ),
-          const SizedBox(height: 4),
-          Text(
-            value.isNotEmpty ? value : '—',
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 14,
-              color: const Color(0xFF1A202C),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label.toUpperCase(),
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF9AA5B4),
+                    letterSpacing: 0.4,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  value.isNotEmpty ? value : '—',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF1A202C),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -274,9 +303,17 @@ class _ProfileTab extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    _infoRow('Organization Name', orgName),
-                    _infoRow('Short Name', orgShortName),
-                    _infoRow('Email Address', orgEmail),
+                    _infoRow(
+                      'Organization Name',
+                      orgName,
+                      Icons.apartment_outlined,
+                    ),
+                    _infoRow(
+                      'Short Name',
+                      orgShortName,
+                      Icons.short_text_rounded,
+                    ),
+                    _infoRow('Email Address', orgEmail, Icons.email_outlined),
                   ],
                 ),
               ),

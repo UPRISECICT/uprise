@@ -2723,6 +2723,14 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   // registering for an event doesn't mean you showed up to it.
   bool _hasAttended = false;
 
+  // Only tracked when the event has a capacity set — unlimited events skip
+  // this query entirely since there's nothing to compare against.
+  int? _registeredCount;
+  bool get _isFull =>
+      widget.event.capacity != null &&
+      _registeredCount != null &&
+      _registeredCount! >= widget.event.capacity!;
+
   int _rating = 0;
   final TextEditingController _feedbackCtrl = TextEditingController();
   String? _existingFeedbackDocId;
@@ -2776,11 +2784,21 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     _loadRegistrationForm();
     _checkRegistrationStatus();
     _checkAttendanceStatus();
+    if (widget.event.capacity != null) _loadRegisteredCount();
     if (_isEventReallyOver) {
       _checkFeedbackStatus();
     } else {
       _checkingFeedback = false;
     }
+  }
+
+  Future<void> _loadRegisteredCount() async {
+    final countSnap = await FirebaseFirestore.instance
+        .collection('registrations')
+        .where('eventId', isEqualTo: widget.event.id)
+        .count()
+        .get();
+    if (mounted) setState(() => _registeredCount = countSnap.count ?? 0);
   }
 
   @override
@@ -3255,6 +3273,21 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         if (!evDoc.exists) throw Exception('Event not found');
         final evData = evDoc.data() as Map<String, dynamic>;
 
+        // Optional, org-set — null means unlimited slots.
+        final capacity = (evData['capacity'] as num?)?.toInt();
+        if (capacity != null) {
+          final countSnap = await FirebaseFirestore.instance
+              .collection('registrations')
+              .where('eventId', isEqualTo: widget.event.id)
+              .count()
+              .get();
+          if ((countSnap.count ?? 0) >= capacity) {
+            throw Exception(
+              'This event has reached its maximum capacity of $capacity and is no longer accepting registrations.',
+            );
+          }
+        }
+
         final userDoc = await tx.get(
           FirebaseFirestore.instance.collection('users').doc(user.uid),
         );
@@ -3277,7 +3310,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           if (formResponses.isNotEmpty) 'formResponses': formResponses,
         });
       });
-      setState(() => _isRegistered = true);
+      setState(() {
+        _isRegistered = true;
+        if (_registeredCount != null) _registeredCount = _registeredCount! + 1;
+      });
       widget.onRegistered();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -3650,6 +3686,16 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     icon: Icons.location_on_outlined,
                     text: widget.event.location,
                   ),
+                  if (widget.event.capacity != null) ...[
+                    const SizedBox(height: 12),
+                    _InfoRow(
+                      icon: Icons.groups_outlined,
+                      text: _registeredCount == null
+                          ? '${widget.event.capacity} slots'
+                          : '$_registeredCount/${widget.event.capacity} slots filled',
+                      color: _isFull ? Colors.red.shade600 : null,
+                    ),
+                  ],
                   const SizedBox(height: 20),
                   const Text(
                     'Description',
@@ -3666,7 +3712,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   ),
                   const SizedBox(height: 10),
 
-                  if (!_isEventReallyOver && !_isRegistered) ...[
+                  if (!_isEventReallyOver && !_isRegistered && !_isFull) ...[
                     if (_loadingForm)
                       const Center(
                         child: Padding(
@@ -3696,6 +3742,27 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                         ),
                       ),
                   ],
+
+                  if (_isFull && !_isRegistered && !_isEventReallyOver)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.red.shade200),
+                      ),
+                      child: Center(
+                        child: Text(
+                          'Event Full — no more slots available',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.red.shade700,
+                          ),
+                        ),
+                      ),
+                    ),
 
                   if (_isRegistered && !_isEventReallyOver)
                     Container(
@@ -3771,19 +3838,24 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 class _InfoRow extends StatelessWidget {
   final IconData icon;
   final String text;
+  final Color? color;
 
-  const _InfoRow({required this.icon, required this.text});
+  const _InfoRow({required this.icon, required this.text, this.color});
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, size: 18, color: Colors.grey.shade600),
+        Icon(icon, size: 18, color: color ?? Colors.grey.shade600),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
             text,
-            style: const TextStyle(fontSize: 14, color: Colors.black87),
+            style: TextStyle(
+              fontSize: 14,
+              color: color ?? Colors.black87,
+              fontWeight: color != null ? FontWeight.w700 : FontWeight.normal,
+            ),
           ),
         ),
       ],

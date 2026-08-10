@@ -40,11 +40,18 @@ class _OrgRegistrationFormsScreenState
   // never appeared in this dropdown at all, silently hiding its
   // registrations/forms. Querying `events` directly means every published
   // event shows up regardless of what happened to the proposal it came from.
+  // No .orderBy('date') here on purpose — every other screen with this
+  // exact orgId+status query sorts ascending (org_events_schedule.dart,
+  // org_reports.dart), and Firestore needs its own composite index per sort
+  // direction. This page was the only one asking for descending order, its
+  // index was never provisioned, and the query failed outright — silently,
+  // since nothing here checked for a stream error, so it just looked like
+  // "no events" instead of "the query is broken." Sorting client-side below
+  // avoids needing a new index at all.
   late final Stream<QuerySnapshot> _eventsStream = FirebaseFirestore.instance
       .collection('events')
       .where('orgId', isEqualTo: widget.orgId)
       .where('status', isEqualTo: 'approved')
-      .orderBy('date', descending: true)
       .snapshots();
 
   void _selectEvent(EventModel e) {
@@ -125,32 +132,19 @@ class _OrgRegistrationFormsScreenState
     );
   }
 
+  // The org dashboard's shared top bar already renders "Registration Forms"
+  // as the page title above this — repeating it as a big H1 here was a
+  // straight duplicate. Just the one-line explanation of what the page
+  // does stays; it ties into the "Registrants for <event>" label above the
+  // table (see _buildTable) so the picker and results still read as one
+  // flow instead of two disconnected pieces.
   Widget _buildHeader() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Registration Forms',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 22,
-            fontWeight: FontWeight.w700,
-            color: const Color(0xFF1A202C),
-          ),
-        ),
-        const SizedBox(height: 4),
-        // The page used to just drop you into a dropdown + bare list with
-        // no explanation of what you were looking at — this one line plus
-        // the "Registrants for <event>" label above the table (see
-        // _buildTable) ties the picker to the results so it reads as one
-        // flow instead of two disconnected pieces.
-        Text(
-          'Pick an event to see who registered and review their submitted answers — even after the event has ended.',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 13,
-            color: const Color(0xFF64748B),
-          ),
-        ),
-      ],
+    return Text(
+      'Pick an event to see who registered and review their submitted answers — even after the event has ended.',
+      style: GoogleFonts.beVietnamPro(
+        fontSize: 13,
+        color: const Color(0xFF64748B),
+      ),
     );
   }
 
@@ -158,9 +152,15 @@ class _OrgRegistrationFormsScreenState
     return StreamBuilder<QuerySnapshot>(
       stream: _eventsStream,
       builder: (ctx, snap) {
-        final events = (snap.data?.docs ?? [])
-            .map((d) => EventModel.fromDoc(d))
-            .toList();
+        // Surfaced instead of silently falling through to the "no events"
+        // empty state — that's exactly what hid the missing-index failure
+        // this query used to have.
+        if (snap.hasError) {
+          return _banner('Could not load events: ${snap.error}');
+        }
+        final events =
+            (snap.data?.docs ?? []).map((d) => EventModel.fromDoc(d)).toList()
+              ..sort((a, b) => b.date.compareTo(a.date));
         if (events.isNotEmpty && _event == null) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted && _event == null) _selectEvent(events.first);
@@ -169,62 +169,91 @@ class _OrgRegistrationFormsScreenState
         if (events.isEmpty) {
           return _banner('No events found for this organization yet.');
         }
+        // This is the primary control on the page — everything below it
+        // (search, results) depends on what's picked here. It used to be a
+        // slim, easy-to-scroll-past bar with a tiny unlabeled icon; sized
+        // and labeled up so it reads as "start here," not just another
+        // filter chip.
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFEBEEF3)),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: UpriseColors.primaryDark.withAlpha(60),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withAlpha(10),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+            ],
           ),
           child: Row(
             children: [
-              Icon(
-                Icons.assignment_outlined,
-                size: 14,
-                color: UpriseColors.primaryDark,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Event',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF64748B),
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: UpriseColors.primaryDark.withAlpha(26),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  Icons.event_note_rounded,
+                  size: 19,
+                  color: UpriseColors.primaryDark,
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _event?.id,
-                    isExpanded: true,
-                    icon: const Icon(
-                      Icons.keyboard_arrow_down_rounded,
-                      size: 18,
-                      color: Color(0xFFB0BAC8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'SELECT EVENT',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.6,
+                        color: UpriseColors.primaryDark,
+                      ),
                     ),
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w600,
-                      color: const Color(0xFF1A202C),
+                    DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _event?.id,
+                        isExpanded: true,
+                        icon: const Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          size: 20,
+                          color: Color(0xFFB0BAC8),
+                        ),
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF1A202C),
+                        ),
+                        items: events
+                            .map(
+                              (e) => DropdownMenuItem(
+                                value: e.id,
+                                child: Text(
+                                  '${e.title} — ${DateFormat('MMM d, yyyy').format(e.date)}',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) {
+                          if (v != null) {
+                            _selectEvent(events.firstWhere((e) => e.id == v));
+                          }
+                        },
+                      ),
                     ),
-                    items: events
-                        .map(
-                          (e) => DropdownMenuItem(
-                            value: e.id,
-                            child: Text(
-                              '${e.title} — ${DateFormat('MMM d, yyyy').format(e.date)}',
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (v) {
-                      if (v != null) {
-                        _selectEvent(events.firstWhere((e) => e.id == v));
-                      }
-                    },
-                  ),
+                  ],
                 ),
               ),
             ],
@@ -396,6 +425,7 @@ class _OrgRegistrationFormsScreenState
           children: [
             resultsLabel,
             Container(
+              clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
@@ -452,64 +482,114 @@ class _FormRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        border: isLast
-            ? null
-            : const Border(bottom: BorderSide(color: Color(0xFFF3F4F8))),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name.isEmpty ? '—' : name,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF1A202C),
+    final displayName = name.isEmpty ? '—' : name;
+    final parts = displayName.trim().split(RegExp(r'\s+'));
+    final initials =
+        parts.length >= 2 && parts[0].isNotEmpty && parts[1].isNotEmpty
+        ? '${parts[0][0]}${parts[1][0]}'.toUpperCase()
+        : (displayName.isNotEmpty && displayName != '—'
+              ? displayName[0].toUpperCase()
+              : '?');
+
+    // Whole row is tappable (with a trailing chevron affordance, same
+    // pattern as the dashboard's drill-down tables) instead of a bare text
+    // link being the only clickable thing — plus an avatar so the row
+    // isn't just two lines of plain text.
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: InkWell(
+        onTap: onView,
+        hoverColor: const Color(0xFFF8F9FB),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            border: isLast
+                ? null
+                : const Border(bottom: BorderSide(color: Color(0xFFF3F4F8))),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: UpriseColors.primaryDark.withAlpha(24),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Center(
+                  child: Text(
+                    initials,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: UpriseColors.primaryDark,
+                    ),
                   ),
                 ),
-                if (studentId.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    studentId,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      displayName,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF1A202C),
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (studentId.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        studentId,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 11.5,
+                          color: const Color(0xFF94A3B8),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (!hasAnswers)
+                Container(
+                  margin: const EdgeInsets.only(right: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    'No form data',
                     style: GoogleFonts.beVietnamPro(
-                      fontSize: 11.5,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
                       color: const Color(0xFF94A3B8),
                     ),
                   ),
-                ],
-              ],
-            ),
-          ),
-          if (!hasAnswers)
-            Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: Text(
-                'No form on this event',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 11.5,
-                  color: const Color(0xFFB0BAC8),
+                ),
+              Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8F9FB),
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: const Icon(
+                  Icons.chevron_right_rounded,
+                  size: 16,
+                  color: Color(0xFF64748B),
                 ),
               ),
-            ),
-          TextButton.icon(
-            onPressed: onView,
-            icon: const Icon(Icons.visibility_outlined, size: 16),
-            label: Text(
-              'View Answers',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            style: TextButton.styleFrom(foregroundColor: UpriseColors.info),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

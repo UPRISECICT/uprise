@@ -14,6 +14,8 @@ import '../../../widgets/admin_export_button.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import 'export_util.dart';
 import 'export_pdf.dart';
+import 'export_excel.dart';
+import 'package:fl_chart/fl_chart.dart';
 
 // ── Design tokens ────────────────────────────────────────────────────────────
 class _DS {
@@ -73,7 +75,6 @@ class _C {
 class _AnalyticsData {
   final List<Map<String, dynamic>> feedbacks;
   final List<Map<String, dynamic>> events;
-  final List<Map<String, dynamic>> evalForms;
   final List<Map<String, dynamic>> transactions;
 
   final Map<String, String> _eventTitleCache = {};
@@ -82,7 +83,6 @@ class _AnalyticsData {
     required this.feedbacks,
     this.transactions = const [],
     required this.events,
-    required this.evalForms,
   });
 
   int get totalFeedbacks => feedbacks.length;
@@ -350,11 +350,6 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
         db.collection('event_feedback').get(),
       ]);
 
-      final evalFormsSnapshot = await db
-          .collection('eval_forms')
-          .where('orgId', isEqualTo: widget.orgId)
-          .get();
-
       final transactionsSnapshot = await db
           .collection('transactions')
           .where('orgId', isEqualTo: widget.orgId)
@@ -372,10 +367,6 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
           .where((f) => orgEventIds.contains(f['eventId']))
           .toList();
 
-      final evalForms = evalFormsSnapshot.docs
-          .map((d) => {...d.data(), 'id': d.id})
-          .toList();
-
       final transactions = transactionsSnapshot.docs
           .map((d) => {...d.data(), 'id': d.id})
           .toList();
@@ -383,7 +374,6 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
       return _AnalyticsData(
         feedbacks: feedbacks,
         events: events,
-        evalForms: evalForms,
         transactions: transactions,
       );
     } catch (e) {
@@ -627,38 +617,96 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                                   final eventFinance = analyticsData
                                       .financeForEvent(eventTitle);
                                   final money = NumberFormat('#,###.00');
-                                  final insightBody = StringBuffer(
-                                    avgRating != null
-                                        ? 'Average rating: ${avgRating.toStringAsFixed(1)}★ from ${ratings.length} response${ratings.length == 1 ? '' : 's'}.'
-                                        : 'No feedback submitted for this event yet.',
-                                  );
-                                  if (checkedIn > 0) {
-                                    insightBody.write(
-                                      '\n$feedbackCount of $checkedIn checked-in attendee${checkedIn == 1 ? '' : 's'} '
-                                      'have submitted feedback${notYetFeedback > 0 ? ' ($notYetFeedback still pending)' : ''}.',
-                                    );
-                                  }
-                                  if (topComment != null) {
-                                    insightBody.write(
-                                      '\n"$topComment" — highest-rated response.',
-                                    );
-                                  }
-                                  if (lowComment != null &&
-                                      lowComment != topComment &&
-                                      avgRating != null &&
-                                      avgRating < 4.5) {
-                                    insightBody.write(
-                                      '\n"$lowComment" — lowest-rated response, worth a look.',
-                                    );
-                                  }
-                                  String? insightNote;
+                                  double? net;
                                   if (eventFinance != null) {
-                                    final net =
+                                    net =
                                         eventFinance.income -
                                         eventFinance.expense;
-                                    insightNote = net >= 0
-                                        ? 'Net gain of ₱${money.format(net)}.'
-                                        : 'Net loss of ₱${money.format(-net)}.';
+                                  }
+
+                                  // Compact one-line facts instead of one
+                                  // concatenated paragraph — each is its own
+                                  // scannable row rather than a sentence
+                                  // buried mid-text.
+                                  Widget miniInsightRow(
+                                    IconData icon,
+                                    Color color,
+                                    String text,
+                                  ) {
+                                    return Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 10,
+                                      ),
+                                      margin: const EdgeInsets.only(bottom: 8),
+                                      decoration: BoxDecoration(
+                                        color: color.withAlpha(15),
+                                        borderRadius: BorderRadius.circular(
+                                          _DS.radiusSm,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Icon(icon, size: 15, color: color),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Text(
+                                              text,
+                                              style: GoogleFonts.inter(
+                                                fontSize: 12.5,
+                                                color: _C.charcoal,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  }
+
+                                  Widget commentQuote(
+                                    String text, {
+                                    required bool isTop,
+                                  }) {
+                                    final c = isTop ? _C.green : _C.red;
+                                    return Container(
+                                      padding: const EdgeInsets.all(10),
+                                      margin: const EdgeInsets.only(bottom: 8),
+                                      decoration: BoxDecoration(
+                                        color: _C.surface,
+                                        borderRadius: BorderRadius.circular(
+                                          _DS.radiusSm,
+                                        ),
+                                        border: Border(
+                                          left: BorderSide(color: c, width: 3),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Icon(
+                                            isTop
+                                                ? Icons.thumb_up_alt_outlined
+                                                : Icons.flag_outlined,
+                                            size: 14,
+                                            color: c,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              '"$text"',
+                                              style: GoogleFonts.inter(
+                                                fontSize: 12,
+                                                color: _C.muted,
+                                                fontStyle: FontStyle.italic,
+                                                height: 1.4,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
                                   }
 
                                   return Column(
@@ -698,16 +746,47 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                                         ],
                                       ),
                                       const SizedBox(height: 16),
-                                      _InsightTile(
-                                        icon: Icons.auto_awesome_rounded,
-                                        color: avgRating == null
+                                      Text(
+                                        'Insights',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: _C.charcoal,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      miniInsightRow(
+                                        Icons.star_rounded,
+                                        avgRating == null
                                             ? _C.muted
                                             : _ratingColor(avgRating),
-                                        label: 'Insights',
-                                        body: insightBody.toString(),
-                                        note: insightNote,
+                                        avgRating != null
+                                            ? '${avgRating.toStringAsFixed(1)}★ average from ${ratings.length} response${ratings.length == 1 ? '' : 's'}'
+                                            : 'No feedback submitted for this event yet',
                                       ),
-                                      const SizedBox(height: 20),
+                                      if (checkedIn > 0)
+                                        miniInsightRow(
+                                          Icons.fact_check_outlined,
+                                          _C.blue,
+                                          '$feedbackCount of $checkedIn checked-in attendee${checkedIn == 1 ? '' : 's'} submitted feedback'
+                                          '${notYetFeedback > 0 ? ' ($notYetFeedback pending)' : ''}',
+                                        ),
+                                      if (net != null)
+                                        miniInsightRow(
+                                          Icons.payments_outlined,
+                                          net >= 0 ? _C.green : _C.red,
+                                          net >= 0
+                                              ? 'Net gain of ₱${money.format(net)}'
+                                              : 'Net loss of ₱${money.format(-net)}',
+                                        ),
+                                      if (topComment != null)
+                                        commentQuote(topComment, isTop: true),
+                                      if (lowComment != null &&
+                                          lowComment != topComment &&
+                                          avgRating != null &&
+                                          avgRating < 4.5)
+                                        commentQuote(lowComment, isTop: false),
+                                      const SizedBox(height: 10),
                                       const Divider(
                                         height: 1,
                                         color: _C.border,
@@ -1717,15 +1796,20 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
 
     try {
       final stamp = DateFormat('yyyyMMdd').format(DateTime.now());
-      if (choice == 'csv') {
-        final csv = [
-          headers,
-          ...rows,
-        ].map((row) => row.map((c) => '"$c"').join(',')).join('\n');
-        await OrgExportUtil.saveText(
-          csv,
-          'event_analytics_$stamp.csv',
-          mimeType: 'text/csv',
+      // AdminExportButton's menu only ever sends 'excel' or 'pdf' — this
+      // used to check for 'csv' (a value that dropdown never sends), so
+      // picking "Export as Excel" silently produced no file at all while
+      // still showing the "Exported" success snackbar below.
+      if (choice == 'excel') {
+        final bytes = OrgExportExcel.generateStyledTable(
+          title: 'Event Analytics',
+          headers: headers,
+          rows: rows,
+        );
+        await OrgExportUtil.saveBytes(
+          bytes,
+          'event_analytics_$stamp.xlsx',
+          mimeType: orgXlsxMimeType,
         );
       } else if (choice == 'pdf') {
         final pdfBytes = await OrgExportPdf.generateTablePdf(
@@ -1923,14 +2007,23 @@ class _EventProductCard extends StatelessWidget {
   }
 }
 
+// A real bar chart (fl_chart) instead of a stacked list of labeled progress
+// bars — the numbers were all there before, but a chart reads at a glance
+// where a list has to be read line by line. Capped to the top N so bars
+// (and their labels) stay legible regardless of how many events an org
+// has — the Events tab already lists every event individually if a full
+// breakdown is needed.
 class _RatingByEventChart extends StatelessWidget {
   final _AnalyticsData data;
   const _RatingByEventChart({required this.data});
+
+  static const int _maxBars = 8;
 
   @override
   Widget build(BuildContext context) {
     final sorted = data.avgByEvent.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
+    final shown = sorted.take(_maxBars).toList();
 
     return Container(
       decoration: BoxDecoration(
@@ -1969,11 +2062,18 @@ class _RatingByEventChart extends StatelessWidget {
                     color: _C.charcoal,
                   ),
                 ),
+                if (sorted.length > shown.length) ...[
+                  const Spacer(),
+                  Text(
+                    'Top ${shown.length} of ${sorted.length}',
+                    style: GoogleFonts.inter(fontSize: 11, color: _C.muted),
+                  ),
+                ],
               ],
             ),
           ),
           const Divider(height: 1, color: _C.border),
-          if (sorted.isEmpty)
+          if (shown.isEmpty)
             Padding(
               padding: const EdgeInsets.all(32),
               child: Center(
@@ -1984,58 +2084,117 @@ class _RatingByEventChart extends StatelessWidget {
               ),
             )
           else
-            // Capped to ~5 rows visible with the rest reachable by scrolling
-            // inside this box, instead of the list just growing the whole
-            // page taller the more events an org has.
-            SizedBox(
-              height: math.min(sorted.length * 50.0, 5 * 50.0),
-              child: ListView.separated(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                itemCount: sorted.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (context, i) {
-                  final entry = sorted[i];
-                  final title = data.eventDisplayTitle(entry.key);
-                  final score = entry.value;
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.inter(
-                                fontSize: 12.5,
-                                color: _C.charcoal,
-                              ),
-                            ),
-                          ),
-                          Text(
-                            score.toStringAsFixed(1),
-                            style: GoogleFonts.inter(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w700,
-                              color: _ratingColor(score),
-                            ),
-                          ),
-                        ],
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 20, 20, 8),
+              child: SizedBox(
+                height: 220,
+                child: BarChart(
+                  BarChartData(
+                    maxY: 5,
+                    alignment: BarChartAlignment.spaceAround,
+                    gridData: FlGridData(
+                      show: true,
+                      drawVerticalLine: false,
+                      horizontalInterval: 1,
+                      getDrawingHorizontalLine: (_) => const FlLine(
+                        color: Color(0xFFF1F5F9),
+                        strokeWidth: 1,
                       ),
-                      const SizedBox(height: 4),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(99),
-                        child: LinearProgressIndicator(
-                          value: score / 5.0,
-                          backgroundColor: const Color(0xFFF1F5F9),
-                          color: _ratingColor(score),
-                          minHeight: 6,
+                    ),
+                    borderData: FlBorderData(show: false),
+                    titlesData: FlTitlesData(
+                      topTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false),
+                      ),
+                      rightTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false),
+                      ),
+                      leftTitles: AxisTitles(
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          reservedSize: 22,
+                          interval: 1,
+                          getTitlesWidget: (v, _) => Text(
+                            '${v.toInt()}',
+                            style: GoogleFonts.inter(
+                              fontSize: 10,
+                              color: _C.muted,
+                            ),
+                          ),
                         ),
                       ),
-                    ],
-                  );
-                },
+                      bottomTitles: AxisTitles(
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          reservedSize: 34,
+                          getTitlesWidget: (v, _) {
+                            final i = v.toInt();
+                            if (i < 0 || i >= shown.length) {
+                              return const SizedBox.shrink();
+                            }
+                            final title = data.eventDisplayTitle(shown[i].key);
+                            final short = title.length > 10
+                                ? '${title.substring(0, 9)}…'
+                                : title;
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Text(
+                                short,
+                                style: GoogleFonts.inter(
+                                  fontSize: 10,
+                                  color: _C.muted,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                    barTouchData: BarTouchData(
+                      touchTooltipData: BarTouchTooltipData(
+                        getTooltipColor: (_) => _C.charcoal,
+                        getTooltipItem: (group, _, rod, __) {
+                          final title = data.eventDisplayTitle(
+                            shown[group.x].key,
+                          );
+                          return BarTooltipItem(
+                            '$title\n',
+                            GoogleFonts.inter(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 11,
+                            ),
+                            children: [
+                              TextSpan(
+                                text: '${rod.toY.toStringAsFixed(1)} ★ average',
+                                style: GoogleFonts.inter(
+                                  color: Colors.white70,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                    barGroups: List.generate(shown.length, (i) {
+                      final score = shown[i].value;
+                      return BarChartGroupData(
+                        x: i,
+                        barRods: [
+                          BarChartRodData(
+                            toY: score,
+                            color: _ratingColor(score),
+                            width: 22,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ],
+                      );
+                    }),
+                  ),
+                ),
               ),
             ),
         ],
@@ -2044,9 +2203,16 @@ class _RatingByEventChart extends StatelessWidget {
   }
 }
 
+// Grouped bar chart (income vs. expense per event) via fl_chart, replacing
+// a stacked list of two progress bars per row — comparing bar heights at a
+// glance is easier to read than scanning fraction-filled bars line by line.
+// Exact peso amounts move to the tooltip instead of a persistent label, same
+// tradeoff as _RatingByEventChart.
 class _FinanceByEventChart extends StatelessWidget {
   final _AnalyticsData data;
   const _FinanceByEventChart({required this.data});
+
+  static const int _maxBars = 6;
 
   Widget _legendDot(Color color, String label) {
     return Row(
@@ -2060,19 +2226,6 @@ class _FinanceByEventChart extends StatelessWidget {
         const SizedBox(width: 5),
         Text(label, style: GoogleFonts.inter(fontSize: 11, color: _C.muted)),
       ],
-    );
-  }
-
-  Widget _financeBar(double value, double maxValue, Color color) {
-    final fraction = maxValue <= 0 ? 0.0 : (value / maxValue).clamp(0.0, 1.0);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(99),
-      child: LinearProgressIndicator(
-        value: fraction,
-        backgroundColor: const Color(0xFFF1F5F9),
-        color: color,
-        minHeight: 6,
-      ),
     );
   }
 
@@ -2101,16 +2254,18 @@ class _FinanceByEventChart extends StatelessWidget {
       );
     }
 
-    final maxValue = finance.values.fold<double>(
-      0,
-      (m, f) => math.max(m, math.max(f.income, f.expense)),
-    );
     final entries = finance.entries.toList()
       ..sort(
         (a, b) => (b.value.income - b.value.expense).abs().compareTo(
           (a.value.income - a.value.expense).abs(),
         ),
       );
+    final shown = entries.take(_maxBars).toList();
+    final maxValue = shown.fold<double>(
+      0,
+      (m, e) => math.max(m, math.max(e.value.income, e.value.expense)),
+    );
+    final chartMaxY = maxValue <= 0 ? 1.0 : maxValue * 1.15;
 
     return Container(
       decoration: BoxDecoration(
@@ -2164,59 +2319,130 @@ class _FinanceByEventChart extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (entries.length > shown.length)
+                  Text(
+                    'Top ${shown.length} of ${entries.length}',
+                    style: GoogleFonts.inter(fontSize: 11, color: _C.muted),
+                  ),
               ],
             ),
           ),
           const Divider(height: 1, color: _C.border),
-          // Same capped-and-scrollable treatment as _RatingByEventChart's
-          // list, just a taller per-row estimate since each row here has two
-          // bars (income + expense) instead of one.
-          SizedBox(
-            height: math.min(entries.length * 70.0, 5 * 70.0),
-            child: ListView.separated(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-              itemCount: entries.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemBuilder: (context, i) {
-                final entry = entries[i];
-                final title = entry.key;
-                final f = entry.value;
-                final net = f.income - f.expense;
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.inter(
-                              fontSize: 12.5,
-                              color: _C.charcoal,
-                            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 20, 20, 8),
+            child: SizedBox(
+              height: 220,
+              child: BarChart(
+                BarChartData(
+                  maxY: chartMaxY,
+                  alignment: BarChartAlignment.spaceAround,
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    horizontalInterval: chartMaxY / 4,
+                    getDrawingHorizontalLine: (_) =>
+                        const FlLine(color: Color(0xFFF1F5F9), strokeWidth: 1),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  titlesData: FlTitlesData(
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 44,
+                        interval: chartMaxY / 4,
+                        getTitlesWidget: (v, _) => Text(
+                          '₱${NumberFormat.compact().format(v)}',
+                          style: GoogleFonts.inter(
+                            fontSize: 9,
+                            color: _C.muted,
                           ),
                         ),
-                        Text(
-                          net >= 0
-                              ? '+₱${money.format(net)}'
-                              : '-₱${money.format(-net)}',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
+                      ),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 34,
+                        getTitlesWidget: (v, _) {
+                          final i = v.toInt();
+                          if (i < 0 || i >= shown.length) {
+                            return const SizedBox.shrink();
+                          }
+                          final title = shown[i].key;
+                          final short = title.length > 10
+                              ? '${title.substring(0, 9)}…'
+                              : title;
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              short,
+                              style: GoogleFonts.inter(
+                                fontSize: 10,
+                                color: _C.muted,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  barTouchData: BarTouchData(
+                    touchTooltipData: BarTouchTooltipData(
+                      getTooltipColor: (_) => _C.charcoal,
+                      getTooltipItem: (group, _, rod, rodIndex) {
+                        final title = shown[group.x].key;
+                        final label = rodIndex == 0 ? 'Income' : 'Expense';
+                        return BarTooltipItem(
+                          '$title\n',
+                          GoogleFonts.inter(
+                            color: Colors.white,
                             fontWeight: FontWeight.w700,
-                            color: net >= 0 ? _C.green : _C.red,
+                            fontSize: 11,
                           ),
+                          children: [
+                            TextSpan(
+                              text: '$label: ₱${money.format(rod.toY)}',
+                              style: GoogleFonts.inter(
+                                color: Colors.white70,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                  barGroups: List.generate(shown.length, (i) {
+                    final f = shown[i].value;
+                    return BarChartGroupData(
+                      x: i,
+                      barsSpace: 4,
+                      barRods: [
+                        BarChartRodData(
+                          toY: f.income,
+                          color: _C.green,
+                          width: 10,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                        BarChartRodData(
+                          toY: f.expense,
+                          color: _C.red,
+                          width: 10,
+                          borderRadius: BorderRadius.circular(3),
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 6),
-                    _financeBar(f.income, maxValue, _C.green),
-                    const SizedBox(height: 4),
-                    _financeBar(f.expense, maxValue, _C.red),
-                  ],
-                );
-              },
+                    );
+                  }),
+                ),
+              ),
             ),
           ),
         ],
@@ -2445,74 +2671,4 @@ class _DonutPainter extends CustomPainter {
   @override
   bool shouldRepaint(_DonutPainter old) =>
       old.total != total || old.label != label;
-}
-
-class _InsightTile extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final String label;
-  final String body;
-  final String? note;
-  const _InsightTile({
-    required this.icon,
-    required this.color,
-    required this.label,
-    required this.body,
-    this.note,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: color.withAlpha(15),
-        borderRadius: BorderRadius.circular(_DS.radiusSm),
-        border: Border.all(color: color.withAlpha(46)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 16, color: color),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: GoogleFonts.inter(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                    color: _C.charcoal,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  body,
-                  style: GoogleFonts.inter(
-                    fontSize: 12.5,
-                    color: _C.muted,
-                    height: 1.4,
-                  ),
-                ),
-                if (note != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    note!,
-                    style: GoogleFonts.inter(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w600,
-                      color: color,
-                      height: 1.4,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }

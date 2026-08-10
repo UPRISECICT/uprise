@@ -156,8 +156,26 @@ class _DynamicRegistrationDialogState extends State<DynamicRegistrationDialog> {
         }
         final eventSnap = await tx.get(eventRef);
         if (!eventSnap.exists) throw Exception('Event not found.');
-        // No slot check – org does not enforce capacity limits.
         final eventData = eventSnap.data() as Map<String, dynamic>;
+
+        // Optional, org-set — null means unlimited slots. Not part of the
+        // transaction's document reads (aggregate counts can't be), so
+        // there's a small window where two students at the very last slot
+        // could both get through; acceptable for a club event RSVP list
+        // rather than a strict-oversell-prevention ticketing system.
+        final capacity = (eventData['capacity'] as num?)?.toInt();
+        if (capacity != null) {
+          final countSnap = await FirebaseFirestore.instance
+              .collection('registrations')
+              .where('eventId', isEqualTo: widget.eventId)
+              .count()
+              .get();
+          if ((countSnap.count ?? 0) >= capacity) {
+            throw Exception(
+              'This event has reached its maximum capacity of $capacity and is no longer accepting registrations.',
+            );
+          }
+        }
 
         final userDoc = await tx.get(
           FirebaseFirestore.instance.collection('users').doc(user.uid),

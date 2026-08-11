@@ -1,4 +1,4 @@
-// lib/screens/web/admin/adviser_roles.dart
+﻿// lib/screens/web/admin/adviser_roles.dart
 
 import 'dart:async';
 import 'dart:convert';
@@ -691,7 +691,14 @@ class _AdviserRolesState extends State<AdviserRoles> {
       ]);
       final orgSnap = results[0];
       final rolesSnap = results[1];
-      final orgs = orgSnap.docs.map(OrgModel.fromDoc).toList()
+      // 🔥 FIX: Only load ACTIVE organizations
+      final orgs = orgSnap.docs
+          .where((doc) {
+            final data = doc.data();
+            return data['status'] != 'archived'; // or data['isArchived'] != true
+          })
+          .map(OrgModel.fromDoc)
+          .toList()
         ..sort((a, b) => a.name.compareTo(b.name));
 
       final validRoles = rolesSnap.docs.where((doc) {
@@ -898,6 +905,14 @@ class _AdviserRolesState extends State<AdviserRoles> {
           final orgId = (data['orgId'] ?? '').toString().trim();
           final orgName = (data['orgName'] ?? '').toString().trim();
           return orgId.isNotEmpty && orgName.isNotEmpty;
+        }).toList();
+
+        // 🔥 FIX: Only show advisers from ACTIVE organizations
+        final activeOrgIds = _orgs.where((o) => o.id.isNotEmpty).map((o) => o.id).toSet();
+        docs = docs.where((d) {
+          final data = d.data() as Map<String, dynamic>;
+          final orgId = (data['orgId'] ?? '').toString().trim();
+          return activeOrgIds.contains(orgId);
         }).toList();
 
         final _searchTerm = _searchController.text.trim().toLowerCase();
@@ -2026,75 +2041,125 @@ class _AdviserRolesState extends State<AdviserRoles> {
                               'Organization',
                               icon: Icons.business_outlined,
                             ),
-                            AnchoredDropdownField<OrgModel>(
-                              value: selectedOrg,
-                              decoration: _DS.inputDecoration(
-                                'Select Organization',
-                                icon: Icons.business_outlined,
-                                required: true,
-                              ),
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 13,
-                                color: const Color(0xFF1A202C),
-                              ),
-                              items: _orgs
-                                  .map(
-                                    (o) => DropdownMenuItem(
-                                      value: o,
-                                      child: Row(
+                            if (isEdit) ...[
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: const Color(0xFFE2E6EA)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    _OrgAvatar(
+                                      selectedOrg?.abbrev ?? '??',
+                                      logoUrl: selectedOrg?.logoUrl,
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          _OrgAvatar(
-                                            o.abbrev.isNotEmpty
-                                                ? o.abbrev
-                                                : o.name.substring(
-                                                    0,
-                                                    o.name.length.clamp(0, 2),
-                                                  ),
-                                            logoUrl: o.logoUrl,
-                                          ),
-                                          const SizedBox(width: 10),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Text(
-                                                  o.name,
-                                                  style:
-                                                      GoogleFonts.beVietnamPro(
-                                                        fontSize: 13,
-                                                        fontWeight:
-                                                            FontWeight.w600,
-                                                      ),
-                                                ),
-                                                if (o.tag.isNotEmpty)
-                                                  Text(
-                                                    o.tag,
-                                                    style:
-                                                        GoogleFonts.beVietnamPro(
-                                                          fontSize: 11,
-                                                          color: const Color(
-                                                            0xFF64748B,
-                                                          ),
-                                                        ),
-                                                  ),
-                                              ],
+                                          Text(
+                                            selectedOrg?.name ?? '—',
+                                            style: GoogleFonts.beVietnamPro(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                              color: const Color(0xFF1A202C),
                                             ),
                                           ),
+                                          if (selectedOrg?.tag != null && selectedOrg!.tag.isNotEmpty)
+                                            Text(
+                                              selectedOrg!.tag,
+                                              style: GoogleFonts.beVietnamPro(
+                                                fontSize: 12,
+                                                color: const Color(0xFF64748B),
+                                              ),
+                                            ),
                                         ],
                                       ),
                                     ),
-                                  )
-                                  .toList(),
-                              onChanged: (v) {
-                                setDlg(() => selectedOrg = v);
-                                onOrgChanged(v);
-                              },
-                              validator: (_) => selectedOrg == null
-                                  ? 'Select an organization'
-                                  : null,
-                            ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF64748B).withAlpha(20),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        'Locked',
+                                        style: GoogleFonts.beVietnamPro(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w600,
+                                          color: const Color(0xFF64748B),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ] else ...[
+                              AnchoredDropdownField<OrgModel>(
+                                value: selectedOrg,
+                                decoration: _DS.inputDecoration(
+                                  'Select Organization',
+                                  icon: Icons.business_outlined,
+                                  required: true,
+                                ),
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 13,
+                                  color: const Color(0xFF1A202C),
+                                ),
+                                items: _orgs
+                                    .map(
+                                      (o) => DropdownMenuItem(
+                                        value: o,
+                                        child: Row(
+                                          children: [
+                                            _OrgAvatar(
+                                              o.abbrev.isNotEmpty
+                                                  ? o.abbrev
+                                                  : o.name.substring(0, o.name.length.clamp(0, 2)),
+                                              logoUrl: o.logoUrl,
+                                            ),
+                                            const SizedBox(width: 10),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Text(
+                                                    o.name,
+                                                    style: GoogleFonts.beVietnamPro(
+                                                      fontSize: 13,
+                                                      fontWeight: FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                  if (o.tag.isNotEmpty)
+                                                    Text(
+                                                      o.tag,
+                                                      style: GoogleFonts.beVietnamPro(
+                                                        fontSize: 11,
+                                                        color: const Color(0xFF64748B),
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                                onChanged: (v) {
+                                  setDlg(() => selectedOrg = v);
+                                  onOrgChanged(v);
+                                },
+                                validator: (_) => selectedOrg == null
+                                    ? 'Select an organization'
+                                    : null,
+                              ),
+                            ],
+
                             if (isEdit &&
                                 selectedOrg != null &&
                                 selectedOrg!.id != originalOrgId)

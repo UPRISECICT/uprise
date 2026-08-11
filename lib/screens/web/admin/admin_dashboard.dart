@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -3137,48 +3137,52 @@ class _DashboardHomeState extends State<DashboardHome> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                padding: const EdgeInsets.fromLTRB(24, 20, 16, 18),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFFBF5),
-                  border: const Border(
-                    bottom: BorderSide(color: Color(0xFFF1F5F9)),
-                  ),
-                  borderRadius: BorderRadius.vertical(
-                    top: Radius.circular(_DS.radiusLg),
-                  ),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        title,
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFF1A202C),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: InkWell(
-                        onTap: () => Navigator.pop(ctx),
-                        borderRadius: BorderRadius.circular(20),
-                        child: const Padding(
-                          padding: EdgeInsets.all(2),
-                          child: Icon(
-                            Icons.close_rounded,
-                            size: 20,
-                            color: Color(0xFF9AA5B4),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+  padding: const EdgeInsets.fromLTRB(24, 20, 16, 18),
+  decoration: BoxDecoration(
+    gradient: LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        UpriseColors.primaryDark,
+        UpriseColors.primaryDark.withAlpha(225),
+      ],
+    ),
+    borderRadius: BorderRadius.vertical(
+      top: Radius.circular(_DS.radiusLg),
+    ),
+  ),
+  child: Row(
+    crossAxisAlignment: CrossAxisAlignment.center,
+    children: [
+      Expanded(
+        child: Text(
+          title,
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 17,
+            fontWeight: FontWeight.w700,
+            color: Colors.white,
+          ),
+        ),
+      ),
+      const SizedBox(width: 12),
+      MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: InkWell(
+          onTap: () => Navigator.pop(context),
+          borderRadius: BorderRadius.circular(20),
+          child: const Padding(
+            padding: EdgeInsets.all(2),
+            child: Icon(
+              Icons.close_rounded,
+              size: 20,
+              color: Colors.white70,
+            ),
+          ),
+        ),
+      ),
+    ],
+  ),
+),
               Flexible(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(24, 18, 24, 4),

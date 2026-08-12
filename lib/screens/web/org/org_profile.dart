@@ -8,6 +8,7 @@
 
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -17,9 +18,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:excel/excel.dart' hide Border, TextSpan;
 import 'package:csv/csv.dart';
-import 'package:cross_file/cross_file.dart';
 import 'package:http/http.dart' as http;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -121,6 +122,29 @@ String _mimeTypeFromBytes(List<int> bytes) {
       bytes[3] == 0x46)
     return 'image/webp';
   return 'image/png';
+}
+
+// Logo/cover/adviser photos are stored as base64 data URIs directly on the
+// organization doc — compressing before encoding keeps them well under
+// Firestore's 1 MiB document limit (same approach used for product photos
+// in org_merchandise.dart and receipts in org_finance.dart).
+Future<Uint8List> _compressProfileImageForStorage(
+  Uint8List bytes, {
+  int maxDimension = 1000,
+  int quality = 75,
+}) async {
+  try {
+    final compressed = await FlutterImageCompress.compressWithList(
+      bytes,
+      minWidth: maxDimension,
+      minHeight: maxDimension,
+      quality: quality,
+      format: CompressFormat.jpeg,
+    );
+    return compressed.length < bytes.length ? compressed : bytes;
+  } catch (_) {
+    return bytes;
+  }
 }
 
 // MemoryImage's cache key is the decoded bytes object itself, not the
@@ -3085,7 +3109,9 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
                                           uid: uid,
                                           memberId: studentId,
                                         );
-                                        _snack('$memberName added as a member.');
+                                        _snack(
+                                          '$memberName added as a member.',
+                                        );
                                       }
                                     }
                                     await localLoad(searchCtrl.text);
@@ -4505,9 +4531,15 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
       if (result == null) return;
       final file = result.files.first;
       if (file.bytes == null) return;
-      final mime = _mimeTypeFromBytes(file.bytes!);
+      // Square-ish crops read best in the header/nav where a logo actually
+      // renders, so a smaller max dimension than cover photos is enough.
+      final compressed = await _compressProfileImageForStorage(
+        file.bytes!,
+        maxDimension: 600,
+      );
+      final mime = _mimeTypeFromBytes(compressed);
       setState(
-        () => _logoUrl = 'data:$mime;base64,${base64Encode(file.bytes!)}',
+        () => _logoUrl = 'data:$mime;base64,${base64Encode(compressed)}',
       );
     } catch (e) {
       if (mounted) _snack('Failed to load image: $e', isError: true);
@@ -4526,9 +4558,13 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
       if (result == null) return;
       final file = result.files.first;
       if (file.bytes == null) return;
-      final mime = _mimeTypeFromBytes(file.bytes!);
+      final compressed = await _compressProfileImageForStorage(
+        file.bytes!,
+        maxDimension: 1400,
+      );
+      final mime = _mimeTypeFromBytes(compressed);
       setState(
-        () => _coverPhotoUrl = 'data:$mime;base64,${base64Encode(file.bytes!)}',
+        () => _coverPhotoUrl = 'data:$mime;base64,${base64Encode(compressed)}',
       );
     } catch (e) {
       if (mounted) _snack('Failed to load image: $e', isError: true);
@@ -4547,10 +4583,11 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
       if (result == null) return;
       final file = result.files.first;
       if (file.bytes == null) return;
-      final mime = _mimeTypeFromBytes(file.bytes!);
+      final compressed = await _compressProfileImageForStorage(file.bytes!);
+      final mime = _mimeTypeFromBytes(compressed);
       setState(
         () =>
-            _adviserPhotoUrl = 'data:$mime;base64,${base64Encode(file.bytes!)}',
+            _adviserPhotoUrl = 'data:$mime;base64,${base64Encode(compressed)}',
       );
     } catch (e) {
       if (mounted) _snack('Failed to load image: $e', isError: true);
@@ -4794,6 +4831,7 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
                     color: Colors.white,
                     size: 20,
                   ),
+                  tooltip: 'Close',
                   onPressed: () => Navigator.pop(context),
                 ),
               ],
@@ -4863,6 +4901,14 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'PNG or JPG, square recommended (e.g. 500×500px), up to 5 MB.',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 11,
+                        color: _C.textFaint,
+                      ),
+                    ),
                     const SizedBox(height: 20),
 
                     // Cover photo
@@ -4912,6 +4958,14 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         foregroundColor: _C.primaryDark,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'PNG or JPG, wide image recommended (e.g. 16:9), up to 5 MB.',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 11,
+                        color: _C.textFaint,
                       ),
                     ),
                     const SizedBox(height: 20),
@@ -5521,6 +5575,7 @@ class _AddAdviserDialogState extends State<_AddAdviserDialog> {
                     color: Colors.white,
                     size: 20,
                   ),
+                  tooltip: 'Close',
                   onPressed: () => Navigator.pop(context),
                 ),
               ],

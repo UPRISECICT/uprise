@@ -951,6 +951,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
                         color: Colors.white,
                         size: 20,
                       ),
+                      tooltip: 'Close',
                       onPressed: () => Navigator.pop(ctx),
                     ),
                   ],
@@ -1700,6 +1701,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
                           color: Colors.white,
                           size: 20,
                         ),
+                        tooltip: 'Close',
                         onPressed: isUploading
                             ? null
                             : () => Navigator.pop(ctx),
@@ -2303,6 +2305,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
                           color: Colors.white,
                           size: 20,
                         ),
+                        tooltip: 'Close',
                         onPressed: isCreating ? null : () => Navigator.pop(ctx),
                       ),
                     ],
@@ -3342,15 +3345,21 @@ class _PageButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: enabled ? onTap : null,
-      borderRadius: BorderRadius.circular(6),
-      child: Padding(
-        padding: const EdgeInsets.all(4),
-        child: Icon(
-          icon,
-          size: 20,
-          color: enabled ? const Color(0xFF374151) : const Color(0xFFD1D5DB),
+    return Tooltip(
+      message: icon == Icons.chevron_left_rounded
+          ? 'Previous Page'
+          : 'Next Page',
+      waitDuration: const Duration(milliseconds: 400),
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(6),
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: Icon(
+            icon,
+            size: 20,
+            color: enabled ? const Color(0xFF374151) : const Color(0xFFD1D5DB),
+          ),
         ),
       ),
     );

@@ -77,6 +77,9 @@ bool shouldShowAnnouncementToStudent(Map<String, dynamic> data) {
   if (data['isPublished'] == false) {
     return false;
   }
+  if (data['isArchived'] == true) {
+    return false;
+  }
 
   final isScheduled = data['isScheduled'] == true;
   if (!isScheduled) {

@@ -334,6 +334,10 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
         .listen((snap) {
           for (final doc in snap.docs) {
             final d = doc.data() as Map<String, dynamic>;
+            if (d['isArchived'] == true) {
+              _annMap.remove(doc.id);
+              continue;
+            }
             final ts = d['timestamp'] as Timestamp?;
             final orgName = (d['authorName'] as String?) ?? 'UPRISE';
             _annMap[doc.id] = _FeedItem(

@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -19,7 +19,6 @@ import 'external_account.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../services/notification_service.dart';
 import 'reports_management.dart';
-import 'admin_message_reports.dart';
 import 'settings.dart';
 import 'admin_profile.dart';
 import 'export_pdf.dart' show AdminExportPdf;
@@ -79,13 +78,12 @@ const List<Map<String, dynamic>> _navItems = [
   {'label': 'External Account', 'icon': Icons.link_outlined},
   {'label': 'Reports & Analytics', 'icon': Icons.assessment_outlined},
   {'label': 'Activity Logs', 'icon': Icons.history_outlined},
-  {'label': 'Message Reports', 'icon': Icons.flag_outlined},
 ];
 
 // Sidebar groups: standalone items render directly, grouped items nest
 // under a collapsible parent (indices refer to _navItems / _screens).
 const List<int> _standaloneTop = [0];
-const List<int> _standaloneBottom = [9, 10];
+const List<int> _standaloneBottom = [9];
 const Map<String, Map<String, dynamic>> _navGroups = {
   'requests': {
     'label': 'Requests',
@@ -333,9 +331,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
       const ExternalAccount(),
       const ReportsManagement(),
       const ActivityLogs(),
-      const AdminMessageReports(), // index 10 — message reports
-      const AdminSettings(), // index 11 — settings
-      AdminProfile(onProfileUpdated: _fetchAdminData), // index 12 — my profile
+      const AdminSettings(), // index 10 — settings
+      AdminProfile(onProfileUpdated: _fetchAdminData), // index 11 — my profile
     ];
   }
 
@@ -503,8 +500,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
     if (index != null) _selectTab(index);
   }
 
-  // -1 is the "Settings" sentinel (maps to _screens[11]) and -2 is the
-  // "My Profile" sentinel (maps to _screens[12]) — neither has a slot in
+  // -1 is the "Settings" sentinel (maps to _screens[10]) and -2 is the
+  // "My Profile" sentinel (maps to _screens[11]) — neither has a slot in
   // _navItems/the sidebar, since both are reached from the top-right
   // profile menu instead.
   void _selectTab(int index) {
@@ -520,8 +517,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   int _screenIndexFor(int selectedIndex) {
-    if (selectedIndex == -1) return 11;
-    if (selectedIndex == -2) return 12;
+    if (selectedIndex == -1) return 10;
+    if (selectedIndex == -2) return 11;
     return selectedIndex;
   }
 
@@ -863,7 +860,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
       'External Account',
       'Reports & Analytics',
       'Activity Logs',
-      'Message Reports',
     ];
     return titles[_selectedIndex];
   }
@@ -1160,77 +1156,81 @@ class _AdminDashboardState extends State<AdminDashboard> {
           // viewport, which made the dropdown land in inconsistent spots
           // depending on window size instead of staying tucked under the
           // bell every time.
-          InkWell(
-            borderRadius: BorderRadius.circular(10),
-            onTap: () {
-              _fetchUnreadNotifications();
-              _showNotificationDropdown();
-            },
-            child: KeyedSubtree(
-              key: _bellKey,
-              child: StreamBuilder<int>(
-                // Live count so a new notification updates the badge
-                // immediately, without needing to reopen the dropdown.
-                stream: FirebaseAuth.instance.currentUser != null
-                    ? NotificationService.unreadCountStream(
-                        FirebaseAuth.instance.currentUser!.uid,
-                      )
-                    : const Stream<int>.empty(),
-                initialData: _unreadNotifications,
-                builder: (context, snapshot) {
-                  final unread = snapshot.data ?? _unreadNotifications;
-                  return Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      Container(
-                        width: 38,
-                        height: 38,
-                        decoration: BoxDecoration(
-                          color: unread > 0
-                              ? UpriseColors.primaryDark.withAlpha(12)
-                              : const Color(0xFFF8F9FB),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
+          Tooltip(
+            message: 'Notifications',
+            waitDuration: const Duration(milliseconds: 400),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: () {
+                _fetchUnreadNotifications();
+                _showNotificationDropdown();
+              },
+              child: KeyedSubtree(
+                key: _bellKey,
+                child: StreamBuilder<int>(
+                  // Live count so a new notification updates the badge
+                  // immediately, without needing to reopen the dropdown.
+                  stream: FirebaseAuth.instance.currentUser != null
+                      ? NotificationService.unreadCountStream(
+                          FirebaseAuth.instance.currentUser!.uid,
+                        )
+                      : const Stream<int>.empty(),
+                  initialData: _unreadNotifications,
+                  builder: (context, snapshot) {
+                    final unread = snapshot.data ?? _unreadNotifications;
+                    return Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
                             color: unread > 0
-                                ? UpriseColors.primaryDark.withAlpha(60)
-                                : const Color(0xFFE8ECF0),
+                                ? UpriseColors.primaryDark.withAlpha(12)
+                                : const Color(0xFFF8F9FB),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: unread > 0
+                                  ? UpriseColors.primaryDark.withAlpha(60)
+                                  : const Color(0xFFE8ECF0),
+                            ),
+                          ),
+                          child: Icon(
+                            unread > 0
+                                ? Icons.notifications_rounded
+                                : Icons.notifications_none_rounded,
+                            color: unread > 0
+                                ? UpriseColors.primaryDark
+                                : const Color(0xFF64748B),
+                            size: 18,
                           ),
                         ),
-                        child: Icon(
-                          unread > 0
-                              ? Icons.notifications_rounded
-                              : Icons.notifications_none_rounded,
-                          color: unread > 0
-                              ? UpriseColors.primaryDark
-                              : const Color(0xFF64748B),
-                          size: 18,
-                        ),
-                      ),
-                      if (unread > 0)
-                        Positioned(
-                          right: -3,
-                          top: -3,
-                          child: Container(
-                            width: 18,
-                            height: 18,
-                            alignment: Alignment.center,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFDC2626),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Text(
-                              unread > 9 ? '9+' : '$unread',
-                              style: GoogleFonts.beVietnamPro(
-                                color: Colors.white,
-                                fontSize: 9,
-                                fontWeight: FontWeight.w700,
+                        if (unread > 0)
+                          Positioned(
+                            right: -3,
+                            top: -3,
+                            child: Container(
+                              width: 18,
+                              height: 18,
+                              alignment: Alignment.center,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFDC2626),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text(
+                                unread > 9 ? '9+' : '$unread',
+                                style: GoogleFonts.beVietnamPro(
+                                  color: Colors.white,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                    ],
-                  );
-                },
+                      ],
+                    );
+                  },
+                ),
               ),
             ),
           ),
@@ -3137,52 +3137,56 @@ class _DashboardHomeState extends State<DashboardHome> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-  padding: const EdgeInsets.fromLTRB(24, 20, 16, 18),
-  decoration: BoxDecoration(
-    gradient: LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [
-        UpriseColors.primaryDark,
-        UpriseColors.primaryDark.withAlpha(225),
-      ],
-    ),
-    borderRadius: BorderRadius.vertical(
-      top: Radius.circular(_DS.radiusLg),
-    ),
-  ),
-  child: Row(
-    crossAxisAlignment: CrossAxisAlignment.center,
-    children: [
-      Expanded(
-        child: Text(
-          title,
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 17,
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
-          ),
-        ),
-      ),
-      const SizedBox(width: 12),
-      MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: InkWell(
-          onTap: () => Navigator.pop(context),
-          borderRadius: BorderRadius.circular(20),
-          child: const Padding(
-            padding: EdgeInsets.all(2),
-            child: Icon(
-              Icons.close_rounded,
-              size: 20,
-              color: Colors.white70,
-            ),
-          ),
-        ),
-      ),
-    ],
-  ),
-),
+                padding: const EdgeInsets.fromLTRB(24, 20, 16, 18),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      UpriseColors.primaryDark,
+                      UpriseColors.primaryDark.withAlpha(225),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(_DS.radiusLg),
+                  ),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: Tooltip(
+                        message: 'Close',
+                        waitDuration: const Duration(milliseconds: 400),
+                        child: InkWell(
+                          onTap: () => Navigator.pop(context),
+                          borderRadius: BorderRadius.circular(20),
+                          child: const Padding(
+                            padding: EdgeInsets.all(2),
+                            child: Icon(
+                              Icons.close_rounded,
+                              size: 20,
+                              color: Colors.white70,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               Flexible(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(24, 18, 24, 4),

@@ -1319,6 +1319,28 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
               .collection('organizations')
               .doc(org.id)
               .update({'status': newStatus});
+
+          // Archiving an org cascades to its adviser — an adviser's whole
+          // reason for being active is the org they advise, so an archived
+          // org shouldn't leave an "active" adviser role pointing at it.
+          // Deliberately one-directional: restoring the org does NOT
+          // auto-restore the adviser back, that's a separate action gated
+          // in adviser_roles.dart on the org being active again.
+          if (!isArchived) {
+            final linkedRoles = await FirebaseFirestore.instance
+                .collection('adviser_roles')
+                .where('orgId', isEqualTo: org.id)
+                .where('archived', isEqualTo: false)
+                .get();
+            if (linkedRoles.docs.isNotEmpty) {
+              final batch = FirebaseFirestore.instance.batch();
+              for (final doc in linkedRoles.docs) {
+                batch.update(doc.reference, {'archived': true});
+              }
+              await batch.commit();
+            }
+          }
+
           await ActivityLogger.log(
             action:
                 '${isArchived ? 'Restored' : 'Archived'} organization: ${org.name}',
@@ -1848,15 +1870,21 @@ class _PageButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: enabled ? onTap : null,
-      borderRadius: BorderRadius.circular(6),
-      child: Padding(
-        padding: const EdgeInsets.all(4),
-        child: Icon(
-          icon,
-          size: 20,
-          color: enabled ? const Color(0xFF374151) : const Color(0xFFD1D5DB),
+    return Tooltip(
+      message: icon == Icons.chevron_left_rounded
+          ? 'Previous Page'
+          : 'Next Page',
+      waitDuration: const Duration(milliseconds: 400),
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(6),
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: Icon(
+            icon,
+            size: 20,
+            color: enabled ? const Color(0xFF374151) : const Color(0xFFD1D5DB),
+          ),
         ),
       ),
     );
@@ -2108,6 +2136,7 @@ class _ViewOrganizationDialog extends StatelessWidget {
                       color: Colors.white,
                       size: 20,
                     ),
+                    tooltip: 'Close',
                     onPressed: onClose,
                   ),
                 ],
@@ -2684,15 +2713,19 @@ class _AdviserFormState extends State<_AdviserForm> {
                 ),
               ),
               if (widget.canRemove)
-                InkWell(
-                  onTap: widget.onRemove,
-                  borderRadius: BorderRadius.circular(6),
-                  child: Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: Icon(
-                      Icons.remove_circle_outline_rounded,
-                      size: 18,
-                      color: AdminColors.error,
+                Tooltip(
+                  message: 'Remove Adviser',
+                  waitDuration: const Duration(milliseconds: 400),
+                  child: InkWell(
+                    onTap: widget.onRemove,
+                    borderRadius: BorderRadius.circular(6),
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: Icon(
+                        Icons.remove_circle_outline_rounded,
+                        size: 18,
+                        color: AdminColors.error,
+                      ),
                     ),
                   ),
                 ),
@@ -3004,6 +3037,7 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
               color: Colors.white,
               size: 20,
             ),
+            tooltip: 'Close',
             onPressed: () => Navigator.pop(context),
           ),
         ],
@@ -3903,6 +3937,7 @@ class _EditOrganizationDialogState extends State<_EditOrganizationDialog> {
                       color: Colors.white,
                       size: 20,
                     ),
+                    tooltip: 'Close',
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],

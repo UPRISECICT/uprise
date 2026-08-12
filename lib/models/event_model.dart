@@ -7,6 +7,10 @@ class EventModel {
   final String description;
   final String location;
   final String category;
+
+  /// Org-typed custom label when [category] is 'Other' — blank otherwise.
+  final String otherCategory;
+  final bool issuesCertificate;
   final String orgName;
   final String orgId;
 
@@ -36,6 +40,8 @@ class EventModel {
     required this.description,
     required this.location,
     required this.category,
+    this.otherCategory = '',
+    this.issuesCertificate = false,
     required this.orgName,
     required this.orgId,
     required this.date,
@@ -105,6 +111,13 @@ class EventModel {
   /// Check kung may image
   bool get hasImage => bannerUrl != null && bannerUrl!.isNotEmpty;
 
+  /// The org's custom label when they picked "Other" and typed one in,
+  /// otherwise just [category] — this is what should actually be shown to
+  /// students instead of a generic "OTHER" badge.
+  String get displayCategory => category == 'Other' && otherCategory.isNotEmpty
+      ? otherCategory
+      : category;
+
   /// Mirrors guest_events_screen.dart's `_audienceAllowed` — an event can
   /// target more than one audience at once (comma-joined in the same
   /// field), and passes if ANY one of them would allow this student. Only
@@ -152,6 +165,8 @@ class EventModel {
       description: (d['description'] ?? '').toString(),
       location: (d['location'] ?? '').toString(),
       category: (d['category'] ?? 'Other').toString(),
+      otherCategory: (d['otherCategory'] ?? '').toString(),
+      issuesCertificate: d['issuesCertificate'] == true,
       orgName: (d['orgName'] ?? '').toString(),
       orgId: (d['orgId'] ?? '').toString(),
       date: parsedDate,
@@ -173,6 +188,8 @@ class EventModel {
     'description': description,
     'location': location,
     'category': category,
+    'otherCategory': otherCategory,
+    'issuesCertificate': issuesCertificate,
     'orgName': orgName,
     'orgId': orgId,
     'date': Timestamp.fromDate(date),

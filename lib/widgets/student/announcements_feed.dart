@@ -59,7 +59,7 @@ class _AnnouncementsFeedState extends State<AnnouncementsFeed> {
         final docs = (snapshot.data?.docs ?? [])
             .where((d) {
               final data = d.data() as Map<String, dynamic>;
-              return data['isPublished'] != false;
+              return data['isPublished'] != false && data['isArchived'] != true;
             })
             .take(4)
             .toList();

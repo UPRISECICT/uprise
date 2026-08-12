@@ -762,6 +762,8 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
         .where((id) => groups[id]!.any((d) => now.isAfter(d.deadline)))
         .length;
 
+    final searchCtrl = TextEditingController();
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -770,150 +772,231 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
         initialChildSize: 0.65,
         maxChildSize: 0.9,
         minChildSize: 0.4,
-        builder: (_, scrollCtrl) => Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            boxShadow: _DS.cardShadow,
-          ),
-          child: Column(
-            children: [
-              // Handle
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE2E6EA),
-                      borderRadius: BorderRadius.circular(2),
+        builder: (_, scrollCtrl) => StatefulBuilder(
+          builder: (context, setSheetState) {
+            final query = searchCtrl.text.trim().toLowerCase();
+            final visibleEventIds = query.isEmpty
+                ? orderedEventIds
+                : orderedEventIds
+                      .where(
+                        (id) => groups[id]!.any(
+                          (d) => d.eventTitle.toLowerCase().contains(query),
+                        ),
+                      )
+                      .toList();
+            return Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(24),
+                ),
+                boxShadow: _DS.cardShadow,
+              ),
+              child: Column(
+                children: [
+                  // Handle
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE2E6EA),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-              // Header
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: _DS.primary.withAlpha(20),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        Icons.pending_actions_rounded,
-                        size: 24,
-                        color: _DS.primary,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'All Pending Reports',
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w700,
-                              color: _DS.textPrimary,
-                            ),
+                  // Header
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: _DS.primary.withAlpha(20),
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                          Text(
-                            '$totalPending event${totalPending > 1 ? 's' : ''} need${totalPending > 1 ? '' : 's'} attention',
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 14,
-                              color: _DS.textSecondary,
-                            ),
+                          child: Icon(
+                            Icons.pending_actions_rounded,
+                            size: 24,
+                            color: _DS.primary,
                           ),
-                        ],
-                      ),
-                    ),
-                    if (overdueCount > 0)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 8,
                         ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFEF2F2),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: const Color(0xFFFCA5A5)),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'All Pending Reports',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w700,
+                                  color: _DS.textPrimary,
+                                ),
+                              ),
+                              Text(
+                                '$totalPending event${totalPending > 1 ? 's' : ''} need${totalPending > 1 ? '' : 's'} attention',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 14,
+                                  color: _DS.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.warning_amber_rounded,
-                              size: 16,
-                              color: Color(0xFFDC2626),
+                        if (overdueCount > 0)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 8,
                             ),
-                            const SizedBox(width: 6),
-                            Text(
-                              '$overdueCount Overdue',
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: const Color(0xFFDC2626),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFEF2F2),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: const Color(0xFFFCA5A5),
                               ),
                             ),
-                          ],
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.warning_amber_rounded,
+                                  size: 16,
+                                  color: Color(0xFFDC2626),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  '$overdueCount Overdue',
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: const Color(0xFFDC2626),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  // Search — this list has no cap on how many events can show
+                  // up here, so once an org has more than a handful of
+                  // pending reports it becomes a long scroll with nothing to
+                  // narrow it down.
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
+                    child: TextField(
+                      controller: searchCtrl,
+                      onChanged: (_) => setSheetState(() {}),
+                      style: GoogleFonts.beVietnamPro(fontSize: 13),
+                      decoration: InputDecoration(
+                        hintText: 'Search by event name…',
+                        hintStyle: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          color: _DS.textSecondary,
+                        ),
+                        prefixIcon: const Icon(
+                          Icons.search_rounded,
+                          size: 18,
+                          color: Color(0xFF9AA5B4),
+                        ),
+                        suffixIcon: query.isEmpty
+                            ? null
+                            : IconButton(
+                                icon: const Icon(Icons.close_rounded, size: 18),
+                                tooltip: 'Clear Search',
+                                onPressed: () {
+                                  searchCtrl.clear();
+                                  setSheetState(() {});
+                                },
+                              ),
+                        isDense: true,
+                        filled: true,
+                        fillColor: const Color(0xFFF8F9FB),
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(color: _DS.border),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(color: _DS.border),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: _DS.primary),
                         ),
                       ),
-                  ],
-                ),
-              ),
-              const Divider(height: 24, color: _DS.border),
-              // List
-              Expanded(
-                child: ListView.builder(
-                  controller: scrollCtrl,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 8,
-                  ),
-                  itemCount: orderedEventIds.length,
-                  itemBuilder: (_, idx) {
-                    final eventId = orderedEventIds[idx];
-                    final items = groups[eventId]!;
-                    return _PendingDeadlineListItem(
-                      items: items,
-                      onUpload: (type) => _openPrefillModal(eventId, type),
-                    );
-                  },
-                ),
-              ),
-              // Close button
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _DS.primary,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    child: Text(
-                      'Close',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
                     ),
                   ),
-                ),
+                  const Divider(height: 20, color: _DS.border),
+                  // List
+                  Expanded(
+                    child: visibleEventIds.isEmpty
+                        ? Center(
+                            child: Text(
+                              'No pending reports match "$query"',
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 13,
+                                color: _DS.textSecondary,
+                              ),
+                            ),
+                          )
+                        : ListView.builder(
+                            controller: scrollCtrl,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 8,
+                            ),
+                            itemCount: visibleEventIds.length,
+                            itemBuilder: (_, idx) {
+                              final eventId = visibleEventIds[idx];
+                              final items = groups[eventId]!;
+                              return _PendingDeadlineListItem(
+                                items: items,
+                                onUpload: (type) =>
+                                    _openPrefillModal(eventId, type),
+                              );
+                            },
+                          ),
+                  ),
+                  // Close button
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _DS.primary,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: Text(
+                          'Close',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
@@ -945,6 +1028,7 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
                   suffixIcon: _searchController.text.isNotEmpty
                       ? IconButton(
                           icon: const Icon(Icons.close, size: 18),
+                          tooltip: 'Clear Search',
                           onPressed: () {
                             _searchController.clear();
                             setState(() => _currentPage = 1);
@@ -1306,6 +1390,7 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
               _PageButton(
                 icon: Icons.chevron_left_rounded,
                 enabled: _currentPage > 1,
+                tooltip: 'Previous Page',
                 onTap: () => setState(() => _currentPage--),
               ),
               const SizedBox(width: 4),
@@ -1337,6 +1422,7 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
               _PageButton(
                 icon: Icons.chevron_right_rounded,
                 enabled: _currentPage < totalPages,
+                tooltip: 'Next Page',
                 onTap: () => setState(() => _currentPage++),
               ),
             ],
@@ -2303,6 +2389,35 @@ class _ReportModalState extends State<_ReportModal> {
             : 'No date';
         loaded.add({'id': doc.id, 'title': title, 'dateStr': dateStr});
       }
+      // The picker above only loads 'approved' events — right for the normal
+      // create flow, but the "Upload Now" shortcut off an overdue-reports
+      // reminder can prefill an event that's since been archived (still
+      // very much needing its report). Without this, _selectedEventId would
+      // point at an id missing from _events entirely, and _submit()'s
+      // `_events.firstWhere(...)` (no orElse) would throw before the write
+      // ever ran — the upload would silently do nothing and never reach
+      // Firestore, let alone the admin side.
+      if (widget.prefillEventId != null &&
+          !loaded.any((e) => e['id'] == widget.prefillEventId)) {
+        try {
+          final evDoc = await FirebaseFirestore.instance
+              .collection('events')
+              .doc(widget.prefillEventId)
+              .get();
+          if (evDoc.exists) {
+            final data = evDoc.data()!;
+            final date = (data['date'] as Timestamp?)?.toDate();
+            loaded.add({
+              'id': evDoc.id,
+              'title': data['title']?.toString() ?? 'Untitled Event',
+              'dateStr': date != null
+                  ? DateFormat('MMM dd, yyyy').format(date)
+                  : 'No date',
+            });
+          }
+        } catch (_) {}
+      }
+
       if (mounted) {
         setState(() {
           _events = loaded;
@@ -2434,6 +2549,11 @@ class _ReportModalState extends State<_ReportModal> {
     if (_scope == 'event') {
       final selectedEvent = _events.firstWhere(
         (e) => e['id'] == _selectedEventId,
+        // Belt-and-suspenders: _loadEvents() now backfills a prefilled
+        // event that's missing from the normal 'approved'-only list, but
+        // this keeps a bad _selectedEventId from throwing here and
+        // silently killing the whole submit before it reaches Firestore.
+        orElse: () => {'title': 'Untitled Event'},
       );
       title = selectedEvent['title'] as String;
     } else if (_scope == 'semester') {
@@ -3879,25 +3999,35 @@ class _PageButton extends StatelessWidget {
   final IconData icon;
   final bool enabled;
   final VoidCallback onTap;
+  final String? tooltip;
   const _PageButton({
     required this.icon,
     required this.enabled,
     required this.onTap,
+    this.tooltip,
   });
 
   @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: enabled ? onTap : null,
-    borderRadius: BorderRadius.circular(6),
-    child: Padding(
-      padding: const EdgeInsets.all(4),
-      child: Icon(
-        icon,
-        size: 20,
-        color: enabled ? const Color(0xFF374151) : const Color(0xFFD1D5DB),
+  Widget build(BuildContext context) {
+    final button = InkWell(
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: Icon(
+          icon,
+          size: 20,
+          color: enabled ? const Color(0xFF374151) : const Color(0xFFD1D5DB),
+        ),
       ),
-    ),
-  );
+    );
+    if (tooltip == null) return button;
+    return Tooltip(
+      message: tooltip,
+      waitDuration: const Duration(milliseconds: 400),
+      child: button,
+    );
+  }
 }
 
 class _PageNumButton extends StatelessWidget {

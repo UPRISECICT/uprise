@@ -1598,23 +1598,27 @@ class _OrgDashboardState extends State<OrgDashboard> {
       child: Row(
         children: [
           if (isMobile)
-            MouseRegion(
-              cursor: SystemMouseCursors.click,
-              child: GestureDetector(
-                onTap: () => setState(() => _sidebarOpen = !_sidebarOpen),
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  margin: const EdgeInsets.only(right: 12),
-                  decoration: BoxDecoration(
-                    color: OrgColors.lightGray,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: OrgColors.border),
-                  ),
-                  child: const Icon(
-                    Icons.menu_rounded,
-                    color: OrgColors.darkGray,
-                    size: 18,
+            Tooltip(
+              message: 'Toggle Menu',
+              waitDuration: const Duration(milliseconds: 400),
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  onTap: () => setState(() => _sidebarOpen = !_sidebarOpen),
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    margin: const EdgeInsets.only(right: 12),
+                    decoration: BoxDecoration(
+                      color: OrgColors.lightGray,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: OrgColors.border),
+                    ),
+                    child: const Icon(
+                      Icons.menu_rounded,
+                      color: OrgColors.darkGray,
+                      size: 18,
+                    ),
                   ),
                 ),
               ),
@@ -1702,78 +1706,82 @@ class _OrgDashboardState extends State<OrgDashboard> {
           // to fit the viewport, which made the dropdown land in
           // inconsistent spots depending on window size instead of
           // staying tucked under the bell every time.
-          InkWell(
-            borderRadius: BorderRadius.circular(10),
-            onTap: () {
-              _fetchUnreadNotifications();
-              _showNotificationDropdown();
-            },
-            child: KeyedSubtree(
-              key: _bellKey,
-              // Live count so a new notification updates the badge
-              // immediately, without needing to reopen the dropdown —
-              // matches the admin bell instead of only refreshing on tap.
-              child: StreamBuilder<int>(
-                stream: FirebaseAuth.instance.currentUser != null
-                    ? NotificationService.unreadCountStream(
-                        FirebaseAuth.instance.currentUser!.uid,
-                      )
-                    : const Stream<int>.empty(),
-                initialData: _unreadNotifications,
-                builder: (context, snapshot) {
-                  final unread = snapshot.data ?? _unreadNotifications;
-                  return Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      Container(
-                        width: 38,
-                        height: 38,
-                        decoration: BoxDecoration(
-                          color: unread > 0
-                              ? OrgColors.primaryDark.withAlpha(12)
-                              : OrgColors.lightGray,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
+          Tooltip(
+            message: 'Notifications',
+            waitDuration: const Duration(milliseconds: 400),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: () {
+                _fetchUnreadNotifications();
+                _showNotificationDropdown();
+              },
+              child: KeyedSubtree(
+                key: _bellKey,
+                // Live count so a new notification updates the badge
+                // immediately, without needing to reopen the dropdown —
+                // matches the admin bell instead of only refreshing on tap.
+                child: StreamBuilder<int>(
+                  stream: FirebaseAuth.instance.currentUser != null
+                      ? NotificationService.unreadCountStream(
+                          FirebaseAuth.instance.currentUser!.uid,
+                        )
+                      : const Stream<int>.empty(),
+                  initialData: _unreadNotifications,
+                  builder: (context, snapshot) {
+                    final unread = snapshot.data ?? _unreadNotifications;
+                    return Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
                             color: unread > 0
-                                ? OrgColors.primaryDark.withAlpha(60)
-                                : OrgColors.border,
+                                ? OrgColors.primaryDark.withAlpha(12)
+                                : OrgColors.lightGray,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: unread > 0
+                                  ? OrgColors.primaryDark.withAlpha(60)
+                                  : OrgColors.border,
+                            ),
+                          ),
+                          child: Icon(
+                            unread > 0
+                                ? Icons.notifications_rounded
+                                : Icons.notifications_none_rounded,
+                            color: unread > 0
+                                ? OrgColors.primaryDark
+                                : OrgColors.darkGray,
+                            size: 18,
                           ),
                         ),
-                        child: Icon(
-                          unread > 0
-                              ? Icons.notifications_rounded
-                              : Icons.notifications_none_rounded,
-                          color: unread > 0
-                              ? OrgColors.primaryDark
-                              : OrgColors.darkGray,
-                          size: 18,
-                        ),
-                      ),
-                      if (unread > 0)
-                        Positioned(
-                          right: -3,
-                          top: -3,
-                          child: Container(
-                            width: 18,
-                            height: 18,
-                            alignment: Alignment.center,
-                            decoration: const BoxDecoration(
-                              color: OrgColors.error,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Text(
-                              unread > 9 ? '9+' : '$unread',
-                              style: GoogleFonts.beVietnamPro(
-                                color: Colors.white,
-                                fontSize: 9,
-                                fontWeight: FontWeight.w700,
+                        if (unread > 0)
+                          Positioned(
+                            right: -3,
+                            top: -3,
+                            child: Container(
+                              width: 18,
+                              height: 18,
+                              alignment: Alignment.center,
+                              decoration: const BoxDecoration(
+                                color: OrgColors.error,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text(
+                                unread > 9 ? '9+' : '$unread',
+                                style: GoogleFonts.beVietnamPro(
+                                  color: Colors.white,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                    ],
-                  );
-                },
+                      ],
+                    );
+                  },
+                ),
               ),
             ),
           ),
@@ -1783,29 +1791,45 @@ class _OrgDashboardState extends State<OrgDashboard> {
             const SizedBox(width: 10),
           ],
           if (screenWidth >= 480)
-            MouseRegion(
-              cursor: SystemMouseCursors.click,
-              child: GestureDetector(
-                key: _profileKey,
-                onTap: _showProfileMenu,
-                child: Row(
-                  children: [
-                    Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: OrgColors.primaryDark.withAlpha(25),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: OrgColors.primaryDark.withAlpha(50),
+            Tooltip(
+              message: 'Account Menu',
+              waitDuration: const Duration(milliseconds: 400),
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  key: _profileKey,
+                  onTap: _showProfileMenu,
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: OrgColors.primaryDark.withAlpha(25),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: OrgColors.primaryDark.withAlpha(50),
+                          ),
                         ),
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: _orgLogoUrl != null
-                          ? Image.network(
-                              _orgLogoUrl!,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Center(
+                        clipBehavior: Clip.antiAlias,
+                        child: _orgLogoUrl != null
+                            ? Image.network(
+                                _orgLogoUrl!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Center(
+                                  child: Text(
+                                    _orgShortName.isNotEmpty
+                                        ? _orgShortName[0].toUpperCase()
+                                        : 'O',
+                                    style: GoogleFonts.beVietnamPro(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                      color: OrgColors.primaryDark,
+                                    ),
+                                  ),
+                                ),
+                              )
+                            : Center(
                                 child: Text(
                                   _orgShortName.isNotEmpty
                                       ? _orgShortName[0].toUpperCase()
@@ -1817,51 +1841,39 @@ class _OrgDashboardState extends State<OrgDashboard> {
                                   ),
                                 ),
                               ),
-                            )
-                          : Center(
-                              child: Text(
-                                _orgShortName.isNotEmpty
-                                    ? _orgShortName[0].toUpperCase()
-                                    : 'O',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                  color: OrgColors.primaryDark,
-                                ),
+                      ),
+                      if (screenWidth >= 600) ...[
+                        const SizedBox(width: 10),
+                        Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _orgShortName,
+                              style: GoogleFonts.beVietnamPro(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                                color: OrgColors.charcoal,
                               ),
                             ),
-                    ),
-                    if (screenWidth >= 600) ...[
-                      const SizedBox(width: 10),
-                      Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _orgShortName,
-                            style: GoogleFonts.beVietnamPro(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13,
-                              color: OrgColors.charcoal,
+                            Text(
+                              'Organization',
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 10,
+                                color: OrgColors.textFaint,
+                              ),
                             ),
-                          ),
-                          Text(
-                            'Organization',
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 10,
-                              color: OrgColors.textFaint,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(width: 4),
-                      Icon(
-                        Icons.keyboard_arrow_down,
-                        size: 18,
-                        color: OrgColors.textFaint,
-                      ),
+                          ],
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.keyboard_arrow_down,
+                          size: 18,
+                          color: OrgColors.textFaint,
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             )
@@ -3490,21 +3502,25 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                           ),
                         ),
                       ),
-                      MouseRegion(
-                        cursor: SystemMouseCursors.click,
-                        child: GestureDetector(
-                          onTap: () => Navigator.pop(ctx),
-                          child: Container(
-                            width: 28,
-                            height: 28,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(
-                              Icons.close_rounded,
-                              size: 16,
-                              color: OrgColors.darkGray,
+                      Tooltip(
+                        message: 'Close',
+                        waitDuration: const Duration(milliseconds: 400),
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            onTap: () => Navigator.pop(ctx),
+                            child: Container(
+                              width: 28,
+                              height: 28,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.close_rounded,
+                                size: 16,
+                                color: OrgColors.darkGray,
+                              ),
                             ),
                           ),
                         ),
@@ -4111,6 +4127,7 @@ class _OrgNotificationPanelState extends State<_OrgNotificationPanel> {
                           const Spacer(),
                           IconButton(
                             icon: const Icon(Icons.close_rounded, size: 20),
+                            tooltip: 'Close',
                             onPressed: () => Navigator.of(ctx).pop(),
                           ),
                         ],

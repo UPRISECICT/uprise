@@ -16,6 +16,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../services/notification_service.dart';
+import '../../../services/activity_logger.dart' as activity_log;
 import '../../../utils/profanity_filter.dart';
 import '../../../theme/org_theme.dart' as theme;
 import 'export_util.dart';
@@ -374,6 +375,7 @@ void _showImagePreview(BuildContext context, String imageBase64) {
               color: Colors.white,
               size: 28,
             ),
+            tooltip: 'Close',
             onPressed: () => Navigator.pop(ctx),
           ),
         ),
@@ -390,9 +392,9 @@ const List<String> _reportReasons = [
 ];
 
 // Shared by both sides of this chat (org here, student in
-// student_broadcast_screen.dart) — writes to `message_reports` for later
-// admin review. There's no report-review queue UI yet; this is the
-// reporting mechanism itself.
+// student_broadcast_screen.dart) — logs straight to activity_logs so admins
+// see reported messages in the existing Activity Logs page instead of a
+// separate review queue.
 Future<void> showReportMessageDialog(
   BuildContext context, {
   required String conversationId,
@@ -401,6 +403,7 @@ Future<void> showReportMessageDialog(
   required String reporterRole,
   required String reportedUserId,
   required String reportedUserRole,
+  required String orgId,
 }) async {
   String selectedReason = _reportReasons.first;
   final detailsCtrl = TextEditingController();
@@ -551,21 +554,25 @@ Future<void> showReportMessageDialog(
   );
   if (submitted != true) return;
 
-  final reporter = FirebaseAuth.instance.currentUser;
   try {
-    await FirebaseFirestore.instance.collection('message_reports').add({
-      'conversationId': conversationId,
-      'messageId': messageId,
-      'messageText': messageText,
-      'reporterId': reporter?.uid ?? '',
-      'reporterRole': reporterRole,
-      'reportedUserId': reportedUserId,
-      'reportedUserRole': reportedUserRole,
-      'reason': selectedReason,
-      'details': detailsCtrl.text.trim(),
-      'status': 'pending',
-      'createdAt': FieldValue.serverTimestamp(),
-    });
+    await activity_log.ActivityLogger.log(
+      action:
+          'Reported a message from a ${reportedUserRole.isEmpty ? 'user' : reportedUserRole} ($selectedReason)',
+      module: 'Message Reports',
+      severity: 'warning',
+      orgId: orgId,
+      details: {
+        'orgId': orgId,
+        'conversationId': conversationId,
+        'messageId': messageId,
+        'messageText': messageText,
+        'reporterRole': reporterRole,
+        'reportedUserId': reportedUserId,
+        'reportedUserRole': reportedUserRole,
+        'reason': selectedReason,
+        'details': detailsCtrl.text.trim(),
+      },
+    );
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1777,6 +1784,7 @@ class _ChatThreadState extends State<_ChatThread> {
                               reportedUserId: (data['senderId'] ?? '')
                                   .toString(),
                               reportedUserRole: 'student',
+                              orgId: widget.orgId,
                             ),
                       onDelete: isOrg
                           ? () => _confirmDeleteMessage(doc.id)
@@ -1898,6 +1906,7 @@ class _ChatThreadState extends State<_ChatThread> {
                   backgroundColor: _C.primaryDark,
                   disabledBackgroundColor: _C.primaryDark.withAlpha(120),
                 ),
+                tooltip: 'Send Message',
                 icon: const Icon(
                   Icons.send_rounded,
                   color: Colors.white,
@@ -2144,28 +2153,32 @@ class _MessageBubble extends StatelessWidget {
     // touch gesture no one would think to try.
     final actionsButton =
         (onReport != null || onDelete != null || onReply != null)
-        ? MouseRegion(
-            cursor: SystemMouseCursors.click,
-            child: GestureDetector(
-              onTap: onReply == null
-                  ? (onReport ?? onDelete)
-                  : () => _showMessageActions(
-                      context,
-                      onReply: onReply!,
-                      onReport: onReport,
-                      onDelete: onDelete,
-                    ),
-              child: Container(
-                width: 26,
-                height: 26,
-                decoration: const BoxDecoration(
-                  color: _C.surface,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.more_vert_rounded,
-                  size: 14,
-                  color: _C.darkGray,
+        ? Tooltip(
+            message: 'Message Actions',
+            waitDuration: const Duration(milliseconds: 400),
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: onReply == null
+                    ? (onReport ?? onDelete)
+                    : () => _showMessageActions(
+                        context,
+                        onReply: onReply!,
+                        onReport: onReport,
+                        onDelete: onDelete,
+                      ),
+                child: Container(
+                  width: 26,
+                  height: 26,
+                  decoration: const BoxDecoration(
+                    color: _C.surface,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.more_vert_rounded,
+                    size: 14,
+                    color: _C.darkGray,
+                  ),
                 ),
               ),
             ),

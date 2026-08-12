@@ -1,6 +1,10 @@
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../services/activity_logger.dart' as activity_log;
@@ -52,6 +56,11 @@ class TransactionModel {
   final String type;
   final Timestamp date;
   final bool isArchived;
+  // Evidence for the transaction — a photo/scan of the actual receipt,
+  // stored as compressed base64 (same approach as org_merchandise.dart's
+  // product photos, kept well under Firestore's 1 MiB document limit).
+  final String? receiptBase64;
+  final String? receiptFileName;
 
   TransactionModel({
     required this.id,
@@ -63,7 +72,11 @@ class TransactionModel {
     required this.type,
     required this.date,
     this.isArchived = false,
+    this.receiptBase64,
+    this.receiptFileName,
   });
+
+  bool get hasReceipt => (receiptBase64 ?? '').isNotEmpty;
 
   factory TransactionModel.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
@@ -77,6 +90,8 @@ class TransactionModel {
       type: data['type'] ?? 'income',
       date: data['date'] as Timestamp,
       isArchived: data['isArchived'] ?? false,
+      receiptBase64: data['receiptBase64'] as String?,
+      receiptFileName: data['receiptFileName'] as String?,
     );
   }
 }
@@ -517,8 +532,58 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
                 value: transaction.eventName,
                 icon: Icons.event_outlined,
               ),
+              if (transaction.hasReceipt) ...[
+                const SizedBox(height: 14),
+                Text(
+                  'RECEIPT',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: OrgColors.darkGray,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                InkWell(
+                  onTap: () =>
+                      _showReceiptFullScreen(transaction.receiptBase64!),
+                  borderRadius: BorderRadius.circular(10),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.memory(
+                      base64Decode(transaction.receiptBase64!),
+                      width: double.infinity,
+                      height: 160,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  void _showReceiptFullScreen(String receiptBase64) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(24),
+        child: Stack(
+          alignment: Alignment.topRight,
+          children: [
+            InteractiveViewer(child: Image.memory(base64Decode(receiptBase64))),
+            IconButton(
+              onPressed: () => Navigator.pop(ctx),
+              icon: const Icon(Icons.close_rounded, color: Colors.white),
+              style: IconButton.styleFrom(backgroundColor: Colors.black54),
+              tooltip: 'Close',
+            ),
+          ],
         ),
       ),
     );
@@ -755,6 +820,7 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
                               color: Colors.white,
                               size: 20,
                             ),
+                            tooltip: 'Close',
                             onPressed: () => Navigator.pop(ctx),
                           ),
                         ],
@@ -1888,14 +1954,31 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
             // Event
             Expanded(
               flex: 3,
-              child: Text(
-                transaction.eventName,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: UpriseColors.primaryDark,
-                ),
-                overflow: TextOverflow.ellipsis,
+              child: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      transaction.eventName,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: UpriseColors.primaryDark,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (transaction.hasReceipt) ...[
+                    const SizedBox(width: 6),
+                    Tooltip(
+                      message: 'Receipt attached',
+                      child: Icon(
+                        Icons.receipt_long_rounded,
+                        size: 14,
+                        color: OrgColors.darkGray,
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
             // Category
@@ -2095,6 +2178,7 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
               _PageButton(
                 icon: Icons.chevron_left_rounded,
                 enabled: safePage > 1,
+                tooltip: 'Previous Page',
                 onTap: () => setState(() => _currentPage = safePage - 1),
               ),
               const SizedBox(width: 4),
@@ -2126,6 +2210,7 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
               _PageButton(
                 icon: Icons.chevron_right_rounded,
                 enabled: safePage < totalPages,
+                tooltip: 'Next Page',
                 onTap: () => setState(() => _currentPage = safePage + 1),
               ),
             ],
@@ -2467,6 +2552,26 @@ class _SummaryPanelState extends State<_SummaryPanel> {
   }
 }
 
+// A receipt photo is stored as compressed base64 directly on the
+// transaction doc (same approach org_merchandise.dart uses for product
+// photos) — compressing before encoding keeps it well under Firestore's
+// 1 MiB per-document limit instead of risking the same raw-image overflow
+// that was hitting product saves.
+Future<Uint8List> _compressReceiptForStorage(Uint8List bytes) async {
+  try {
+    final compressed = await FlutterImageCompress.compressWithList(
+      bytes,
+      minWidth: 1280,
+      minHeight: 1280,
+      quality: 70,
+      format: CompressFormat.jpeg,
+    );
+    return compressed.length < bytes.length ? compressed : bytes;
+  } catch (_) {
+    return bytes;
+  }
+}
+
 // ============ TRANSACTION MODAL (ADD/EDIT) ============
 class _TransactionModal extends StatefulWidget {
   final String orgId;
@@ -2490,6 +2595,9 @@ class _TransactionModalState extends State<_TransactionModal> {
   bool _loadingEvents = true;
   bool _submitting = false;
   List<Map<String, dynamic>> _events = [];
+  Uint8List? _receiptBytes;
+  String? _receiptFileName;
+  bool _compressingReceipt = false;
 
   final List<String> _categories = [
     'Workshops',
@@ -2516,8 +2624,39 @@ class _TransactionModalState extends State<_TransactionModal> {
       _category = t.category;
       _type = t.type;
       _selectedDate = t.date.toDate();
+      if (t.hasReceipt) {
+        try {
+          _receiptBytes = base64Decode(t.receiptBase64!);
+          _receiptFileName = t.receiptFileName;
+        } catch (_) {}
+      }
     }
   }
+
+  Future<void> _pickReceipt() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      allowMultiple: false,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.first;
+    final bytes = file.bytes;
+    if (bytes == null) return;
+    if (mounted) setState(() => _compressingReceipt = true);
+    final compressed = await _compressReceiptForStorage(bytes);
+    if (mounted) {
+      setState(() {
+        _receiptBytes = compressed;
+        _receiptFileName = file.name;
+        _compressingReceipt = false;
+      });
+    }
+  }
+
+  void _removeReceipt() => setState(() {
+    _receiptBytes = null;
+    _receiptFileName = null;
+  });
 
   Future<void> _loadEvents() async {
     final snapshot = await FirebaseFirestore.instance
@@ -2629,6 +2768,19 @@ class _TransactionModalState extends State<_TransactionModal> {
       }
     }
 
+    final receiptBase64 = _receiptBytes != null
+        ? base64Encode(_receiptBytes!)
+        : null;
+    // Guard against exceeding Firestore's 1 MiB document limit — same
+    // safety net as org_merchandise.dart's product photos.
+    if (receiptBase64 != null && receiptBase64.length > 900000) {
+      _showError(
+        'This receipt photo is too large to save '
+        '(${(receiptBase64.length / 1024).round()} KB) — try a smaller or lower-resolution photo.',
+      );
+      return;
+    }
+
     setState(() => _submitting = true);
     final user = FirebaseAuth.instance.currentUser;
     final data = {
@@ -2641,6 +2793,8 @@ class _TransactionModalState extends State<_TransactionModal> {
       'type': _type,
       'date': Timestamp.fromDate(_selectedDate),
       'updatedAt': FieldValue.serverTimestamp(),
+      'receiptBase64': receiptBase64 ?? '',
+      'receiptFileName': receiptBase64 != null ? (_receiptFileName ?? '') : '',
     };
     try {
       if (_isEdit) {
@@ -2756,6 +2910,7 @@ class _TransactionModalState extends State<_TransactionModal> {
                       color: Colors.white,
                       size: 20,
                     ),
+                    tooltip: 'Close',
                   ),
                 ],
               ),
@@ -2968,6 +3123,18 @@ class _TransactionModalState extends State<_TransactionModal> {
                           'Add notes about this transaction…',
                         ),
                       ),
+                      const SizedBox(height: 16),
+
+                      // Receipt — the evidence backing this income/expense.
+                      _FieldLabel('RECEIPT (OPTIONAL)'),
+                      const SizedBox(height: 6),
+                      _ReceiptPicker(
+                        bytes: _receiptBytes,
+                        fileName: _receiptFileName,
+                        loading: _compressingReceipt,
+                        onPick: _pickReceipt,
+                        onRemove: _removeReceipt,
+                      ),
                     ],
                   ),
                 ),
@@ -3071,6 +3238,105 @@ class _TransactionModalState extends State<_TransactionModal> {
     ),
     isDense: true,
   );
+}
+
+// Receipt photo picker — attach/preview/remove, with a plain-text
+// upload-guidance line matching the "accepted files / size / ratio"
+// pattern used across the other org upload pickers.
+class _ReceiptPicker extends StatelessWidget {
+  final Uint8List? bytes;
+  final String? fileName;
+  final bool loading;
+  final VoidCallback onPick;
+  final VoidCallback onRemove;
+
+  const _ReceiptPicker({
+    required this.bytes,
+    required this.fileName,
+    required this.loading,
+    required this.onPick,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasReceipt = bytes != null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: loading ? null : onPick,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: OrgColors.lightGray,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFE2E6EA)),
+            ),
+            child: Row(
+              children: [
+                if (hasReceipt)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: Image.memory(
+                      bytes!,
+                      width: 40,
+                      height: 40,
+                      fit: BoxFit.cover,
+                    ),
+                  )
+                else if (loading)
+                  const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else
+                  const Icon(
+                    Icons.receipt_long_outlined,
+                    size: 18,
+                    color: OrgColors.darkGray,
+                  ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    loading
+                        ? 'Compressing…'
+                        : hasReceipt
+                        ? (fileName ?? 'Receipt attached')
+                        : 'Tap to attach a photo of the receipt',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 13,
+                      color: hasReceipt
+                          ? OrgColors.charcoal
+                          : OrgColors.darkGray,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (hasReceipt && !loading)
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 16),
+                    tooltip: 'Remove Receipt',
+                    onPressed: onRemove,
+                  ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'JPG or PNG, up to 5 MB — auto-compressed on upload.',
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 11,
+            color: OrgColors.darkGray,
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 // ============ SHARED SMALL WIDGETS ============
@@ -3500,16 +3766,18 @@ class _PageButton extends StatelessWidget {
   final IconData icon;
   final bool enabled;
   final VoidCallback onTap;
+  final String? tooltip;
 
   const _PageButton({
     required this.icon,
     required this.enabled,
     required this.onTap,
+    this.tooltip,
   });
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    final button = InkWell(
       onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(6),
       child: Padding(
@@ -3520,6 +3788,12 @@ class _PageButton extends StatelessWidget {
           color: enabled ? const Color(0xFF374151) : const Color(0xFFD1D5DB),
         ),
       ),
+    );
+    if (tooltip == null) return button;
+    return Tooltip(
+      message: tooltip,
+      waitDuration: const Duration(milliseconds: 400),
+      child: button,
     );
   }
 }

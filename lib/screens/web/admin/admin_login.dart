@@ -435,6 +435,9 @@ class _AdminLoginState extends State<AdminLogin> with TickerProviderStateMixin {
                         color: _slateSoft,
                         size: 18,
                       ),
+                      tooltip: _obscurePassword
+                          ? 'Show Password'
+                          : 'Hide Password',
                       onPressed: () =>
                           setState(() => _obscurePassword = !_obscurePassword),
                     ),

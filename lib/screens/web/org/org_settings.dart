@@ -833,6 +833,9 @@ class _SecurityTabState extends State<_SecurityTab> {
                                   size: 18,
                                   color: const Color(0xFF64748B),
                                 ),
+                                tooltip: _obscureCurrent
+                                    ? 'Show Password'
+                                    : 'Hide Password',
                                 onPressed: () => setState(
                                   () => _obscureCurrent = !_obscureCurrent,
                                 ),
@@ -855,6 +858,9 @@ class _SecurityTabState extends State<_SecurityTab> {
                                   size: 18,
                                   color: const Color(0xFF64748B),
                                 ),
+                                tooltip: _obscureNew
+                                    ? 'Show Password'
+                                    : 'Hide Password',
                                 onPressed: () =>
                                     setState(() => _obscureNew = !_obscureNew),
                               ),
@@ -881,6 +887,9 @@ class _SecurityTabState extends State<_SecurityTab> {
                                   size: 18,
                                   color: const Color(0xFF64748B),
                                 ),
+                                tooltip: _obscureConfirm
+                                    ? 'Show Password'
+                                    : 'Hide Password',
                                 onPressed: () => setState(
                                   () => _obscureConfirm = !_obscureConfirm,
                                 ),
@@ -989,6 +998,9 @@ class _SecurityTabState extends State<_SecurityTab> {
                                   size: 18,
                                   color: const Color(0xFF64748B),
                                 ),
+                                tooltip: _obscureEmailPassword
+                                    ? 'Show Password'
+                                    : 'Hide Password',
                                 onPressed: () => setState(
                                   () => _obscureEmailPassword =
                                       !_obscureEmailPassword,

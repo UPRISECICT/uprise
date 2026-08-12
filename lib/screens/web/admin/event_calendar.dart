@@ -1059,6 +1059,7 @@ class _EventCalendarState extends State<EventCalendar> {
                         color: Colors.white,
                         size: 20,
                       ),
+                      tooltip: 'Close',
                       onPressed: () => Navigator.pop(ctx),
                     ),
                   ],
@@ -1274,6 +1275,7 @@ class _EventCalendarState extends State<EventCalendar> {
                               color: Colors.white,
                               size: 20,
                             ),
+                            tooltip: 'Close',
                             onPressed: () => Navigator.pop(ctx),
                           ),
                         ],
@@ -1613,12 +1615,18 @@ class _NavButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        child: Icon(icon, size: 20, color: AdminColors.primaryDark),
+    return Tooltip(
+      message: icon == Icons.chevron_left_rounded
+          ? 'Previous Month'
+          : 'Next Month',
+      waitDuration: const Duration(milliseconds: 400),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Icon(icon, size: 20, color: AdminColors.primaryDark),
+        ),
       ),
     );
   }

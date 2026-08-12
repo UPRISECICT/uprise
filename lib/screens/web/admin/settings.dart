@@ -1004,6 +1004,9 @@ class _AdminSettingsState extends State<AdminSettings>
                                   size: 18,
                                   color: const Color(0xFF9AA5B4),
                                 ),
+                                tooltip: _showEmailCurrentPassword
+                                    ? 'Hide Password'
+                                    : 'Show Password',
                                 onPressed: () => setState(
                                   () => _showEmailCurrentPassword =
                                       !_showEmailCurrentPassword,
@@ -1114,6 +1117,9 @@ class _AdminSettingsState extends State<AdminSettings>
                                   size: 18,
                                   color: const Color(0xFF9AA5B4),
                                 ),
+                                tooltip: _showCurrentPassword
+                                    ? 'Hide Password'
+                                    : 'Show Password',
                                 onPressed: () => setState(
                                   () => _showCurrentPassword =
                                       !_showCurrentPassword,
@@ -1143,6 +1149,9 @@ class _AdminSettingsState extends State<AdminSettings>
                                   size: 18,
                                   color: const Color(0xFF9AA5B4),
                                 ),
+                                tooltip: _showNewPassword
+                                    ? 'Hide Password'
+                                    : 'Show Password',
                                 onPressed: () => setState(
                                   () => _showNewPassword = !_showNewPassword,
                                 ),
@@ -1176,6 +1185,9 @@ class _AdminSettingsState extends State<AdminSettings>
                                   size: 18,
                                   color: const Color(0xFF9AA5B4),
                                 ),
+                                tooltip: _showConfirmPassword
+                                    ? 'Hide Password'
+                                    : 'Show Password',
                                 onPressed: () => setState(
                                   () => _showConfirmPassword =
                                       !_showConfirmPassword,
@@ -2113,6 +2125,7 @@ class _SignatoryFormDialogState extends State<_SignatoryFormDialog> {
                         color: Colors.white,
                         size: 20,
                       ),
+                      tooltip: 'Close',
                       onPressed: _isSaving
                           ? null
                           : () => Navigator.pop(context),
@@ -2796,6 +2809,7 @@ class _TermsDialog extends StatelessWidget {
                     onPressed: () => Navigator.of(context).pop(),
                     icon: const Icon(Icons.close_rounded, size: 20),
                     color: const Color(0xFF64748B),
+                    tooltip: 'Close',
                   ),
                 ],
               ),

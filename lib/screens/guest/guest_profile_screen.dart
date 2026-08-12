@@ -1427,6 +1427,47 @@ class RegistrationScreenState extends State<RegistrationScreen>
         return;
       }
 
+      // Block signup if this email already belongs to a real account of
+      // any role — a CICT student (or org/admin, or an already-approved
+      // guest) shouldn't be able to register a second, duplicate guest
+      // identity; they should log in through their actual account instead.
+      // Checked against both the as-typed and lowercased email: account
+      // creation elsewhere in this app never normalizes case, so an
+      // exact-match query on the wrong casing would silently miss a real
+      // match instead of erroring.
+      final typedEmail = _emailCtrl.text.trim();
+      QueryDocumentSnapshot<Map<String, dynamic>>? existingUser;
+      for (final variant in {email, typedEmail}) {
+        final snap = await FirebaseFirestore.instance
+            .collection('users')
+            .where('email', isEqualTo: variant)
+            .limit(1)
+            .get();
+        if (snap.docs.isNotEmpty) {
+          existingUser = snap.docs.first;
+          break;
+        }
+      }
+      if (existingUser != null) {
+        final role = (existingUser.data()['role'] ?? '').toString();
+        final roleLabel = switch (role) {
+          'student' => 'a student account',
+          'org' => 'an organization account',
+          'admin' => 'an admin account',
+          'guest' => 'a guest account',
+          _ => 'an existing account',
+        };
+        if (mounted) {
+          setState(() => _isLoading = false);
+          _snack(
+            role == 'guest'
+                ? 'You already have a guest account with this email — please log in instead of registering again.'
+                : 'This email already belongs to $roleLabel. Please log in through the correct app instead of registering as a guest.',
+          );
+        }
+        return;
+      }
+
       final userName =
           '${_firstNameCtrl.text.trim()} ${_lastNameCtrl.text.trim()}';
 

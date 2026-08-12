@@ -2256,7 +2256,7 @@ class _UpcomingEventCard extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      _CategoryBadge(category: event.category),
+                      _CategoryBadge(category: event.displayCategory),
                       const Spacer(),
                       if (isRegistered)
                         Container(
@@ -3589,11 +3589,13 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                 ],
               ),
               content: SingleChildScrollView(
-                child: Container(
-                  width: 450,
-                  constraints: BoxConstraints(
-                    maxHeight: MediaQuery.of(ctx).size.height * 0.7,
-                  ),
+                child: SizedBox(
+                  width: (MediaQuery.of(ctx).size.width * 0.9).clamp(0, 450),
+                  // No maxHeight here — a Column can't shrink its children
+                  // to fit a box that's smaller than their natural size, so
+                  // constraining height on this inner box (instead of just
+                  // letting the SingleChildScrollView above handle overflow)
+                  // was what caused forms with several fields to overflow.
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: _buildDialogFields(() => setDialogState(() {})),
@@ -3657,7 +3659,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _CategoryBadge(category: widget.event.category),
+                  _CategoryBadge(category: widget.event.displayCategory),
                   const SizedBox(height: 12),
                   Text(
                     widget.event.title,

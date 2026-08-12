@@ -15,6 +15,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../auth/role_router.dart';
 import '../student/student_login.dart';
 import '../student/student_events_screen.dart';
+import '../student/student_feedback_screen.dart';
 import '../../models/profile_model.dart';
 import '../../widgets/shared/app_support.dart';
 import '../../widgets/student/app_colors.dart';
@@ -2768,6 +2769,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       MaterialPageRoute(
                         builder: (_) =>
                             const PrivacySecurityScreen(isGuest: false),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 8),
+
+                // Previously the only way in here was a one-time popup right
+                // after attending an event (which stops reappearing once
+                // dismissed) or tapping a notification — dismiss "Maybe
+                // Later" once and there was no way back in. This is the
+                // permanent way to reach it.
+                _buildSettingsTile(
+                  icon: Icons.rate_review_outlined,
+                  title: 'Event Feedback',
+                  subtitle: 'Rate events you\'ve attended',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const StudentFeedbackScreen(),
                       ),
                     );
                   },

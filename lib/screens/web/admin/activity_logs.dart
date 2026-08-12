@@ -47,6 +47,7 @@ IconData _iconForAction(String action) {
     return Icons.lock_outline_rounded;
   if (a.contains('export') || a.contains('download'))
     return Icons.download_outlined;
+  if (a.contains('report')) return Icons.flag_outlined;
   if (a.contains('publish')) return Icons.publish_rounded;
   if (a.contains('schedul')) return Icons.edit_calendar_outlined;
   if (a.contains('creat') || a.contains('add') || a.contains('register'))
@@ -254,6 +255,7 @@ class _ActivityLogsState extends State<ActivityLogs> {
     'External Account',
     'Event Calendar',
     'Broadcast',
+    'Message Reports',
     'Announcements',
     'Certificates',
     'Finance',
@@ -1086,6 +1088,7 @@ class _ActivityLogsState extends State<ActivityLogs> {
                         color: Colors.white,
                         size: 20,
                       ),
+                      tooltip: 'Close',
                       onPressed: () => Navigator.pop(ctx),
                     ),
                   ],
@@ -1570,15 +1573,21 @@ class _PageButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: enabled ? onTap : null,
-      borderRadius: BorderRadius.circular(6),
-      child: Padding(
-        padding: const EdgeInsets.all(4),
-        child: Icon(
-          icon,
-          size: 20,
-          color: enabled ? const Color(0xFF374151) : const Color(0xFFD1D5DB),
+    return Tooltip(
+      message: icon == Icons.chevron_left_rounded
+          ? 'Previous Page'
+          : 'Next Page',
+      waitDuration: const Duration(milliseconds: 400),
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(6),
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: Icon(
+            icon,
+            size: 20,
+            color: enabled ? const Color(0xFF374151) : const Color(0xFFD1D5DB),
+          ),
         ),
       ),
     );

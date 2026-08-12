@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -15,7 +16,7 @@ import '../../../services/activity_logger.dart' as activity_log;
 import '../../../theme/org_theme.dart';
 import '../../../widgets/admin_export_button.dart';
 import '../../../widgets/anchored_dropdown.dart';
-import '../../../widgets/product_spin_viewer.dart';
+import '../../../widgets/product_photo_gallery.dart';
 import '../../../widgets/org_action_icon_button.dart';
 import '../admin/export_util.dart';
 import '../admin/export_pdf.dart';
@@ -1597,6 +1598,40 @@ class _CardActionButton extends StatelessWidget {
   }
 }
 
+// Product photos are stored as base64 directly on the Firestore document
+// (see _submit() below) rather than uploaded to Storage, so the whole doc
+// has to stay under Firestore's hard 1 MiB-per-document limit — base64
+// itself already inflates raw bytes by ~33%, and a raw phone photo can
+// easily be several MB, which is exactly what was blowing past the limit
+// and throwing a raw `invalid-argument` error at save time. Compressing
+// every picked image down to a bounded size before it's ever base64-encoded
+// keeps a single photo comfortably under ~300KB while still looking sharp
+// at product-card/detail sizes.
+Future<Uint8List> _compressImageForStorage(
+  Uint8List bytes, {
+  int maxDimension = 1280,
+  int quality = 72,
+}) async {
+  try {
+    final compressed = await FlutterImageCompress.compressWithList(
+      bytes,
+      minWidth: maxDimension,
+      minHeight: maxDimension,
+      quality: quality,
+      format: CompressFormat.jpeg,
+    );
+    // Guard against the rare case where compression makes things worse
+    // (already-tiny/simple images can sometimes grow slightly under JPEG
+    // re-encoding) — never return something larger than what came in.
+    return compressed.length < bytes.length ? compressed : bytes;
+  } catch (_) {
+    // If compression itself fails for any reason, fall back to the
+    // original bytes rather than blocking the whole picker action — the
+    // pre-submit size guard in _submit() still catches an oversized result.
+    return bytes;
+  }
+}
+
 // ============================================================
 // PRODUCT MODAL (with Base64 image support & auto-refresh)
 // ============================================================
@@ -1680,12 +1715,24 @@ class _ProductModalState extends State<_ProductModal> {
       allowMultiple: true,
     );
     if (result == null || result.files.isEmpty) return;
-    setState(() {
-      for (final file in result.files) {
-        final bytes = file.bytes;
-        if (bytes != null) _rotationPhotoBytes.add(bytes);
-      }
-    });
+    if (mounted) setState(() => _uploadingImage = true);
+    final compressed = <Uint8List>[];
+    for (final file in result.files) {
+      final bytes = file.bytes;
+      if (bytes == null) continue;
+      // Rotation sets can have many frames, so each one is compressed a
+      // bit harder than the main photo to keep the whole product document
+      // well under Firestore's 1 MiB limit.
+      compressed.add(
+        await _compressImageForStorage(bytes, maxDimension: 900, quality: 60),
+      );
+    }
+    if (mounted) {
+      setState(() {
+        _rotationPhotoBytes.addAll(compressed);
+        _uploadingImage = false;
+      });
+    }
   }
 
   void _removeRotationPhoto(int index) {
@@ -1778,6 +1825,32 @@ class _ProductModalState extends State<_ProductModal> {
       data['rotationPhotos'] = _rotationPhotoBytes
           .map((bytes) => base64Encode(bytes))
           .toList();
+
+      // ── GUARD AGAINST EXCEEDING FIRESTORE'S 1 MiB DOCUMENT LIMIT ──
+      // Catch this client-side with a clear, actionable message instead of
+      // letting the whole save fail with a raw `invalid-argument` Firestore
+      // error — this is what was happening before compression was added
+      // above; this guard stays as a safety net for products with a photo
+      // plus several rotation frames that could still add up.
+      final imageBytesTotal =
+          ((data['imageBase64'] as String?)?.length ?? 0) +
+          (data['rotationPhotos'] as List).fold<int>(
+            0,
+            (sum, p) => sum + (p as String).length,
+          );
+      const maxDocBytes = 1048576; // Firestore's hard per-document limit
+      const safetyBudget = 900000; // leaves headroom for the doc's other fields
+      if (imageBytesTotal > safetyBudget) {
+        if (mounted) {
+          setState(() {
+            _submitting = false;
+            _uploadError =
+                'These photos are too large to save (${(imageBytesTotal / 1024).round()} KB of a '
+                '${(maxDocBytes / 1024).round()} KB limit) — remove a rotation photo or pick a smaller main image.';
+          });
+        }
+        return;
+      }
 
       // ── SAVE PRODUCT ──
       if (_isEdit) {
@@ -1936,6 +2009,7 @@ class _ProductModalState extends State<_ProductModal> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.close_rounded, size: 20),
+                    tooltip: 'Close',
                     onPressed: _submitting
                         ? null
                         : () => Navigator.pop(context),
@@ -2186,8 +2260,8 @@ class _ProductModalState extends State<_ProductModal> {
                       _buildImagePicker(),
                       const SizedBox(height: 16),
                       _sectionLabel(
-                        '360° Photos (optional)',
-                        icon: Icons.threesixty_rounded,
+                        'More Photos (optional)',
+                        icon: Icons.collections_outlined,
                       ),
                       _buildRotationPhotosPicker(),
                     ],
@@ -2281,6 +2355,23 @@ class _ProductModalState extends State<_ProductModal> {
     final existingBase64 = widget.existingProduct?.imageBase64 ?? '';
     final hasImage = _imageBytes != null || existingBase64.isNotEmpty;
 
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildImagePickerBox(hasImage, existingBase64),
+        const SizedBox(height: 6),
+        Text(
+          'JPG or PNG, square recommended, up to 10 MB — auto-compressed on upload.',
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 11,
+            color: const Color(0xFF9AA5B4),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildImagePickerBox(bool hasImage, String existingBase64) {
     return MouseRegion(
       cursor: (_submitting || _uploadingImage)
           ? MouseCursor.defer
@@ -2382,9 +2473,10 @@ class _ProductModalState extends State<_ProductModal> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Add photos taken from evenly-spaced angles (turntable-style) '
-            'so students can drag to spin the product. One photo just '
-            'shows as a still image.',
+            'Add photos of different angles — front, side, back, sole, '
+            'etc. — so students can swipe through the set, the way most '
+            'shopping sites show a product. JPG or PNG, up to 10 MB each '
+            '— auto-compressed on upload.',
             style: GoogleFonts.beVietnamPro(
               fontSize: 11.5,
               color: const Color(0xFF6B7280),
@@ -2411,13 +2503,13 @@ class _ProductModalState extends State<_ProductModal> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const Icon(
-                      Icons.threesixty_rounded,
+                      Icons.add_photo_alternate_outlined,
                       size: 16,
                       color: Colors.white,
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      count == 0 ? 'Add 360° Photos' : 'Add More Photos',
+                      count == 0 ? 'Add Photos' : 'Add More Photos',
                       style: GoogleFonts.beVietnamPro(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
@@ -2441,16 +2533,6 @@ class _ProductModalState extends State<_ProductModal> {
                     color: const Color(0xFF374151),
                   ),
                 ),
-                if (count < 8) ...[
-                  const SizedBox(width: 6),
-                  Text(
-                    '· add ${8 - count} more for a smoother spin',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11.5,
-                      color: const Color(0xFF9AA5B4),
-                    ),
-                  ),
-                ],
               ],
             ),
             const SizedBox(height: 8),
@@ -2472,8 +2554,9 @@ class _ProductModalState extends State<_ProductModal> {
                               const SizedBox(width: 72, height: 72),
                         ),
                       ),
-                      // Order matters for the spin sequence — numbering
-                      // makes that visible instead of an unordered pile.
+                      // Order matters for the gallery swipe order —
+                      // numbering makes that visible instead of an
+                      // unordered pile.
                       Positioned(
                         left: 4,
                         bottom: 4,
@@ -2499,21 +2582,25 @@ class _ProductModalState extends State<_ProductModal> {
                       Positioned(
                         top: -6,
                         right: -6,
-                        child: MouseRegion(
-                          cursor: SystemMouseCursors.click,
-                          child: GestureDetector(
-                            onTap: () => _removeRotationPhoto(i),
-                            child: Container(
-                              width: 20,
-                              height: 20,
-                              decoration: const BoxDecoration(
-                                color: Colors.black87,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.close_rounded,
-                                size: 13,
-                                color: Colors.white,
+                        child: Tooltip(
+                          message: 'Remove Photo',
+                          waitDuration: const Duration(milliseconds: 400),
+                          child: MouseRegion(
+                            cursor: SystemMouseCursors.click,
+                            child: GestureDetector(
+                              onTap: () => _removeRotationPhoto(i),
+                              child: Container(
+                                width: 20,
+                                height: 20,
+                                decoration: const BoxDecoration(
+                                  color: Colors.black87,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.close_rounded,
+                                  size: 13,
+                                  color: Colors.white,
+                                ),
                               ),
                             ),
                           ),
@@ -2597,11 +2684,16 @@ class _ProductModalState extends State<_ProductModal> {
     final file = result.files.first;
     final bytes = file.bytes;
     if (bytes == null) return;
-    setState(() {
-      _imageBytes = bytes;
-      _pickedImageName = file.name;
-      _uploadError = null;
-    });
+    if (mounted) setState(() => _uploadingImage = true);
+    final compressed = await _compressImageForStorage(bytes);
+    if (mounted) {
+      setState(() {
+        _imageBytes = compressed;
+        _pickedImageName = file.name;
+        _uploadError = null;
+        _uploadingImage = false;
+      });
+    }
   }
 
   void _openAddVariantDialog() async {
@@ -2672,15 +2764,19 @@ class _ProductModalState extends State<_ProductModal> {
             ),
           ],
           const SizedBox(width: 8),
-          MouseRegion(
-            cursor: SystemMouseCursors.click,
-            child: GestureDetector(
-              onTap: () =>
-                  setState(() => _variants.removeWhere((x) => x.id == v.id)),
-              child: const Icon(
-                Icons.close_rounded,
-                size: 16,
-                color: Color(0xFF9AA5B4),
+          Tooltip(
+            message: 'Remove Variant',
+            waitDuration: const Duration(milliseconds: 400),
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: () =>
+                    setState(() => _variants.removeWhere((x) => x.id == v.id)),
+                child: const Icon(
+                  Icons.close_rounded,
+                  size: 16,
+                  color: Color(0xFF9AA5B4),
+                ),
               ),
             ),
           ),
@@ -2865,6 +2961,7 @@ class _VariantDialogState extends State<_VariantDialog> {
                     size: 18,
                     color: Color(0xFF64748B),
                   ),
+                  tooltip: 'Close',
                 ),
               ],
             ),
@@ -3083,6 +3180,7 @@ class _ProductDetailsModal extends StatelessWidget {
                       color: Color(0xFF9AA5B4),
                       size: 20,
                     ),
+                    tooltip: 'Close',
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
@@ -3096,7 +3194,7 @@ class _ProductDetailsModal extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // A portrait photo inside a full-width 220px-tall box
-                    // (ProductSpinViewer's default) left huge empty gutters
+                    // (ProductPhotoGallery's default) left huge empty gutters
                     // on either side — capping the width and centering it
                     // makes the frame match the photo instead of dwarfing
                     // it.
@@ -3479,7 +3577,7 @@ class _ProductDetailsModal extends StatelessWidget {
     // neither.
     final photos = product.displayPhotos;
     if (photos.isNotEmpty) {
-      return ProductSpinViewer(photosBase64: photos, height: 220);
+      return ProductPhotoGallery(photosBase64: photos, height: 220);
     }
     return _buildNetworkImage();
   }
@@ -3886,6 +3984,7 @@ class _OrdersTabState extends State<_OrdersTab> {
                       ),
                       IconButton(
                         icon: const Icon(Icons.close_rounded, size: 18),
+                        tooltip: 'Close',
                         onPressed: () => Navigator.pop(ctx, false),
                       ),
                     ],
@@ -4661,6 +4760,7 @@ class _OrdersTabState extends State<_OrdersTab> {
               _PageButton(
                 icon: Icons.chevron_left_rounded,
                 enabled: _currentPage > 1,
+                tooltip: 'Previous Page',
                 onTap: () => setState(() => _currentPage--),
               ),
               const SizedBox(width: 4),
@@ -4692,6 +4792,7 @@ class _OrdersTabState extends State<_OrdersTab> {
               _PageButton(
                 icon: Icons.chevron_right_rounded,
                 enabled: _currentPage < totalPages,
+                tooltip: 'Next Page',
                 onTap: () => setState(() => _currentPage++),
               ),
             ],
@@ -4803,15 +4904,17 @@ class _PageButton extends StatelessWidget {
   final IconData icon;
   final bool enabled;
   final VoidCallback onTap;
+  final String? tooltip;
   const _PageButton({
     required this.icon,
     required this.enabled,
     required this.onTap,
+    this.tooltip,
   });
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    final button = InkWell(
       onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(6),
       child: Padding(
@@ -4822,6 +4925,12 @@ class _PageButton extends StatelessWidget {
           color: enabled ? const Color(0xFF374151) : const Color(0xFFD1D5DB),
         ),
       ),
+    );
+    if (tooltip == null) return button;
+    return Tooltip(
+      message: tooltip,
+      waitDuration: const Duration(milliseconds: 400),
+      child: button,
     );
   }
 }
@@ -4976,6 +5085,7 @@ class _OrderDetailsModalState extends State<_OrderDetailsModal> {
                       size: 20,
                       color: Color(0xFF64748B),
                     ),
+                    tooltip: 'Close',
                   ),
                 ],
               ),
@@ -5574,6 +5684,7 @@ class _SalesReportModal extends StatelessWidget {
                               size: 20,
                               color: Color(0xFF64748B),
                             ),
+                            tooltip: 'Close',
                           ),
                         ],
                       ),
@@ -5992,7 +6103,7 @@ class ProductModel {
   final String? imageFormat;
   final String status;
   final List<ProductVariant> variants;
-  // Multiple angle photos for the drag-to-rotate 360 viewer. Falls back to
+  // Multiple angle photos for the swipeable product gallery. Falls back to
   // just [imageBase64] when empty, so existing products with a single photo
   // still render fine.
   final List<String> rotationPhotos;
@@ -6036,8 +6147,8 @@ class ProductModel {
     );
   }
 
-  // Falls back to the single main photo when no dedicated rotation set was
-  // uploaded, so the spin viewer always has at least one frame to show.
+  // Falls back to the single main photo when no dedicated photo set was
+  // uploaded, so the gallery always has at least one image to show.
   List<String> get displayPhotos => rotationPhotos.isNotEmpty
       ? rotationPhotos
       : (imageBase64 != null && imageBase64!.isNotEmpty ? [imageBase64!] : []);
@@ -6279,6 +6390,7 @@ class _GcashSettingsDialogState extends State<_GcashSettingsDialog> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.close_rounded, size: 20),
+                  tooltip: 'Close',
                   onPressed: _saving ? null : () => Navigator.pop(context),
                 ),
               ],

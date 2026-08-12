@@ -53,21 +53,49 @@ class _DS {
   static const double radiusLg = 16;
   static const double radiusPill = 100;
 
+  // Soft dual-tone "clay" shadow — a gentle dark shadow below/right paired
+  // with a faint light highlight above/left, instead of one flat drop
+  // shadow. Kept subtle (low opacity, small offsets) so cards read as
+  // lightly puffed rather than skeuomorphic.
   static final List<BoxShadow> cardShadow = [
     BoxShadow(
-      color: Color.fromRGBO(0, 0, 0, 0.06),
-      blurRadius: 12,
-      offset: Offset(0, 4),
+      color: Color.fromRGBO(17, 24, 39, 0.07),
+      blurRadius: 16,
+      offset: Offset(0, 6),
+    ),
+    BoxShadow(
+      color: Color.fromRGBO(255, 255, 255, 0.6),
+      blurRadius: 8,
+      offset: Offset(0, -1),
     ),
   ];
 
   static final List<BoxShadow> postShadow = [
     BoxShadow(
-      color: Color.fromRGBO(0, 0, 0, 0.07),
-      blurRadius: 8,
-      offset: Offset(0, 2),
+      color: Color.fromRGBO(17, 24, 39, 0.08),
+      blurRadius: 14,
+      offset: Offset(0, 5),
+    ),
+    BoxShadow(
+      color: Color.fromRGBO(255, 255, 255, 0.55),
+      blurRadius: 6,
+      offset: Offset(0, -1),
     ),
   ];
+
+  // Soft fade-out divider — replaces flat 1px gray Divider lines, which
+  // read as harsh/out-of-place against the soft-shadowed clay cards.
+  static Widget fadeDivider({double height = 1}) {
+    return Container(
+      height: height,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.transparent, _C.borderSoft, Colors.transparent],
+          stops: [0, 0.5, 1],
+        ),
+      ),
+    );
+  }
 
   // Required fields are labeled "Foo *" — the asterisk used to render in the
   // same muted gray as the rest of the label and was easy to miss. Splitting
@@ -561,7 +589,7 @@ Widget _sectionLabel(String text, {IconData? icon}) {
           ),
         ),
         const SizedBox(width: 12),
-        const Expanded(child: Divider(color: _C.borderSoft, thickness: 1)),
+        Expanded(child: _DS.fadeDivider()),
       ],
     ),
   );
@@ -1163,6 +1191,7 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                         color: Colors.white,
                         size: 20,
                       ),
+                      tooltip: 'Close',
                       onPressed: () => Navigator.pop(ctx),
                     ),
                   ],
@@ -1473,7 +1502,7 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          const Divider(height: 1, color: _C.borderSoft),
+          _DS.fadeDivider(),
           const SizedBox(height: 10),
         ],
       ),
@@ -1649,6 +1678,7 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
               _PageBtn(
                 icon: Icons.chevron_left_rounded,
                 enabled: _currentPage > 1,
+                tooltip: 'Previous Page',
                 onTap: () => setState(() => _currentPage--),
               ),
               const SizedBox(width: 4),
@@ -1663,6 +1693,7 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
               _PageBtn(
                 icon: Icons.chevron_right_rounded,
                 enabled: _currentPage < totalPages,
+                tooltip: 'Next Page',
                 onTap: () => setState(() => _currentPage++),
               ),
             ],
@@ -1800,6 +1831,7 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                             color: _C.darkGray,
                             size: 20,
                           ),
+                          tooltip: 'Close',
                           onPressed: () => Navigator.pop(ctx),
                         ),
                       ],
@@ -2817,19 +2849,23 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
           Positioned(
             top: 8,
             right: 8,
-            child: InkWell(
-              onTap: onRemove,
-              child: Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.65),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.close_rounded,
-                  size: 14,
-                  color: Colors.white,
+            child: Tooltip(
+              message: 'Remove Image',
+              waitDuration: const Duration(milliseconds: 400),
+              child: InkWell(
+                onTap: onRemove,
+                child: Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.65),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.close_rounded,
+                    size: 14,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ),
@@ -3041,6 +3077,7 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                     size: 16,
                     color: _C.darkGray,
                   ),
+                  tooltip: 'Remove Attachment',
                   onPressed: () => onChanged([...attachments]..removeAt(e.key)),
                 ),
               ],
@@ -3754,15 +3791,17 @@ class _PageBtn extends StatelessWidget {
   final IconData icon;
   final bool enabled;
   final VoidCallback onTap;
+  final String? tooltip;
   const _PageBtn({
     required this.icon,
     required this.enabled,
     required this.onTap,
+    this.tooltip,
   });
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    final button = InkWell(
       onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(6),
       child: Padding(
@@ -3773,6 +3812,12 @@ class _PageBtn extends StatelessWidget {
           color: enabled ? _C.textMid : const Color(0xFFD1D5DB),
         ),
       ),
+    );
+    if (tooltip == null) return button;
+    return Tooltip(
+      message: tooltip,
+      waitDuration: const Duration(milliseconds: 400),
+      child: button,
     );
   }
 }

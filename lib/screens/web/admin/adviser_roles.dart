@@ -1,4 +1,4 @@
-﻿// lib/screens/web/admin/adviser_roles.dart
+// lib/screens/web/admin/adviser_roles.dart
 
 import 'dart:async';
 import 'dart:convert';
@@ -692,14 +692,16 @@ class _AdviserRolesState extends State<AdviserRoles> {
       final orgSnap = results[0];
       final rolesSnap = results[1];
       // 🔥 FIX: Only load ACTIVE organizations
-      final orgs = orgSnap.docs
-          .where((doc) {
-            final data = doc.data();
-            return data['status'] != 'archived'; // or data['isArchived'] != true
-          })
-          .map(OrgModel.fromDoc)
-          .toList()
-        ..sort((a, b) => a.name.compareTo(b.name));
+      final orgs =
+          orgSnap.docs
+              .where((doc) {
+                final data = doc.data();
+                return data['status'] !=
+                    'archived'; // or data['isArchived'] != true
+              })
+              .map(OrgModel.fromDoc)
+              .toList()
+            ..sort((a, b) => a.name.compareTo(b.name));
 
       final validRoles = rolesSnap.docs.where((doc) {
         final d = doc.data();
@@ -908,7 +910,10 @@ class _AdviserRolesState extends State<AdviserRoles> {
         }).toList();
 
         // 🔥 FIX: Only show advisers from ACTIVE organizations
-        final activeOrgIds = _orgs.where((o) => o.id.isNotEmpty).map((o) => o.id).toSet();
+        final activeOrgIds = _orgs
+            .where((o) => o.id.isNotEmpty)
+            .map((o) => o.id)
+            .toSet();
         docs = docs.where((d) {
           final data = d.data() as Map<String, dynamic>;
           final orgId = (data['orgId'] ?? '').toString().trim();
@@ -1154,18 +1159,29 @@ class _AdviserRolesState extends State<AdviserRoles> {
                     ),
                   ],
                   const SizedBox(width: 6),
+                  // org.id.isEmpty is the row's existing sentinel for "not
+                  // found in _orgs" — which is already filtered to
+                  // active-only orgs (see _loadMeta), so an empty org here
+                  // means the linked org is currently archived.
                   _ActionIcon(
                     icon: archived
                         ? Icons.restore_rounded
                         : Icons.archive_outlined,
-                    tooltip: archived ? 'Restore' : 'Archive',
+                    tooltip: archived
+                        ? (org.id.isEmpty
+                              ? 'Restore the organization first'
+                              : 'Restore')
+                        : 'Archive',
                     color: archived
-                        ? const Color(0xFF059669)
+                        ? (org.id.isEmpty
+                              ? const Color(0xFFB0BAC8)
+                              : const Color(0xFF059669))
                         : const Color(0xFF6B7280),
                     onTap: archived
                         ? () => _confirmRestoreRecord(
                             docId,
                             data['orgName'] ?? '',
+                            orgId,
                           )
                         : () => _confirmArchive(docId, data['orgName'] ?? ''),
                   ),
@@ -1401,6 +1417,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
                         color: Colors.white,
                         size: 20,
                       ),
+                      tooltip: 'Close',
                       onPressed: () => Navigator.pop(ctx),
                     ),
                   ],
@@ -1453,7 +1470,11 @@ class _AdviserRolesState extends State<AdviserRoles> {
                       OutlinedButton.icon(
                         onPressed: () {
                           Navigator.pop(ctx);
-                          _confirmRestoreRecord(docId, orgName);
+                          _confirmRestoreRecord(
+                            docId,
+                            orgName,
+                            (data['orgId'] ?? '').toString(),
+                          );
                         },
                         icon: const Icon(
                           Icons.restore_rounded,
@@ -1707,7 +1728,6 @@ class _AdviserRolesState extends State<AdviserRoles> {
             orElse: () => null,
           )
         : null;
-    final originalOrgId = existing?['orgId']?.toString();
 
     final advNameCtrl = TextEditingController(
       text: existing?['adviserName'] ?? '',
@@ -1795,26 +1815,13 @@ class _AdviserRolesState extends State<AdviserRoles> {
               );
 
               if (isEdit && docId != null) {
-                final orgChanged = selectedOrg!.id != originalOrgId;
-
-                if (orgChanged) {
-                  // Only one active adviser per org — reassigning here
-                  // must not silently bump whoever's already there.
-                  final dup = await FirebaseFirestore.instance
-                      .collection('adviser_roles')
-                      .where('orgId', isEqualTo: selectedOrg!.id)
-                      .where('archived', isEqualTo: false)
-                      .get();
-                  if (dup.docs.isNotEmpty) {
-                    setDlg(() {
-                      isSaving = false;
-                      errorMsg =
-                          '${selectedOrg!.name} already has an active adviser role.';
-                    });
-                    return;
-                  }
-                }
-
+                // The org picker is locked (read-only) whenever isEdit is
+                // true — see the form UI below — so selectedOrg can never
+                // actually differ from originalOrgId here. This used to
+                // carry a whole "org was reassigned" code path (dup-check +
+                // move + clear-old-org) that could never run, which read as
+                // if reassignment were a supported edit-mode action when
+                // it isn't.
                 final batch = FirebaseFirestore.instance.batch();
                 batch.update(
                   FirebaseFirestore.instance
@@ -1833,29 +1840,10 @@ class _AdviserRolesState extends State<AdviserRoles> {
                     adviserTitle: adviserRank,
                   ),
                 );
-                if (orgChanged &&
-                    originalOrgId != null &&
-                    originalOrgId.isNotEmpty) {
-                  // Clear the adviser off their previous org so they no
-                  // longer show up there once moved.
-                  batch.update(
-                    FirebaseFirestore.instance
-                        .collection('organizations')
-                        .doc(originalOrgId),
-                    buildOrganizationAdviserPayload(
-                      adviserName: '',
-                      adviserEmail: '',
-                      adviserPhone: '',
-                      adviserTitle: '',
-                    ),
-                  );
-                }
                 await batch.commit();
 
                 await activity_log.ActivityLogger.log(
-                  action: orgChanged
-                      ? 'Moved adviser role to ${selectedOrg!.name}'
-                      : 'Updated adviser role for ${selectedOrg!.name}',
+                  action: 'Updated adviser role for ${selectedOrg!.name}',
                   module: 'Adviser Roles',
                   severity: 'info',
                   details: {'orgId': selectedOrg!.id, 'adviser': adviserName},
@@ -2019,6 +2007,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
                             color: Colors.white,
                             size: 20,
                           ),
+                          tooltip: 'Close',
                           onPressed: isSaving
                               ? null
                               : () => Navigator.of(
@@ -2043,11 +2032,16 @@ class _AdviserRolesState extends State<AdviserRoles> {
                             ),
                             if (isEdit) ...[
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 14,
+                                ),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFF1F5F9),
                                   borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: const Color(0xFFE2E6EA)),
+                                  border: Border.all(
+                                    color: const Color(0xFFE2E6EA),
+                                  ),
                                 ),
                                 child: Row(
                                   children: [
@@ -2058,7 +2052,8 @@ class _AdviserRolesState extends State<AdviserRoles> {
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Text(
                                             selectedOrg?.name ?? '—',
@@ -2068,7 +2063,8 @@ class _AdviserRolesState extends State<AdviserRoles> {
                                               color: const Color(0xFF1A202C),
                                             ),
                                           ),
-                                          if (selectedOrg?.tag != null && selectedOrg!.tag.isNotEmpty)
+                                          if (selectedOrg?.tag != null &&
+                                              selectedOrg!.tag.isNotEmpty)
                                             Text(
                                               selectedOrg!.tag,
                                               style: GoogleFonts.beVietnamPro(
@@ -2080,9 +2076,14 @@ class _AdviserRolesState extends State<AdviserRoles> {
                                       ),
                                     ),
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 3,
+                                      ),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFF64748B).withAlpha(20),
+                                        color: const Color(
+                                          0xFF64748B,
+                                        ).withAlpha(20),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Text(
@@ -2118,29 +2119,38 @@ class _AdviserRolesState extends State<AdviserRoles> {
                                             _OrgAvatar(
                                               o.abbrev.isNotEmpty
                                                   ? o.abbrev
-                                                  : o.name.substring(0, o.name.length.clamp(0, 2)),
+                                                  : o.name.substring(
+                                                      0,
+                                                      o.name.length.clamp(0, 2),
+                                                    ),
                                               logoUrl: o.logoUrl,
                                             ),
                                             const SizedBox(width: 10),
                                             Expanded(
                                               child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
                                                 mainAxisSize: MainAxisSize.min,
                                                 children: [
                                                   Text(
                                                     o.name,
-                                                    style: GoogleFonts.beVietnamPro(
-                                                      fontSize: 13,
-                                                      fontWeight: FontWeight.w600,
-                                                    ),
+                                                    style:
+                                                        GoogleFonts.beVietnamPro(
+                                                          fontSize: 13,
+                                                          fontWeight:
+                                                              FontWeight.w600,
+                                                        ),
                                                   ),
                                                   if (o.tag.isNotEmpty)
                                                     Text(
                                                       o.tag,
-                                                      style: GoogleFonts.beVietnamPro(
-                                                        fontSize: 11,
-                                                        color: const Color(0xFF64748B),
-                                                      ),
+                                                      style:
+                                                          GoogleFonts.beVietnamPro(
+                                                            fontSize: 11,
+                                                            color: const Color(
+                                                              0xFF64748B,
+                                                            ),
+                                                          ),
                                                     ),
                                                 ],
                                               ),
@@ -2159,33 +2169,6 @@ class _AdviserRolesState extends State<AdviserRoles> {
                                     : null,
                               ),
                             ],
-
-                            if (isEdit &&
-                                selectedOrg != null &&
-                                selectedOrg!.id != originalOrgId)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8),
-                                child: Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.info_outline_rounded,
-                                      size: 14,
-                                      color: AdminColors.warning,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Expanded(
-                                      child: Text(
-                                        'This adviser will be moved to ${selectedOrg!.name} and removed from their current organization.',
-                                        style: GoogleFonts.beVietnamPro(
-                                          fontSize: 11,
-                                          color: AdminColors.warning,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            const SizedBox(height: 20),
 
                             const SizedBox(height: 20),
                             _sectionDivider(
@@ -2473,7 +2456,26 @@ class _AdviserRolesState extends State<AdviserRoles> {
     );
   }
 
-  void _confirmRestoreRecord(String docId, String orgName) {
+  void _confirmRestoreRecord(String docId, String orgName, String orgId) {
+    // _orgs is already filtered to active-only orgs (see _loadMeta), so
+    // "not in that list" means the linked org is currently archived — an
+    // adviser shouldn't be restorable to active while the org they advise
+    // still isn't.
+    final orgIsActive = _orgs.any((o) => o.id == orgId);
+    if (!orgIsActive) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '"$orgName" is archived — restore the organization first '
+            'before restoring its adviser.',
+          ),
+          backgroundColor: const Color(0xFF6B7280),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      );
+      return;
+    }
     _confirmAction(
       title: 'Restore Record',
       message: 'Restore "$orgName" back to the active list?',
@@ -3093,15 +3095,19 @@ class _PageButton extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: enabled ? onTap : null,
-    borderRadius: BorderRadius.circular(6),
-    child: Padding(
-      padding: const EdgeInsets.all(4),
-      child: Icon(
-        icon,
-        size: 20,
-        color: enabled ? const Color(0xFF374151) : const Color(0xFFD1D5DB),
+  Widget build(BuildContext context) => Tooltip(
+    message: icon == Icons.chevron_left_rounded ? 'Previous Page' : 'Next Page',
+    waitDuration: const Duration(milliseconds: 400),
+    child: InkWell(
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: Icon(
+          icon,
+          size: 20,
+          color: enabled ? const Color(0xFF374151) : const Color(0xFFD1D5DB),
+        ),
       ),
     ),
   );

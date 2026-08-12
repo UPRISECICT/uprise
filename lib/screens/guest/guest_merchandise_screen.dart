@@ -9,7 +9,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import '../../widgets/product_spin_viewer.dart';
+import '../../widgets/product_photo_gallery.dart';
 
 // ─────────────────────────────────────────────────────────────
 // Theme (matches guest_events_screen.dart's palette)
@@ -830,7 +830,7 @@ class _ProductCard extends StatelessWidget {
   Widget _buildDetailImage() {
     final photos = product.displayPhotos;
     if (photos.isEmpty) return _detailPlaceholder();
-    return ProductSpinViewer(photosBase64: photos, height: 200);
+    return ProductPhotoGallery(photosBase64: photos, height: 200);
   }
 
   Widget _detailPlaceholder() => Container(

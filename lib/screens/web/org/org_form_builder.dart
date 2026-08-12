@@ -207,6 +207,13 @@ class _OrgFormBuilderModalState extends State<OrgFormBuilderModal> {
               .map((e) => Map<String, dynamic>.from(e as Map))
               .toList();
         }
+      } else {
+        // Brand-new form — default to published so building questions and
+        // saving is enough to make it live, matching what an org expects
+        // when they're actively setting this up for an event. Explicitly
+        // toggling it off (to hold a form back while still drafting it) is
+        // still available and respected on every subsequent load/save.
+        _isPublished = true;
       }
     } catch (_) {}
     if (mounted) setState(() => _loading = false);
@@ -268,7 +275,6 @@ class _OrgFormBuilderModalState extends State<OrgFormBuilderModal> {
       }
       await ref.set(payload, SetOptions(merge: true));
       if (mounted) {
-        setState(() => _lastAutoSavedAt = DateTime.now());
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -283,6 +289,11 @@ class _OrgFormBuilderModalState extends State<OrgFormBuilderModal> {
             ),
           ),
         );
+        // Close on successful save — the old behavior left the modal open
+        // with just a snackbar, so saving didn't feel like it actually
+        // finished anything.
+        Navigator.pop(context, true);
+        return;
       }
     } catch (e) {
       if (mounted) {
@@ -338,6 +349,119 @@ class _OrgFormBuilderModalState extends State<OrgFormBuilderModal> {
         _expandedIdx = _expandedIdx! - 1;
       }
     });
+  }
+
+  // Question deletion used to happen the instant the trash icon was
+  // tapped — no confirmation, no undo. A misclick on a mostly-filled-out
+  // question meant redoing it from scratch.
+  void _confirmDeleteField(int i) {
+    final label = (_fields[i]['label'] as String? ?? '').trim();
+    showDialog(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF2F2),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.delete_outline_rounded,
+                      color: UpriseColors.error,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Delete Question?',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF1A202C),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Text(
+                label.isNotEmpty
+                    ? 'Delete "$label"? This can\'t be undone.'
+                    : 'Delete this question? This can\'t be undone.',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFFE2E6EA)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                    ),
+                    child: Text(
+                      'Cancel',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        color: const Color(0xFF374151),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _deleteField(i);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: UpriseColors.error,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                    ),
+                    child: Text(
+                      'Delete',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _moveUp(int i) {
@@ -413,7 +537,7 @@ class _OrgFormBuilderModalState extends State<OrgFormBuilderModal> {
                             onTap: () => setState(
                               () => _expandedIdx = _expandedIdx == i ? null : i,
                             ),
-                            onDelete: () => _deleteField(i),
+                            onDelete: () => _confirmDeleteField(i),
                             onDuplicate: () => _duplicateField(i),
                             onMoveUp: () => _moveUp(i),
                             onMoveDown: () => _moveDown(i),
@@ -518,6 +642,7 @@ class _OrgFormBuilderModalState extends State<OrgFormBuilderModal> {
               color: Colors.white,
               size: 20,
             ),
+            tooltip: 'Close',
             onPressed: () => Navigator.pop(context),
           ),
         ],
@@ -1059,22 +1184,26 @@ class _FieldCardState extends State<_FieldCard> {
                     _miniBtn(
                       Icons.keyboard_arrow_up_rounded,
                       widget.index > 0 ? widget.onMoveUp : null,
+                      tooltip: 'Move Up',
                     ),
                     _miniBtn(
                       Icons.keyboard_arrow_down_rounded,
                       widget.index < widget.total - 1
                           ? widget.onMoveDown
                           : null,
+                      tooltip: 'Move Down',
                     ),
                     _miniBtn(
                       Icons.content_copy_rounded,
                       widget.onDuplicate,
                       color: const Color(0xFF64748B),
+                      tooltip: 'Duplicate Question',
                     ),
                     _miniBtn(
                       Icons.delete_outline_rounded,
                       widget.onDelete,
                       color: const Color(0xFFDC2626),
+                      tooltip: 'Delete Question',
                     ),
                   ],
                 ],
@@ -1147,8 +1276,9 @@ class _FieldCardState extends State<_FieldCard> {
     IconData icon,
     VoidCallback? onTap, {
     Color color = const Color(0xFF9AA5B4),
+    String? tooltip,
   }) {
-    return InkWell(
+    final button = InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(6),
       child: Padding(
@@ -1159,6 +1289,12 @@ class _FieldCardState extends State<_FieldCard> {
           color: onTap == null ? const Color(0xFFE2E6EA) : color,
         ),
       ),
+    );
+    if (tooltip == null) return button;
+    return Tooltip(
+      message: tooltip,
+      waitDuration: const Duration(milliseconds: 400),
+      child: button,
     );
   }
 
@@ -1340,19 +1476,23 @@ class _FieldCardState extends State<_FieldCard> {
                   ),
                 ),
                 const SizedBox(width: 6),
-                InkWell(
-                  onTap: _optionCtrls.length > 1
-                      ? () => _removeOption(i)
-                      : null,
-                  borderRadius: BorderRadius.circular(6),
-                  child: Padding(
-                    padding: const EdgeInsets.all(5),
-                    child: Icon(
-                      Icons.close_rounded,
-                      size: 15,
-                      color: _optionCtrls.length > 1
-                          ? const Color(0xFF9AA5B4)
-                          : const Color(0xFFE2E6EA),
+                Tooltip(
+                  message: 'Remove Option',
+                  waitDuration: const Duration(milliseconds: 400),
+                  child: InkWell(
+                    onTap: _optionCtrls.length > 1
+                        ? () => _removeOption(i)
+                        : null,
+                    borderRadius: BorderRadius.circular(6),
+                    child: Padding(
+                      padding: const EdgeInsets.all(5),
+                      child: Icon(
+                        Icons.close_rounded,
+                        size: 15,
+                        color: _optionCtrls.length > 1
+                            ? const Color(0xFF9AA5B4)
+                            : const Color(0xFFE2E6EA),
+                      ),
                     ),
                   ),
                 ),

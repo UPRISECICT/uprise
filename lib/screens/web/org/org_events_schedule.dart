@@ -381,6 +381,7 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
               children: [
                 _NavButton(
                   icon: Icons.chevron_left_rounded,
+                  tooltip: 'Previous Month',
                   onTap: () => setState(
                     () => _currentMonth = DateTime(
                       _currentMonth.year,
@@ -419,6 +420,7 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                 ),
                 _NavButton(
                   icon: Icons.chevron_right_rounded,
+                  tooltip: 'Next Month',
                   onTap: () => setState(
                     () => _currentMonth = DateTime(
                       _currentMonth.year,
@@ -958,6 +960,7 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                               color: Colors.white,
                               size: 20,
                             ),
+                            tooltip: 'Close',
                             onPressed: () => Navigator.pop(ctx),
                           ),
                         ],
@@ -1244,6 +1247,7 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                               color: Colors.white,
                               size: 20,
                             ),
+                            tooltip: 'Close',
                             onPressed: () => Navigator.pop(ctx),
                           ),
                         ],
@@ -1615,17 +1619,24 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
 class _NavButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
-  const _NavButton({required this.icon, required this.onTap});
+  final String? tooltip;
+  const _NavButton({required this.icon, required this.onTap, this.tooltip});
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    final button = InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         child: Icon(icon, size: 20, color: UpriseColors.primaryDark),
       ),
+    );
+    if (tooltip == null) return button;
+    return Tooltip(
+      message: tooltip,
+      waitDuration: const Duration(milliseconds: 400),
+      child: button,
     );
   }
 }

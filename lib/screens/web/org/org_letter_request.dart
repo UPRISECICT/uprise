@@ -826,6 +826,7 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
               _PageButton(
                 icon: Icons.chevron_left_rounded,
                 enabled: _currentPage > 1,
+                tooltip: 'Previous Page',
                 onTap: () => setState(() => _currentPage--),
               ),
               const SizedBox(width: 4),
@@ -857,6 +858,7 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
               _PageButton(
                 icon: Icons.chevron_right_rounded,
                 enabled: _currentPage < totalPages,
+                tooltip: 'Next Page',
                 onTap: () => setState(() => _currentPage++),
               ),
             ],
@@ -2577,15 +2579,17 @@ class _PageButton extends StatelessWidget {
   final IconData icon;
   final bool enabled;
   final VoidCallback onTap;
+  final String? tooltip;
   const _PageButton({
     required this.icon,
     required this.enabled,
     required this.onTap,
+    this.tooltip,
   });
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    final button = InkWell(
       onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(6),
       child: Padding(
@@ -2596,6 +2600,12 @@ class _PageButton extends StatelessWidget {
           color: enabled ? const Color(0xFF374151) : const Color(0xFFD1D5DB),
         ),
       ),
+    );
+    if (tooltip == null) return button;
+    return Tooltip(
+      message: tooltip,
+      waitDuration: const Duration(milliseconds: 400),
+      child: button,
     );
   }
 }

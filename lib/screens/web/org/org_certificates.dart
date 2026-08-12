@@ -1704,6 +1704,7 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
                       _PageButton(
                         icon: Icons.chevron_left_rounded,
                         enabled: _currentPage > 1,
+                        tooltip: 'Previous Page',
                         onTap: () => setState(() => _currentPage--),
                       ),
                       const SizedBox(width: 4),
@@ -1736,6 +1737,7 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
                       _PageButton(
                         icon: Icons.chevron_right_rounded,
                         enabled: _currentPage < totalPages,
+                        tooltip: 'Next Page',
                         onTap: () => setState(() => _currentPage++),
                       ),
                     ],
@@ -1758,6 +1760,7 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
                     _PageButton(
                       icon: Icons.chevron_left_rounded,
                       enabled: _currentPage > 1,
+                      tooltip: 'Previous Page',
                       onTap: () => setState(() => _currentPage--),
                     ),
                     const SizedBox(width: 4),
@@ -1789,6 +1792,7 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
                     _PageButton(
                       icon: Icons.chevron_right_rounded,
                       enabled: _currentPage < totalPages,
+                      tooltip: 'Next Page',
                       onTap: () => setState(() => _currentPage++),
                     ),
                   ],
@@ -1946,25 +1950,35 @@ class _PageButton extends StatelessWidget {
   final IconData icon;
   final bool enabled;
   final VoidCallback onTap;
+  final String? tooltip;
   const _PageButton({
     required this.icon,
     required this.enabled,
     required this.onTap,
+    this.tooltip,
   });
 
   @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: enabled ? onTap : null,
-    borderRadius: BorderRadius.circular(6),
-    child: Padding(
-      padding: const EdgeInsets.all(4),
-      child: Icon(
-        icon,
-        size: 20,
-        color: enabled ? const Color(0xFF374151) : const Color(0xFFD1D5DB),
+  Widget build(BuildContext context) {
+    final button = InkWell(
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: Icon(
+          icon,
+          size: 20,
+          color: enabled ? const Color(0xFF374151) : const Color(0xFFD1D5DB),
+        ),
       ),
-    ),
-  );
+    );
+    if (tooltip == null) return button;
+    return Tooltip(
+      message: tooltip,
+      waitDuration: const Duration(milliseconds: 400),
+      child: button,
+    );
+  }
 }
 
 class _PageNumButton extends StatelessWidget {
@@ -2960,6 +2974,7 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
                   backgroundColor: Colors.black54,
                   shape: const CircleBorder(),
                 ),
+                tooltip: 'Close',
                 onPressed: () => Navigator.pop(ctx),
               ),
             ),

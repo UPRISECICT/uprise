@@ -447,35 +447,41 @@ class _AdminProfileState extends State<AdminProfile> {
                                       cursor: _isLoading
                                           ? MouseCursor.defer
                                           : SystemMouseCursors.click,
-                                      child: GestureDetector(
-                                        onTap: _isLoading
-                                            ? null
-                                            : _pickAndUploadImage,
-                                        child: Container(
-                                          width: 30,
-                                          height: 30,
-                                          decoration: BoxDecoration(
-                                            color: AdminColors.primaryDark,
-                                            shape: BoxShape.circle,
-                                            border: Border.all(
-                                              color: Colors.white,
-                                              width: 2,
+                                      child: Tooltip(
+                                        message: 'Change Photo',
+                                        waitDuration: const Duration(
+                                          milliseconds: 400,
+                                        ),
+                                        child: GestureDetector(
+                                          onTap: _isLoading
+                                              ? null
+                                              : _pickAndUploadImage,
+                                          child: Container(
+                                            width: 30,
+                                            height: 30,
+                                            decoration: BoxDecoration(
+                                              color: AdminColors.primaryDark,
+                                              shape: BoxShape.circle,
+                                              border: Border.all(
+                                                color: Colors.white,
+                                                width: 2,
+                                              ),
                                             ),
+                                            child: _isLoading
+                                                ? const Padding(
+                                                    padding: EdgeInsets.all(6),
+                                                    child:
+                                                        CircularProgressIndicator(
+                                                          strokeWidth: 2,
+                                                          color: Colors.white,
+                                                        ),
+                                                  )
+                                                : const Icon(
+                                                    Icons.camera_alt_rounded,
+                                                    size: 14,
+                                                    color: Colors.white,
+                                                  ),
                                           ),
-                                          child: _isLoading
-                                              ? const Padding(
-                                                  padding: EdgeInsets.all(6),
-                                                  child:
-                                                      CircularProgressIndicator(
-                                                        strokeWidth: 2,
-                                                        color: Colors.white,
-                                                      ),
-                                                )
-                                              : const Icon(
-                                                  Icons.camera_alt_rounded,
-                                                  size: 14,
-                                                  color: Colors.white,
-                                                ),
                                         ),
                                       ),
                                     ),

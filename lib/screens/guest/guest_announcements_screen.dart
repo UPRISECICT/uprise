@@ -39,7 +39,18 @@ class GuestAnnouncementsScreen extends StatelessWidget {
             return const Center(child: Text('No announcements available'));
           }
 
-          final announcements = snapshot.data!.docs;
+          // Filtered client-side rather than adding a 3rd .where() to the
+          // query above — that would need a new composite index, and this
+          // app has been bitten before by queries silently returning empty
+          // when one isn't provisioned.
+          final announcements = snapshot.data!.docs.where((d) {
+            final data = d.data() as Map<String, dynamic>;
+            return data['isArchived'] != true;
+          }).toList();
+
+          if (announcements.isEmpty) {
+            return const Center(child: Text('No announcements available'));
+          }
 
           announcements.sort((a, b) {
             final aTime = (a['timestamp'] as Timestamp?) ?? Timestamp.now();

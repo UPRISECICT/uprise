@@ -426,6 +426,9 @@ class _OrganizationLoginState extends State<OrganizationLogin>
                         color: _slateSoft,
                         size: 18,
                       ),
+                      tooltip: _obscurePassword
+                          ? 'Show Password'
+                          : 'Hide Password',
                       onPressed: () =>
                           setState(() => _obscurePassword = !_obscurePassword),
                     ),

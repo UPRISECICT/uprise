@@ -968,6 +968,34 @@ class _ExternalAccountState extends State<ExternalAccount> {
       return;
     }
 
+    // Safety net: block creating a duplicate account if this email already
+    // belongs to a real account of any role. The guest-side signup form
+    // already checks this before a request can even be submitted, but this
+    // covers a request that predates that check, or one where the email's
+    // account situation changed between submission and approval. Checked
+    // against both the lowercased and as-typed email since account
+    // creation elsewhere in this app never normalizes case.
+    final asTypedEmail = (data['email'] as String? ?? email).trim();
+    for (final variant in {resolvedEmail, asTypedEmail}) {
+      final existingUserSnap = await FirebaseFirestore.instance
+          .collection('users')
+          .where('email', isEqualTo: variant)
+          .limit(1)
+          .get();
+      if (existingUserSnap.docs.isNotEmpty) {
+        final role = (existingUserSnap.docs.first.data()['role'] ?? '')
+            .toString();
+        if (mounted) {
+          AppToast.error(
+            context,
+            'Cannot approve: $resolvedEmail already belongs to '
+            '${role.isEmpty ? 'an existing' : 'a $role'} account.',
+          );
+        }
+        return;
+      }
+    }
+
     final password = _generateGuestPassword();
 
     // Secondary Firebase app so we don't sign the admin out
@@ -1047,7 +1075,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
     // Send credentials (falls back to a queued email doc on failure) —
     // classification decides which EmailJS template/params get used, so a
     // BulSUan guest never receives the Outsider-shaped email and vice versa.
-    final sent = await _sendGuestCredentialsEmail(
+    final (sent, sendError) = await _sendGuestCredentialsEmail(
       resolvedEmail,
       userName,
       password,
@@ -1067,6 +1095,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
         college: college,
         yearLevel: yearLevel,
         section: section,
+        lastError: sendError,
       );
     }
 
@@ -1074,8 +1103,13 @@ class _ExternalAccountState extends State<ExternalAccount> {
       action:
           'APPROVED external request for $userName ($resolvedEmail) — guest account created',
       module: 'External Account',
-      severity: 'info',
-      details: {'requestId': docId, 'uid': uid},
+      severity: sent ? 'info' : 'warning',
+      details: {
+        'requestId': docId,
+        'uid': uid,
+        'emailSent': sent,
+        if (!sent) 'emailError': sendError ?? 'unknown',
+      },
     );
 
     if (mounted) {
@@ -1085,9 +1119,17 @@ class _ExternalAccountState extends State<ExternalAccount> {
           'Approved. Credentials sent to $resolvedEmail.',
         );
       } else {
+        // Surface the actual EmailJS failure instead of a generic "queued"
+        // message — the Cloud Function that drains email_queue depends on
+        // its own Gmail relay credentials being configured, so a queued
+        // item isn't a guaranteed eventual delivery. Admin needs to know
+        // *why* it failed to know whether to check the EmailJS dashboard
+        // (service/template/quota) or the Cloud Functions Gmail relay.
         AppToast.warning(
           context,
-          'Approved. Credentials queued — sending failed for $resolvedEmail.',
+          'Approved, but the credential email failed to send to $resolvedEmail '
+          '(${sendError ?? 'unknown error'}). It has been queued for retry — '
+          'check the EmailJS service for this guest type if it keeps failing.',
         );
       }
     }
@@ -1118,7 +1160,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
   static const String _bulsuanEmailServiceId = 'service_oabn19f';
   static const String _bulsuanCredentialsTemplateId = 'template_okaw519';
 
-  Future<bool> _sendGuestCredentialsEmail(
+  Future<(bool, String?)> _sendGuestCredentialsEmail(
     String email,
     String fullName,
     String password, {
@@ -1152,6 +1194,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
           };
 
     const int maxAttempts = 3;
+    String? lastError;
     for (int attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         final response = await http.post(
@@ -1172,20 +1215,21 @@ class _ExternalAccountState extends State<ExternalAccount> {
           debugPrint(
             '✅ Guest ($classification) credentials email sent to $email (attempt $attempt)',
           );
-          return true;
+          return (true, null);
         }
-        debugPrint(
-          '❌ EmailJS ${response.statusCode}: ${response.body} (attempt $attempt)',
-        );
+        lastError = 'EmailJS ${response.statusCode}: ${response.body}';
+        debugPrint('❌ $lastError (attempt $attempt)');
       } catch (e) {
+        lastError = e.toString();
         debugPrint(
           '❌ Failed to send guest credentials to $email (attempt $attempt): $e',
         );
       }
-      if (attempt < maxAttempts)
+      if (attempt < maxAttempts) {
         await Future.delayed(Duration(seconds: attempt));
+      }
     }
-    return false;
+    return (false, lastError);
   }
 
   Future<void> _queueGuestCredentialEmail(
@@ -1197,6 +1241,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
     String college = '',
     String yearLevel = '',
     String section = '',
+    String? lastError,
   }) async {
     try {
       await FirebaseFirestore.instance.collection('email_queue').add({
@@ -1210,6 +1255,11 @@ class _ExternalAccountState extends State<ExternalAccount> {
         'type': 'guest_credentials',
         'classification': classification,
         'attempts': 0,
+        // The EmailJS failure that triggered this queue fallback — the
+        // Cloud Function processor overwrites this with its own error if
+        // the Gmail relay send also fails, but this preserves the reason
+        // EmailJS itself rejected it even if the relay later succeeds.
+        if (lastError != null) 'emailjsError': lastError,
         'createdAt': FieldValue.serverTimestamp(),
       });
       debugPrint('Queued guest credential email for $email');
@@ -1271,6 +1321,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.close_rounded, size: 18),
+                    tooltip: 'Close',
                     onPressed: () => Navigator.pop(ctx, false),
                   ),
                 ],
@@ -1370,7 +1421,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
     );
 
     if (confirmed == true) {
-      final sent = await _sendGuestCredentialsEmail(
+      final (sent, sendError) = await _sendGuestCredentialsEmail(
         req.email,
         req.userName,
         req.tempPassword!,
@@ -1390,12 +1441,14 @@ class _ExternalAccountState extends State<ExternalAccount> {
           college: req.college,
           yearLevel: req.yearLevel,
           section: req.section,
+          lastError: sendError,
         );
       }
       await activity_log.ActivityLogger.log(
         action: 'Resent credentials for guest: ${req.userName} (${req.email})',
         module: 'External Account',
-        severity: 'info',
+        severity: sent ? 'info' : 'warning',
+        details: sent ? null : {'emailError': sendError ?? 'unknown'},
       );
       if (mounted) {
         if (sent) {
@@ -1403,7 +1456,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
         } else {
           AppToast.warning(
             context,
-            'Credentials queued but sending failed for ${req.email}.',
+            'Sending failed for ${req.email} (${sendError ?? 'unknown error'}). Queued for retry.',
           );
         }
       }
@@ -1556,6 +1609,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
                         color: Colors.white,
                         size: 20,
                       ),
+                      tooltip: 'Close',
                       onPressed: () => Navigator.pop(ctx),
                     ),
                   ],
@@ -2288,15 +2342,21 @@ class _PageButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: enabled ? onTap : null,
-      borderRadius: BorderRadius.circular(6),
-      child: Padding(
-        padding: const EdgeInsets.all(4),
-        child: Icon(
-          icon,
-          size: 20,
-          color: enabled ? const Color(0xFF374151) : const Color(0xFFD1D5DB),
+    return Tooltip(
+      message: icon == Icons.chevron_left_rounded
+          ? 'Previous Page'
+          : 'Next Page',
+      waitDuration: const Duration(milliseconds: 400),
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(6),
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: Icon(
+            icon,
+            size: 20,
+            color: enabled ? const Color(0xFF374151) : const Color(0xFFD1D5DB),
+          ),
         ),
       ),
     );

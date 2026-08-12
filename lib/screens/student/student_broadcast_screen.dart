@@ -20,6 +20,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../services/notification_service.dart';
+import '../../services/activity_logger.dart' as activity_log;
 import '../../utils/profanity_filter.dart';
 
 // MemoryImage's cache key is the decoded bytes object itself, not the
@@ -331,9 +332,9 @@ const List<String> _reportReasons = [
   'Other',
 ];
 
-// Mirrors showReportMessageDialog in org_broadcast.dart — writes to
-// `message_reports` for later admin review. There's no report-review queue
-// UI yet; this is the reporting mechanism itself.
+// Mirrors showReportMessageDialog in org_broadcast.dart — logs straight to
+// activity_logs so admins see reported messages in the existing Activity
+// Logs page instead of a separate review queue.
 Future<void> _showReportMessageDialog(
   BuildContext context, {
   required String conversationId,
@@ -341,6 +342,7 @@ Future<void> _showReportMessageDialog(
   required String messageText,
   required String reportedUserId,
   required String reportedUserRole,
+  required String orgId,
 }) async {
   String selectedReason = _reportReasons.first;
   final detailsCtrl = TextEditingController();
@@ -353,7 +355,11 @@ Future<void> _showReportMessageDialog(
           style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
         ),
         content: SizedBox(
-          width: 360,
+          // AlertDialog's own default insetPadding already reserves ~40px
+          // per side, so sizing against the full screen width (as the
+          // previous hardcoded 360 effectively assumed on narrow phones)
+          // pushed this past the actual available space.
+          width: (MediaQuery.of(ctx).size.width - 80).clamp(0, 360),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -405,21 +411,25 @@ Future<void> _showReportMessageDialog(
   );
   if (submitted != true) return;
 
-  final reporter = FirebaseAuth.instance.currentUser;
   try {
-    await FirebaseFirestore.instance.collection('message_reports').add({
-      'conversationId': conversationId,
-      'messageId': messageId,
-      'messageText': messageText,
-      'reporterId': reporter?.uid ?? '',
-      'reporterRole': 'student',
-      'reportedUserId': reportedUserId,
-      'reportedUserRole': reportedUserRole,
-      'reason': selectedReason,
-      'details': detailsCtrl.text.trim(),
-      'status': 'pending',
-      'createdAt': FieldValue.serverTimestamp(),
-    });
+    await activity_log.ActivityLogger.log(
+      action:
+          'Reported a message from a ${reportedUserRole.isEmpty ? 'user' : reportedUserRole} ($selectedReason)',
+      module: 'Message Reports',
+      severity: 'warning',
+      orgId: orgId,
+      details: {
+        'orgId': orgId,
+        'conversationId': conversationId,
+        'messageId': messageId,
+        'messageText': messageText,
+        'reporterRole': 'student',
+        'reportedUserId': reportedUserId,
+        'reportedUserRole': reportedUserRole,
+        'reason': selectedReason,
+        'details': detailsCtrl.text.trim(),
+      },
+    );
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -950,6 +960,7 @@ class _StudentBroadcastScreenState extends State<StudentBroadcastScreen> {
                                         messageText: text,
                                         reportedUserId: widget.orgId,
                                         reportedUserRole: 'org',
+                                        orgId: widget.orgId,
                                       ),
                                 onDelete: isFromStudent
                                     ? () => _confirmDeleteMessage(doc.id)

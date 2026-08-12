@@ -16,6 +16,7 @@ import '../../../utils/platform_file_utils.dart'
     as platform_file_utils; // adjust path if needed
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/admin_stat_cards_row.dart';
+import '../../../services/notification_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens
@@ -221,7 +222,7 @@ class EventReport {
   final String description;
   final String location;
   final String eventImageUrl;
-  final double totalIncome, totalExpenses, budgetVariance, budgeted;
+  final double totalIncome, totalExpenses;
   final int registrants, attendees;
   final String submittedBy, reportPeriod;
   final DateTime? submittedDate;
@@ -241,8 +242,6 @@ class EventReport {
     required this.status,
     this.totalIncome = 0,
     this.totalExpenses = 0,
-    this.budgetVariance = 0,
-    this.budgeted = 0,
     this.registrants = 0,
     this.attendees = 0,
     this.submittedBy = '',
@@ -259,13 +258,6 @@ class EventReport {
   });
 
   double get netAmount => totalIncome - totalExpenses;
-
-  double get effectiveBudgetVariance {
-    if (budgeted != 0) {
-      return budgeted - netAmount;
-    }
-    return budgetVariance;
-  }
 
   int get attendanceRatio =>
       registrants > 0 ? ((attendees / registrants) * 100).round() : 0;
@@ -296,12 +288,6 @@ class EventReport {
           '',
       totalIncome: (d['totalIncome'] as num?)?.toDouble() ?? 0,
       totalExpenses: (d['totalExpenses'] as num?)?.toDouble() ?? 0,
-      budgetVariance: (d['budgetVariance'] as num?)?.toDouble() ?? 0,
-      budgeted:
-          (d['budget'] as num?)?.toDouble() ??
-          (d['budgeted'] as num?)?.toDouble() ??
-          (d['totalBudget'] as num?)?.toDouble() ??
-          0,
       registrants: registrants,
       attendees: attendees,
       submittedBy:
@@ -446,6 +432,10 @@ class _ReportsManagementState extends State<ReportsManagement>
   String _filterStatusAccomplishment = 'Active';
 
   String _submissionStatusFilter = 'All';
+  // Which of the two submission types the tracker card is currently
+  // showing — split into a toggle instead of stacking both full tables at
+  // once, which was the "dizzying wall of tables" the redesign fixed.
+  String _submissionTypeView = 'Financial';
   final String _reportView = 'By Event';
 
   static const List<String> _academicYears = [
@@ -670,6 +660,14 @@ class _ReportsManagementState extends State<ReportsManagement>
                 '',
           ),
       ];
+      // The query above has no .orderBy — Firestore then returns docs in
+      // arbitrary (roughly insertion) order, not by date, which is what
+      // made this table look shuffled. Sorted client-side instead of
+      // adding .orderBy('date') to the query itself, since that would need
+      // a new composite index alongside the existing status/type/orgId/date
+      // filters — this app has been bitten before by a query silently
+      // returning empty when one isn't provisioned.
+      loaded.sort((a, b) => b.date.compareTo(a.date));
       if (!mounted) return;
       setState(() => _events = loaded);
     } catch (e) {
@@ -710,8 +708,6 @@ class _ReportsManagementState extends State<ReportsManagement>
       status: e.status,
       totalIncome: e.totalIncome,
       totalExpenses: e.totalExpenses,
-      budgetVariance: e.budgetVariance,
-      budgeted: e.budgeted,
       registrants: registrants,
       attendees: attendees,
       submittedBy: e.submittedBy,
@@ -878,14 +874,35 @@ class _ReportsManagementState extends State<ReportsManagement>
       double netAmount,
       List<Map<String, dynamic>> incomeBreakdown,
       List<Map<String, dynamic>> expenseBreakdown,
+      int transactionCount,
     )
   >
-  _eventTransactionSummaryStream(String eventId) {
+  _eventTransactionSummaryStream(
+    String orgId,
+    String eventId,
+    String eventTitle,
+  ) {
+    final title = eventTitle.trim().toLowerCase();
     return FirebaseFirestore.instance
         .collection('transactions')
-        .where('eventId', isEqualTo: eventId)
+        .where('orgId', isEqualTo: orgId)
         .snapshots()
-        .map((snap) => _computeTransactionSummaryFromDocs(snap.docs));
+        .map((snap) {
+          // `eventId` isn't reliably set on every transaction — org_finance.dart
+          // only writes it when the org explicitly picks an event, and older
+          // entries predate the field. Event name is the more dependable join
+          // key (same fallback the org-side Event Analytics screen uses), so
+          // match on either.
+          final docs = snap.docs.where((d) {
+            final data = d.data();
+            final matchesId = (data['eventId']?.toString() ?? '') == eventId;
+            final matchesTitle =
+                (data['eventName']?.toString() ?? '').trim().toLowerCase() ==
+                title;
+            return matchesId || matchesTitle;
+          }).toList();
+          return _computeTransactionSummaryFromDocs(docs);
+        });
   }
 
   (
@@ -894,6 +911,7 @@ class _ReportsManagementState extends State<ReportsManagement>
     double netAmount,
     List<Map<String, dynamic>> incomeBreakdown,
     List<Map<String, dynamic>> expenseBreakdown,
+    int transactionCount,
   )
   _computeTransactionSummaryFromDocs(List<QueryDocumentSnapshot> docs) {
     double totalIncome = 0;
@@ -938,6 +956,7 @@ class _ReportsManagementState extends State<ReportsManagement>
       totalIncome - totalExpenses,
       toList(incomeBuckets),
       toList(expenseBuckets),
+      docs.length,
     );
   }
 
@@ -1587,6 +1606,7 @@ class _ReportsManagementState extends State<ReportsManagement>
                           size: 18,
                           color: UpriseColors.primaryDark,
                         ),
+                        tooltip: 'Choose Date',
                         onPressed: () async {
                           final result = await showDatePicker(
                             context: ctx,
@@ -3351,35 +3371,268 @@ class _ReportsManagementState extends State<ReportsManagement>
   }
 
   // ── Submission Tracker Tab ─────────────────────────────────────────
+  // Redesigned around one enclosing card instead of two full-width tables
+  // floating loose on the page, with a Financial/Accomplishment toggle so
+  // only one dense table is ever on screen at a time, plus a quick-count
+  // strip for at-a-glance status instead of having to scan every row.
   Widget _buildSubmissionTrackerTab() {
+    final isFinancial = _submissionTypeView == 'Financial';
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(28, 20, 28, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE8ECF0)),
+          boxShadow: _DS.cardShadow,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSubmissionTrackerToolbar(),
+            const SizedBox(height: 16),
+            _buildSubmissionTypeToggle(),
+            const SizedBox(height: 16),
+            _buildSubmissionQuickCounts(
+              isFinancial ? _financialSubs : _accomplishmentSubs,
+            ),
+            // Only surfaced while looking at the Overdue filter — sending
+            // reminders to orgs that aren't actually overdue doesn't make
+            // sense, so this stays out of the way otherwise.
+            if (_submissionStatusFilter == 'Overdue') ...[
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: ElevatedButton.icon(
+                  onPressed: () => _sendReminderToAllOverdue(
+                    isFinancial ? _financialSubs : _accomplishmentSubs,
+                    isFinancial ? 'financial' : 'accomplishment',
+                  ),
+                  icon: const Icon(
+                    Icons.notifications_active_outlined,
+                    size: 16,
+                  ),
+                  label: Text(
+                    'Send Reminder to All',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: UpriseColors.error,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 11,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            isFinancial
+                ? _buildSubmissionTable(
+                    'Financial',
+                    _financialSubs,
+                    _loadingFinancialSubs,
+                  )
+                : _buildSubmissionTable(
+                    'Accomplishment',
+                    _accomplishmentSubs,
+                    _loadingAccomplishmentSubs,
+                  ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Financial/Accomplishment segmented toggle — replaces stacking both
+  // full tables on screen simultaneously.
+  Widget _buildSubmissionTypeToggle() {
+    Widget seg(String label, IconData icon, int count) {
+      final selected = _submissionTypeView == label;
+      return Expanded(
+        child: InkWell(
+          onTap: () => setState(() => _submissionTypeView = label),
+          borderRadius: BorderRadius.circular(10),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: selected ? UpriseColors.primaryDark : Colors.transparent,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  icon,
+                  size: 16,
+                  color: selected ? Colors.white : const Color(0xFF64748B),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '$label ($count)',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: selected ? Colors.white : const Color(0xFF64748B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3F4F6),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
         children: [
-          _buildSubmissionTrackerToolbar(),
-          const SizedBox(height: 20),
-          _sectionLabel(
-            'Financial Report Submissions',
-            icon: Icons.payments_rounded,
-          ),
-          _buildSubmissionTable(
+          seg(
             'Financial',
-            _financialSubs,
-            _loadingFinancialSubs,
+            Icons.payments_rounded,
+            _financialSubs.where((s) => s.hasApprovedEvent).length,
           ),
-          const SizedBox(height: 24),
-          _sectionLabel(
-            'Accomplishment Report Submissions',
-            icon: Icons.assignment_rounded,
-          ),
-          _buildSubmissionTable(
+          const SizedBox(width: 4),
+          seg(
             'Accomplishment',
-            _accomplishmentSubs,
-            _loadingAccomplishmentSubs,
+            Icons.assignment_rounded,
+            _accomplishmentSubs.where((s) => s.hasApprovedEvent).length,
           ),
-          const SizedBox(height: 24),
         ],
+      ),
+    );
+  }
+
+  (int submitted, int pending, int late, int overdue) _submissionCounts(
+    List<OrgSubmission> subs,
+  ) {
+    final tracked = subs.where((s) => s.hasApprovedEvent);
+    int submitted = 0, pending = 0, late = 0, overdue = 0;
+    for (final s in tracked) {
+      final isSubmitted = s.submittedAt != null;
+      final deadline = s.eventDeadline;
+      final isOverdue =
+          !isSubmitted && deadline != null && DateTime.now().isAfter(deadline);
+      final isLate =
+          isSubmitted && deadline != null && s.submittedAt!.isAfter(deadline);
+      if (isLate) {
+        late++;
+      } else if (isSubmitted) {
+        submitted++;
+      } else if (isOverdue) {
+        overdue++;
+      } else {
+        pending++;
+      }
+    }
+    return (submitted, pending, late, overdue);
+  }
+
+  // Clickable quick-count chips double as status-filter shortcuts — tapping
+  // one sets the same _submissionStatusFilter the dropdown above controls,
+  // tapping the active one again clears it.
+  Widget _buildSubmissionQuickCounts(List<OrgSubmission> subs) {
+    final (submitted, pending, late, overdue) = _submissionCounts(subs);
+    void toggle(String status) => setState(
+      () => _submissionStatusFilter = _submissionStatusFilter == status
+          ? 'All'
+          : status,
+    );
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _quickCountChip(
+          'On time',
+          submitted,
+          UpriseColors.success,
+          selected: _submissionStatusFilter == 'Submitted',
+          onTap: () => toggle('Submitted'),
+        ),
+        _quickCountChip(
+          'Pending',
+          pending,
+          UpriseColors.info,
+          selected: _submissionStatusFilter == 'Pending',
+          onTap: () => toggle('Pending'),
+        ),
+        _quickCountChip(
+          'Late',
+          late,
+          UpriseColors.warning,
+          selected: _submissionStatusFilter == 'Late',
+          onTap: () => toggle('Late'),
+        ),
+        _quickCountChip(
+          'Overdue',
+          overdue,
+          UpriseColors.error,
+          selected: _submissionStatusFilter == 'Overdue',
+          onTap: () => toggle('Overdue'),
+        ),
+      ],
+    );
+  }
+
+  Widget _quickCountChip(
+    String label,
+    int count,
+    Color color, {
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(100),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected ? color.withAlpha(28) : const Color(0xFFF8F9FB),
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(color: selected ? color : const Color(0xFFE2E6EA)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              '$count',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF1A202C),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 12,
+                color: const Color(0xFF64748B),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -3690,14 +3943,17 @@ class _ReportsManagementState extends State<ReportsManagement>
           ),
           // Rows
           if (sorted.isEmpty)
-            Padding(
-              padding: const EdgeInsets.all(32),
-              child: Center(
-                child: Text(
-                  'No matching submissions.',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    color: const Color(0xFF64748B),
+            SizedBox(
+              width: double.infinity,
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Center(
+                  child: Text(
+                    'No matching submissions.',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 13,
+                      color: const Color(0xFF64748B),
+                    ),
                   ),
                 ),
               ),
@@ -3922,7 +4178,12 @@ class _ReportsManagementState extends State<ReportsManagement>
             }),
           // Footer — count only now; export moved to the shared toolbar
           // above both tables instead of a separate button per table.
+          // Explicit width: the table sits in a plain Column (default
+          // center cross-axis alignment, loose constraints), so without
+          // this the Container just shrink-wraps its Text instead of
+          // spanning the table — the "floating pill" look this fixes.
           Container(
+            width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             decoration: const BoxDecoration(
               border: Border(top: BorderSide(color: Color(0xFFE8ECF0))),
@@ -4465,9 +4726,14 @@ class _ReportsManagementState extends State<ReportsManagement>
                       double netAmount,
                       List<Map<String, dynamic>> incomeBreakdown,
                       List<Map<String, dynamic>> expenseBreakdown,
+                      int transactionCount,
                     )
                   >(
-                    stream: _eventTransactionSummaryStream(event.id),
+                    stream: _eventTransactionSummaryStream(
+                      event.orgId,
+                      event.id,
+                      event.title,
+                    ),
                     builder: (context, snapshot) {
                       final loading =
                           snapshot.connectionState == ConnectionState.waiting;
@@ -4477,13 +4743,11 @@ class _ReportsManagementState extends State<ReportsManagement>
                           snapshot.data?.$2 ?? event.totalExpenses;
                       final netAmount =
                           snapshot.data?.$3 ?? (totalIncome - totalExpenses);
-                      final effectiveBudgetVariance = event.budgeted != 0
-                          ? event.budgeted - netAmount
-                          : event.budgetVariance;
                       final incomeBreakdown =
                           snapshot.data?.$4 ?? event.incomeBreakdown;
                       final expenseBreakdown =
                           snapshot.data?.$5 ?? event.expenseBreakdown;
+                      final transactionCount = snapshot.data?.$6 ?? 0;
                       final maxInc = incomeBreakdown.isEmpty
                           ? 1.0
                           : incomeBreakdown
@@ -4534,13 +4798,11 @@ class _ReportsManagementState extends State<ReportsManagement>
                               ),
                               const SizedBox(width: 14),
                               _detailStatCard(
-                                'Budget Variance',
-                                loading
-                                    ? '—'
-                                    : '₱${_fmt(effectiveBudgetVariance)}',
+                                'Transactions',
+                                loading ? '—' : '$transactionCount',
                                 UpriseColors.primaryDark,
                                 UpriseColors.primaryLight,
-                                Icons.balance_rounded,
+                                Icons.receipt_long_rounded,
                               ),
                             ],
                           ),
@@ -4745,6 +5007,7 @@ class _ReportsManagementState extends State<ReportsManagement>
                         color: Colors.white,
                         size: 20,
                       ),
+                      tooltip: 'Close',
                       onPressed: () => Navigator.pop(ctx),
                     ),
                   ],
@@ -5279,6 +5542,7 @@ class _ReportsManagementState extends State<ReportsManagement>
                         color: Colors.white,
                         size: 20,
                       ),
+                      tooltip: 'Close',
                       onPressed: () => Navigator.pop(ctx),
                     ),
                   ],
@@ -5541,14 +5805,105 @@ class _ReportsManagementState extends State<ReportsManagement>
     }
   }
 
-  void _sendReminder(OrgSubmission sub, String reportType) {
+  // Actually sends a push/in-app notification to every member of the org
+  // (previously this just showed a "Reminder sent" snackbar with nothing
+  // behind it — no notification, no Firestore write, nothing — so orgs
+  // never actually heard about it). Returns true on success so callers
+  // sending to several orgs at once can tally results.
+  Future<bool> _sendReminder(
+    OrgSubmission sub,
+    String reportType, {
+    bool showSnack = true,
+  }) async {
     if (!sub.hasApprovedEvent) {
+      if (showSnack && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'No approved event found for ${sub.orgName}. Reminder not sent.',
+            ),
+            backgroundColor: UpriseColors.error,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(_DS.radiusSm),
+            ),
+          ),
+        );
+      }
+      return false;
+    }
+
+    final eventLabel = sub.eventTitle != null ? ' (${sub.eventTitle})' : '';
+    final when = sub.eventDate != null
+        ? ' on ${DateFormat('MMM dd, yyyy').format(sub.eventDate!)}'
+        : '';
+    try {
+      await NotificationService.sendToOrgMembers(
+        orgId: sub.orgId,
+        title:
+            '${reportType[0].toUpperCase()}${reportType.substring(1)} report overdue',
+        body:
+            'Your $reportType report for "${sub.displayTitle}" is overdue. '
+            'Please submit it as soon as possible.',
+        type: 'deadline_reminder',
+        data: {'orgId': sub.orgId, 'reportType': reportType},
+      );
+      await activity_log.ActivityLogger.log(
+        action: 'Sent $reportType report reminder to ${sub.orgName}$eventLabel',
+        module: 'Reports',
+        severity: 'info',
+        orgId: sub.orgId,
+      );
+      if (showSnack && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Reminder sent to ${sub.orgName}$eventLabel for $reportType report$when',
+            ),
+            backgroundColor: UpriseColors.primaryDark,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(_DS.radiusSm),
+            ),
+          ),
+        );
+      }
+      return true;
+    } catch (e) {
+      if (showSnack && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to send reminder to ${sub.orgName}: $e'),
+            backgroundColor: UpriseColors.error,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(_DS.radiusSm),
+            ),
+          ),
+        );
+      }
+      return false;
+    }
+  }
+
+  // Sends a reminder to every org currently shown as overdue for this
+  // report type (respects the active search/org filter), in one click
+  // instead of clicking "Send Reminder" per row.
+  Future<void> _sendReminderToAllOverdue(
+    List<OrgSubmission> submissions,
+    String reportType,
+  ) async {
+    final now = DateTime.now();
+    final overdue = _filterSubmissionRows(submissions).where((s) {
+      final deadline = s.eventDeadline;
+      return s.submittedAt == null && deadline != null && now.isAfter(deadline);
+    }).toList();
+
+    if (overdue.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            'No approved event found for ${sub.orgName}. Reminder not sent.',
-          ),
-          backgroundColor: UpriseColors.error,
+          content: const Text('No overdue submissions to remind right now.'),
+          backgroundColor: UpriseColors.warning,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(_DS.radiusSm),
@@ -5558,16 +5913,36 @@ class _ReportsManagementState extends State<ReportsManagement>
       return;
     }
 
-    final eventLabel = sub.eventTitle != null ? ' (${sub.eventTitle})' : '';
-    final when = sub.eventDate != null
-        ? ' on ${DateFormat('MMM dd, yyyy').format(sub.eventDate!)}'
-        : '';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (ctx) => _ConfirmDialog(
+        title: 'Send Reminder to All',
+        message:
+            'Send an overdue-report reminder to ${overdue.length} '
+            'organization${overdue.length == 1 ? '' : 's'}?',
+        confirmLabel: 'Send',
+      ),
+    );
+    if (confirmed != true) return;
+
+    int sent = 0;
+    for (final sub in overdue) {
+      final ok = await _sendReminder(sub, reportType, showSnack: false);
+      if (ok) sent++;
+    }
+
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Reminder sent to ${sub.orgName}$eventLabel for $reportType report$when',
+          sent == overdue.length
+              ? 'Reminder sent to $sent organization${sent == 1 ? '' : 's'}.'
+              : 'Sent $sent of ${overdue.length} reminders — some failed.',
         ),
-        backgroundColor: UpriseColors.primaryDark,
+        backgroundColor: sent == overdue.length
+            ? UpriseColors.primaryDark
+            : UpriseColors.warning,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(_DS.radiusSm),
@@ -5693,6 +6068,7 @@ class _ViewAdminReportModal extends StatelessWidget {
                       color: Colors.white,
                       size: 20,
                     ),
+                    tooltip: 'Close',
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
@@ -6500,15 +6876,21 @@ class _PageButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: enabled ? onTap : null,
-      borderRadius: BorderRadius.circular(6),
-      child: Padding(
-        padding: const EdgeInsets.all(4),
-        child: Icon(
-          icon,
-          size: 20,
-          color: enabled ? const Color(0xFF374151) : const Color(0xFFD1D5DB),
+    return Tooltip(
+      message: icon == Icons.chevron_left_rounded
+          ? 'Previous Page'
+          : 'Next Page',
+      waitDuration: const Duration(milliseconds: 400),
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(6),
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: Icon(
+            icon,
+            size: 20,
+            color: enabled ? const Color(0xFF374151) : const Color(0xFFD1D5DB),
+          ),
         ),
       ),
     );

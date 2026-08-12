@@ -24,13 +24,35 @@ class _DS {
   static const double radiusLg = 16;
   static const double radiusXl = 20;
 
+  // Soft dual-tone "clay" shadow — a gentle dark shadow below/right paired
+  // with a faint light highlight above/left, instead of one flat drop
+  // shadow, so cards read as lightly puffed rather than flat-bordered.
   static final cardShadow = [
     BoxShadow(
-      color: Colors.black.withOpacity(0.05),
-      blurRadius: 16,
-      offset: const Offset(0, 4),
+      color: Colors.black.withOpacity(0.07),
+      blurRadius: 18,
+      offset: const Offset(0, 6),
+    ),
+    BoxShadow(
+      color: Colors.white.withOpacity(0.6),
+      blurRadius: 8,
+      offset: const Offset(0, -1),
     ),
   ];
+
+  // Soft fade-out divider — replaces flat 1px gray Divider lines, which
+  // read as harsh/out-of-place against the soft-shadowed clay cards.
+  static Widget fadeDivider({double height = 1}) {
+    return Container(
+      height: height,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.transparent, _C.border, Colors.transparent],
+          stops: const [0, 0.5, 1],
+        ),
+      ),
+    );
+  }
 
   static const LinearGradient primaryGradient = LinearGradient(
     begin: Alignment.topLeft,
@@ -519,7 +541,7 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                   ),
                 ],
               ),
-              const Divider(height: 24, color: _C.border),
+              _DS.fadeDivider(height: 24),
               Expanded(
                 child: SingleChildScrollView(
                   child: StreamBuilder<QuerySnapshot>(
@@ -745,6 +767,47 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                                           ),
                                         ],
                                       ),
+                                      const SizedBox(height: 12),
+                                      Text(
+                                        'Financials',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: _C.charcoal,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      if (eventFinance != null)
+                                        Row(
+                                          children: [
+                                            _buildSummaryStat(
+                                              'Income',
+                                              '₱${money.format(eventFinance.income)}',
+                                              Icons.arrow_downward_rounded,
+                                              _C.green,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            _buildSummaryStat(
+                                              'Expenses',
+                                              '₱${money.format(eventFinance.expense)}',
+                                              Icons.arrow_upward_rounded,
+                                              _C.red,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            _buildSummaryStat(
+                                              'Net',
+                                              '${net! >= 0 ? '' : '-'}₱${money.format(net.abs())}',
+                                              Icons.payments_outlined,
+                                              net >= 0 ? _C.green : _C.red,
+                                            ),
+                                          ],
+                                        )
+                                      else
+                                        miniInsightRow(
+                                          Icons.payments_outlined,
+                                          _C.muted,
+                                          'No financial records logged for this event yet',
+                                        ),
                                       const SizedBox(height: 16),
                                       Text(
                                         'Insights',
@@ -771,14 +834,6 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                                           '$feedbackCount of $checkedIn checked-in attendee${checkedIn == 1 ? '' : 's'} submitted feedback'
                                           '${notYetFeedback > 0 ? ' ($notYetFeedback pending)' : ''}',
                                         ),
-                                      if (net != null)
-                                        miniInsightRow(
-                                          Icons.payments_outlined,
-                                          net >= 0 ? _C.green : _C.red,
-                                          net >= 0
-                                              ? 'Net gain of ₱${money.format(net)}'
-                                              : 'Net loss of ₱${money.format(-net)}',
-                                        ),
                                       if (topComment != null)
                                         commentQuote(topComment, isTop: true),
                                       if (lowComment != null &&
@@ -787,10 +842,7 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                                           avgRating < 4.5)
                                         commentQuote(lowComment, isTop: false),
                                       const SizedBox(height: 10),
-                                      const Divider(
-                                        height: 1,
-                                        color: _C.border,
-                                      ),
+                                      _DS.fadeDivider(),
                                       const SizedBox(height: 16),
                                       Row(
                                         children: [
@@ -1185,7 +1237,7 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                   ),
                 ],
               ),
-              const Divider(height: 20, color: _C.border),
+              _DS.fadeDivider(height: 20),
               Flexible(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxHeight: 420),
@@ -1569,7 +1621,9 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
         events.sort((a, b) {
           final da = a['date'] as Timestamp?;
           final dbb = b['date'] as Timestamp?;
-          if (da == null || dbb == null) return 0;
+          if (da == null && dbb == null) return 0;
+          if (da == null) return 1; // undated events sink to the bottom
+          if (dbb == null) return -1;
           return dbb.compareTo(da);
         });
     }
@@ -1733,6 +1787,7 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                         date: date?.toDate(),
                         avgRating: avgByEvent[eventId],
                         responseCount: countByEvent[eventId] ?? 0,
+                        finance: data.financeForEvent(title),
                         onTap: () => _showEventSummaryDialog(
                           context,
                           eventId: eventId,
@@ -1883,6 +1938,7 @@ class _EventProductCard extends StatelessWidget {
   final DateTime? date;
   final double? avgRating;
   final int responseCount;
+  final ({double income, double expense})? finance;
   final VoidCallback onTap;
   const _EventProductCard({
     required this.title,
@@ -1890,6 +1946,7 @@ class _EventProductCard extends StatelessWidget {
     required this.date,
     required this.avgRating,
     required this.responseCount,
+    required this.finance,
     required this.onTap,
   });
 
@@ -1996,6 +2053,32 @@ class _EventProductCard extends StatelessWidget {
                           color: _C.muted,
                         ),
                       ),
+                    if (finance != null) ...[
+                      const SizedBox(height: 8),
+                      _DS.fadeDivider(),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.payments_outlined,
+                            size: 13,
+                            color: _netColor(finance!),
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              '${_netLabel(finance!)} net',
+                              style: GoogleFonts.inter(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: _netColor(finance!),
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -2004,6 +2087,15 @@ class _EventProductCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Color _netColor(({double income, double expense}) f) =>
+      f.income - f.expense >= 0 ? _C.green : _C.red;
+
+  String _netLabel(({double income, double expense}) f) {
+    final money = NumberFormat('#,###.00');
+    final net = f.income - f.expense;
+    return net >= 0 ? '₱${money.format(net)}' : '-₱${money.format(net.abs())}';
   }
 }
 
@@ -2072,7 +2164,7 @@ class _RatingByEventChart extends StatelessWidget {
               ],
             ),
           ),
-          const Divider(height: 1, color: _C.border),
+          _DS.fadeDivider(),
           if (shown.isEmpty)
             Padding(
               padding: const EdgeInsets.all(32),
@@ -2327,7 +2419,7 @@ class _FinanceByEventChart extends StatelessWidget {
               ],
             ),
           ),
-          const Divider(height: 1, color: _C.border),
+          _DS.fadeDivider(),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 20, 20, 8),
             child: SizedBox(

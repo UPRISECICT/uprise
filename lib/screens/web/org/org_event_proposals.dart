@@ -868,6 +868,10 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
         // Carried over as-is — null means unlimited slots, same as on the
         // proposal.
         'capacity': (data['capacity'] as num?)?.toInt(),
+        // Late-marking settings (new optional feature)
+        // Default to false for backward compatibility
+        'markLate': false,
+        'lateAfterMinutes': 15,
         // bannerUrl will be added later
       };
 

@@ -296,14 +296,14 @@ const List<Map<String, dynamic>> _navItems = [
   {'label': 'Events & Schedules', 'icon': Icons.calendar_month_outlined},
   {'label': 'Mark Attendance', 'icon': Icons.qr_code_scanner_outlined},
   {'label': 'Certificates', 'icon': Icons.verified_outlined},
-  {'label': 'Event Analytics', 'icon': Icons.bar_chart_outlined},
+  {'label': 'Analytics', 'icon': Icons.bar_chart_outlined},
   {'label': 'Announcements', 'icon': Icons.campaign_outlined},
   {'label': 'Messages', 'icon': Icons.chat_bubble_outline_rounded},
   {'label': 'Org Profile', 'icon': Icons.people_outline},
-  {'label': 'Letter Request', 'icon': Icons.mail_outline},
+  {'label': 'Letter Requests', 'icon': Icons.mail_outline},
   {'label': 'Report Submissions', 'icon': Icons.summarize_outlined},
   {'label': 'Finance', 'icon': Icons.account_balance_wallet_outlined},
-  {'label': 'Merchandise', 'icon': Icons.shopping_bag_outlined},
+  {'label': 'Merchandise Catalog', 'icon': Icons.shopping_bag_outlined},
   {'label': 'Registration Forms', 'icon': Icons.assignment_outlined},
 ];
 
@@ -311,23 +311,45 @@ const List<Map<String, dynamic>> _navItems = [
 // under a collapsible parent (indices refer to _navItems / _screens).
 // Org Profile (8) is deliberately absent — it's user-scoped now, reached
 // only via the profile dropdown's "My Profile" entry.
-// Messages (7) used to be buried inside "Attendance & Certificates",
-// between Mark Attendance and Certificates — pulled out to stand on its own
-// next to Announcements (6), since it's a private-messaging inbox, not an
-// attendance/certificate tool. Both now sit right under Dashboard (top of
-// the sidebar, ahead of every group) since they're checked constantly.
-const List<int> _standaloneTop = [0, 6, 7];
+// Regrouped into six labeled sections (Communication / Events & Requests /
+// Event Analytics / Reports / Attendance & Certificates / Finance & Merch)
+// per the portal-wide IA restructure — Dashboard is the only item left
+// standalone at the top; everything else now lives under one of the six
+// group headers below. This only changes which group each index is listed
+// under — _navItems/_screens themselves keep their original index order,
+// so _selectedIndex and every "jump to tab N" call site elsewhere in this
+// file are untouched.
+const List<int> _standaloneTop = [0];
 const List<int> _standaloneBottom = [];
 const Map<String, Map<String, dynamic>> _navGroups = {
+  'communication': {
+    'label': 'Communication',
+    'icon': Icons.forum_outlined,
+    'children': [6, 7],
+  },
   'events': {
     'label': 'Events & Requests',
     'icon': Icons.event_note_outlined,
-    'children': [1, 9, 2, 5, 10],
+    // Proposals → Schedules → Registration mirrors the intended event
+    // lifecycle (Proposal → Approval → Events & Schedules → Registration);
+    // Letter Requests is a separate, non-event workflow, so it sits last
+    // rather than interrupting that sequence.
+    'children': [1, 2, 13, 9],
+  },
+  'analytics': {
+    'label': 'Event Analytics',
+    'icon': Icons.bar_chart_outlined,
+    'children': [5],
+  },
+  'reports': {
+    'label': 'Reports',
+    'icon': Icons.summarize_outlined,
+    'children': [10],
   },
   'attendance': {
     'label': 'Attendance & Certificates',
     'icon': Icons.fact_check_outlined,
-    'children': [3, 4, 13],
+    'children': [3, 4],
   },
   'finance': {
     'label': 'Finance & Merch',

@@ -6,6 +6,8 @@ import 'package:intl/intl.dart';
 import '../admin/export_util.dart';
 import '../admin/export_pdf.dart';
 import '../../../theme/org_theme.dart';
+import 'org_certificates.dart' show fetchRecipientStatus;
+import 'org_attendance_qr.dart' show showRegistrationAnswers;
 
 // ==================== CATEGORY COLORS ====================
 Map<String, Color> _categoryColors = {
@@ -143,6 +145,95 @@ Color _statusColor(String status) {
   }
 }
 
+// Small stat card used by the Event Overview's operational tabs
+// (Registration/Attendance/Feedback/Certificates/Finance/Report) — a
+// separate, lighter helper from _detailCard (which stays on the Details
+// tab) so those tabs don't need to reach into the screen's own State class.
+Widget _overviewStatCard(
+  String label,
+  String value,
+  IconData icon, {
+  Color? accent,
+}) {
+  final c = accent ?? UpriseColors.primaryDark;
+  return Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: c.withAlpha(12),
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: c.withAlpha(35)),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: c),
+        const SizedBox(height: 10),
+        Text(
+          value,
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+            color: const Color(0xFF1A202C),
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 11.5,
+            color: const Color(0xFF64748B),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+// Lays out 2-4 _overviewStatCard's evenly across the available width via
+// Expanded, instead of a left-aligned Wrap — sparse tabs (a couple of stat
+// cards on an otherwise-empty 720px-wide dialog page) were reading as
+// misaligned/unbalanced with fixed-width cards floating at the left.
+Widget _overviewStatRow(List<Widget> cards) {
+  final children = <Widget>[];
+  for (var i = 0; i < cards.length; i++) {
+    if (i > 0) children.add(const SizedBox(width: 12));
+    children.add(Expanded(child: cards[i]));
+  }
+  return Row(crossAxisAlignment: CrossAxisAlignment.start, children: children);
+}
+
+// Per-feedback-entry star row for the Event Overview's Feedback tab — shows
+// the individual rating each respondent gave, alongside their comment.
+Widget _feedbackStars(int rating, {double size = 15}) {
+  return Row(
+    mainAxisSize: MainAxisSize.min,
+    children: List.generate(5, (i) {
+      final filled = i < rating;
+      return Icon(
+        filled ? Icons.star_rounded : Icons.star_outline_rounded,
+        size: size,
+        color: filled ? const Color(0xFFF59E0B) : const Color(0xFFCBD5E1),
+      );
+    }),
+  );
+}
+
+Widget _overviewEmptyState(String message) => Padding(
+  padding: const EdgeInsets.symmetric(vertical: 24),
+  child: Text(
+    message,
+    style: GoogleFonts.beVietnamPro(
+      fontSize: 13,
+      color: const Color(0xFF64748B),
+    ),
+  ),
+);
+
+Widget _overviewLoading() => const Padding(
+  padding: EdgeInsets.symmetric(vertical: 40),
+  child: Center(child: CircularProgressIndicator()),
+);
+
 // ==================== EVENT MODEL ====================
 class EventModel {
   final String id;
@@ -213,6 +304,497 @@ class EventModel {
           : DateTime.tryParse(d['date']?.toString() ?? '') ?? DateTime.now(),
       status: (d['status'] ?? 'pending').toString().toLowerCase(),
       bannerUrl: (d['bannerUrl'] ?? '').toString(),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Event Overview tabs — operational data for one specific event (answers
+// "what happened in this event"), as opposed to org_event_analytics.dart's
+// Analytics screen (aggregate trends across events). Each tab reuses the
+// same collections/queries already established elsewhere in the app rather
+// than introducing new backend logic.
+// ════════════════════════════════════════════════════════════════════════════
+
+class _RegistrationTab extends StatelessWidget {
+  final EventModel event;
+  const _RegistrationTab({required this.event});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<QuerySnapshot>(
+      future: FirebaseFirestore.instance
+          .collection('registrations')
+          .where('eventId', isEqualTo: event.id)
+          .get(),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return _overviewLoading();
+        }
+        final docs = snap.data?.docs ?? [];
+        final withAnswers = docs.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          return data['formResponses'] != null || data['formAnswers'] != null;
+        }).length;
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _sectionLabel('Registration', icon: Icons.how_to_reg_outlined),
+              _overviewStatRow([
+                _overviewStatCard(
+                  'Registered',
+                  '${docs.length}',
+                  Icons.how_to_reg_outlined,
+                  accent: UpriseColors.info,
+                ),
+                _overviewStatCard(
+                  'With Form Answers',
+                  '$withAnswers',
+                  Icons.assignment_turned_in_outlined,
+                  accent: UpriseColors.primaryDark,
+                ),
+              ]),
+              const SizedBox(height: 16),
+              if (docs.isEmpty)
+                _overviewEmptyState('No one has registered yet.')
+              else
+                ...docs.map((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final name =
+                      (data['studentName'] ?? data['userId'] ?? 'Unknown')
+                          .toString();
+                  final hasAnswers =
+                      data['formResponses'] != null ||
+                      data['formAnswers'] != null;
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(
+                      Icons.person_outline,
+                      size: 18,
+                      color: Color(0xFF6B7280),
+                    ),
+                    title: Text(
+                      name,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    trailing: hasAnswers
+                        ? TextButton(
+                            onPressed: () =>
+                                showRegistrationAnswers(context, name, data),
+                            child: const Text('View Answers'),
+                          )
+                        : null,
+                  );
+                }),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _AttendanceTab extends StatelessWidget {
+  final EventModel event;
+  const _AttendanceTab({required this.event});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('events')
+          .doc(event.id)
+          .collection('attendances')
+          .snapshots(),
+      builder: (context, attSnap) {
+        final attDocs = attSnap.data?.docs ?? [];
+        final present = attDocs
+            .where((d) => (d.data() as Map)['status'] == 'present')
+            .length;
+        final late = attDocs
+            .where((d) => (d.data() as Map)['status'] == 'late')
+            .length;
+        return StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('registrations')
+              .where('eventId', isEqualTo: event.id)
+              .snapshots(),
+          builder: (context, regSnap) {
+            final regCount = regSnap.data?.docs.length ?? 0;
+            final total = regCount > attDocs.length ? regCount : attDocs.length;
+            final absent = (total - present - late).clamp(0, total);
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _sectionLabel('Attendance', icon: Icons.fact_check_outlined),
+                  _overviewStatRow([
+                    _overviewStatCard(
+                      'Registered',
+                      '$total',
+                      Icons.people_outline,
+                      accent: UpriseColors.info,
+                    ),
+                    _overviewStatCard(
+                      'Present',
+                      '$present',
+                      Icons.check_circle_outline,
+                      accent: UpriseColors.success,
+                    ),
+                    _overviewStatCard(
+                      'Late',
+                      '$late',
+                      Icons.access_time_rounded,
+                      accent: UpriseColors.warning,
+                    ),
+                    _overviewStatCard(
+                      'Absent',
+                      '$absent',
+                      Icons.cancel_outlined,
+                      accent: UpriseColors.error,
+                    ),
+                  ]),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _FeedbackTab extends StatelessWidget {
+  final EventModel event;
+  const _FeedbackTab({required this.event});
+
+  // Feedback is split across two collections from an incomplete migration
+  // (see org_event_analytics.dart for the same caveat) — both must be
+  // queried and unioned or real submissions get silently missed.
+  Future<List<Map<String, dynamic>>> _load() async {
+    final results = await Future.wait([
+      FirebaseFirestore.instance
+          .collection('feedback')
+          .where('eventId', isEqualTo: event.id)
+          .get(),
+      FirebaseFirestore.instance
+          .collection('event_feedback')
+          .where('eventId', isEqualTo: event.id)
+          .get(),
+    ]);
+    return [
+      ...results[0].docs.map((d) => d.data()),
+      ...results[1].docs.map((d) => d.data()),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _load(),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return _overviewLoading();
+        }
+        final feedbacks = snap.data ?? [];
+        final ratings = feedbacks
+            .map((f) => f['rating'] as int? ?? 0)
+            .where((r) => r > 0)
+            .toList();
+        final avg = ratings.isEmpty
+            ? 0.0
+            : ratings.reduce((a, b) => a + b) / ratings.length;
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _sectionLabel('Feedback', icon: Icons.reviews_outlined),
+              _overviewStatRow([
+                _overviewStatCard(
+                  'Average Rating',
+                  ratings.isEmpty ? '—' : avg.toStringAsFixed(1),
+                  Icons.star_outline_rounded,
+                  accent: UpriseColors.primaryDark,
+                ),
+                _overviewStatCard(
+                  'Responses',
+                  '${feedbacks.length}',
+                  Icons.forum_outlined,
+                  accent: UpriseColors.info,
+                ),
+              ]),
+              const SizedBox(height: 16),
+              if (feedbacks.isEmpty)
+                _overviewEmptyState('No feedback submitted yet.')
+              else
+                ...feedbacks
+                    .take(10)
+                    .map(
+                      (f) => Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8F9FB),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _feedbackStars(f['rating'] as int? ?? 0),
+                            const SizedBox(height: 6),
+                            Text(
+                              (f['comment'] ?? '').toString().trim().isEmpty
+                                  ? 'No comment left'
+                                  : '"${(f['comment'] as String).trim()}"',
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 13,
+                                fontStyle: FontStyle.italic,
+                                color:
+                                    (f['comment'] ?? '')
+                                        .toString()
+                                        .trim()
+                                        .isEmpty
+                                    ? const Color(0xFF9AA5B4)
+                                    : const Color(0xFF374151),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _CertificatesTab extends StatelessWidget {
+  final EventModel event;
+  const _CertificatesTab({required this.event});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder(
+      future: fetchRecipientStatus(event.id),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return _overviewLoading();
+        }
+        final rows = snap.data ?? [];
+        final attended = rows.where((r) => r.attended).length;
+        final eligible = rows.where((r) => r.attended && r.evaluated).length;
+        final issued = rows.where((r) => r.certSent).length;
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _sectionLabel('Certificates', icon: Icons.verified_outlined),
+              _overviewStatRow([
+                _overviewStatCard(
+                  'Attended',
+                  '$attended',
+                  Icons.people_outline,
+                  accent: UpriseColors.primaryDark,
+                ),
+                _overviewStatCard(
+                  'Eligible',
+                  '$eligible',
+                  Icons.task_alt_outlined,
+                  accent: UpriseColors.info,
+                ),
+                _overviewStatCard(
+                  'Issued',
+                  '$issued',
+                  Icons.verified_outlined,
+                  accent: UpriseColors.success,
+                ),
+              ]),
+              const SizedBox(height: 10),
+              Text(
+                'Eligible = attended + submitted feedback. Manage issuance from Certificates.',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 11.5,
+                  color: const Color(0xFF9AA5B4),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _FinanceTab extends StatelessWidget {
+  final EventModel event;
+  const _FinanceTab({required this.event});
+
+  // Title-keyed join against `transactions` — the same fallback
+  // org_event_analytics.dart's _AnalyticsData.financeByEventTitle uses,
+  // since transaction docs don't reliably carry a matching eventId.
+  Future<({double income, double expense})> _load() async {
+    final snap = await FirebaseFirestore.instance
+        .collection('transactions')
+        .where('orgId', isEqualTo: event.orgId)
+        .get();
+    double income = 0, expense = 0;
+    for (final doc in snap.docs) {
+      final data = doc.data();
+      if (data['isArchived'] == true) continue;
+      final name = (data['eventName'] as String? ?? '').trim();
+      if (name != event.title) continue;
+      final amount = (data['amount'] as num?)?.toDouble() ?? 0;
+      final isIncome = (data['type'] as String? ?? 'income') == 'income';
+      if (isIncome) {
+        income += amount;
+      } else {
+        expense += amount;
+      }
+    }
+    return (income: income, expense: expense);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<({double income, double expense})>(
+      future: _load(),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return _overviewLoading();
+        }
+        final income = snap.data?.income ?? 0;
+        final expense = snap.data?.expense ?? 0;
+        final net = income - expense;
+        final money = NumberFormat('#,###.00');
+        final hasData = income > 0 || expense > 0;
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _sectionLabel(
+                'Finance',
+                icon: Icons.account_balance_wallet_outlined,
+              ),
+              if (!hasData)
+                _overviewEmptyState(
+                  'No financial records logged for this event yet.',
+                )
+              else
+                _overviewStatRow([
+                  _overviewStatCard(
+                    'Income',
+                    '₱${money.format(income)}',
+                    Icons.trending_up_rounded,
+                    accent: UpriseColors.success,
+                  ),
+                  _overviewStatCard(
+                    'Expenses',
+                    '₱${money.format(expense)}',
+                    Icons.trending_down_rounded,
+                    accent: UpriseColors.error,
+                  ),
+                  _overviewStatCard(
+                    'Net',
+                    '${net >= 0 ? '' : '-'}₱${money.format(net.abs())}',
+                    Icons.payments_outlined,
+                    accent: net >= 0
+                        ? UpriseColors.success
+                        : UpriseColors.error,
+                  ),
+                ]),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ReportTab extends StatelessWidget {
+  final EventModel event;
+  const _ReportTab({required this.event});
+
+  Future<(bool financial, bool accomplishment)> _load() async {
+    final financial = await FirebaseFirestore.instance
+        .collection('reports')
+        .where('orgId', isEqualTo: event.orgId)
+        .where('type', isEqualTo: 'financial')
+        .where('eventId', isEqualTo: event.id)
+        .get();
+    final accomplishment = await FirebaseFirestore.instance
+        .collection('reports')
+        .where('orgId', isEqualTo: event.orgId)
+        .where('type', isEqualTo: 'accomplishment')
+        .where('eventId', isEqualTo: event.id)
+        .get();
+    return (financial.docs.isNotEmpty, accomplishment.docs.isNotEmpty);
+  }
+
+  Widget _statusRow(String label, bool submitted) => Container(
+    width: double.infinity,
+    margin: const EdgeInsets.only(bottom: 10),
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: submitted ? const Color(0xFFECFDF5) : const Color(0xFFFFFBEB),
+      borderRadius: BorderRadius.circular(10),
+    ),
+    child: Row(
+      children: [
+        Icon(
+          submitted ? Icons.check_circle_outline : Icons.pending_outlined,
+          size: 18,
+          color: submitted ? UpriseColors.success : UpriseColors.warning,
+        ),
+        const SizedBox(width: 10),
+        Text(
+          '$label — ${submitted ? 'Submitted' : 'Pending'}',
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: const Color(0xFF1A202C),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<(bool, bool)>(
+      future: _load(),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return _overviewLoading();
+        }
+        final financialSubmitted = snap.data?.$1 ?? false;
+        final accomplishmentSubmitted = snap.data?.$2 ?? false;
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _sectionLabel(
+                'Report Submissions',
+                icon: Icons.summarize_outlined,
+              ),
+              _statusRow('Financial Report', financialSubmitted),
+              _statusRow('Accomplishment Report', accomplishmentSubmitted),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -1091,386 +1673,464 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
       builder: (ctx) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Container(
-          width: 620,
+          width: 720,
+          // Capped well below the old 0.88-of-screen ceiling — most tabs
+          // (Registration/Attendance/Feedback/Certificates/Finance/Report)
+          // hold only a couple of stat cards, and stretching the dialog to
+          // near full-screen height for them left a large empty area below
+          // the content. Details (the longest tab) still scrolls within
+          // this cap via its own SingleChildScrollView.
           constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.88,
+            maxHeight: (MediaQuery.of(context).size.height * 0.82).clamp(
+              420.0,
+              620.0,
+            ),
           ),
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.all(Radius.circular(20)),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // ─── HEADER ──────────────────────────────────────────────
-              ClipRRect(
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(20),
-                ),
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(26, 24, 18, 22),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        UpriseColors.primaryDark,
-                        catColor.withAlpha(230),
+          child: DefaultTabController(
+            length: 7,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ─── HEADER ──────────────────────────────────────────────
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(20),
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(26, 24, 18, 22),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          UpriseColors.primaryDark,
+                          catColor.withAlpha(230),
+                        ],
+                      ),
+                    ),
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Positioned(
+                          right: -30,
+                          top: -40,
+                          child: Container(
+                            width: 130,
+                            height: 130,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white.withAlpha(18),
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          right: 40,
+                          bottom: -50,
+                          child: Container(
+                            width: 90,
+                            height: 90,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white.withAlpha(14),
+                            ),
+                          ),
+                        ),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 46,
+                              height: 46,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withAlpha(35),
+                                borderRadius: BorderRadius.circular(13),
+                                border: Border.all(
+                                  color: Colors.white.withAlpha(90),
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.event_rounded,
+                                color: Colors.white,
+                                size: 22,
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'EVENT OVERVIEW',
+                                    style: GoogleFonts.beVietnamPro(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white.withAlpha(190),
+                                      letterSpacing: 1.2,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 6,
+                                    crossAxisAlignment:
+                                        WrapCrossAlignment.center,
+                                    children: [
+                                      _categoryChip(event.category),
+                                      if (event.orgName.isNotEmpty &&
+                                          event.orgName != 'Unknown')
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            borderRadius: BorderRadius.circular(
+                                              100,
+                                            ),
+                                            border: Border.all(
+                                              color: Colors.white.withAlpha(
+                                                150,
+                                              ),
+                                            ),
+                                          ),
+                                          child: Text(
+                                            event.orgName.toUpperCase(),
+                                            style: GoogleFonts.beVietnamPro(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.white.withAlpha(
+                                                255,
+                                              ),
+                                              letterSpacing: 0.6,
+                                            ),
+                                          ),
+                                        ),
+                                      if (event.status.toLowerCase() !=
+                                          'approved')
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: _statusColor(event.status),
+                                            borderRadius: BorderRadius.circular(
+                                              100,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            event.status.toUpperCase(),
+                                            style: GoogleFonts.beVietnamPro(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w700,
+                                              color: Colors.white,
+                                              letterSpacing: 0.6,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    event.title,
+                                    style: GoogleFonts.beVietnamPro(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white,
+                                      height: 1.25,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(
+                                Icons.close_rounded,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                              tooltip: 'Close',
+                              onPressed: () => Navigator.pop(ctx),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),
-                  child: Stack(
-                    clipBehavior: Clip.none,
+                ),
+
+                // ─── TAB BAR ─────────────────────────────────────────────
+                Container(
+                  decoration: const BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: Color(0xFFE8ECF0)),
+                    ),
+                  ),
+                  child: TabBar(
+                    isScrollable: true,
+                    labelColor: UpriseColors.primaryDark,
+                    unselectedLabelColor: const Color(0xFF64748B),
+                    indicatorColor: UpriseColors.primaryDark,
+                    labelStyle: GoogleFonts.beVietnamPro(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    unselectedLabelStyle: GoogleFonts.beVietnamPro(
+                      fontSize: 13,
+                    ),
+                    tabs: const [
+                      Tab(text: 'Details'),
+                      Tab(text: 'Registration'),
+                      Tab(text: 'Attendance'),
+                      Tab(text: 'Feedback'),
+                      Tab(text: 'Certificates'),
+                      Tab(text: 'Finance'),
+                      Tab(text: 'Report'),
+                    ],
+                  ),
+                ),
+
+                // ─── BODY ────────────────────────────────────────────────
+                Expanded(
+                  child: TabBarView(
                     children: [
-                      Positioned(
-                        right: -30,
-                        top: -40,
-                        child: Container(
-                          width: 130,
-                          height: 130,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white.withAlpha(18),
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        right: 40,
-                        bottom: -50,
-                        child: Container(
-                          width: 90,
-                          height: 90,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white.withAlpha(14),
-                          ),
-                        ),
-                      ),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            width: 46,
-                            height: 46,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withAlpha(35),
-                              borderRadius: BorderRadius.circular(13),
-                              border: Border.all(
-                                color: Colors.white.withAlpha(90),
-                              ),
-                            ),
-                            child: const Icon(
-                              Icons.event_rounded,
-                              color: Colors.white,
-                              size: 22,
-                            ),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                      SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(24, 22, 24, 8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // ── Key details as tidy cards ──────────────────
+                            Wrap(
+                              spacing: 12,
+                              runSpacing: 12,
                               children: [
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 6,
-                                  crossAxisAlignment: WrapCrossAlignment.center,
-                                  children: [
-                                    _categoryChip(event.category),
-                                    if (event.orgName.isNotEmpty &&
-                                        event.orgName != 'Unknown')
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: 4,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          borderRadius: BorderRadius.circular(
-                                            100,
-                                          ),
-                                          border: Border.all(
-                                            color: Colors.white.withAlpha(150),
-                                          ),
-                                        ),
-                                        child: Text(
-                                          event.orgName.toUpperCase(),
-                                          style: GoogleFonts.beVietnamPro(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w600,
-                                            color: Colors.white.withAlpha(255),
-                                            letterSpacing: 0.6,
-                                          ),
-                                        ),
-                                      ),
-                                    if (event.status.toLowerCase() !=
-                                        'approved')
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: 4,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: _statusColor(event.status),
-                                          borderRadius: BorderRadius.circular(
-                                            100,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          event.status.toUpperCase(),
-                                          style: GoogleFonts.beVietnamPro(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w700,
-                                            color: Colors.white,
-                                            letterSpacing: 0.6,
-                                          ),
-                                        ),
-                                      ),
-                                  ],
+                                _detailCard(
+                                  'Date',
+                                  DateFormat('MMM d, yyyy').format(event.date),
+                                  Icons.calendar_today_rounded,
+                                  accent: catColor,
                                 ),
-                                const SizedBox(height: 10),
-                                Text(
-                                  event.title,
-                                  style: GoogleFonts.beVietnamPro(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white,
-                                    height: 1.25,
+                                _detailCard(
+                                  'Time',
+                                  startTime.isNotEmpty
+                                      ? (endTime.isNotEmpty
+                                            ? '$startTime - $endTime'
+                                            : startTime)
+                                      : 'TBD',
+                                  Icons.access_time_rounded,
+                                  accent: catColor,
+                                ),
+                                _detailCard(
+                                  'Location',
+                                  event.location.isNotEmpty
+                                      ? event.location
+                                      : 'TBD',
+                                  Icons.location_on_outlined,
+                                  accent: catColor,
+                                ),
+                                _detailCard(
+                                  'Audience',
+                                  event.audience.isNotEmpty
+                                      ? event.audience
+                                      : 'Public',
+                                  Icons.group_outlined,
+                                  accent: catColor,
+                                ),
+                                if (event.orgName.isNotEmpty)
+                                  _detailCard(
+                                    'Organization',
+                                    event.orgName,
+                                    Icons.business_center,
+                                    accent: catColor,
                                   ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
                               ],
                             ),
-                          ),
-                          IconButton(
-                            icon: const Icon(
-                              Icons.close_rounded,
-                              color: Colors.white,
-                              size: 20,
-                            ),
-                            tooltip: 'Close',
-                            onPressed: () => Navigator.pop(ctx),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+                            const SizedBox(height: 22),
 
-              // ─── BODY ────────────────────────────────────────────────
-              Flexible(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(24, 22, 24, 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // ── Key details as tidy cards ──────────────────
-                      Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
-                        children: [
-                          _detailCard(
-                            'Date',
-                            DateFormat('MMM d, yyyy').format(event.date),
-                            Icons.calendar_today_rounded,
-                            accent: catColor,
-                          ),
-                          _detailCard(
-                            'Time',
-                            startTime.isNotEmpty
-                                ? (endTime.isNotEmpty
-                                      ? '$startTime - $endTime'
-                                      : startTime)
-                                : 'TBD',
-                            Icons.access_time_rounded,
-                            accent: catColor,
-                          ),
-                          _detailCard(
-                            'Location',
-                            event.location.isNotEmpty ? event.location : 'TBD',
-                            Icons.location_on_outlined,
-                            accent: catColor,
-                          ),
-                          _detailCard(
-                            'Audience',
-                            event.audience.isNotEmpty
-                                ? event.audience
-                                : 'Public',
-                            Icons.group_outlined,
-                            accent: catColor,
-                          ),
-                          if (event.orgName.isNotEmpty)
-                            _detailCard(
-                              'Organization',
-                              event.orgName,
-                              Icons.business_center,
-                              accent: catColor,
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 22),
-
-                      // ── Description ──────────────────────────────────
-                      if (event.description.isNotEmpty) ...[
-                        _sectionLabel(
-                          'Description',
-                          icon: Icons.description_outlined,
-                        ),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF8F9FB),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border(
-                              left: BorderSide(color: catColor, width: 3),
-                            ),
-                          ),
-                          child: Text(
-                            event.description,
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 13.5,
-                              color: const Color(0xFF374151),
-                              height: 1.65,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 22),
-                      ],
-
-                      // ── Guest Speaker ────────────────────────────────
-                      if (guestSpeaker.isNotEmpty) ...[
-                        _sectionLabel(
-                          'Guest Speaker',
-                          icon: Icons.person_outline_rounded,
-                        ),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: catColor.withAlpha(15),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: catColor.withAlpha(45)),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 38,
-                                height: 38,
-                                decoration: BoxDecoration(
-                                  color: catColor.withAlpha(30),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  Icons.person_rounded,
-                                  color: catColor,
-                                  size: 18,
-                                ),
+                            // ── Description ──────────────────────────────────
+                            if (event.description.isNotEmpty) ...[
+                              _sectionLabel(
+                                'Description',
+                                icon: Icons.description_outlined,
                               ),
-                              const SizedBox(width: 14),
-                              Expanded(
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF8F9FB),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border(
+                                    left: BorderSide(color: catColor, width: 3),
+                                  ),
+                                ),
                                 child: Text(
-                                  guestSpeaker,
+                                  event.description,
                                   style: GoogleFonts.beVietnamPro(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: const Color(0xFF1A202C),
+                                    fontSize: 13.5,
+                                    color: const Color(0xFF374151),
+                                    height: 1.65,
                                   ),
                                 ),
                               ),
+                              const SizedBox(height: 22),
                             ],
-                          ),
-                        ),
-                        const SizedBox(height: 22),
-                      ],
 
-                      // ── Resources ────────────────────────────────────
-                      if (event.resources.isNotEmpty) ...[
-                        _sectionLabel('Resources', icon: Icons.folder_outlined),
-                        _buildBulletList(event.resources),
-                        const SizedBox(height: 22),
-                      ],
-
-                      // ── Lab Preparation ──────────────────────────────
-                      if (event.labPreparation.isNotEmpty) ...[
-                        _sectionLabel(
-                          'Lab Preparation',
-                          icon: Icons.build_circle_outlined,
-                        ),
-                        _buildBulletList(event.labPreparation),
-                        const SizedBox(height: 22),
-                      ],
-
-                      // ── Tags ─────────────────────────────────────────
-                      if (event.tags.isNotEmpty) ...[
-                        _sectionLabel('Tags', icon: Icons.local_offer_outlined),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: event.tags.map((tag) {
-                            return Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
+                            // ── Guest Speaker ────────────────────────────────
+                            if (guestSpeaker.isNotEmpty) ...[
+                              _sectionLabel(
+                                'Guest Speaker',
+                                icon: Icons.person_outline_rounded,
                               ),
-                              decoration: BoxDecoration(
-                                color: catColor.withAlpha(15),
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(
-                                  color: catColor.withAlpha(60),
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: catColor.withAlpha(15),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: catColor.withAlpha(45),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 38,
+                                      height: 38,
+                                      decoration: BoxDecoration(
+                                        color: catColor.withAlpha(30),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Icon(
+                                        Icons.person_rounded,
+                                        color: catColor,
+                                        size: 18,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 14),
+                                    Expanded(
+                                      child: Text(
+                                        guestSpeaker,
+                                        style: GoogleFonts.beVietnamPro(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: const Color(0xFF1A202C),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                              child: Text(
-                                tag,
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                  color: catColor,
-                                ),
+                              const SizedBox(height: 22),
+                            ],
+
+                            // ── Resources ────────────────────────────────────
+                            if (event.resources.isNotEmpty) ...[
+                              _sectionLabel(
+                                'Resources',
+                                icon: Icons.folder_outlined,
                               ),
-                            );
-                          }).toList(),
+                              _buildBulletList(event.resources),
+                              const SizedBox(height: 22),
+                            ],
+
+                            // ── Lab Preparation ──────────────────────────────
+                            if (event.labPreparation.isNotEmpty) ...[
+                              _sectionLabel(
+                                'Lab Preparation',
+                                icon: Icons.build_circle_outlined,
+                              ),
+                              _buildBulletList(event.labPreparation),
+                              const SizedBox(height: 22),
+                            ],
+
+                            // ── Tags ─────────────────────────────────────────
+                            if (event.tags.isNotEmpty) ...[
+                              _sectionLabel(
+                                'Tags',
+                                icon: Icons.local_offer_outlined,
+                              ),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: event.tags.map((tag) {
+                                  return Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: catColor.withAlpha(15),
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(
+                                        color: catColor.withAlpha(60),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      tag,
+                                      style: GoogleFonts.beVietnamPro(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500,
+                                        color: catColor,
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                              const SizedBox(height: 6),
+                            ],
+                          ],
                         ),
-                        const SizedBox(height: 6),
-                      ],
+                      ),
+                      _RegistrationTab(event: event),
+                      _AttendanceTab(event: event),
+                      _FeedbackTab(event: event),
+                      _CertificatesTab(event: event),
+                      _FinanceTab(event: event),
+                      _ReportTab(event: event),
                     ],
                   ),
                 ),
-              ),
 
-              // ─── FOOTER ──────────────────────────────────────────────
-              Container(
-                padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
-                decoration: const BoxDecoration(
-                  border: Border(top: BorderSide(color: Color(0xFFEDF0F3))),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    OutlinedButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF374151),
-                        side: const BorderSide(color: Color(0xFFE2E6EA)),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                // ─── FOOTER ──────────────────────────────────────────────
+                Container(
+                  padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
+                  decoration: const BoxDecoration(
+                    border: Border(top: BorderSide(color: Color(0xFFEDF0F3))),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF374151),
+                          side: const BorderSide(color: Color(0xFFE2E6EA)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 11,
+                          ),
                         ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 11,
+                        child: Text(
+                          'Close',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
-                      child: Text(
-                        'Close',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

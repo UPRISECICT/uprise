@@ -9,20 +9,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../theme/org_theme.dart';
-import '../../../widgets/student/event_image.dart';
-import '../../../widgets/admin_export_button.dart';
-import '../../../widgets/anchored_dropdown.dart';
-import 'export_util.dart';
-import 'export_pdf.dart';
-import 'export_excel.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 // ── Design tokens ────────────────────────────────────────────────────────────
 class _DS {
-  static const double radiusSm = 8;
   static const double radiusMd = 12;
   static const double radiusLg = 16;
-  static const double radiusXl = 20;
 
   // Soft dual-tone "clay" shadow — a gentle dark shadow below/right paired
   // with a faint light highlight above/left, instead of one flat drop
@@ -53,30 +45,6 @@ class _DS {
       ),
     );
   }
-
-  static const LinearGradient primaryGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [Color(0xFF3B82F6), Color(0xFF2563EB)],
-  );
-
-  static const LinearGradient accentGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [Color(0xFFF59E0B), Color(0xFFD97706)],
-  );
-
-  static const LinearGradient successGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [Color(0xFF10B981), Color(0xFF059669)],
-  );
-
-  static const LinearGradient dangerGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
-  );
 }
 
 // ── Color aliases ────────────────────────────────────────────────────────────
@@ -90,7 +58,6 @@ class _C {
   static const Color muted = Color(0xFF64748B);
   static const Color charcoal = Color(0xFF0F172A);
   static const Color white = Color(0xFFFFFFFF);
-  static const Color cardBg = Color(0xFFFFFFFF);
 }
 
 // ── Data model ───────────────────────────────────────────────────────────────
@@ -98,16 +65,93 @@ class _AnalyticsData {
   final List<Map<String, dynamic>> feedbacks;
   final List<Map<String, dynamic>> events;
   final List<Map<String, dynamic>> transactions;
+  final List<Map<String, dynamic>> registrations;
+  final List<Map<String, dynamic>> attendances;
 
   final Map<String, String> _eventTitleCache = {};
 
   _AnalyticsData({
     required this.feedbacks,
     this.transactions = const [],
+    this.registrations = const [],
+    this.attendances = const [],
     required this.events,
   });
 
   int get totalFeedbacks => feedbacks.length;
+
+  int get totalRegistrations => registrations.length;
+
+  Map<String, int> get registrationCountByEvent {
+    final Map<String, int> c = {};
+    for (final r in registrations) {
+      final id = r['eventId'] as String? ?? '';
+      if (id.isEmpty) continue;
+      c[id] = (c[id] ?? 0) + 1;
+    }
+    return c;
+  }
+
+  Map<String, int> get attendanceDocCountByEvent {
+    final Map<String, int> c = {};
+    for (final a in attendances) {
+      final id = a['eventId'] as String? ?? '';
+      if (id.isEmpty) continue;
+      c[id] = (c[id] ?? 0) + 1;
+    }
+    return c;
+  }
+
+  Map<String, int> get presentOrLateCountByEvent {
+    final Map<String, int> c = {};
+    for (final a in attendances) {
+      final id = a['eventId'] as String? ?? '';
+      if (id.isEmpty) continue;
+      final status = a['status'] as String?;
+      if (status != 'present' && status != 'late') continue;
+      c[id] = (c[id] ?? 0) + 1;
+    }
+    return c;
+  }
+
+  // Per event, "slots" = max(registered, attendance docs) — mirrors the
+  // Registration/Attendance tab math in org_events_schedule.dart, since an
+  // event can have walk-in attendance docs with no matching registration
+  // (or vice versa). Overall rate is attended slots / total slots.
+  double get attendanceRate {
+    final regByEvent = registrationCountByEvent;
+    final attDocsByEvent = attendanceDocCountByEvent;
+    final attendedByEvent = presentOrLateCountByEvent;
+    final eventIds = {...regByEvent.keys, ...attDocsByEvent.keys};
+    if (eventIds.isEmpty) return 0;
+
+    int totalSlots = 0;
+    int totalAttended = 0;
+    for (final id in eventIds) {
+      final slots = math.max(regByEvent[id] ?? 0, attDocsByEvent[id] ?? 0);
+      totalSlots += slots;
+      totalAttended += attendedByEvent[id] ?? 0;
+    }
+    if (totalSlots == 0) return 0;
+    return totalAttended / totalSlots * 100;
+  }
+
+  // Registered vs. attended per event, keyed by event id (chart widgets
+  // resolve the display title via eventDisplayTitle(), same as avgByEvent).
+  Map<String, ({int registered, int attended})>
+  get registrationVsAttendanceByEvent {
+    final regByEvent = registrationCountByEvent;
+    final attendedByEvent = presentOrLateCountByEvent;
+    final eventIds = {...regByEvent.keys, ...attendanceDocCountByEvent.keys};
+    final out = <String, ({int registered, int attended})>{};
+    for (final id in eventIds) {
+      out[id] = (
+        registered: regByEvent[id] ?? 0,
+        attended: attendedByEvent[id] ?? 0,
+      );
+    }
+    return out;
+  }
 
   double get avgRating {
     if (feedbacks.isEmpty) return 0;
@@ -205,50 +249,9 @@ class _AnalyticsData {
     return title;
   }
 
-  String? eventIdByTitle(String title) {
-    for (final event in events) {
-      final t = event['title'] as String? ?? '';
-      if (t == title) {
-        return event['id'] as String?;
-      }
-    }
-    return null;
-  }
-
-  List<String> get eventTitles {
-    final titles = <String>{};
-    for (final event in events) {
-      final title = event['title'] as String? ?? '';
-      if (title.isNotEmpty) titles.add(title);
-    }
-    return titles.toList()..sort();
-  }
-
-  // A representative written comment for one event, picked from its
-  // lowest- or highest-rated feedback so an insight card can show real
-  // student wording instead of just a number.
-  String? representativeComment(String eventId, {required bool lowest}) {
-    final matches = feedbacks
-        .where((f) => (f['eventId'] ?? '') == eventId)
-        .toList();
-    if (matches.isEmpty) return null;
-    matches.sort((a, b) {
-      final ra = a['rating'] as int? ?? 0;
-      final rb = b['rating'] as int? ?? 0;
-      return lowest ? ra.compareTo(rb) : rb.compareTo(ra);
-    });
-    for (final f in matches) {
-      final comment = (f['comment'] as String? ?? '').trim();
-      if (comment.isNotEmpty) return comment;
-    }
-    return null;
-  }
-
   // Per-event income/expense rollup, keyed by event TITLE — transactions
-  // only reliably denormalize `eventName` (not a matching `eventId`), and
-  // title is the one identity feedback and finance data can both resolve
-  // to (see eventTitle()'s own fallback-matching for why eventId alone
-  // isn't a safe join key here).
+  // only reliably denormalize `eventName` (not a matching `eventId`), so
+  // title is the one identity finance data can safely resolve an event by.
   Map<String, ({double income, double expense})> get financeByEventTitle {
     final Map<String, ({double income, double expense})> out = {};
     for (final t in transactions) {
@@ -282,36 +285,18 @@ class OrgEventAnalyticsScreen extends StatefulWidget {
       _OrgEventAnalyticsScreenState();
 }
 
-class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
-    with SingleTickerProviderStateMixin {
+class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
   late Future<_AnalyticsData> _dataFuture;
-  late TabController _tabCtrl;
 
   // Feedback is currently split across two collections from an incomplete
   // migration — see the comment in _loadAll() — so both are watched.
   StreamSubscription<QuerySnapshot>? _feedbackSubscription;
   StreamSubscription<QuerySnapshot>? _eventFeedbackSubscription;
 
-  final TextEditingController _eventsSearchCtrl = TextEditingController();
-  String _eventsSearchQuery = '';
-  String _eventsSortBy = 'Most Recent';
-  static const List<String> _eventsSortOptions = [
-    'Most Recent',
-    'Highest Rated',
-    'Most Responses',
-    'Name (A-Z)',
-  ];
-
   @override
   void initState() {
     super.initState();
-    _tabCtrl = TabController(length: 2, vsync: this);
     _dataFuture = _loadAll();
-    _eventsSearchCtrl.addListener(
-      () => setState(
-        () => _eventsSearchQuery = _eventsSearchCtrl.text.toLowerCase().trim(),
-      ),
-    );
     _listenForUpdates();
     activity_log.ActivityLogger.log(
       action: 'view_analytics',
@@ -322,8 +307,6 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
 
   @override
   void dispose() {
-    _tabCtrl.dispose();
-    _eventsSearchCtrl.dispose();
     _feedbackSubscription?.cancel();
     _eventFeedbackSubscription?.cancel();
     super.dispose();
@@ -377,6 +360,14 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
           .where('orgId', isEqualTo: widget.orgId)
           .get();
 
+      // Neither 'registrations' nor the 'attendances' subcollection group
+      // carries an orgId field, so — same as feedback above — fetch broadly
+      // and scope client-side by membership in this org's own event ids.
+      // collectionGroup('attendances') is an existing pattern used across
+      // student/guest screens for the same events/{id}/attendances data.
+      final registrationsSnapshot = await db.collection('registrations').get();
+      final attendancesSnapshot = await db.collectionGroup('attendances').get();
+
       final feedbacks = feedbackSnapshots
           .expand((snap) => snap.docs)
           .map(
@@ -393,10 +384,36 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
           .map((d) => {...d.data(), 'id': d.id})
           .toList();
 
+      final registrations = registrationsSnapshot.docs
+          .map(
+            (d) => {
+              ...d.data(),
+              'id': d.id,
+              'eventId': d.data()['eventId'] as String? ?? '',
+            },
+          )
+          .where((r) => orgEventIds.contains(r['eventId']))
+          .toList();
+
+      final attendances = attendancesSnapshot.docs
+          .map(
+            (d) => {
+              ...d.data(),
+              'id': d.id,
+              // The attendance doc's own parent is the event doc:
+              // events/{eventId}/attendances/{attendanceDocId}.
+              'eventId': d.reference.parent.parent?.id ?? '',
+            },
+          )
+          .where((a) => orgEventIds.contains(a['eventId']))
+          .toList();
+
       return _AnalyticsData(
         feedbacks: feedbacks,
         events: events,
         transactions: transactions,
+        registrations: registrations,
+        attendances: attendances,
       );
     } catch (e) {
       debugPrint('Error loading analytics: $e');
@@ -447,925 +464,6 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
     setState(() {
       _dataFuture = _loadAll();
     });
-  }
-
-  // Feedback is split across two collections (see _loadAll() for why) — this
-  // merges live updates from both into one stream so this dialog's counts
-  // don't silently miss whichever collection the real submissions landed in.
-  Stream<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
-  _mergedFeedbackStream(String eventId) {
-    final controller =
-        StreamController<
-          List<QueryDocumentSnapshot<Map<String, dynamic>>>
-        >.broadcast();
-    var latestOld = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
-    var latestNew = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
-    void emit() {
-      if (!controller.isClosed) controller.add([...latestOld, ...latestNew]);
-    }
-
-    final sub1 = FirebaseFirestore.instance
-        .collection('feedback')
-        .where('eventId', isEqualTo: eventId)
-        .snapshots()
-        .listen((snap) {
-          latestOld = snap.docs;
-          emit();
-        });
-    final sub2 = FirebaseFirestore.instance
-        .collection('event_feedback')
-        .where('eventId', isEqualTo: eventId)
-        .snapshots()
-        .listen((snap) {
-          latestNew = snap.docs;
-          emit();
-        });
-    controller.onCancel = () async {
-      await sub1.cancel();
-      await sub2.cancel();
-    };
-    return controller.stream;
-  }
-
-  // ── Event Summary Dialog ──────────────────────────────────────────────────
-  void _showEventSummaryDialog(
-    BuildContext context, {
-    required String eventId,
-    required String eventTitle,
-    required String orgId,
-    required _AnalyticsData analyticsData,
-  }) {
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Container(
-          width: 680,
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(ctx).size.height * 0.85,
-          ),
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          eventTitle,
-                          style: GoogleFonts.inter(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                            color: _C.charcoal,
-                          ),
-                        ),
-                        Text(
-                          'Event summary',
-                          style: GoogleFonts.inter(
-                            fontSize: 13,
-                            color: _C.muted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    icon: const Icon(Icons.close_rounded),
-                    tooltip: 'Close',
-                  ),
-                ],
-              ),
-              _DS.fadeDivider(height: 24),
-              Expanded(
-                child: SingleChildScrollView(
-                  child: StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('events')
-                        .doc(eventId)
-                        .collection('attendances')
-                        .snapshots(),
-                    builder: (ctx, attSnap) {
-                      final attDocs = attSnap.data?.docs ?? [];
-                      final checkedIn = attDocs.length;
-                      final present = attDocs.where((d) {
-                        final data = d.data() as Map<String, dynamic>;
-                        return data['status'] == 'present';
-                      }).length;
-                      final late = attDocs.where((d) {
-                        final data = d.data() as Map<String, dynamic>;
-                        return data['status'] == 'late';
-                      }).length;
-
-                      return StreamBuilder<QuerySnapshot>(
-                        stream: FirebaseFirestore.instance
-                            .collection('registrations')
-                            .where('eventId', isEqualTo: eventId)
-                            .snapshots(),
-                        builder: (ctx, regSnap) {
-                          final regCount = regSnap.data?.docs.length;
-                          // Attendance docs are only created on check-in, so
-                          // regCount (real registrants) — not checkedIn — is the
-                          // correct denominator for a true "Absent" tally.
-                          final totalAttendees = regCount != null
-                              ? (regCount > checkedIn ? regCount : checkedIn)
-                              : checkedIn;
-                          final absent = (totalAttendees - present - late)
-                              .clamp(0, totalAttendees);
-
-                          return StreamBuilder<
-                            List<QueryDocumentSnapshot<Map<String, dynamic>>>
-                          >(
-                            stream: _mergedFeedbackStream(eventId),
-                            builder: (ctx, feedbackSnap) {
-                              final feedbackDocs = feedbackSnap.data ?? [];
-                              final feedbackCount = feedbackDocs.length;
-                              final notYetFeedback = checkedIn - feedbackCount;
-
-                              final studentIdsWithFeedback = feedbackDocs
-                                  .map(
-                                    (d) => d.data()['userId']?.toString() ?? '',
-                                  )
-                                  .where((id) => id.isNotEmpty)
-                                  .toSet();
-
-                              return FutureBuilder<List<Map<String, dynamic>>>(
-                                future: _getAttendeesWithNames(attDocs),
-                                builder: (ctx, attendeeSnap) {
-                                  final attendees = attendeeSnap.data ?? [];
-
-                                  // ── Per-event insights: real ratings/
-                                  // comments/finance for THIS event only,
-                                  // not a cross-event "best vs worst" pick.
-                                  final feedbackMaps = feedbackDocs
-                                      .map((d) => d.data())
-                                      .toList();
-                                  final ratings = feedbackMaps
-                                      .map((f) => f['rating'] as int? ?? 0)
-                                      .where((r) => r > 0)
-                                      .toList();
-                                  final avgRating = ratings.isEmpty
-                                      ? null
-                                      : ratings.reduce((a, b) => a + b) /
-                                            ratings.length;
-                                  final byRatingDesc = [...feedbackMaps]
-                                    ..sort(
-                                      (a, b) => (b['rating'] as int? ?? 0)
-                                          .compareTo(a['rating'] as int? ?? 0),
-                                    );
-                                  String? topComment;
-                                  String? lowComment;
-                                  for (final f in byRatingDesc) {
-                                    final c = (f['comment'] as String? ?? '')
-                                        .trim();
-                                    if (c.isNotEmpty) {
-                                      topComment = c;
-                                      break;
-                                    }
-                                  }
-                                  for (final f in byRatingDesc.reversed) {
-                                    final c = (f['comment'] as String? ?? '')
-                                        .trim();
-                                    if (c.isNotEmpty) {
-                                      lowComment = c;
-                                      break;
-                                    }
-                                  }
-                                  final eventFinance = analyticsData
-                                      .financeForEvent(eventTitle);
-                                  final money = NumberFormat('#,###.00');
-                                  double? net;
-                                  if (eventFinance != null) {
-                                    net =
-                                        eventFinance.income -
-                                        eventFinance.expense;
-                                  }
-
-                                  // Compact one-line facts instead of one
-                                  // concatenated paragraph — each is its own
-                                  // scannable row rather than a sentence
-                                  // buried mid-text.
-                                  Widget miniInsightRow(
-                                    IconData icon,
-                                    Color color,
-                                    String text,
-                                  ) {
-                                    return Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 10,
-                                      ),
-                                      margin: const EdgeInsets.only(bottom: 8),
-                                      decoration: BoxDecoration(
-                                        color: color.withAlpha(15),
-                                        borderRadius: BorderRadius.circular(
-                                          _DS.radiusSm,
-                                        ),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Icon(icon, size: 15, color: color),
-                                          const SizedBox(width: 10),
-                                          Expanded(
-                                            child: Text(
-                                              text,
-                                              style: GoogleFonts.inter(
-                                                fontSize: 12.5,
-                                                color: _C.charcoal,
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  }
-
-                                  Widget commentQuote(
-                                    String text, {
-                                    required bool isTop,
-                                  }) {
-                                    final c = isTop ? _C.green : _C.red;
-                                    return Container(
-                                      padding: const EdgeInsets.all(10),
-                                      margin: const EdgeInsets.only(bottom: 8),
-                                      decoration: BoxDecoration(
-                                        color: _C.surface,
-                                        borderRadius: BorderRadius.circular(
-                                          _DS.radiusSm,
-                                        ),
-                                        border: Border(
-                                          left: BorderSide(color: c, width: 3),
-                                        ),
-                                      ),
-                                      child: Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Icon(
-                                            isTop
-                                                ? Icons.thumb_up_alt_outlined
-                                                : Icons.flag_outlined,
-                                            size: 14,
-                                            color: c,
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: Text(
-                                              '"$text"',
-                                              style: GoogleFonts.inter(
-                                                fontSize: 12,
-                                                color: _C.muted,
-                                                fontStyle: FontStyle.italic,
-                                                height: 1.4,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  }
-
-                                  return Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          _buildSummaryStat(
-                                            'Registrants',
-                                            '$totalAttendees',
-                                            Icons.people_alt_rounded,
-                                            _C.blue,
-                                          ),
-                                          const SizedBox(width: 8),
-                                          _buildSummaryStat(
-                                            'Present',
-                                            '$present',
-                                            Icons.check_circle_rounded,
-                                            _C.green,
-                                          ),
-                                          const SizedBox(width: 8),
-                                          _buildSummaryStat(
-                                            'Late',
-                                            '$late',
-                                            Icons.access_time_rounded,
-                                            _C.amber,
-                                          ),
-                                          const SizedBox(width: 8),
-                                          _buildSummaryStat(
-                                            'Absent',
-                                            '$absent',
-                                            Icons.cancel_rounded,
-                                            _C.red,
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 12),
-                                      Text(
-                                        'Financials',
-                                        style: GoogleFonts.inter(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: _C.charcoal,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 10),
-                                      if (eventFinance != null)
-                                        Row(
-                                          children: [
-                                            _buildSummaryStat(
-                                              'Income',
-                                              '₱${money.format(eventFinance.income)}',
-                                              Icons.arrow_downward_rounded,
-                                              _C.green,
-                                            ),
-                                            const SizedBox(width: 8),
-                                            _buildSummaryStat(
-                                              'Expenses',
-                                              '₱${money.format(eventFinance.expense)}',
-                                              Icons.arrow_upward_rounded,
-                                              _C.red,
-                                            ),
-                                            const SizedBox(width: 8),
-                                            _buildSummaryStat(
-                                              'Net',
-                                              '${net! >= 0 ? '' : '-'}₱${money.format(net.abs())}',
-                                              Icons.payments_outlined,
-                                              net >= 0 ? _C.green : _C.red,
-                                            ),
-                                          ],
-                                        )
-                                      else
-                                        miniInsightRow(
-                                          Icons.payments_outlined,
-                                          _C.muted,
-                                          'No financial records logged for this event yet',
-                                        ),
-                                      const SizedBox(height: 16),
-                                      Text(
-                                        'Insights',
-                                        style: GoogleFonts.inter(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: _C.charcoal,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 10),
-                                      miniInsightRow(
-                                        Icons.star_rounded,
-                                        avgRating == null
-                                            ? _C.muted
-                                            : _ratingColor(avgRating),
-                                        avgRating != null
-                                            ? '${avgRating.toStringAsFixed(1)}★ average from ${ratings.length} response${ratings.length == 1 ? '' : 's'}'
-                                            : 'No feedback submitted for this event yet',
-                                      ),
-                                      if (checkedIn > 0)
-                                        miniInsightRow(
-                                          Icons.fact_check_outlined,
-                                          _C.blue,
-                                          '$feedbackCount of $checkedIn checked-in attendee${checkedIn == 1 ? '' : 's'} submitted feedback'
-                                          '${notYetFeedback > 0 ? ' ($notYetFeedback pending)' : ''}',
-                                        ),
-                                      if (topComment != null)
-                                        commentQuote(topComment, isTop: true),
-                                      if (lowComment != null &&
-                                          lowComment != topComment &&
-                                          avgRating != null &&
-                                          avgRating < 4.5)
-                                        commentQuote(lowComment, isTop: false),
-                                      const SizedBox(height: 10),
-                                      _DS.fadeDivider(),
-                                      const SizedBox(height: 16),
-                                      Row(
-                                        children: [
-                                          Text(
-                                            'Feedback',
-                                            style: GoogleFonts.inter(
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.w600,
-                                              color: _C.charcoal,
-                                            ),
-                                          ),
-                                          const Spacer(),
-                                          TextButton(
-                                            onPressed: feedbackDocs.isEmpty
-                                                ? null
-                                                : () => _showFeedbackListDialog(
-                                                    context,
-                                                    eventTitle: eventTitle,
-                                                    feedbacks: feedbackMaps
-                                                        .asMap()
-                                                        .entries
-                                                        .map(
-                                                          (e) => {
-                                                            ...e.value,
-                                                            'id':
-                                                                feedbackDocs[e
-                                                                        .key]
-                                                                    .id,
-                                                          },
-                                                        )
-                                                        .toList(),
-                                                    data: analyticsData,
-                                                  ),
-                                            child: Text(
-                                              'View all (${feedbackDocs.length})',
-                                              style: GoogleFonts.inter(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 12),
-                                      Row(
-                                        children: [
-                                          Text(
-                                            'Attendees',
-                                            style: GoogleFonts.inter(
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.w600,
-                                              color: _C.charcoal,
-                                            ),
-                                          ),
-                                          const Spacer(),
-                                          Text(
-                                            '${attendees.length} total',
-                                            style: GoogleFonts.inter(
-                                              fontSize: 11,
-                                              color: _C.muted,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Flexible(
-                                        child: Container(
-                                          constraints: const BoxConstraints(
-                                            maxHeight: 280,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            border: Border.all(
-                                              color: _C.border.withOpacity(0.4),
-                                            ),
-                                            borderRadius: BorderRadius.circular(
-                                              10,
-                                            ),
-                                          ),
-                                          child: SingleChildScrollView(
-                                            child: attendees.isEmpty
-                                                ? Padding(
-                                                    padding:
-                                                        const EdgeInsets.all(
-                                                          32,
-                                                        ),
-                                                    child: Center(
-                                                      child: Column(
-                                                        children: [
-                                                          Icon(
-                                                            Icons
-                                                                .people_outline,
-                                                            size: 40,
-                                                            color: _C.border,
-                                                          ),
-                                                          const SizedBox(
-                                                            height: 8,
-                                                          ),
-                                                          Text(
-                                                            'No attendees yet',
-                                                            style:
-                                                                GoogleFonts.inter(
-                                                                  fontSize: 13,
-                                                                  color:
-                                                                      _C.muted,
-                                                                ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  )
-                                                : Column(
-                                                    children: attendees.map((
-                                                      attendee,
-                                                    ) {
-                                                      final studentName =
-                                                          attendee['studentName'] ??
-                                                          'Unknown';
-                                                      final uid =
-                                                          attendee['studentId']
-                                                              ?.toString() ??
-                                                          '';
-                                                      final isPresent =
-                                                          attendee['status'] ==
-                                                          'present';
-                                                      final hasFeedback =
-                                                          uid.isNotEmpty &&
-                                                          studentIdsWithFeedback
-                                                              .contains(uid);
-
-                                                      return Container(
-                                                        padding:
-                                                            const EdgeInsets.symmetric(
-                                                              horizontal: 12,
-                                                              vertical: 10,
-                                                            ),
-                                                        decoration: BoxDecoration(
-                                                          border: Border(
-                                                            bottom: BorderSide(
-                                                              color: _C.border
-                                                                  .withOpacity(
-                                                                    0.3,
-                                                                  ),
-                                                            ),
-                                                          ),
-                                                        ),
-                                                        child: Row(
-                                                          children: [
-                                                            Icon(
-                                                              isPresent
-                                                                  ? Icons
-                                                                        .check_circle_rounded
-                                                                  : Icons
-                                                                        .access_time_rounded,
-                                                              color: isPresent
-                                                                  ? _C.green
-                                                                  : _C.amber,
-                                                              size: 16,
-                                                            ),
-                                                            const SizedBox(
-                                                              width: 10,
-                                                            ),
-                                                            Expanded(
-                                                              child: Text(
-                                                                studentName,
-                                                                style: GoogleFonts.inter(
-                                                                  fontSize: 13,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .w500,
-                                                                  color: _C
-                                                                      .charcoal,
-                                                                ),
-                                                              ),
-                                                            ),
-                                                            Container(
-                                                              padding:
-                                                                  const EdgeInsets.symmetric(
-                                                                    horizontal:
-                                                                        8,
-                                                                    vertical: 3,
-                                                                  ),
-                                                              decoration: BoxDecoration(
-                                                                color:
-                                                                    hasFeedback
-                                                                    ? const Color(
-                                                                        0xFFECFDF5,
-                                                                      )
-                                                                    : const Color(
-                                                                        0xFFF1F5F9,
-                                                                      ),
-                                                                borderRadius:
-                                                                    BorderRadius.circular(
-                                                                      12,
-                                                                    ),
-                                                              ),
-                                                              child: Text(
-                                                                hasFeedback
-                                                                    ? '✓ Feedback'
-                                                                    : 'Pending',
-                                                                style: GoogleFonts.inter(
-                                                                  fontSize: 10,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .w600,
-                                                                  color:
-                                                                      hasFeedback
-                                                                      ? const Color(
-                                                                          0xFF166534,
-                                                                        )
-                                                                      : _C.muted,
-                                                                ),
-                                                              ),
-                                                            ),
-                                                          ],
-                                                        ),
-                                                      );
-                                                    }).toList(),
-                                                  ),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  );
-                                },
-                              );
-                            },
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<List<Map<String, dynamic>>> _getAttendeesWithNames(
-    List<QueryDocumentSnapshot> attDocs,
-  ) async {
-    final List<Map<String, dynamic>> result = [];
-
-    for (final doc in attDocs) {
-      final data = doc.data() as Map<String, dynamic>;
-      final uid = data['studentId']?.toString() ?? '';
-
-      if (uid.isNotEmpty) {
-        try {
-          final studentDoc = await FirebaseFirestore.instance
-              .collection('students')
-              .doc(uid)
-              .get();
-          if (studentDoc.exists) {
-            final studentData = studentDoc.data() as Map<String, dynamic>;
-            result.add({
-              'studentName':
-                  studentData['fullName'] ?? data['studentName'] ?? 'Unknown',
-              'studentId': uid,
-              'status': data['status'] ?? 'present',
-              'timestamp': data['timestamp'],
-            });
-            continue;
-          }
-        } catch (_) {}
-      }
-
-      result.add({
-        'studentName': data['studentName'] ?? 'Unknown',
-        'studentId': uid,
-        'status': data['status'] ?? 'present',
-        'timestamp': data['timestamp'],
-      });
-    }
-
-    return result;
-  }
-
-  Widget _buildSummaryStat(
-    String label,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: color.withOpacity(0.2)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: color, size: 12),
-            const SizedBox(height: 2),
-            Text(
-              value,
-              style: GoogleFonts.inter(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: _C.charcoal,
-              ),
-            ),
-            Text(label, style: GoogleFonts.inter(fontSize: 9, color: _C.muted)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // Feedback docs only carry `userId` + `isAnonymous` — this resolves real
-  // names for the non-anonymous ones in one batched pass instead of a
-  // per-row FutureBuilder (which would fire one Firestore read per row on
-  // every rebuild).
-  Future<Map<String, String>> _resolveFeedbackNames(
-    List<Map<String, dynamic>> feedbacks,
-  ) async {
-    final names = <String, String>{};
-    final uids = feedbacks
-        .where((f) => f['isAnonymous'] != true)
-        .map((f) => f['userId']?.toString() ?? '')
-        .where((id) => id.isNotEmpty)
-        .toSet();
-    for (final uid in uids) {
-      try {
-        final doc = await FirebaseFirestore.instance
-            .collection('students')
-            .doc(uid)
-            .get();
-        if (doc.exists) {
-          names[uid] = (doc.data()?['fullName'] as String?) ?? 'Unknown';
-        }
-      } catch (_) {}
-    }
-    return names;
-  }
-
-  // ── Feedback List Dialog ──────────────────────────────────────────────────
-  void _showFeedbackListDialog(
-    BuildContext context, {
-    required String eventTitle,
-    required List<Map<String, dynamic>> feedbacks,
-    required _AnalyticsData data,
-  }) {
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Container(
-          width: 640,
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(ctx).size.height * 0.85,
-          ),
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          eventTitle,
-                          style: GoogleFonts.inter(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                            color: _C.charcoal,
-                          ),
-                        ),
-                        Text(
-                          '${feedbacks.length} feedback response${feedbacks.length == 1 ? '' : 's'}',
-                          style: GoogleFonts.inter(
-                            fontSize: 13,
-                            color: _C.muted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    icon: const Icon(Icons.close_rounded),
-                    tooltip: 'Close',
-                  ),
-                ],
-              ),
-              _DS.fadeDivider(height: 20),
-              Flexible(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 420),
-                  child: FutureBuilder<Map<String, String>>(
-                    future: _resolveFeedbackNames(feedbacks),
-                    builder: (context, nameSnap) {
-                      final names = nameSnap.data ?? const {};
-                      return SingleChildScrollView(
-                        child: Column(
-                          children: feedbacks.map((f) {
-                            final rating = f['rating'] as int? ?? 0;
-                            final comment = f['comment'] as String? ?? '';
-                            final createdAt =
-                                (f['submittedAt'] as Timestamp?)?.toDate() ??
-                                DateTime.now();
-                            final isAnonymous = f['isAnonymous'] == true;
-                            final uid = f['userId']?.toString() ?? '';
-                            final displayName = isAnonymous
-                                ? 'Anonymous Student'
-                                : (names[uid] ?? 'Unknown Student');
-
-                            return Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 4,
-                                vertical: 12,
-                              ),
-                              decoration: BoxDecoration(
-                                border: Border(
-                                  bottom: BorderSide(
-                                    color: _C.border.withOpacity(0.4),
-                                  ),
-                                ),
-                              ),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFEFF6FF),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: const Icon(
-                                      Icons.person_outline,
-                                      size: 18,
-                                      color: _C.blue,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            Text(
-                                              displayName,
-                                              style: GoogleFonts.inter(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w600,
-                                                color: _C.muted,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            _buildRatingStarsSmall(rating),
-                                            const Spacer(),
-                                            Text(
-                                              DateFormat(
-                                                'MMM dd, yyyy',
-                                              ).format(createdAt),
-                                              style: GoogleFonts.inter(
-                                                fontSize: 11,
-                                                color: _C.muted,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 6),
-                                        if (comment.isNotEmpty)
-                                          Text(
-                                            comment,
-                                            style: GoogleFonts.inter(
-                                              fontSize: 14,
-                                              color: _C.charcoal,
-                                              height: 1.5,
-                                            ),
-                                          )
-                                        else
-                                          Text(
-                                            'No comment provided',
-                                            style: GoogleFonts.inter(
-                                              fontSize: 13,
-                                              color: _C.muted,
-                                              fontStyle: FontStyle.italic,
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildRatingStarsSmall(int rating) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: List.generate(5, (i) {
-        return Icon(
-          i < rating ? Icons.star_rounded : Icons.star_border_rounded,
-          size: 12,
-          color: i < rating ? _C.amber : _C.border,
-        );
-      }),
-    );
   }
 
   @override
@@ -1423,13 +521,7 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildTabBar(data),
-                          [
-                            _buildAnalyticsTab(data),
-                            _buildEventsTab(data),
-                          ][_tabCtrl.index],
-                        ],
+                        children: [_buildHeader(), _buildAnalyticsTab(data)],
                       ),
                     ),
                   ],
@@ -1442,454 +534,81 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen>
     );
   }
 
-  Widget _buildTabBar(_AnalyticsData data) {
-    final tabs = [
-      ('Analytics', Icons.bar_chart_rounded, null),
-      (
-        'Events',
-        Icons.event_note_rounded,
-        data.events.isNotEmpty ? data.events.length.toString() : null,
-      ),
-    ];
-
+  // Plain header — this screen used to switch between an Analytics tab and
+  // an Events tab; the Events tab (per-event registrants/attendance/
+  // feedback/finance) has moved to Events & Schedules' own Event Overview,
+  // so there's nothing left to switch between here. Kept the live-sync
+  // indicator and manual refresh button since those are still meaningful.
+  Widget _buildHeader() {
     return Container(
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: _C.border)),
         borderRadius: BorderRadius.vertical(top: Radius.circular(_DS.radiusLg)),
       ),
-      child: Row(
-        children: [
-          ...tabs.asMap().entries.map((e) {
-            final idx = e.key;
-            final label = e.value.$1;
-            final icon = e.value.$2;
-            final badge = e.value.$3;
-            final active = _tabCtrl.index == idx;
-            return MouseRegion(
-              cursor: SystemMouseCursors.click,
-              child: GestureDetector(
-                onTap: () => setState(() => _tabCtrl.animateTo(idx)),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 14,
-                  ),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(
-                        color: active
-                            ? UpriseColors.primaryDark
-                            : Colors.transparent,
-                        width: 2,
-                      ),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        icon,
-                        size: 15,
-                        color: active ? UpriseColors.primaryDark : _C.muted,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        label,
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: active ? UpriseColors.primaryDark : _C.muted,
-                        ),
-                      ),
-                      if (badge != null) ...[
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 7,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFEFF6FF),
-                            borderRadius: BorderRadius.circular(99),
-                          ),
-                          child: Text(
-                            badge,
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color: _C.blue,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-            );
-          }),
-          const Spacer(),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-            child: Row(
-              children: [
-                Container(
-                  width: 7,
-                  height: 7,
-                  decoration: const BoxDecoration(
-                    color: _C.green,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 5),
-                Text(
-                  'Live sync',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: _C.green,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                _RefreshButton(onTap: _refresh),
-                const SizedBox(width: 6),
-              ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.bar_chart_rounded,
+              size: 18,
+              color: UpriseColors.primaryDark,
             ),
-          ),
-        ],
+            const SizedBox(width: 8),
+            Text(
+              'Analytics',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: UpriseColors.primaryDark,
+              ),
+            ),
+            const Spacer(),
+            Container(
+              width: 7,
+              height: 7,
+              decoration: const BoxDecoration(
+                color: _C.green,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 5),
+            Text(
+              'Live sync',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: _C.green,
+              ),
+            ),
+            const SizedBox(width: 14),
+            _RefreshButton(onTap: _refresh),
+          ],
+        ),
       ),
     );
   }
 
   // ── Analytics tab ──────────────────────────────────────────────────────────
-  // Pure aggregate/graph view — anything about one specific event now lives
-  // in that event's own detail dialog (see _buildEventsTab), not here, so
-  // this tab doesn't duplicate the same per-event numbers two different ways.
+  // Pure aggregate/graph view.
   Widget _buildAnalyticsTab(_AnalyticsData data) {
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _KpiStatsRow(data: data),
+          const SizedBox(height: 20),
           _DistributionCard(data: data),
           const SizedBox(height: 20),
           _RatingByEventChart(data: data),
+          const SizedBox(height: 20),
+          _RegistrationAttendanceChart(data: data),
           const SizedBox(height: 20),
           _FinanceByEventChart(data: data),
         ],
       ),
     );
-  }
-
-  // ── Events tab — one card per event (banner, title, date, rating), tap
-  // through to that event's own attendees/feedback/insights. ─────────────────
-  Widget _buildEventsTab(_AnalyticsData data) {
-    final avgByEvent = data.avgByEvent;
-    final countByEvent = data.feedbackCountByEvent;
-
-    var events = [...data.events];
-    if (_eventsSearchQuery.isNotEmpty) {
-      events = events
-          .where(
-            (e) => (e['title'] as String).toLowerCase().contains(
-              _eventsSearchQuery,
-            ),
-          )
-          .toList();
-    }
-    switch (_eventsSortBy) {
-      case 'Highest Rated':
-        events.sort(
-          (a, b) =>
-              (avgByEvent[b['id']] ?? -1).compareTo(avgByEvent[a['id']] ?? -1),
-        );
-        break;
-      case 'Most Responses':
-        events.sort(
-          (a, b) => (countByEvent[b['id']] ?? 0).compareTo(
-            countByEvent[a['id']] ?? 0,
-          ),
-        );
-        break;
-      case 'Name (A-Z)':
-        events.sort(
-          (a, b) => (a['title'] as String).toLowerCase().compareTo(
-            (b['title'] as String).toLowerCase(),
-          ),
-        );
-        break;
-      default: // Most Recent
-        events.sort((a, b) {
-          final da = a['date'] as Timestamp?;
-          final dbb = b['date'] as Timestamp?;
-          if (da == null && dbb == null) return 0;
-          if (da == null) return 1; // undated events sink to the bottom
-          if (dbb == null) return -1;
-          return dbb.compareTo(da);
-        });
-    }
-
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final narrow = constraints.maxWidth < 640;
-              final searchField = TextField(
-                controller: _eventsSearchCtrl,
-                style: GoogleFonts.inter(fontSize: 13),
-                decoration: InputDecoration(
-                  hintText: 'Search events...',
-                  hintStyle: GoogleFonts.inter(fontSize: 13, color: _C.muted),
-                  prefixIcon: Icon(
-                    Icons.search_rounded,
-                    size: 18,
-                    color: _C.muted,
-                  ),
-                  isDense: true,
-                  filled: true,
-                  fillColor: _C.white,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: _C.border),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: _C.border),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(
-                      color: UpriseColors.primaryDark,
-                    ),
-                  ),
-                ),
-              );
-              final sortDropdown = SizedBox(
-                width: narrow ? double.infinity : 190,
-                child: AnchoredDropdownField<String>(
-                  value: _eventsSortBy,
-                  items: _eventsSortOptions
-                      .map(
-                        (o) => DropdownMenuItem(
-                          value: o,
-                          child: Text(
-                            o,
-                            style: GoogleFonts.inter(fontSize: 13),
-                          ),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (v) =>
-                      setState(() => _eventsSortBy = v ?? 'Most Recent'),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    filled: true,
-                    fillColor: _C.white,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 12,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(color: _C.border),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(color: _C.border),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(
-                        color: UpriseColors.primaryDark,
-                      ),
-                    ),
-                  ),
-                ),
-              );
-              final exportButton = AdminExportButton(
-                label: 'Export',
-                enabled: events.isNotEmpty,
-                onSelected: (choice) =>
-                    _exportEventsSummary(choice, events, data),
-              );
-
-              if (narrow) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    searchField,
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(child: sortDropdown),
-                        const SizedBox(width: 10),
-                        exportButton,
-                      ],
-                    ),
-                  ],
-                );
-              }
-              return Row(
-                children: [
-                  Expanded(child: searchField),
-                  const SizedBox(width: 12),
-                  sortDropdown,
-                  const SizedBox(width: 12),
-                  exportButton,
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: 20),
-          if (events.isEmpty)
-            Padding(
-              padding: const EdgeInsets.all(40),
-              child: Center(
-                child: Column(
-                  children: [
-                    Icon(Icons.event_busy_outlined, size: 48, color: _C.border),
-                    const SizedBox(height: 12),
-                    Text(
-                      data.events.isEmpty
-                          ? 'No events found'
-                          : 'No events match your search',
-                      style: GoogleFonts.inter(fontSize: 14, color: _C.muted),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          else
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final width = constraints.maxWidth;
-                final columns = width < 520
-                    ? 1
-                    : (width < 860 ? 2 : (width < 1180 ? 3 : 4));
-                const spacing = 16.0;
-                final cardWidth = (width - spacing * (columns - 1)) / columns;
-                return Wrap(
-                  spacing: spacing,
-                  runSpacing: spacing,
-                  children: events.map((event) {
-                    final eventId = event['id'] as String;
-                    final title = event['title'] as String;
-                    final bannerUrl = event['bannerUrl'] as String? ?? '';
-                    final date = event['date'] as Timestamp?;
-                    return SizedBox(
-                      width: cardWidth,
-                      child: _EventProductCard(
-                        title: title,
-                        bannerUrl: bannerUrl,
-                        date: date?.toDate(),
-                        avgRating: avgByEvent[eventId],
-                        responseCount: countByEvent[eventId] ?? 0,
-                        finance: data.financeForEvent(title),
-                        onTap: () => _showEventSummaryDialog(
-                          context,
-                          eventId: eventId,
-                          eventTitle: title,
-                          orgId: widget.orgId,
-                          analyticsData: data,
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                );
-              },
-            ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _exportEventsSummary(
-    String choice,
-    List<Map<String, dynamic>> events,
-    _AnalyticsData data,
-  ) async {
-    if (events.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('No events to export')));
-      return;
-    }
-    final avgByEvent = data.avgByEvent;
-    final countByEvent = data.feedbackCountByEvent;
-    final money = NumberFormat('#,###.00');
-    final headers = [
-      'Event',
-      'Date',
-      'Avg Rating',
-      'Responses',
-      'Income',
-      'Expense',
-      'Net',
-    ];
-    final rows = events.map((event) {
-      final eventId = event['id'] as String;
-      final title = event['title'] as String;
-      final date = event['date'] as Timestamp?;
-      final avg = avgByEvent[eventId];
-      final count = countByEvent[eventId] ?? 0;
-      final finance = data.financeForEvent(title);
-      return [
-        title,
-        date != null ? DateFormat('MMM dd, yyyy').format(date.toDate()) : '—',
-        avg != null ? avg.toStringAsFixed(1) : '—',
-        '$count',
-        finance != null ? money.format(finance.income) : '0.00',
-        finance != null ? money.format(finance.expense) : '0.00',
-        finance != null
-            ? money.format(finance.income - finance.expense)
-            : '0.00',
-      ];
-    }).toList();
-
-    try {
-      final stamp = DateFormat('yyyyMMdd').format(DateTime.now());
-      // AdminExportButton's menu only ever sends 'excel' or 'pdf' — this
-      // used to check for 'csv' (a value that dropdown never sends), so
-      // picking "Export as Excel" silently produced no file at all while
-      // still showing the "Exported" success snackbar below.
-      if (choice == 'excel') {
-        final bytes = OrgExportExcel.generateStyledTable(
-          title: 'Event Analytics',
-          headers: headers,
-          rows: rows,
-        );
-        await OrgExportUtil.saveBytes(
-          bytes,
-          'event_analytics_$stamp.xlsx',
-          mimeType: orgXlsxMimeType,
-        );
-      } else if (choice == 'pdf') {
-        final pdfBytes = await OrgExportPdf.generateTablePdf(
-          title: 'Event Analytics',
-          headers: headers,
-          rows: rows,
-        );
-        await OrgExportUtil.saveBytes(
-          pdfBytes,
-          'event_analytics_$stamp.pdf',
-          mimeType: 'application/pdf',
-        );
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Exported ${rows.length} events')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Export failed: $e')));
-      }
-    }
   }
 }
 
@@ -1930,172 +649,96 @@ class _RefreshButton extends StatelessWidget {
 Color _ratingColor(double score) =>
     score >= 4.0 ? _C.green : (score >= 3.0 ? _C.amber : _C.red);
 
-// Ecommerce-style product card for one event: banner, title, date, avg
-// rating. Tapping it opens the full attendees/feedback/insights dialog.
-class _EventProductCard extends StatelessWidget {
-  final String title;
-  final String bannerUrl;
-  final DateTime? date;
-  final double? avgRating;
-  final int responseCount;
-  final ({double income, double expense})? finance;
-  final VoidCallback onTap;
-  const _EventProductCard({
-    required this.title,
-    required this.bannerUrl,
-    required this.date,
-    required this.avgRating,
-    required this.responseCount,
-    required this.finance,
-    required this.onTap,
-  });
+// Top-of-tab KPI row — quick-glance org-wide totals that don't need a
+// chart of their own (event count, registrations, attendance rate, avg
+// rating), each already computed by _AnalyticsData from the same
+// events/registrations/attendances/feedback data the charts below use.
+class _KpiStatsRow extends StatelessWidget {
+  final _AnalyticsData data;
+  const _KpiStatsRow({required this.data});
 
   @override
   Widget build(BuildContext context) {
-    final avg = avgRating;
-    return Container(
-      decoration: BoxDecoration(
-        color: _C.white,
-        borderRadius: BorderRadius.circular(_DS.radiusMd),
-        border: Border.all(color: _C.border),
-        boxShadow: _DS.cardShadow,
+    final stats = [
+      ('Total Events', '${data.events.length}', Icons.event_outlined, _C.blue),
+      (
+        'Registrations',
+        '${data.totalRegistrations}',
+        Icons.how_to_reg_outlined,
+        _C.amber,
       ),
-      clipBehavior: Clip.antiAlias,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          hoverColor: const Color(0xFFF8F9FB),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AspectRatio(
-                aspectRatio: 16 / 9,
-                child: bannerUrl.isNotEmpty
-                    ? EventImage(
-                        imageUrl: bannerUrl,
-                        fit: BoxFit.cover,
-                        showLoadingIndicator: false,
-                      )
-                    : Container(
-                        color: _C.surface,
-                        child: Icon(
-                          Icons.image_outlined,
-                          size: 32,
-                          color: _C.border,
-                        ),
-                      ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600,
-                        color: _C.charcoal,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    if (date != null)
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.calendar_today_outlined,
-                            size: 12,
-                            color: _C.muted,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            DateFormat('MMM dd, yyyy').format(date!),
-                            style: GoogleFonts.inter(
-                              fontSize: 11.5,
-                              color: _C.muted,
-                            ),
-                          ),
-                        ],
-                      ),
-                    const SizedBox(height: 8),
-                    if (avg != null)
-                      Row(
-                        children: [
-                          Icon(Icons.star_rounded, size: 15, color: _C.amber),
-                          const SizedBox(width: 3),
-                          Text(
-                            avg.toStringAsFixed(1),
-                            style: GoogleFonts.inter(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w700,
-                              color: _ratingColor(avg),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            '($responseCount)',
-                            style: GoogleFonts.inter(
-                              fontSize: 11,
-                              color: _C.muted,
-                            ),
-                          ),
-                        ],
-                      )
-                    else
-                      Text(
-                        'No ratings yet',
-                        style: GoogleFonts.inter(
-                          fontSize: 11.5,
-                          color: _C.muted,
-                        ),
-                      ),
-                    if (finance != null) ...[
-                      const SizedBox(height: 8),
-                      _DS.fadeDivider(),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.payments_outlined,
-                            size: 13,
-                            color: _netColor(finance!),
-                          ),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              '${_netLabel(finance!)} net',
-                              style: GoogleFonts.inter(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w700,
-                                color: _netColor(finance!),
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+      (
+        'Attendance Rate',
+        '${data.attendanceRate.toStringAsFixed(0)}%',
+        Icons.fact_check_outlined,
+        _C.green,
       ),
+      (
+        'Avg. Rating',
+        data.totalFeedbacks == 0 ? '—' : data.avgRating.toStringAsFixed(1),
+        Icons.star_outline_rounded,
+        _ratingColor(data.avgRating),
+      ),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 640;
+        final cardWidth = isNarrow
+            ? (constraints.maxWidth - 12) / 2
+            : (constraints.maxWidth - 36) / 4;
+        return Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            for (final s in stats)
+              SizedBox(
+                width: cardWidth,
+                child: _kpiCard(s.$1, s.$2, s.$3, s.$4),
+              ),
+          ],
+        );
+      },
     );
   }
 
-  Color _netColor(({double income, double expense}) f) =>
-      f.income - f.expense >= 0 ? _C.green : _C.red;
-
-  String _netLabel(({double income, double expense}) f) {
-    final money = NumberFormat('#,###.00');
-    final net = f.income - f.expense;
-    return net >= 0 ? '₱${money.format(net)}' : '-₱${money.format(net.abs())}';
+  Widget _kpiCard(String label, String value, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _C.white,
+        borderRadius: BorderRadius.circular(_DS.radiusMd),
+        border: Border.all(color: _C.border.withAlpha(128)),
+        boxShadow: _DS.cardShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: color.withAlpha(26),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 16, color: color),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            value,
+            style: GoogleFonts.inter(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: _C.charcoal,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: GoogleFonts.inter(fontSize: 11.5, color: _C.muted),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -2289,6 +932,250 @@ class _RatingByEventChart extends StatelessWidget {
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+// Grouped bar chart (registered vs. attended per event), same fl_chart
+// pattern as _FinanceByEventChart below — registrations/attendance docs
+// are keyed by event id, so the x-axis labels resolve through
+// data.eventDisplayTitle() the same way _RatingByEventChart does.
+class _RegistrationAttendanceChart extends StatelessWidget {
+  final _AnalyticsData data;
+  const _RegistrationAttendanceChart({required this.data});
+
+  static const int _maxBars = 8;
+
+  Widget _legendDot(Color color, String label) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 5),
+        Text(label, style: GoogleFonts.inter(fontSize: 11, color: _C.muted)),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final byEvent = data.registrationVsAttendanceByEvent;
+
+    if (byEvent.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(18),
+        child: Row(
+          children: [
+            Icon(Icons.how_to_reg_outlined, size: 18, color: _C.muted),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'No registration or attendance records yet — they will '
+                'show up here once students register or check in to an '
+                'event.',
+                style: GoogleFonts.inter(fontSize: 12.5, color: _C.muted),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final entries = byEvent.entries.toList()
+      ..sort((a, b) => b.value.registered.compareTo(a.value.registered));
+    final shown = entries.take(_maxBars).toList();
+    final maxValue = shown.fold<int>(
+      0,
+      (m, e) => math.max(m, math.max(e.value.registered, e.value.attended)),
+    );
+    final chartMaxY = maxValue <= 0 ? 1.0 : maxValue * 1.15;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: _C.white,
+        borderRadius: BorderRadius.circular(_DS.radiusMd),
+        border: Border.all(color: _C.border.withAlpha(128)),
+        boxShadow: _DS.cardShadow,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.how_to_reg_outlined,
+                    size: 16,
+                    color: _C.blue,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Registration vs. attendance by event',
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: _C.charcoal,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          _legendDot(_C.blue, 'Registered'),
+                          const SizedBox(width: 14),
+                          _legendDot(_C.green, 'Attended'),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                if (entries.length > shown.length)
+                  Text(
+                    'Top ${shown.length} of ${entries.length}',
+                    style: GoogleFonts.inter(fontSize: 11, color: _C.muted),
+                  ),
+              ],
+            ),
+          ),
+          _DS.fadeDivider(),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 20, 20, 8),
+            child: SizedBox(
+              height: 220,
+              child: BarChart(
+                BarChartData(
+                  maxY: chartMaxY,
+                  alignment: BarChartAlignment.spaceAround,
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    horizontalInterval: chartMaxY / 4,
+                    getDrawingHorizontalLine: (_) =>
+                        const FlLine(color: Color(0xFFF1F5F9), strokeWidth: 1),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  titlesData: FlTitlesData(
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 30,
+                        interval: chartMaxY / 4,
+                        getTitlesWidget: (v, _) => Text(
+                          NumberFormat.compact().format(v),
+                          style: GoogleFonts.inter(
+                            fontSize: 9,
+                            color: _C.muted,
+                          ),
+                        ),
+                      ),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 34,
+                        getTitlesWidget: (v, _) {
+                          final i = v.toInt();
+                          if (i < 0 || i >= shown.length) {
+                            return const SizedBox.shrink();
+                          }
+                          final title = data.eventDisplayTitle(shown[i].key);
+                          final short = title.length > 10
+                              ? '${title.substring(0, 9)}…'
+                              : title;
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              short,
+                              style: GoogleFonts.inter(
+                                fontSize: 10,
+                                color: _C.muted,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  barTouchData: BarTouchData(
+                    touchTooltipData: BarTouchTooltipData(
+                      getTooltipColor: (_) => _C.charcoal,
+                      getTooltipItem: (group, _, rod, rodIndex) {
+                        final title = data.eventDisplayTitle(
+                          shown[group.x].key,
+                        );
+                        final label = rodIndex == 0 ? 'Registered' : 'Attended';
+                        return BarTooltipItem(
+                          '$title\n',
+                          GoogleFonts.inter(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 11,
+                          ),
+                          children: [
+                            TextSpan(
+                              text: '$label: ${rod.toY.toInt()}',
+                              style: GoogleFonts.inter(
+                                color: Colors.white70,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                  barGroups: List.generate(shown.length, (i) {
+                    final v = shown[i].value;
+                    return BarChartGroupData(
+                      x: i,
+                      barsSpace: 4,
+                      barRods: [
+                        BarChartRodData(
+                          toY: v.registered.toDouble(),
+                          color: _C.blue,
+                          width: 10,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                        BarChartRodData(
+                          toY: v.attended.toDouble(),
+                          color: _C.green,
+                          width: 10,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ],
+                    );
+                  }),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );

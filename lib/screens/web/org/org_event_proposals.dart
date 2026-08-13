@@ -926,8 +926,8 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
           SnackBar(
             content: Text(
               imageUploadError == null
-                  ? '✅ $baseMsg'
-                  : '⚠️ $baseMsg But the banner image failed to upload: $imageUploadError',
+                  ? ' $baseMsg'
+                  : ' $baseMsg But the banner image failed to upload: $imageUploadError',
             ),
             backgroundColor: imageUploadError == null
                 ? const Color(0xFF059669)

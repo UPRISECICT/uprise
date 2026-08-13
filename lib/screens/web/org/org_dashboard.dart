@@ -559,6 +559,9 @@ class _OrgDashboardState extends State<OrgDashboard> {
   final Set<int> _visitedIndices = {0};
   final GlobalKey _bellKey = GlobalKey();
   final GlobalKey _profileKey = GlobalKey();
+  // Opens/closes the sidebar Drawer on narrow layouts — see build()'s
+  // isMobile branch and the hamburger button in _buildTopBar().
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   String _orgId = '';
   String _orgName = '';
   String _orgShortName = '';
@@ -567,7 +570,6 @@ class _OrgDashboardState extends State<OrgDashboard> {
   bool _isLoading = true;
   String? _loadError;
   String _currentDateTime = '';
-  bool _sidebarOpen = false;
 
   final TextEditingController _searchController = TextEditingController();
   int _unreadNotifications = 0;
@@ -1075,6 +1077,12 @@ class _OrgDashboardState extends State<OrgDashboard> {
       _visitedIndices.add(index == -1 ? 14 : index);
     });
     _selectedIndexNotifier.value = index == -1 ? 14 : index;
+    // On narrow layouts the sidebar lives in a Drawer — close it after a
+    // selection so the newly-picked screen is actually visible instead of
+    // staying hidden behind the still-open Drawer.
+    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+      _scaffoldKey.currentState?.closeDrawer();
+    }
   }
 
   void _showProfileMenu() {
@@ -1446,7 +1454,9 @@ class _OrgDashboardState extends State<OrgDashboard> {
     final isMobile = screenWidth < 768;
 
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: OrgColors.surface,
+      drawer: isMobile ? Drawer(width: 256, child: _buildSidebar()) : null,
       body: Stack(
         children: [
           Row(
@@ -1626,7 +1636,7 @@ class _OrgDashboardState extends State<OrgDashboard> {
               child: MouseRegion(
                 cursor: SystemMouseCursors.click,
                 child: GestureDetector(
-                  onTap: () => setState(() => _sidebarOpen = !_sidebarOpen),
+                  onTap: () => _scaffoldKey.currentState?.openDrawer(),
                   child: Container(
                     width: 36,
                     height: 36,

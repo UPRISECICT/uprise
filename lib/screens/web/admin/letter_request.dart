@@ -1004,7 +1004,9 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                 revisionNote: comment,
               );
             },
-            style: ElevatedButton.styleFrom(backgroundColor: AdminColors.info),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AdminColors.primaryDark,
+            ),
             child: const Text('Send Revision Request'),
           ),
         ],
@@ -1261,19 +1263,157 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
   }
 
   Future<void> _confirmRejectLetter(String docId, String orgName) async {
-    final confirmed = await _showActionConfirm(
-      icon: Icons.cancel_outlined,
-      iconBg: const Color(0xFFFEF2F2),
-      iconColor: AdminColors.error,
-      heading: 'Reject Letter Request',
-      body:
-          'Reject the letter request from "$orgName"? The organization will be notified.',
-      actionLabel: 'Reject',
-      actionColor: AdminColors.error,
+    final reasonController = TextEditingController();
+    await showDialog(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          width: 420,
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF2F2),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.cancel_outlined,
+                      color: AdminColors.error,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Text(
+                    'Reject Letter Request',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF1A202C),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Provide a reason for rejecting the letter request from '
+                '"$orgName". This will be visible to the organization.',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 14,
+                  color: const Color(0xFF64748B),
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: reasonController,
+                maxLines: 3,
+                maxLength: 1000,
+                style: GoogleFonts.beVietnamPro(fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: 'Reason for rejection…',
+                  hintStyle: GoogleFonts.beVietnamPro(
+                    fontSize: 13,
+                    color: const Color(0xFF9AA5B4),
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xFFF8F9FB),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(
+                      color: AdminColors.error,
+                      width: 1.5,
+                    ),
+                  ),
+                  contentPadding: const EdgeInsets.all(12),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFFE2E6EA)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 11,
+                      ),
+                    ),
+                    child: Text(
+                      'Cancel',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        color: const Color(0xFF374151),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  ElevatedButton(
+                    onPressed: () async {
+                      final reason = reasonController.text.trim();
+                      if (reason.isEmpty) {
+                        AppToast.warning(
+                          ctx,
+                          'Please provide a reason for rejection.',
+                        );
+                        return;
+                      }
+                      Navigator.pop(ctx);
+                      await _updateStatus(
+                        docId,
+                        'rejected',
+                        orgName,
+                        rejectionReason: reason,
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AdminColors.error,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 11,
+                      ),
+                    ),
+                    child: Text(
+                      'Reject',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
-    if (confirmed) {
-      await _updateStatus(docId, 'rejected', orgName);
-    }
   }
 
   Future<void> _updateStatus(
@@ -1281,6 +1421,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     String newStatus,
     String orgName, {
     String? revisionNote,
+    String? rejectionReason,
   }) async {
     try {
       final docRef = FirestoreCollections.letterRequests.doc(docId);
@@ -1295,6 +1436,9 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
       if (revisionNote != null) {
         updateData['revisionNote'] = revisionNote;
         updateData['revisionRequestedAt'] = FieldValue.serverTimestamp();
+      }
+      if (rejectionReason != null) {
+        updateData['rejectionReason'] = rejectionReason;
       }
       await docRef.update(updateData);
       await activity_log.ActivityLogger.log(
@@ -1312,7 +1456,9 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
             break;
           case 'rejected':
             notifTitle = 'Letter request rejected';
-            notifBody = 'Your letter request was rejected.';
+            notifBody = rejectionReason != null && rejectionReason.isNotEmpty
+                ? 'Your letter request was rejected. Reason: $rejectionReason'
+                : 'Your letter request was rejected.';
             break;
           case 'revision':
             notifTitle = 'Revision requested';
@@ -2256,6 +2402,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
         data['attachmentBase64'].toString().isNotEmpty;
     final fileName = data['attachmentName'] ?? 'attachment';
     final revisionNote = data['revisionNote'];
+    final rejectionReason = data['rejectionReason'];
     final message = data['message'];
     final orgId = data['orgId'] ?? '';
     final orgName = data['orgName'] ?? 'Unknown';
@@ -2569,6 +2716,34 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                             const SizedBox(height: 20),
                           ],
 
+                          // ── Rejection reason ─────────────────────────
+                          if (rejectionReason != null &&
+                              rejectionReason.toString().isNotEmpty) ...[
+                            _sectionLabel(
+                              'Rejection Reason',
+                              icon: Icons.cancel_outlined,
+                            ),
+                            Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: AdminColors.error.withOpacity(0.06),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: AdminColors.error.withOpacity(0.2),
+                                ),
+                              ),
+                              child: Text(
+                                rejectionReason.toString(),
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 13,
+                                  color: const Color(0xFF1A202C),
+                                  height: 1.6,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                          ],
+
                           // ── Attachment ──────────────────────────────
                           if (hasAttachment) ...[
                             _sectionLabel(
@@ -2827,8 +3002,10 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                                 ),
                               ),
                               style: OutlinedButton.styleFrom(
-                                foregroundColor: AdminColors.info,
-                                side: const BorderSide(color: AdminColors.info),
+                                foregroundColor: AdminColors.primaryDark,
+                                side: const BorderSide(
+                                  color: AdminColors.primaryDark,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(8),
                                 ),

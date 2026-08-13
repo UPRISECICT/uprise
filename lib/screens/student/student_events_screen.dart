@@ -2714,6 +2714,18 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   bool _loadingForm = true;
   bool _isRegistered = false;
   Map<String, dynamic>? _formDef;
+
+  // The signed-in student's own users/{uid} doc — fetched once so the
+  // Register button can be disabled up-front for "Members Only" events the
+  // student isn't part of, instead of only rejecting the write server-side
+  // after they've already filled out the whole form.
+  Map<String, dynamic>? _userData;
+  bool _loadingUserData = true;
+  bool get _isEligibleForEvent => EventModel.audienceAllowsMember(
+    audience: widget.event.audience,
+    eventOrgId: widget.event.orgId,
+    userData: _userData,
+  );
   final Map<String, TextEditingController> _fieldControllers = {};
   final Map<String, String?> _singleChoice = {};
   final Map<String, Set<String>> _multiChoice = {};
@@ -2784,11 +2796,34 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     _loadRegistrationForm();
     _checkRegistrationStatus();
     _checkAttendanceStatus();
+    _loadUserData();
     if (widget.event.capacity != null) _loadRegisteredCount();
     if (_isEventReallyOver) {
       _checkFeedbackStatus();
     } else {
       _checkingFeedback = false;
+    }
+  }
+
+  Future<void> _loadUserData() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      if (mounted) setState(() => _loadingUserData = false);
+      return;
+    }
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      if (mounted) {
+        setState(() {
+          _userData = doc.data();
+          _loadingUserData = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingUserData = false);
     }
   }
 
@@ -3188,22 +3223,43 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     if (mounted) setState(() => _loadingForm = false);
   }
 
+  static final RegExp _formEmailPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+
   String? _validateDynamicFields() {
     if (_formDef == null) return null;
     final fields = (_formDef!['fields'] as List).cast<Map<String, dynamic>>();
     for (final f in fields) {
-      if (f['required'] != true) continue;
       final id = f['id'] as String;
       final type = (f['type'] ?? 'short_text') as String;
       final label = (f['label'] ?? 'This question').toString();
+      final required = f['required'] == true;
+
       if (type == 'multiple_choice' || type == 'dropdown') {
-        if (_singleChoice[id] == null) return 'Please answer: $label';
-      } else if (type == 'checkboxes') {
-        if ((_multiChoice[id] ?? {}).isEmpty) return 'Please answer: $label';
-      } else {
-        if ((_fieldControllers[id]?.text ?? '').trim().isEmpty) {
+        if (required && _singleChoice[id] == null) {
           return 'Please answer: $label';
         }
+        continue;
+      }
+      if (type == 'checkboxes') {
+        if (required && (_multiChoice[id] ?? {}).isEmpty) {
+          return 'Please answer: $label';
+        }
+        continue;
+      }
+
+      final text = (_fieldControllers[id]?.text ?? '').trim();
+      if (required && text.isEmpty) return 'Please answer: $label';
+      // Optional and left blank — nothing to validate.
+      if (text.isEmpty) continue;
+
+      // The number/date keyboards only hint the on-screen keys shown — they
+      // don't stop a user from pasting or switching to a text keyboard, so
+      // the actual value still needs checking here.
+      if (type == 'email' && !_formEmailPattern.hasMatch(text)) {
+        return 'Please enter a valid email for: $label';
+      }
+      if (type == 'number' && double.tryParse(text) == null) {
+        return 'Please enter a valid number for: $label';
       }
     }
     return null;
@@ -3388,7 +3444,13 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       case 'number':
         input = TextField(
           controller: _fieldControllers[id],
-          keyboardType: TextInputType.number,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          // keyboardType only hints which on-screen keyboard shows — it
+          // doesn't block pasted or IME-typed text, so letters were still
+          // getting through and saved as-is. This actually restricts it.
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+          ],
           decoration: _fieldDecoration('0'),
         );
         break;
@@ -3715,14 +3777,47 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   const SizedBox(height: 10),
 
                   if (!_isEventReallyOver && !_isRegistered && !_isFull) ...[
-                    if (_loadingForm)
+                    if (_loadingForm || _loadingUserData)
                       const Center(
                         child: Padding(
                           padding: EdgeInsets.symmetric(vertical: 12),
                           child: CircularProgressIndicator(strokeWidth: 2),
                         ),
                       )
-                    else
+                    else if (!_isEligibleForEvent) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: null,
+                          icon: const Icon(Icons.lock_outline, size: 18),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.grey.shade300,
+                            disabledBackgroundColor: Colors.grey.shade300,
+                            disabledForegroundColor: Colors.grey.shade600,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          label: const Text(
+                            'Members Only',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Only ${widget.event.orgName} members can register '
+                        'for this event.',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ] else
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(

@@ -1,4 +1,4 @@
-// ignore_for_file: unused_element_parameter
+﻿// ignore_for_file: unused_element_parameter
 
 import 'dart:async';
 import 'dart:typed_data';
@@ -263,6 +263,8 @@ void _toast(BuildContext ctx, String msg, {bool error = false}) {
 class EventModel {
   final String id, title, location, startTime, endTime;
   final DateTime date;
+  final bool markLate;
+  final int lateAfterMinutes;
   const EventModel({
     required this.id,
     required this.title,
@@ -270,6 +272,8 @@ class EventModel {
     required this.startTime,
     required this.endTime,
     required this.date,
+    this.markLate = false,
+    this.lateAfterMinutes = 15,
   });
   factory EventModel.fromDoc(DocumentSnapshot d) {
     final m = d.data() as Map<String, dynamic>;
@@ -280,6 +284,8 @@ class EventModel {
       startTime: m['startTime'] ?? '—',
       endTime: m['endTime'] ?? '—',
       date: (m['date'] as Timestamp).toDate(),
+      markLate: m['markLate'] == true,
+      lateAfterMinutes: (m['lateAfterMinutes'] as num?)?.toInt() ?? 15,
     );
   }
 }
@@ -337,6 +343,38 @@ _EState _eventState(EventModel e, {bool? activeOverride}) {
       return _EState.active;
   } catch (_) {}
   return _EState.todayInactive;
+}
+
+/// Determines the attendance status based on current time and event settings.
+/// 
+/// If [markLate] is false, always returns 'present' (default behavior).
+/// If [markLate] is true, compares the current time with:
+/// event scheduled start time + lateAfterMinutes
+/// 
+/// The late calculation ALWAYS uses the event's scheduled start time,
+/// not when the organization opened attendance.
+String _determineAttendanceStatus(
+  DateTime eventDate,
+  String eventStartTime,
+  bool markLate,
+  int lateAfterMinutes,
+) {
+  // If late-marking is disabled, always mark as present
+  if (!markLate) {
+    return 'present';
+  }
+
+  try {
+    final startDt = _timeOfDay(eventDate, eventStartTime);
+    final cutoffTime = startDt.add(Duration(minutes: lateAfterMinutes));
+    if (DateTime.now().isAfter(cutoffTime)) {
+      return 'late';
+    }
+    return 'present';
+  } catch (_) {
+    // If time parsing fails, default to present
+    return 'present';
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -694,6 +732,12 @@ class _AttendanceTabState extends State<AttendanceTab>
   // whether attendance is even open before trying to restart the scanner.
   bool _attendanceActive = false;
 
+  // Late-marking settings state
+  bool _editingLateMark = false;
+  late bool _tempMarkLate;
+  late int _tempLateAfterMinutes;
+  bool _savingLateMark = false;
+
   // _statusFilter defaults to 'All' so filtering starts unfiltered — but
   // that same default made the "Total Registrants" stat card render as
   // visually selected (colored border/shadow) before the org ever clicked
@@ -960,11 +1004,23 @@ class _AttendanceTabState extends State<AttendanceTab>
         );
       }
 
+      // Fetch the current event document to get the latest late-marking settings
+      final eventDocSnapshot = await FirebaseFirestore.instance
+          .collection('events')
+          .doc(widget.eventDocId)
+          .get();
+      final eventData = eventDocSnapshot.data() as Map<String, dynamic>?;
+      
       String status = 'present';
       try {
-        final startDt = _timeOfDay(widget.event!.date, widget.event!.startTime);
-        if (DateTime.now().isAfter(startDt.add(const Duration(minutes: 15))))
-          status = 'late';
+        final markLate = eventData?['markLate'] == true;
+        final lateAfterMinutes = (eventData?['lateAfterMinutes'] as num?)?.toInt() ?? 15;
+        status = _determineAttendanceStatus(
+          widget.event!.date,
+          widget.event!.startTime,
+          markLate,
+          lateAfterMinutes,
+        );
       } catch (_) {}
 
       final data = userDoc.data() as Map<String, dynamic>;
@@ -1089,11 +1145,23 @@ class _AttendanceTabState extends State<AttendanceTab>
         throw Exception('$name already marked');
       }
 
+      // Fetch the current event document to get the latest late-marking settings
+      final eventDocSnapshot = await FirebaseFirestore.instance
+          .collection('events')
+          .doc(widget.eventDocId)
+          .get();
+      final eventDataMap = eventDocSnapshot.data() as Map<String, dynamic>?;
+      
       String status = 'present';
       try {
-        final startDt = _timeOfDay(widget.event!.date, widget.event!.startTime);
-        if (DateTime.now().isAfter(startDt.add(const Duration(minutes: 15))))
-          status = 'late';
+        final markLate = eventDataMap?['markLate'] == true;
+        final lateAfterMinutes = (eventDataMap?['lateAfterMinutes'] as num?)?.toInt() ?? 15;
+        status = _determineAttendanceStatus(
+          widget.event!.date,
+          widget.event!.startTime,
+          markLate,
+          lateAfterMinutes,
+        );
       } catch (_) {}
 
       await attCol.add({
@@ -1518,6 +1586,8 @@ class _AttendanceTabState extends State<AttendanceTab>
                   if (widget.event != null) ...[
                     _buildEventBanner(active, evSnap.data, attDocs.cast()),
                     const SizedBox(height: 16),
+                    _buildLateMarkingSettings(widget.event, evSnap.data),
+                    const SizedBox(height: 16),
                   ],
                   _buildInputModeRow(active, attSnap.data),
                   const SizedBox(height: 14),
@@ -1775,6 +1845,322 @@ class _AttendanceTabState extends State<AttendanceTab>
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _saveLateMark() async {
+    if (widget.eventDocId == null) return;
+    try {
+      setState(() => _savingLateMark = true);
+      await FirebaseFirestore.instance
+          .collection('events')
+          .doc(widget.eventDocId)
+          .update({
+            'markLate': _tempMarkLate,
+            'lateAfterMinutes': _tempLateAfterMinutes,
+          });
+      // Wait a brief moment to ensure Firestore has processed the update
+      // before dismissing the saving state, improving UX
+      await Future.delayed(const Duration(milliseconds: 300));
+      if (mounted) {
+        setState(() {
+          _editingLateMark = false;
+          _savingLateMark = false;
+        });
+        _toast(context, 'Attendance settings saved');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _savingLateMark = false);
+        _toast(context, 'Failed to save settings: $e', error: true);
+      }
+    }
+  }
+
+  Widget _buildLateMarkingSettings(EventModel? event, DocumentSnapshot? eventDoc) {
+    if (event == null) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(_DS.radiusMd),
+          border: Border.all(color: const Color(0xFFEBEEF3)),
+        ),
+        child: Center(
+          child: Text(
+            'Select an event to manage attendance settings',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 13,
+              color: const Color(0xFF94A3B8),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Get the live values from Firestore document if available, otherwise use event model
+    final liveMarkLate = (eventDoc?.data() as Map?)?.containsKey('markLate') ?? false
+        ? (eventDoc?.data() as Map)['markLate'] == true
+        : event.markLate;
+    final liveLateAfterMinutes = (eventDoc?.data() as Map?)?.containsKey('lateAfterMinutes') ?? false
+        ? ((eventDoc?.data() as Map)['lateAfterMinutes'] as num?)?.toInt() ?? 15
+        : event.lateAfterMinutes;
+
+    if (!_editingLateMark) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(_DS.radiusMd),
+          border: Border.all(color: const Color(0xFFEBEEF3)),
+          boxShadow: _DS.cardShadow,
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.schedule_outlined,
+              size: 18,
+              color: UpriseColors.primaryDark,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'Late Marking: ',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF1A202C),
+                        ),
+                      ),
+                      Text(
+                        liveMarkLate
+                            ? 'ON (after $liveLateAfterMinutes min)'
+                            : 'OFF',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 12.5,
+                          color: liveMarkLate
+                              ? const Color(0xFFFB923C)
+                              : const Color(0xFF059669),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Attendees marking as present outside grace period',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11,
+                      color: const Color(0xFF94A3B8),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            OutlinedButton.icon(
+              onPressed: () {
+                setState(() {
+                  _editingLateMark = true;
+                  _tempMarkLate = liveMarkLate;
+                  _tempLateAfterMinutes = liveLateAfterMinutes;
+                });
+              },
+              icon: const Icon(Icons.edit_outlined, size: 13),
+              label: const Text('Edit'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: UpriseColors.primaryDark,
+                side: BorderSide(
+                  color: UpriseColors.primaryDark.withOpacity(0.4),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(_DS.radiusSm),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(_DS.radiusMd),
+        border: Border.all(color: const Color(0xFFEBEEF3)),
+        boxShadow: _DS.cardShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionLabel('Attendance Settings', icon: Icons.schedule_outlined),
+          // Mark Late Toggle
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF7F8FA),
+              borderRadius: BorderRadius.circular(_DS.radiusSm),
+              border: Border.all(color: const Color(0xFFE4E8EF)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Mark attendees as late',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF1A202C),
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        'Automatically mark late if checked in after grace period',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 11,
+                          color: const Color(0xFF94A3B8),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Switch(
+                  value: _tempMarkLate,
+                  onChanged: (v) => setState(() => _tempMarkLate = v),
+                  activeColor: UpriseColors.primaryDark,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          // Late After Minutes Input (only visible when markLate is ON)
+          if (_tempMarkLate) ...[
+            Text(
+              'Late after',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF64748B),
+                letterSpacing: 0.5,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                SizedBox(
+                  width: 100,
+                  child: TextField(
+                    keyboardType: TextInputType.number,
+                    style: GoogleFonts.beVietnamPro(fontSize: 13),
+                    decoration: InputDecoration(
+                      hintText: 'Minutes',
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(_DS.radiusSm),
+                        borderSide: const BorderSide(color: Color(0xFFE4E8EF)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(_DS.radiusSm),
+                        borderSide: const BorderSide(color: Color(0xFFE4E8EF)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(_DS.radiusSm),
+                        borderSide: BorderSide(
+                          color: UpriseColors.primaryDark,
+                          width: 1.5,
+                        ),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 12,
+                      ),
+                    ),
+                    controller: TextEditingController(
+                      text: _tempLateAfterMinutes.toString(),
+                    ),
+                    onChanged: (v) {
+                      final parsed = int.tryParse(v.trim()) ?? 15;
+                      setState(() => _tempLateAfterMinutes = parsed.clamp(1, 300));
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'minutes',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 12,
+                    color: const Color(0xFF94A3B8),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            _InfoBanner(
+              color: const Color(0xFFEFF6FF),
+              border: const Color(0xFFBFD7FF),
+              icon: Icons.info_outline_rounded,
+              iconColor: const Color(0xFF2563EB),
+              text:
+                  'Attendees checking in after this duration is added to the event start time will be marked late.',
+              textColor: const Color(0xFF1D4ED8),
+            ),
+          ],
+          const SizedBox(height: 16),
+          // Action Buttons
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              OutlinedButton(
+                onPressed: _savingLateMark
+                    ? null
+                    : () => setState(() => _editingLateMark = false),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF94A3B8),
+                  side: BorderSide(
+                    color: const Color(0xFFE4E8EF),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(_DS.radiusSm),
+                  ),
+                ),
+                child: Text(
+                  'Cancel',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              _PrimaryButton(
+                label: _savingLateMark ? 'Saving...' : 'Save',
+                icon: _savingLateMark ? null : Icons.check_rounded,
+                color: UpriseColors.primaryDark,
+                onPressed: _savingLateMark ? null : _saveLateMark,
               ),
             ],
           ),
@@ -2193,7 +2579,7 @@ class _AttendanceTabState extends State<AttendanceTab>
             icon: Icons.info_outline_rounded,
             iconColor: const Color(0xFF2563EB),
             text:
-                'Enter the student\'s ID number or system UID. Attendance opens 15 min before start time. Check-ins after 15 min grace period are marked LATE.',
+                'Enter the student\'s ID number or system UID. Attendance opens 15 min before start time. Late marking status is configured in the Attendance Settings above.',
             textColor: const Color(0xFF1D4ED8),
           ),
         ],

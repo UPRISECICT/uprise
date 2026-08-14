@@ -34,6 +34,15 @@ class EventModel {
   /// unlimited slots, matching the org proposal form's default.
   final int? capacity;
 
+  /// Whether to automatically mark attendees as late.
+  /// Default: false (for backward compatibility with existing events)
+  final bool markLate;
+
+  /// Number of minutes after event start time before marking late.
+  /// Only applies when [markLate] is true.
+  /// Default: 15 minutes
+  final int lateAfterMinutes;
+
   EventModel({
     required this.id,
     required this.title,
@@ -55,6 +64,8 @@ class EventModel {
     this.logoUrl,
     this.bannerUrl,
     this.capacity,
+    this.markLate = false,
+    this.lateAfterMinutes = 15,
   });
 
   /// Combines the event date and start time
@@ -211,6 +222,8 @@ class EventModel {
       logoUrl: d['logoUrl'] as String?,
       bannerUrl: d['bannerUrl'] as String?,
       capacity: (d['capacity'] as num?)?.toInt(),
+      markLate: d['markLate'] == true,
+      lateAfterMinutes: (d['lateAfterMinutes'] as num?)?.toInt() ?? 15,
     );
   }
 
@@ -234,6 +247,8 @@ class EventModel {
     'logoUrl': logoUrl,
     'bannerUrl': bannerUrl,
     'capacity': capacity,
+    'markLate': markLate,
+    'lateAfterMinutes': lateAfterMinutes,
   };
 
   /// Uses full date + start time

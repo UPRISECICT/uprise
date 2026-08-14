@@ -312,11 +312,6 @@ class _EventProposalsState extends State<EventProposals> {
   late final Stream<QuerySnapshot> _proposalsStream = FirebaseFirestore.instance
       .collection('event_proposals')
       .snapshots();
-  late final Stream<QuerySnapshot> _proposalsOrderedStream = FirebaseFirestore
-      .instance
-      .collection('event_proposals')
-      .orderBy('createdAt', descending: true)
-      .snapshots();
 
   @override
   void dispose() {
@@ -576,7 +571,15 @@ class _EventProposalsState extends State<EventProposals> {
     final horizontalPadding = isMobile ? 16.0 : (isTablet ? 20.0 : 28.0);
 
     return StreamBuilder<QuerySnapshot>(
-      stream: _proposalsOrderedStream,
+      // Deliberately no server-side orderBy('createdAt') here — Firestore
+      // silently drops any document missing that field from an ordered
+      // query, so a proposal written (or manually added) without a
+      // createdAt never showed up in this table at all, even though the
+      // stats row above (a plain, unordered .snapshots()) counted it
+      // fine — the document was never actually gone, just filtered out
+      // by the query. Sorting client-side after fetching keeps every
+      // document visible regardless of whether that field is set.
+      stream: _proposalsStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -585,7 +588,15 @@ class _EventProposalsState extends State<EventProposals> {
           return Center(child: Text('Error: ${snapshot.error}'));
         }
 
-        var docs = snapshot.data!.docs;
+        var docs = snapshot.data!.docs.toList()
+          ..sort((a, b) {
+            final tsA = (a.data() as Map)['createdAt'] as Timestamp?;
+            final tsB = (b.data() as Map)['createdAt'] as Timestamp?;
+            if (tsA == null && tsB == null) return 0;
+            if (tsA == null) return 1;
+            if (tsB == null) return -1;
+            return tsB.compareTo(tsA);
+          });
 
         if (_statusFilter == 'All') {
           docs = docs
@@ -3339,11 +3350,21 @@ class _ExportProposalsButton extends StatelessWidget {
 
   Future<void> _doExport(BuildContext context, String format) async {
     try {
+      // No server-side orderBy here either — see the same note in
+      // _buildTable above. Sorted client-side instead so a proposal
+      // missing createdAt still gets exported, not silently skipped.
       var snap = await FirebaseFirestore.instance
           .collection('event_proposals')
-          .orderBy('createdAt', descending: true)
           .get();
-      var docs = snap.docs;
+      var docs = snap.docs.toList()
+        ..sort((a, b) {
+          final tsA = (a.data())['createdAt'] as Timestamp?;
+          final tsB = (b.data())['createdAt'] as Timestamp?;
+          if (tsA == null && tsB == null) return 0;
+          if (tsA == null) return 1;
+          if (tsB == null) return -1;
+          return tsB.compareTo(tsA);
+        });
 
       if (statusFilter != 'All') {
         docs = docs

@@ -2568,6 +2568,15 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
       return StreamBuilder<QuerySnapshot>(
         stream: stream,
         builder: (_, snap) {
+          // A query failure (e.g. a missing Firestore composite index for
+          // one of these multi-filter queries) previously fell straight
+          // through to count=0 here — indistinguishable from "genuinely
+          // no data" even though the real cause was an unhandled error.
+          // Logging it at least surfaces the real reason in the console
+          // instead of silently looking like the data vanished.
+          if (snap.hasError) {
+            debugPrint('$label stat card stream error: ${snap.error}');
+          }
           final loading = snap.connectionState == ConnectionState.waiting;
           final count = snap.hasData ? snap.data!.docs.length : 0;
           final isSelected = _selectedCard == cardIndex;
@@ -3151,6 +3160,24 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
           return _tableCardSimple(
             const Center(
               child: CircularProgressIndicator(color: OrgColors.primaryDark),
+            ),
+          );
+        }
+        // Was falling straight through to the "No upcoming events" empty
+        // state on any query error too (e.g. a missing Firestore
+        // composite index for this 3-filter-plus-order query) — that
+        // read as the data having vanished instead of the real cause.
+        if (snapshot.hasError) {
+          return _tableCardSimple(
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'Could not load upcoming events: ${snapshot.error}',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 12.5,
+                  color: OrgColors.error,
+                ),
+              ),
             ),
           );
         }

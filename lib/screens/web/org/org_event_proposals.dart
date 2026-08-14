@@ -396,7 +396,6 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
   late final Stream<QuerySnapshot> _proposalsStream = FirebaseFirestore.instance
       .collection('event_proposals')
       .where('orgId', isEqualTo: widget.orgId)
-      .orderBy('submittedAt', descending: true)
       .snapshots();
 
   @override
@@ -409,7 +408,21 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _applyFilters(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
   ) {
-    var filtered = docs;
+    // Sorted here instead of via a server-side orderBy('submittedAt') on
+    // the stream — Firestore silently drops any document missing that
+    // field from an ordered query, so a proposal without a submittedAt
+    // never showed up in this list at all, even though it still fully
+    // exists in Firestore. Sorting client-side keeps every document
+    // visible regardless of whether that field is set.
+    var filtered = docs.toList()
+      ..sort((a, b) {
+        final tsA = a.data()['submittedAt'] as Timestamp?;
+        final tsB = b.data()['submittedAt'] as Timestamp?;
+        if (tsA == null && tsB == null) return 0;
+        if (tsA == null) return 1;
+        if (tsB == null) return -1;
+        return tsB.compareTo(tsA);
+      });
     if (_filterStatus == 'All') {
       filtered = filtered
           .where(
@@ -1017,7 +1030,6 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
     final snapshot = await FirebaseFirestore.instance
         .collection('event_proposals')
         .where('orgId', isEqualTo: widget.orgId)
-        .orderBy('submittedAt', descending: true)
         .get();
     final docs = _applyFilters(
       snapshot.docs

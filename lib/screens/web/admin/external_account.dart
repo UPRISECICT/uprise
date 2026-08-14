@@ -930,6 +930,28 @@ class _ExternalAccountState extends State<ExternalAccount> {
     String userName,
     String email,
   ) async {
+    // Whole-function safety net — the duplicate-email check queries and
+    // batch.commit() below weren't individually wrapped, so any
+    // unexpected failure there (permission error, network blip, etc.)
+    // used to throw uncaught: nothing updated, no toast, status silently
+    // stuck on "Pending" with no sign anything went wrong. Every path
+    // out of this function now either succeeds visibly or fails
+    // visibly.
+    try {
+      await _doApproveAndCreateAccount(docId, userName, email);
+    } catch (e, st) {
+      debugPrint('Approve request failed: $e\n$st');
+      if (mounted) {
+        AppToast.error(context, 'Approval failed: $e');
+      }
+    }
+  }
+
+  Future<void> _doApproveAndCreateAccount(
+    String docId,
+    String userName,
+    String email,
+  ) async {
     // Re-fetch the doc to make sure we have the freshest email/university
     final snap = await FirebaseFirestore.instance
         .collection('external_requests')

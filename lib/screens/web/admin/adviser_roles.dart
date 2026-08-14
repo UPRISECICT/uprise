@@ -455,17 +455,22 @@ class _AdviserRolesState extends State<AdviserRoles> {
       .collection('adviser_roles')
       .where('archived', isEqualTo: true)
       .snapshots();
+  // Deliberately no server-side orderBy('createdAt') on either of these —
+  // Firestore silently drops any document missing that field from an
+  // ordered query, so an adviser role written (or manually added)
+  // without a createdAt never showed up in this table at all, even
+  // though it still fully exists in Firestore. Sorted client-side in
+  // _buildTable instead, which keeps every document visible regardless
+  // of whether that field is set.
   late final Stream<QuerySnapshot> _activeAdvisersStream = FirebaseFirestore
       .instance
       .collection('adviser_roles')
       .where('archived', isEqualTo: false)
-      .orderBy('createdAt', descending: true)
       .snapshots();
   late final Stream<QuerySnapshot> _archivedAdvisersStream = FirebaseFirestore
       .instance
       .collection('adviser_roles')
       .where('archived', isEqualTo: true)
-      .orderBy('createdAt', descending: true)
       .snapshots();
   Stream<QuerySnapshot> get _advisersTableStream => _statusFilter == 'Archived'
       ? _archivedAdvisersStream
@@ -900,7 +905,15 @@ class _AdviserRolesState extends State<AdviserRoles> {
           return Center(child: Text('Error: ${snap.error}'));
         }
 
-        var docs = snap.data?.docs ?? [];
+        var docs = (snap.data?.docs ?? []).toList()
+          ..sort((a, b) {
+            final tsA = (a.data() as Map)['createdAt'] as Timestamp?;
+            final tsB = (b.data() as Map)['createdAt'] as Timestamp?;
+            if (tsA == null && tsB == null) return 0;
+            if (tsA == null) return 1;
+            if (tsB == null) return -1;
+            return tsB.compareTo(tsA);
+          });
 
         docs = docs.where((d) {
           final data = d.data() as Map<String, dynamic>;

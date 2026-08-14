@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -282,6 +282,96 @@ class _SidebarNavState extends State<_SidebarNav> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Shell chrome animation helpers
+// ─────────────────────────────────────────────────────────────────────────────
+// Fades the active tab's content in on every switch instead of the
+// IndexedStack's instant, jarring swap — deliberately animates only this
+// wrapper's opacity rather than rebuilding/rekeying the IndexedStack, so
+// every screen underneath keeps the exact same "stay mounted, don't
+// re-fetch" behavior it already relies on.
+class _FadeOnChange extends StatefulWidget {
+  final Object watch;
+  final Widget child;
+  const _FadeOnChange({required this.watch, required this.child});
+
+  @override
+  State<_FadeOnChange> createState() => _FadeOnChangeState();
+}
+
+class _FadeOnChangeState extends State<_FadeOnChange>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 220),
+  )..value = 1;
+
+  @override
+  void didUpdateWidget(covariant _FadeOnChange oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.watch != widget.watch) {
+      _controller
+        ..value = 0
+        ..forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+      child: widget.child,
+    );
+  }
+}
+
+// Slow, gentle breathing pulse for the top bar's "live" status dot — a
+// static dot next to a live clock read as inert; this makes the "live"
+// framing actually visible at a glance.
+class _PulsingDot extends StatefulWidget {
+  final Color color;
+  final double size;
+  const _PulsingDot({required this.color, this.size = 5});
+
+  @override
+  State<_PulsingDot> createState() => _PulsingDotState();
+}
+
+class _PulsingDotState extends State<_PulsingDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1400),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: Tween(
+        begin: 1.0,
+        end: 0.35,
+      ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut)),
+      child: Container(
+        width: widget.size,
+        height: widget.size,
+        decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // AdminDashboard shell
 // ─────────────────────────────────────────────────────────────────────────────
 class AdminDashboard extends StatefulWidget {
@@ -299,6 +389,18 @@ class _AdminDashboardState extends State<AdminDashboard> {
   final Set<int> _visitedIndices = {0};
   final AuthService _auth = AuthService();
   final GlobalKey _bellKey = GlobalKey();
+  // Cached once instead of calling NotificationService.unreadCountStream()
+  // inline in build() — this top bar is part of _AdminDashboardState's own
+  // build(), which re-runs on every sidebar navigation click (switching
+  // _selectedIndex), so an inline call there was tearing down and
+  // re-subscribing a live Firestore listener on every single page
+  // navigation across the whole admin portal.
+  late final Stream<int> _unreadCountStream =
+      FirebaseAuth.instance.currentUser != null
+      ? NotificationService.unreadCountStream(
+          FirebaseAuth.instance.currentUser!.uid,
+        )
+      : const Stream<int>.empty();
   final GlobalKey _profileKey = GlobalKey();
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   // Below this width the fixed sidebar doesn't have room to sit next to the
@@ -872,14 +974,19 @@ class _AdminDashboardState extends State<AdminDashboard> {
       // IndexedStack keeps every screen's state alive instead of
       // tearing it down and re-fetching Firestore data from
       // scratch on every tab switch — that re-fetch was the
-      // cause of the lag on every click.
-      child: IndexedStack(
-        index: _screenIndexFor(_selectedIndex),
-        children: List.generate(
-          _screens.length,
-          (i) => _visitedIndices.contains(i)
-              ? _screens[i]
-              : const SizedBox.shrink(),
+      // cause of the lag on every click. _FadeOnChange only animates this
+      // wrapper's opacity, not the IndexedStack's children/keys, so that
+      // behavior is untouched.
+      child: _FadeOnChange(
+        watch: _selectedIndex,
+        child: IndexedStack(
+          index: _screenIndexFor(_selectedIndex),
+          children: List.generate(
+            _screens.length,
+            (i) => _visitedIndices.contains(i)
+                ? _screens[i]
+                : const SizedBox.shrink(),
+          ),
         ),
       ),
     );
@@ -923,38 +1030,61 @@ class _AdminDashboardState extends State<AdminDashboard> {
       ),
       child: Column(
         children: [
-          // Brand header
+          // Brand panel — flat, same solid fill as the rest of the
+          // sidebar (no gradient); the logo and wordmark below carry the
+          // polish instead of the panel itself.
           Container(
-            padding: const EdgeInsets.fromLTRB(20, 28, 20, 20),
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(20, 30, 20, 22),
+            color: UpriseColors.primaryDark,
             child: Row(
               children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withAlpha(40),
-                        blurRadius: 8,
-                        offset: const Offset(0, 3),
+                // Soft glow ring behind the logo disc — reads as a subtle
+                // halo instead of the logo floating flat on the panel.
+                Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Container(
+                      width: 66,
+                      height: 66,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withAlpha(20),
                       ),
-                    ],
-                  ),
-                  padding: const EdgeInsets.all(7),
-                  child: Image.asset(
-                    'assets/images/logo.png',
-                    fit: BoxFit.contain,
-                    filterQuality: FilterQuality.high,
-                    errorBuilder: (_, __, ___) => const Icon(
-                      Icons.school,
-                      color: UpriseColors.primaryDark,
-                      size: 28,
                     ),
-                  ),
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.white.withAlpha(70),
+                          width: 1.5,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withAlpha(55),
+                            blurRadius: 14,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      padding: const EdgeInsets.all(7),
+                      child: Image.asset(
+                        'assets/images/logo.png',
+                        fit: BoxFit.contain,
+                        filterQuality: FilterQuality.high,
+                        errorBuilder: (_, __, ___) => const Icon(
+                          Icons.school,
+                          color: UpriseColors.primaryDark,
+                          size: 28,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -966,21 +1096,44 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.beVietnamPro(
                           color: Colors.white,
-                          fontSize: 22,
+                          fontSize: 23,
                           fontWeight: FontWeight.w800,
-                          letterSpacing: 2,
+                          letterSpacing: 2.4,
+                          shadows: [
+                            Shadow(
+                              color: Colors.black.withAlpha(60),
+                              blurRadius: 6,
+                              offset: const Offset(0, 1),
+                            ),
+                          ],
                         ),
                       ),
-                      Text(
-                        'Admin Panel',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.beVietnamPro(
-                          color: Colors.white.withAlpha(166),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: 0.4,
-                        ),
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Container(
+                            width: 4,
+                            height: 4,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF4ADE80),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              'Admin Panel',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.beVietnamPro(
+                                color: Colors.white.withAlpha(178),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                                letterSpacing: 0.4,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -989,11 +1142,21 @@ class _AdminDashboardState extends State<AdminDashboard> {
             ),
           ),
 
-          Divider(
-            color: Colors.white.withAlpha(38),
-            thickness: 1,
-            indent: 20,
-            endIndent: 20,
+          // Fade-out divider instead of a flat translucent line — echoes
+          // the same technique used for section dividers elsewhere in the
+          // portal instead of inventing a new one-off treatment here.
+          Container(
+            height: 1,
+            margin: const EdgeInsets.symmetric(horizontal: 20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Colors.transparent,
+                  Colors.white.withAlpha(60),
+                  Colors.transparent,
+                ],
+              ),
+            ),
           ),
           const SizedBox(height: 8),
 
@@ -1170,11 +1333,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 child: StreamBuilder<int>(
                   // Live count so a new notification updates the badge
                   // immediately, without needing to reopen the dropdown.
-                  stream: FirebaseAuth.instance.currentUser != null
-                      ? NotificationService.unreadCountStream(
-                          FirebaseAuth.instance.currentUser!.uid,
-                        )
-                      : const Stream<int>.empty(),
+                  stream: _unreadCountStream,
                   initialData: _unreadNotifications,
                   builder: (context, snapshot) {
                     final unread = snapshot.data ?? _unreadNotifications;
@@ -1369,6 +1528,38 @@ class _DashboardHomeState extends State<DashboardHome> {
       _loadPerformanceSummary();
   late final Future<_OverdueSummary> _overdueFuture = _loadOverdueReports();
 
+  // Shared orgId → shortName cache for the stat-card drill-down tables
+  // (Events, Pending Proposals, Overdue Reports) so switching between them
+  // doesn't re-fetch names for orgs already resolved this session.
+  final Map<String, String> _dashboardOrgShortNameCache = {};
+
+  Future<void> _ensureOrgShortNames(Iterable<String> orgIds) async {
+    final missing = orgIds
+        .where(
+          (id) => id.isNotEmpty && !_dashboardOrgShortNameCache.containsKey(id),
+        )
+        .toSet()
+        .toList();
+    if (missing.isEmpty) return;
+    for (var i = 0; i < missing.length; i += 10) {
+      final batch = missing.skip(i).take(10).toList();
+      try {
+        final snap = await FirebaseFirestore.instance
+            .collection('organizations')
+            .where(FieldPath.documentId, whereIn: batch)
+            .get();
+        for (final doc in snap.docs) {
+          _dashboardOrgShortNameCache[doc.id] =
+              (doc.data()['shortName'] as String?) ?? '';
+        }
+      } catch (_) {}
+      for (final id in batch) {
+        _dashboardOrgShortNameCache.putIfAbsent(id, () => '');
+      }
+    }
+    if (mounted) setState(() {});
+  }
+
   late final Stream<QuerySnapshot> _organizationsStream;
   late final Stream<QuerySnapshot> _eventsStream;
   late final Stream<QuerySnapshot> _proposalsStream;
@@ -1537,6 +1728,10 @@ class _DashboardHomeState extends State<DashboardHome> {
         for (final doc in orgsSnap.docs)
           doc.id: (doc.data()['name'] as String?) ?? 'Organization',
       };
+      final orgShortNames = {
+        for (final doc in orgsSnap.docs)
+          doc.id: (doc.data()['shortName'] as String?) ?? '',
+      };
 
       var total = 0;
       final byOrg = <String, int>{};
@@ -1544,6 +1739,7 @@ class _DashboardHomeState extends State<DashboardHome> {
       for (final entry in eventsByOrg.entries) {
         final orgId = entry.key;
         final orgName = orgNames[orgId] ?? 'Organization';
+        final orgShortName = orgShortNames[orgId] ?? '';
         for (final ev in entry.value) {
           final eventId = ev['eventId'] as String;
           final eventDate = ev['eventDate'] as DateTime;
@@ -1561,6 +1757,7 @@ class _DashboardHomeState extends State<DashboardHome> {
                 _OverdueItem(
                   orgId: orgId,
                   orgName: orgName,
+                  orgShortName: orgShortName,
                   eventTitle: eventTitle,
                   type: type,
                   deadline: deadline,
@@ -3411,7 +3608,15 @@ class _DashboardHomeState extends State<DashboardHome> {
                         _orgAvatar(items[i].orgName),
                         const SizedBox(width: 10),
                         Expanded(
-                          child: _cellText(items[i].orgName, bold: true),
+                          child: Tooltip(
+                            message: items[i].orgName,
+                            child: _cellText(
+                              items[i].orgShortName.isNotEmpty
+                                  ? items[i].orgShortName
+                                  : items[i].orgName,
+                              bold: true,
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -3469,6 +3674,7 @@ class _DashboardHomeState extends State<DashboardHome> {
               return {
                 'title': (d['title'] as String?) ?? 'Untitled',
                 'orgName': (d['orgName'] as String?) ?? '—',
+                'orgId': (d['orgId'] as String?) ?? '',
                 'category': (d['category'] as String?) ?? '—',
                 'location': (d['location'] as String?) ?? 'TBA',
                 'audience': (d['audience'] as String?) ?? '—',
@@ -3484,6 +3690,8 @@ class _DashboardHomeState extends State<DashboardHome> {
               if (da == null || db == null) return 0;
               return da.compareTo(db);
             });
+
+        _ensureOrgShortNames(rows.map((r) => r['orgId'] as String? ?? ''));
 
         String fmtDate(DateTime? d) =>
             d != null ? DateFormat('MMM d, yyyy').format(d) : 'TBA';
@@ -3556,7 +3764,15 @@ class _DashboardHomeState extends State<DashboardHome> {
                   ),
                   cells: [
                     _cellText(rows[i]['title'] as String, bold: true),
-                    _cellText(rows[i]['orgName'] as String),
+                    Tooltip(
+                      message: rows[i]['orgName'] as String,
+                      child: _cellText(
+                        (_dashboardOrgShortNameCache[rows[i]['orgId']] ?? '')
+                                .isNotEmpty
+                            ? _dashboardOrgShortNameCache[rows[i]['orgId']]!
+                            : rows[i]['orgName'] as String,
+                      ),
+                    ),
                     _cellBadge(
                       rows[i]['category'] as String,
                       CategoryColors.getFg(rows[i]['category'] as String),
@@ -3601,6 +3817,7 @@ class _DashboardHomeState extends State<DashboardHome> {
               return {
                 'title': (d['title'] as String?) ?? 'Untitled',
                 'orgName': (d['orgName'] as String?) ?? '—',
+                'orgId': (d['orgId'] as String?) ?? '',
                 'category': (d['category'] as String?) ?? '—',
                 'location': (d['location'] as String?) ?? 'TBA',
                 'description':
@@ -3615,6 +3832,8 @@ class _DashboardHomeState extends State<DashboardHome> {
               if (ca == null || cb == null) return 0;
               return cb.compareTo(ca);
             });
+
+        _ensureOrgShortNames(rows.map((r) => r['orgId'] as String? ?? ''));
 
         String fmtDate(DateTime? d) =>
             d != null ? DateFormat('MMM d, yyyy').format(d) : '—';
@@ -3688,7 +3907,15 @@ class _DashboardHomeState extends State<DashboardHome> {
                   ),
                   cells: [
                     _cellText(rows[i]['title'] as String, bold: true),
-                    _cellText(rows[i]['orgName'] as String),
+                    Tooltip(
+                      message: rows[i]['orgName'] as String,
+                      child: _cellText(
+                        (_dashboardOrgShortNameCache[rows[i]['orgId']] ?? '')
+                                .isNotEmpty
+                            ? _dashboardOrgShortNameCache[rows[i]['orgId']]!
+                            : rows[i]['orgName'] as String,
+                      ),
+                    ),
                     _cellText(fmtDate(rows[i]['eventDate'] as DateTime?)),
                     _cellText(fmtDate(rows[i]['createdAt'] as DateTime?)),
                   ],
@@ -3815,7 +4042,15 @@ class _DashboardHomeState extends State<DashboardHome> {
                     navigateToTabIndex: 8,
                   ),
                   cells: [
-                    _cellText(items[i].orgName, bold: true),
+                    Tooltip(
+                      message: items[i].orgName,
+                      child: _cellText(
+                        items[i].orgShortName.isNotEmpty
+                            ? items[i].orgShortName
+                            : items[i].orgName,
+                        bold: true,
+                      ),
+                    ),
                     _cellText(items[i].eventTitle),
                     _cellBadge(
                       typeLabel(items[i].type),
@@ -3867,6 +4102,10 @@ class _DashboardHomeState extends State<DashboardHome> {
       final orgNameMap = <String, String>{
         for (final doc in activeOrgsSnap.docs)
           doc.id: (doc.data()['name'] as String?) ?? 'Organization',
+      };
+      final orgShortNameMap = <String, String>{
+        for (final doc in activeOrgsSnap.docs)
+          doc.id: (doc.data()['shortName'] as String?) ?? '',
       };
 
       for (final doc in proposalsSnap.docs) {
@@ -3923,6 +4162,7 @@ class _DashboardHomeState extends State<DashboardHome> {
         for (final doc in orgDocs.docs) {
           orgNameMap[doc.id] =
               (doc.data()['name'] as String?) ?? 'Organization';
+          orgShortNameMap[doc.id] = (doc.data()['shortName'] as String?) ?? '';
         }
       }
 
@@ -3936,6 +4176,7 @@ class _DashboardHomeState extends State<DashboardHome> {
         return _OrgPerformance(
           orgId: orgId,
           orgName: orgName,
+          orgShortName: orgShortNameMap[orgId] ?? '',
           proposals: proposalStat?['proposalCount'] as int? ?? 0,
           approvedEvents: proposalStat?['approvedCount'] as int? ?? 0,
           pendingProposals: proposalStat?['pendingCount'] as int? ?? 0,
@@ -3995,6 +4236,7 @@ class _StatConfig {
 class _OrgPerformance {
   final String orgId;
   final String orgName;
+  final String orgShortName;
   final int proposals;
   final int approvedEvents;
   final int pendingProposals;
@@ -4006,6 +4248,7 @@ class _OrgPerformance {
   const _OrgPerformance({
     required this.orgId,
     required this.orgName,
+    this.orgShortName = '',
     required this.proposals,
     required this.approvedEvents,
     required this.pendingProposals,
@@ -4027,12 +4270,14 @@ class _OverdueSummary {
 class _OverdueItem {
   final String orgId;
   final String orgName;
+  final String orgShortName;
   final String eventTitle;
   final String type; // 'financial' | 'accomplishment'
   final DateTime deadline;
   const _OverdueItem({
     required this.orgId,
     required this.orgName,
+    this.orgShortName = '',
     required this.eventTitle,
     required this.type,
     required this.deadline,

@@ -104,6 +104,16 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
   static const int _pageSize = 10;
   final TextEditingController _searchController = TextEditingController();
   final Map<String, String> _orgLogoCache = {};
+  final Map<String, String> _orgShortNameCache = {};
+  // Cached once instead of calling .snapshots() inline in the build methods
+  // below — every keystroke in the search box (and every pagination click)
+  // calls setState, which re-runs build(); a fresh .snapshots() call there
+  // tears down and re-subscribes a brand-new Firestore listener on every
+  // rebuild instead of reusing the live one, which is what made typing in
+  // the search box (and the stats row above it) feel laggy.
+  late final Stream<QuerySnapshot> _letterRequestsStream = FirestoreCollections
+      .letterRequests
+      .snapshots();
 
   @override
   void dispose() {
@@ -234,7 +244,9 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
           .doc(orgId)
           .get();
       final logoUrl = doc.data()?['logoUrl'] ?? '';
+      final shortName = doc.data()?['shortName'] ?? '';
       _orgLogoCache[orgId] = logoUrl;
+      _orgShortNameCache[orgId] = shortName;
       return logoUrl;
     } catch (e) {
       return '';
@@ -301,7 +313,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
 
   Widget _buildStatsRow(bool isMobile, bool isTablet) {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirestoreCollections.letterRequests.snapshots(),
+      stream: _letterRequestsStream,
       builder: (context, snapshot) {
         int total = 0,
             pending = 0,
@@ -514,7 +526,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
       // one) never showed up in this table at all, even though the stats
       // row above (a plain, unordered .snapshots()) counted them fine.
       // Sorting client-side after fetching keeps every document visible.
-      stream: FirestoreCollections.letterRequests.snapshots(),
+      stream: _letterRequestsStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -697,6 +709,11 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
       future: _fetchOrgLogo(orgId),
       builder: (context, logoSnapshot) {
         final logoUrl = logoSnapshot.data ?? '';
+        final orgName = (data['orgName'] ?? 'Unknown').toString();
+        final shortName = _orgShortNameCache[orgId];
+        final displayName = (shortName != null && shortName.isNotEmpty)
+            ? shortName
+            : orgName;
 
         return InkWell(
           hoverColor: const Color(0xFFF8F9FB),
@@ -734,9 +751,9 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Tooltip(
-                          message: data['orgName'] ?? 'Unknown',
+                          message: orgName,
                           child: Text(
-                            data['orgName'] ?? 'Unknown',
+                            displayName,
                             style: GoogleFonts.beVietnamPro(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
@@ -2717,8 +2734,14 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                           ],
 
                           // ── Rejection reason ─────────────────────────
-                          if (rejectionReason != null &&
-                              rejectionReason.toString().isNotEmpty) ...[
+                          // Always shown for a rejected request, not just
+                          // when a reason happens to be on the doc — a
+                          // request rejected before reasons were required
+                          // genuinely has none recorded, and silently
+                          // hiding the whole section for those looked like
+                          // the feature wasn't working at all rather than
+                          // "no reason was given."
+                          if (status.toLowerCase() == 'rejected') ...[
                             _sectionLabel(
                               'Rejection Reason',
                               icon: Icons.cancel_outlined,
@@ -2733,10 +2756,22 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                                 ),
                               ),
                               child: Text(
-                                rejectionReason.toString(),
+                                (rejectionReason != null &&
+                                        rejectionReason.toString().isNotEmpty)
+                                    ? rejectionReason.toString()
+                                    : 'No reason was recorded for this rejection.',
                                 style: GoogleFonts.beVietnamPro(
                                   fontSize: 13,
-                                  color: const Color(0xFF1A202C),
+                                  fontStyle:
+                                      (rejectionReason != null &&
+                                          rejectionReason.toString().isNotEmpty)
+                                      ? FontStyle.normal
+                                      : FontStyle.italic,
+                                  color:
+                                      (rejectionReason != null &&
+                                          rejectionReason.toString().isNotEmpty)
+                                      ? const Color(0xFF1A202C)
+                                      : const Color(0xFF9AA5B4),
                                   height: 1.6,
                                 ),
                               ),

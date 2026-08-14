@@ -272,7 +272,7 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
             approved = 0,
             rejected = 0,
             revision = 0,
-            resubmitted = 0; // ignore: unused_local_variable
+            resubmitted = 0;
         if (snapshot.hasData) {
           for (final doc in snapshot.data!.docs) {
             total++;
@@ -330,6 +330,14 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
             color: const Color(0xFF2563EB),
             isSelected: _statusFilter == 'Needs Revision',
             onTap: () => selectStatus('Needs Revision'),
+          ),
+          _StatCard(
+            label: 'Rejected',
+            value: '$rejected',
+            icon: Icons.cancel_outlined,
+            color: const Color(0xFFDC2626),
+            isSelected: _statusFilter == 'Rejected',
+            onTap: () => selectStatus('Rejected'),
           ),
           _StatCard(
             label: 'Resubmitted',
@@ -1007,7 +1015,10 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
 
       final now = DateTime.now().toString().substring(0, 10);
 
-      if (format == 'csv') {
+      // AdminExportButton's dropdown emits 'excel'/'pdf' (see
+      // admin_export_button.dart's _items), not 'csv' — this used to
+      // check for 'csv', so "Export as Excel" silently did nothing.
+      if (format == 'excel') {
         final csv = [headers, ...rows]
             .map(
               (row) => row.map((c) => '"${c.replaceAll('"', '""')}"').join(','),
@@ -1544,6 +1555,62 @@ class _RequestDetailsDialog extends StatelessWidget {
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(6),
                           ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              if (request.status.toLowerCase() == 'rejected') ...[
+                const SizedBox(height: 14),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEF2F2),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFFECACA)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.cancel_outlined,
+                            size: 14,
+                            color: Color(0xFFDC2626),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'REJECTION REASON',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFFDC2626),
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        (request.rejectionReason != null &&
+                                request.rejectionReason!.isNotEmpty)
+                            ? request.rejectionReason!
+                            : 'No reason was recorded for this rejection.',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          fontStyle:
+                              (request.rejectionReason != null &&
+                                  request.rejectionReason!.isNotEmpty)
+                              ? FontStyle.normal
+                              : FontStyle.italic,
+                          color:
+                              (request.rejectionReason != null &&
+                                  request.rejectionReason!.isNotEmpty)
+                              ? const Color(0xFF1A202C)
+                              : const Color(0xFF9AA5B4),
                         ),
                       ),
                     ],
@@ -2669,6 +2736,7 @@ class LetterRequestModel {
   final String? attachmentSize;
   final String status;
   final String? revisionNote;
+  final String? rejectionReason;
   final int? revisionCount;
   final Timestamp? resubmittedAt;
   final bool isArchived;
@@ -2694,6 +2762,7 @@ class LetterRequestModel {
     this.attachmentSize,
     required this.status,
     this.revisionNote,
+    this.rejectionReason,
     this.revisionCount,
     this.resubmittedAt,
     required this.isArchived,
@@ -2722,6 +2791,7 @@ class LetterRequestModel {
       attachmentSize: d['attachmentSize'],
       status: d['status'] ?? 'pending',
       revisionNote: d['revisionNote'],
+      rejectionReason: d['rejectionReason'],
       revisionCount: d['revisionCount'] ?? 0,
       resubmittedAt: d['resubmittedAt'] as Timestamp?,
       isArchived: d['isArchived'] ?? false,

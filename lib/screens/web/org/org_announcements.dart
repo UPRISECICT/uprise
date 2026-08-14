@@ -1801,11 +1801,7 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                   Container(
                     padding: const EdgeInsets.fromLTRB(24, 18, 16, 18),
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [_C.primaryDark.withAlpha(14), _C.white],
-                      ),
+                      color: _C.primaryDark.withAlpha(12),
                       border: const Border(
                         bottom: BorderSide(color: _C.borderSoft),
                       ),

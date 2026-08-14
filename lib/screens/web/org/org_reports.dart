@@ -3784,7 +3784,13 @@ class _ExportButton extends StatelessWidget {
           .toList();
 
       final now = DateTime.now().toString().substring(0, 10);
-      if (format == 'csv') {
+      // AdminExportButton's dropdown emits 'excel'/'pdf' (see
+      // admin_export_button.dart's _items) — this used to check for
+      // 'csv', which the button never actually sends, so "Export as
+      // Excel" silently fell through to the PDF branch below every
+      // single time (the heaviest path, triggered even when a fast CSV
+      // was what was actually asked for).
+      if (format == 'excel') {
         final csv = [headers, ...dataRows]
             .map(
               (row) => row.map((c) => '"${c.replaceAll('"', '""')}"').join(','),

@@ -1,4 +1,4 @@
-// lib/screens/web/org/org_dashboard.dart
+﻿// lib/screens/web/org/org_dashboard.dart
 //
 // Redesigned to match AdminDashboard pattern exactly:
 //  - Gradient welcome header card with icon
@@ -78,7 +78,10 @@ class OrgColors {
   // instead of blending into it.
   static const Color accent = Color(0xFF2563EB);
   static const Color white = Color(0xFFFFFFFF);
-  static const Color surface = Color(0xFFF8F9FB);
+  // Matches the 0xFFFBFCFE Scaffold background every other org screen
+  // uses (finance, letter request, proposals, merchandise, etc.) instead
+  // of a slightly different near-white.
+  static const Color surface = Color(0xFFFBFCFE);
   static const Color lightGray = Color(0xFFF8F9FB);
   static const Color border = Color(0xFFE8ECF0);
   static const Color borderSoft = Color(0xFFE2E6EA);
@@ -529,6 +532,96 @@ class _SidebarNavState extends State<_SidebarNav> {
         ],
         for (final i in _standaloneBottom) _navTile(i),
       ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shell chrome animation helpers
+// ─────────────────────────────────────────────────────────────────────────────
+// Fades the active tab's content in on every switch instead of the
+// IndexedStack's instant, jarring swap — deliberately animates only this
+// wrapper's opacity rather than rebuilding/rekeying the IndexedStack, so
+// every screen underneath keeps the exact same "stay mounted, don't
+// re-fetch" behavior it already relies on.
+class _FadeOnChange extends StatefulWidget {
+  final Object watch;
+  final Widget child;
+  const _FadeOnChange({required this.watch, required this.child});
+
+  @override
+  State<_FadeOnChange> createState() => _FadeOnChangeState();
+}
+
+class _FadeOnChangeState extends State<_FadeOnChange>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 220),
+  )..value = 1;
+
+  @override
+  void didUpdateWidget(covariant _FadeOnChange oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.watch != widget.watch) {
+      _controller
+        ..value = 0
+        ..forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+      child: widget.child,
+    );
+  }
+}
+
+// Slow, gentle breathing pulse for the top bar's "live" status dot — a
+// static dot next to a live clock read as inert; this makes the "live"
+// framing actually visible at a glance.
+class _PulsingDot extends StatefulWidget {
+  final Color color;
+  final double size;
+  const _PulsingDot({required this.color, this.size = 5});
+
+  @override
+  State<_PulsingDot> createState() => _PulsingDotState();
+}
+
+class _PulsingDotState extends State<_PulsingDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1400),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: Tween(
+        begin: 1.0,
+        end: 0.35,
+      ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut)),
+      child: Container(
+        width: widget.size,
+        height: widget.size,
+        decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle),
+      ),
     );
   }
 }
@@ -1473,13 +1566,18 @@ class _OrgDashboardState extends State<OrgDashboard> {
                       // re-fetch was the cause of the lag on every click.
                       child: !_screensBuilt
                           ? const SizedBox()
-                          : IndexedStack(
-                              index: _selectedIndex == -1 ? 14 : _selectedIndex,
-                              children: List.generate(
-                                _screens.length,
-                                (i) => _visitedIndices.contains(i)
-                                    ? _screens[i]
-                                    : const SizedBox.shrink(),
+                          : _FadeOnChange(
+                              watch: _selectedIndex,
+                              child: IndexedStack(
+                                index: _selectedIndex == -1
+                                    ? 14
+                                    : _selectedIndex,
+                                children: List.generate(
+                                  _screens.length,
+                                  (i) => _visitedIndices.contains(i)
+                                      ? _screens[i]
+                                      : const SizedBox.shrink(),
+                                ),
                               ),
                             ),
                     ),
@@ -1508,37 +1606,61 @@ class _OrgDashboardState extends State<OrgDashboard> {
       ),
       child: Column(
         children: [
+          // Brand panel — flat, same solid fill as the rest of the
+          // sidebar (no gradient); the logo and wordmark below carry the
+          // polish instead of the panel itself.
           Container(
-            padding: const EdgeInsets.fromLTRB(20, 28, 20, 20),
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(20, 30, 20, 22),
+            color: OrgColors.primaryDark,
             child: Row(
               children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withAlpha(40),
-                        blurRadius: 8,
-                        offset: const Offset(0, 3),
+                // Soft glow ring behind the logo disc — reads as a subtle
+                // halo instead of the logo floating flat on the panel.
+                Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Container(
+                      width: 66,
+                      height: 66,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withAlpha(20),
                       ),
-                    ],
-                  ),
-                  padding: const EdgeInsets.all(7),
-                  child: Image.asset(
-                    'assets/images/logo.png',
-                    fit: BoxFit.contain,
-                    filterQuality: FilterQuality.high,
-                    errorBuilder: (_, __, ___) => const Icon(
-                      Icons.school_rounded,
-                      color: OrgColors.primaryDark,
-                      size: 28,
                     ),
-                  ),
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.white.withAlpha(70),
+                          width: 1.5,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withAlpha(55),
+                            blurRadius: 14,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      padding: const EdgeInsets.all(7),
+                      child: Image.asset(
+                        'assets/images/logo.png',
+                        fit: BoxFit.contain,
+                        filterQuality: FilterQuality.high,
+                        errorBuilder: (_, __, ___) => const Icon(
+                          Icons.school_rounded,
+                          color: OrgColors.primaryDark,
+                          size: 28,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1550,21 +1672,44 @@ class _OrgDashboardState extends State<OrgDashboard> {
                         overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.beVietnamPro(
                           color: Colors.white,
-                          fontSize: 22,
+                          fontSize: 23,
                           fontWeight: FontWeight.w800,
-                          letterSpacing: 2,
+                          letterSpacing: 2.4,
+                          shadows: [
+                            Shadow(
+                              color: Colors.black.withAlpha(60),
+                              blurRadius: 6,
+                              offset: const Offset(0, 1),
+                            ),
+                          ],
                         ),
                       ),
-                      Text(
-                        'Organization Portal',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.beVietnamPro(
-                          color: Colors.white.withAlpha(166),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: 0.4,
-                        ),
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Container(
+                            width: 4,
+                            height: 4,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF4ADE80),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              'Organization Portal',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.beVietnamPro(
+                                color: Colors.white.withAlpha(178),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                                letterSpacing: 0.4,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -1572,11 +1717,21 @@ class _OrgDashboardState extends State<OrgDashboard> {
               ],
             ),
           ),
-          Divider(
-            color: Colors.white.withAlpha(38),
-            thickness: 1,
-            indent: 20,
-            endIndent: 20,
+          // Fade-out divider instead of a flat translucent line — echoes
+          // the same technique used for section dividers elsewhere in the
+          // portal instead of inventing a new one-off treatment here.
+          Container(
+            height: 1,
+            margin: const EdgeInsets.symmetric(horizontal: 20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Colors.transparent,
+                  Colors.white.withAlpha(60),
+                  Colors.transparent,
+                ],
+              ),
+            ),
           ),
           const SizedBox(height: 8),
           Padding(
@@ -2619,7 +2774,7 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Top Merchandise',
+                  'Recent Merchandise',
                   style: GoogleFonts.beVietnamPro(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
@@ -2651,6 +2806,7 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
               stream: FirebaseFirestore.instance
                   .collection('products')
                   .where('orgId', isEqualTo: widget.orgId)
+                  .where('isArchived', isEqualTo: false)
                   .snapshots(),
               builder: (_, snap) {
                 if (snap.connectionState == ConnectionState.waiting) {
@@ -2670,22 +2826,32 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                     'No merchandise yet',
                   );
                 }
+                // Was sorted by 'sold' descending ("Top Merchandise") — merch
+                // has no checkout flow, so 'sold' is written once as 0 at
+                // creation and never incremented, making every product tie
+                // at 0 and the "top sellers" list just an arbitrary,
+                // misleading subset. Recently-added is the honest ordering
+                // given what this feature actually tracks.
                 final products =
                     snap.data!.docs.map((doc) {
                       final d = doc.data() as Map<String, dynamic>;
                       return {
                         'name': d['name'] ?? 'Unnamed',
-                        'sold': (d['sold'] as num?)?.toInt() ?? 0,
+                        'stock': (d['stock'] as num?)?.toInt() ?? 0,
                         'price': (d['price'] as num?)?.toDouble() ?? 0.0,
+                        'createdAt': (d['createdAt'] as Timestamp?)?.toDate(),
                       };
-                    }).toList()..sort(
-                      (a, b) => (b['sold'] as int).compareTo(a['sold'] as int),
-                    );
+                    }).toList()..sort((a, b) {
+                      final da = a['createdAt'] as DateTime?;
+                      final db = b['createdAt'] as DateTime?;
+                      if (da == null || db == null) return 0;
+                      return db.compareTo(da);
+                    });
                 return Column(
                   children: products.take(5).map((product) {
                     return _MerchRow(
                       name: product['name'] as String,
-                      sold: product['sold'] as int,
+                      stock: product['stock'] as int,
                       price: product['price'] as double,
                     );
                   }).toList(),
@@ -3250,16 +3416,16 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
   }
 
   Widget _customTableHeader(List<MapEntry<String, int>> columns) {
-    // Was a solid orange-600 banner (#FFF7ED / #FB923C border) that read
-    // more like a warning strip than a table header — a soft neutral bg
-    // with a slim accent bottom border keeps the brand color as a hint,
-    // not the dominant note.
+    // Matches every other org table's header treatment (certificates,
+    // finance, letter request, proposals, reports): a soft amber tint with
+    // a translucent bottom border, instead of this table's own one-off
+    // neutral-gray/solid-border variant.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-      decoration: const BoxDecoration(
-        color: OrgColors.surface,
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7ED),
         border: Border(
-          bottom: BorderSide(color: OrgColors.primaryDark, width: 2),
+          bottom: BorderSide(color: OrgColors.primaryDark.withAlpha(60)),
         ),
       ),
       child: Row(
@@ -3270,10 +3436,10 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
               child: Text(
                 c.key.toUpperCase(),
                 style: GoogleFonts.beVietnamPro(
-                  fontSize: 10.5,
+                  fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: OrgColors.darkGray,
-                  letterSpacing: 0.8,
+                  color: const Color(0xFF64748B),
+                  letterSpacing: 0.7,
                 ),
               ),
             ),
@@ -3293,14 +3459,14 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: InkWell(
-        hoverColor: OrgColors.primaryDark.withAlpha(12),
+        // Matches every other org table's row hover treatment instead of
+        // this table's own one-off darker hover/zebra-striped variant.
+        hoverColor: const Color(0xFFF8F9FB),
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
           decoration: BoxDecoration(
-            // Faint zebra tint — makes wide rows easier to track across
-            // without competing with the category badges' own color.
-            color: isEven ? Colors.white : const Color(0xFFFBFBFC),
+            color: Colors.white,
             border: isLast
                 ? null
                 : const Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
@@ -3501,13 +3667,7 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
               children: [
                 Container(
                   padding: const EdgeInsets.fromLTRB(22, 20, 16, 18),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [accentColor.withAlpha(20), Colors.white],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                  ),
+                  decoration: BoxDecoration(color: accentColor.withAlpha(16)),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -4540,11 +4700,11 @@ class _OrgNotificationPanelState extends State<_OrgNotificationPanel> {
 // ─────────────────────────────────────────────────────────────────────────────
 class _MerchRow extends StatelessWidget {
   final String name;
-  final int sold;
+  final int stock;
   final double price;
   const _MerchRow({
     required this.name,
-    required this.sold,
+    required this.stock,
     required this.price,
   });
 
@@ -4571,7 +4731,7 @@ class _MerchRow extends StatelessWidget {
                 Row(
                   children: [
                     Text(
-                      'Sold: $sold',
+                      'Stock: $stock',
                       style: GoogleFonts.beVietnamPro(
                         fontSize: 11,
                         color: OrgColors.textFaint,

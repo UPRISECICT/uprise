@@ -7,6 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image/image.dart' as img;
 import 'package:uprise/widgets/admin_export_button.dart';
 import 'export_util.dart';
 import 'export_pdf.dart';
@@ -2043,6 +2044,20 @@ class _EventProposalsState extends State<EventProposals> {
     final timeStr = startTime.isEmpty
         ? '—'
         : (endTime.isEmpty ? startTime : '$startTime – $endTime');
+    // Decoded once so the left-side box can match the photo's own
+    // proportions instead of forcing every banner into a fixed strip —
+    // mirrors the org-side "View Proposal" modal's image sizing.
+    double imageAspectRatio = 4 / 3;
+    if (hasImage) {
+      try {
+        final decoded = img.decodeImage(
+          base64Decode(data['imageBase64'].toString()),
+        );
+        if (decoded != null && decoded.height > 0) {
+          imageAspectRatio = decoded.width / decoded.height;
+        }
+      } catch (_) {}
+    }
 
     showDialog(
       context: context,
@@ -2050,7 +2065,7 @@ class _EventProposalsState extends State<EventProposals> {
       builder: (ctx) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         child: Container(
-          width: 600,
+          width: hasImage ? 960 : 600,
           constraints: BoxConstraints(
             maxHeight: MediaQuery.of(context).size.height * 0.88,
           ),
@@ -2137,363 +2152,416 @@ class _EventProposalsState extends State<EventProposals> {
               ),
 
               // ── BODY ────────────────────────────────────────────────
-              // Flexible (not Expanded) so the dialog shrinks to fit short
-              // content instead of stretching to near-fullscreen height.
+              // Fixed-height Row instead of one scrolling Column — banner
+              // on the left (sized to the photo's own aspect ratio so it
+              // isn't cropped into a cramped 200px strip), details
+              // scrolling independently on the right.
               Flexible(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                child: SizedBox(
+                  height: 560,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // ── Event Image (if present) ──
                       if (hasImage) ...[
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            width: double.infinity,
-                            height: 200,
-                            color: const Color(0xFFF8F9FB),
-                            child: _buildImageFromBase64(
-                              data['imageBase64']!,
-                              fit: BoxFit.contain,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                      ],
-
-                      // ── Event Details Section ──
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: _detailItem(
-                              'Category',
-                              data['category'] == 'Other' &&
-                                      (data['otherCategory'] ?? '')
-                                          .toString()
-                                          .isNotEmpty
-                                  ? data['otherCategory']
-                                  : (data['category'] ?? '—'),
-                              Icons.category_outlined,
-                              valueColor: _categoryBadgeColor(
-                                data['category'] ?? 'Other',
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _detailItem(
-                              'Audience',
-                              data['audience'] ?? '—',
-                              Icons.people_outline_rounded,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: _detailItem(
-                              'Date',
-                              _formatDate(data['date']),
-                              Icons.calendar_today_outlined,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _detailItem(
-                              'Time',
-                              timeStr,
-                              Icons.access_time_rounded,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: _detailItem(
-                              'School Year',
-                              data['schoolYear'] ?? '—',
-                              Icons.school_outlined,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _detailItem(
-                              'Semester',
-                              data['semester'] ?? '—',
-                              Icons.date_range_outlined,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: _detailItem(
-                              'Location',
-                              data['location'] ?? '—',
-                              Icons.location_on_outlined,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _detailItem(
-                              'Issues Certificate',
-                              issuesCertificate ? 'Yes' : 'No',
-                              Icons.verified_outlined,
-                              valueColor: issuesCertificate
-                                  ? const Color(0xFF059669)
-                                  : const Color(0xFF6B7280),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 24),
-
-                      // ── Description ──
-                      _sectionLabel(
-                        'Description',
-                        icon: Icons.description_outlined,
-                      ),
-                      Text(
-                        data['description'] ?? 'No description provided.',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 13.5,
-                          color: const Color(0xFF374151),
-                          height: 1.65,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-
-                      // ── Submission Info ──
-                      _sectionLabel(
-                        'Submission Info',
-                        icon: Icons.person_outline_rounded,
-                      ),
-                      Column(
-                        children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: _detailItem(
-                                  'Submitted By',
-                                  data['submittedByEmail'] ?? '—',
-                                  Icons.email_outlined,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _detailItem(
-                                  'Submitted At',
-                                  _formatTimestamp(data['createdAt']),
-                                  Icons.access_time_rounded,
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (data['reviewedAt'] != null) ...[
-                            const SizedBox(height: 12),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child: FutureBuilder<String>(
-                                    future: _getUserName(
-                                      data['reviewedBy'] ?? '',
+                        Expanded(
+                          flex: 4,
+                          child: Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(20),
+                              child: AspectRatio(
+                                aspectRatio: imageAspectRatio,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF8F9FB),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: const Color(0xFFE2E6EA),
                                     ),
-                                    builder: (context, snapshot) {
-                                      final name = snapshot.hasData
-                                          ? snapshot.data!
-                                          : 'Loading...';
-                                      return _detailItem(
-                                        'Reviewed By',
-                                        name,
-                                        Icons.rate_review_outlined,
-                                      );
-                                    },
                                   ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: _detailItem(
-                                    'Reviewed At',
-                                    _formatTimestamp(data['reviewedAt']),
-                                    Icons.access_time_rounded,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                          if (data['publishedAt'] != null) ...[
-                            const SizedBox(height: 12),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child: _detailItem(
-                                    'Published to Students',
-                                    _formatTimestamp(data['publishedAt']),
-                                    Icons.publish_rounded,
-                                    valueColor: const Color(0xFF2563EB),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                const Expanded(child: SizedBox()),
-                              ],
-                            ),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 24),
-
-                      // ── Admin Feedback (if present) ──
-                      if (data['adminFeedback'] != null &&
-                          data['adminFeedback'].toString().isNotEmpty) ...[
-                        _sectionLabel(
-                          status == 'rejected'
-                              ? 'Rejection Reason'
-                              : 'Feedback',
-                          icon: status == 'rejected'
-                              ? Icons.cancel_outlined
-                              : Icons.rate_review_rounded,
-                        ),
-                        Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: status == 'rejected'
-                                ? const Color(0xFFFEF2F2)
-                                : const Color(0xFFF3E8FF),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: status == 'rejected'
-                                  ? const Color(0xFFDC2626).withOpacity(0.3)
-                                  : const Color(0xFF7C3AED).withOpacity(0.3),
-                            ),
-                          ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Icon(
-                                status == 'rejected'
-                                    ? Icons.cancel_outlined
-                                    : Icons.rate_review_rounded,
-                                size: 16,
-                                color: status == 'rejected'
-                                    ? const Color(0xFFDC2626)
-                                    : const Color(0xFF7C3AED),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  data['adminFeedback'].toString(),
-                                  style: GoogleFonts.beVietnamPro(
-                                    fontSize: 13,
-                                    color: status == 'rejected'
-                                        ? const Color(0xFF991B1B)
-                                        : const Color(0xFF4C1D95),
-                                    height: 1.5,
+                                  clipBehavior: Clip.antiAlias,
+                                  child: _buildImageFromBase64(
+                                    data['imageBase64']!,
+                                    fit: BoxFit.cover,
                                   ),
                                 ),
                               ),
-                            ],
+                            ),
                           ),
                         ),
                       ],
-
-                      // ── Attachment ──
-                      if (hasAttachment) ...[
-                        const SizedBox(height: 20),
-                        _sectionLabel(
-                          'Attachment',
-                          icon: Icons.attach_file_rounded,
-                        ),
-                        Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFFE2E6EA)),
+                      Expanded(
+                        flex: hasImage ? 6 : 10,
+                        child: SingleChildScrollView(
+                          padding: EdgeInsets.fromLTRB(
+                            hasImage ? 4 : 24,
+                            24,
+                            24,
+                            24,
                           ),
-                          child: Row(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Container(
-                                width: 44,
-                                height: 44,
-                                decoration: BoxDecoration(
-                                  color: AdminColors.primaryDark.withOpacity(
-                                    0.10,
-                                  ),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Icon(
-                                  Icons.insert_drive_file_rounded,
-                                  size: 20,
-                                  color: AdminColors.primaryDark,
-                                ),
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      data['attachmentName'] ?? 'Attached File',
-                                      style: GoogleFonts.beVietnamPro(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
+                              // ── Event Details Section ──
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: _detailItem(
+                                      'Category',
+                                      data['category'] == 'Other' &&
+                                              (data['otherCategory'] ?? '')
+                                                  .toString()
+                                                  .isNotEmpty
+                                          ? data['otherCategory']
+                                          : (data['category'] ?? '—'),
+                                      Icons.category_outlined,
+                                      valueColor: _categoryBadgeColor(
+                                        data['category'] ?? 'Other',
                                       ),
                                     ),
-                                    if (data['attachmentSize'] != null)
-                                      Text(
-                                        data['attachmentSize'],
-                                        style: GoogleFonts.beVietnamPro(
-                                          fontSize: 11,
-                                          color: const Color(0xFF9AA5B4),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: _detailItem(
+                                      'Audience',
+                                      data['audience'] ?? '—',
+                                      Icons.people_outline_rounded,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: _detailItem(
+                                      'Date',
+                                      _formatDate(data['date']),
+                                      Icons.calendar_today_outlined,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: _detailItem(
+                                      'Time',
+                                      timeStr,
+                                      Icons.access_time_rounded,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: _detailItem(
+                                      'School Year',
+                                      data['schoolYear'] ?? '—',
+                                      Icons.school_outlined,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: _detailItem(
+                                      'Semester',
+                                      data['semester'] ?? '—',
+                                      Icons.date_range_outlined,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: _detailItem(
+                                      'Location',
+                                      data['location'] ?? '—',
+                                      Icons.location_on_outlined,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: _detailItem(
+                                      'Issues Certificate',
+                                      issuesCertificate ? 'Yes' : 'No',
+                                      Icons.verified_outlined,
+                                      valueColor: issuesCertificate
+                                          ? const Color(0xFF059669)
+                                          : const Color(0xFF6B7280),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 24),
+
+                              // ── Description ──
+                              _sectionLabel(
+                                'Description',
+                                icon: Icons.description_outlined,
+                              ),
+                              Text(
+                                data['description'] ??
+                                    'No description provided.',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 13.5,
+                                  color: const Color(0xFF374151),
+                                  height: 1.65,
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+
+                              // ── Submission Info ──
+                              _sectionLabel(
+                                'Submission Info',
+                                icon: Icons.person_outline_rounded,
+                              ),
+                              Column(
+                                children: [
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(
+                                        child: _detailItem(
+                                          'Submitted By',
+                                          data['submittedByEmail'] ?? '—',
+                                          Icons.email_outlined,
                                         ),
                                       ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: _detailItem(
+                                          'Submitted At',
+                                          _formatTimestamp(data['createdAt']),
+                                          Icons.access_time_rounded,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  if (data['reviewedAt'] != null) ...[
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Expanded(
+                                          child: FutureBuilder<String>(
+                                            future: _getUserName(
+                                              data['reviewedBy'] ?? '',
+                                            ),
+                                            builder: (context, snapshot) {
+                                              final name = snapshot.hasData
+                                                  ? snapshot.data!
+                                                  : 'Loading...';
+                                              return _detailItem(
+                                                'Reviewed By',
+                                                name,
+                                                Icons.rate_review_outlined,
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: _detailItem(
+                                            'Reviewed At',
+                                            _formatTimestamp(
+                                              data['reviewedAt'],
+                                            ),
+                                            Icons.access_time_rounded,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ],
-                                ),
+                                  if (data['publishedAt'] != null) ...[
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Expanded(
+                                          child: _detailItem(
+                                            'Published to Students',
+                                            _formatTimestamp(
+                                              data['publishedAt'],
+                                            ),
+                                            Icons.publish_rounded,
+                                            valueColor: const Color(0xFF2563EB),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        const Expanded(child: SizedBox()),
+                                      ],
+                                    ),
+                                  ],
+                                ],
                               ),
-                              ElevatedButton.icon(
-                                onPressed: () => _saveAndOpenFile(data),
-                                icon: const Icon(
-                                  Icons.open_in_new_rounded,
-                                  size: 14,
+                              const SizedBox(height: 24),
+
+                              // ── Admin Feedback (if present) ──
+                              if (data['adminFeedback'] != null &&
+                                  data['adminFeedback']
+                                      .toString()
+                                      .isNotEmpty) ...[
+                                _sectionLabel(
+                                  status == 'rejected'
+                                      ? 'Rejection Reason'
+                                      : 'Feedback',
+                                  icon: status == 'rejected'
+                                      ? Icons.cancel_outlined
+                                      : Icons.rate_review_rounded,
                                 ),
-                                label: Text(
-                                  'Open',
-                                  style: GoogleFonts.beVietnamPro(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
+                                Container(
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: status == 'rejected'
+                                        ? const Color(0xFFFEF2F2)
+                                        : const Color(0xFFF3E8FF),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: status == 'rejected'
+                                          ? const Color(
+                                              0xFFDC2626,
+                                            ).withOpacity(0.3)
+                                          : const Color(
+                                              0xFF7C3AED,
+                                            ).withOpacity(0.3),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Icon(
+                                        status == 'rejected'
+                                            ? Icons.cancel_outlined
+                                            : Icons.rate_review_rounded,
+                                        size: 16,
+                                        color: status == 'rejected'
+                                            ? const Color(0xFFDC2626)
+                                            : const Color(0xFF7C3AED),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(
+                                          data['adminFeedback'].toString(),
+                                          style: GoogleFonts.beVietnamPro(
+                                            fontSize: 13,
+                                            color: status == 'rejected'
+                                                ? const Color(0xFF991B1B)
+                                                : const Color(0xFF4C1D95),
+                                            height: 1.5,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AdminColors.primaryDark,
-                                  foregroundColor: Colors.white,
-                                  elevation: 0,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
+                              ],
+
+                              // ── Attachment ──
+                              if (hasAttachment) ...[
+                                const SizedBox(height: 20),
+                                _sectionLabel(
+                                  'Attachment',
+                                  icon: Icons.attach_file_rounded,
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: const Color(0xFFE2E6EA),
+                                    ),
                                   ),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 14,
-                                    vertical: 10,
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 44,
+                                        height: 44,
+                                        decoration: BoxDecoration(
+                                          color: AdminColors.primaryDark
+                                              .withOpacity(0.10),
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                        ),
+                                        child: Icon(
+                                          Icons.insert_drive_file_rounded,
+                                          size: 20,
+                                          color: AdminColors.primaryDark,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 14),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              data['attachmentName'] ??
+                                                  'Attached File',
+                                              style: GoogleFonts.beVietnamPro(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                            if (data['attachmentSize'] != null)
+                                              Text(
+                                                data['attachmentSize'],
+                                                style: GoogleFonts.beVietnamPro(
+                                                  fontSize: 11,
+                                                  color: const Color(
+                                                    0xFF9AA5B4,
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                      ElevatedButton.icon(
+                                        onPressed: () => _saveAndOpenFile(data),
+                                        icon: const Icon(
+                                          Icons.open_in_new_rounded,
+                                          size: 14,
+                                        ),
+                                        label: Text(
+                                          'Open',
+                                          style: GoogleFonts.beVietnamPro(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor:
+                                              AdminColors.primaryDark,
+                                          foregroundColor: Colors.white,
+                                          elevation: 0,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                          ),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 14,
+                                            vertical: 10,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              ),
+                              ],
                             ],
                           ),
                         ),
-                      ],
+                      ),
                     ],
                   ),
                 ),

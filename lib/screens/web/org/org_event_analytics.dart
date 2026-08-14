@@ -9,6 +9,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../theme/org_theme.dart';
+import '../../../widgets/admin_export_button.dart';
+import 'export_util.dart';
+import 'export_pdf.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 // ── Design tokens ────────────────────────────────────────────────────────────
@@ -16,19 +19,14 @@ class _DS {
   static const double radiusMd = 12;
   static const double radiusLg = 16;
 
-  // Soft dual-tone "clay" shadow — a gentle dark shadow below/right paired
-  // with a faint light highlight above/left, instead of one flat drop
-  // shadow, so cards read as lightly puffed rather than flat-bordered.
+  // Matches the single flat drop shadow every other org screen's cards
+  // use (dashboard, calendar, certificates, finance, merchandise, etc.)
+  // instead of a two-layer "clay" shadow unique to this screen.
   static final cardShadow = [
     BoxShadow(
-      color: Colors.black.withOpacity(0.07),
-      blurRadius: 18,
-      offset: const Offset(0, 6),
-    ),
-    BoxShadow(
-      color: Colors.white.withOpacity(0.6),
-      blurRadius: 8,
-      offset: const Offset(0, -1),
+      color: Colors.black.withAlpha(15),
+      blurRadius: 12,
+      offset: const Offset(0, 4),
     ),
   ];
 
@@ -53,7 +51,8 @@ class _C {
   static const Color green = Color(0xFF10B981);
   static const Color red = Color(0xFFEF4444);
   static const Color blue = Color(0xFF3B82F6);
-  static const Color surface = Color(0xFFF8FAFC);
+  // Matches the 0xFFFBFCFE Scaffold background every other org screen uses.
+  static const Color surface = Color(0xFFFBFCFE);
   static const Color border = Color(0xFFE2E8F0);
   static const Color muted = Color(0xFF64748B);
   static const Color charcoal = Color(0xFF0F172A);
@@ -293,6 +292,23 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
   StreamSubscription<QuerySnapshot>? _feedbackSubscription;
   StreamSubscription<QuerySnapshot>? _eventFeedbackSubscription;
 
+  // Each KPI card jumps to the chart section with more detail on that
+  // metric instead of just sitting there as a static number.
+  final _distributionKey = GlobalKey();
+  final _ratingKey = GlobalKey();
+  final _regAttendanceKey = GlobalKey();
+
+  void _scrollToSection(GlobalKey key) {
+    final ctx = key.currentContext;
+    if (ctx == null) return;
+    Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeInOut,
+      alignment: 0.1,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -460,6 +476,93 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
         );
   }
 
+  void _showSnack(String msg, Color color) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          msg,
+          style: GoogleFonts.beVietnamPro(color: Colors.white),
+        ),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+  }
+
+  // Every screen with an AdminExportButton emits 'excel'/'pdf' from its
+  // dropdown (see admin_export_button.dart's _items) — matches that
+  // exactly rather than checking for 'csv', which the button never
+  // actually sends.
+  Future<void> _exportAnalytics(String format) async {
+    final data = await _dataFuture;
+    final byEvent = data.registrationVsAttendanceByEvent;
+    final avgByEvent = data.avgByEvent;
+    final feedbackCountByEvent = data.feedbackCountByEvent;
+    final eventIds = {...byEvent.keys, ...avgByEvent.keys};
+
+    if (eventIds.isEmpty) {
+      _showSnack('No analytics data to export', UpriseColors.warning);
+      return;
+    }
+
+    const headers = [
+      'Event',
+      'Registered',
+      'Attended',
+      'Avg. Rating',
+      'Feedback Count',
+      'Income',
+      'Expense',
+    ];
+    final rows = eventIds.map((id) {
+      final title = data.eventDisplayTitle(id);
+      final counts = byEvent[id];
+      final avg = avgByEvent[id];
+      final finance = data.financeForEvent(title);
+      return [
+        title,
+        '${counts?.registered ?? 0}',
+        '${counts?.attended ?? 0}',
+        avg == null ? '—' : avg.toStringAsFixed(1),
+        '${feedbackCountByEvent[id] ?? 0}',
+        (finance?.income ?? 0).toStringAsFixed(2),
+        (finance?.expense ?? 0).toStringAsFixed(2),
+      ];
+    }).toList();
+
+    final now = DateFormat('yyyyMMdd').format(DateTime.now());
+    try {
+      if (format == 'excel') {
+        final csv = [headers, ...rows]
+            .map(
+              (row) => row.map((c) => '"${c.replaceAll('"', '""')}"').join(','),
+            )
+            .join('\n');
+        await OrgExportUtil.saveText(
+          csv,
+          'event_analytics_$now.csv',
+          mimeType: 'text/csv',
+        );
+      } else if (format == 'pdf') {
+        final pdfBytes = await OrgExportPdf.generateTablePdf(
+          title: 'Event Analytics',
+          headers: headers,
+          rows: rows,
+        );
+        await OrgExportUtil.saveBytes(
+          pdfBytes,
+          'event_analytics_$now.pdf',
+          mimeType: 'application/pdf',
+        );
+      }
+      if (mounted) _showSnack('Exported analytics', UpriseColors.success);
+    } catch (e) {
+      if (mounted) _showSnack('Export failed: $e', UpriseColors.error);
+    }
+  }
+
   void _refresh() {
     setState(() {
       _dataFuture = _loadAll();
@@ -582,6 +685,8 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
               ),
             ),
             const SizedBox(width: 14),
+            AdminExportButton(onSelected: _exportAnalytics),
+            const SizedBox(width: 10),
             _RefreshButton(onTap: _refresh),
           ],
         ),
@@ -597,13 +702,28 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _KpiStatsRow(data: data),
+          _KpiStatsRow(
+            data: data,
+            onTapEvents: () => _scrollToSection(_distributionKey),
+            onTapRegistrations: () => _scrollToSection(_regAttendanceKey),
+            onTapAttendance: () => _scrollToSection(_regAttendanceKey),
+            onTapRating: () => _scrollToSection(_ratingKey),
+          ),
           const SizedBox(height: 20),
-          _DistributionCard(data: data),
+          KeyedSubtree(
+            key: _distributionKey,
+            child: _DistributionCard(data: data),
+          ),
           const SizedBox(height: 20),
-          _RatingByEventChart(data: data),
+          KeyedSubtree(
+            key: _ratingKey,
+            child: _RatingByEventChart(data: data),
+          ),
           const SizedBox(height: 20),
-          _RegistrationAttendanceChart(data: data),
+          KeyedSubtree(
+            key: _regAttendanceKey,
+            child: _RegistrationAttendanceChart(data: data),
+          ),
           const SizedBox(height: 20),
           _FinanceByEventChart(data: data),
         ],
@@ -655,29 +775,48 @@ Color _ratingColor(double score) =>
 // events/registrations/attendances/feedback data the charts below use.
 class _KpiStatsRow extends StatelessWidget {
   final _AnalyticsData data;
-  const _KpiStatsRow({required this.data});
+  final VoidCallback? onTapEvents;
+  final VoidCallback? onTapRegistrations;
+  final VoidCallback? onTapAttendance;
+  final VoidCallback? onTapRating;
+  const _KpiStatsRow({
+    required this.data,
+    this.onTapEvents,
+    this.onTapRegistrations,
+    this.onTapAttendance,
+    this.onTapRating,
+  });
 
   @override
   Widget build(BuildContext context) {
     final stats = [
-      ('Total Events', '${data.events.length}', Icons.event_outlined, _C.blue),
+      (
+        'Total Events',
+        '${data.events.length}',
+        Icons.event_outlined,
+        _C.blue,
+        onTapEvents,
+      ),
       (
         'Registrations',
         '${data.totalRegistrations}',
         Icons.how_to_reg_outlined,
         _C.amber,
+        onTapRegistrations,
       ),
       (
         'Attendance Rate',
         '${data.attendanceRate.toStringAsFixed(0)}%',
         Icons.fact_check_outlined,
         _C.green,
+        onTapAttendance,
       ),
       (
         'Avg. Rating',
         data.totalFeedbacks == 0 ? '—' : data.avgRating.toStringAsFixed(1),
         Icons.star_outline_rounded,
         _ratingColor(data.avgRating),
+        onTapRating,
       ),
     ];
 
@@ -694,7 +833,7 @@ class _KpiStatsRow extends StatelessWidget {
             for (final s in stats)
               SizedBox(
                 width: cardWidth,
-                child: _kpiCard(s.$1, s.$2, s.$3, s.$4),
+                child: _kpiCard(s.$1, s.$2, s.$3, s.$4, s.$5),
               ),
           ],
         );
@@ -702,41 +841,71 @@ class _KpiStatsRow extends StatelessWidget {
     );
   }
 
-  Widget _kpiCard(String label, String value, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _C.white,
+  // Matches org_dashboard.dart's own stat card exactly (44×44 icon badge
+  // top-left, big number top-right in the same row, label below) instead
+  // of this screen's own smaller icon-stacked-above-value layout — that's
+  // the reference "this looks good" style the rest of the portal already
+  // uses, so this stat row should read as the same family, not a
+  // one-off. Now tappable — jumps to the chart section with more detail
+  // on that metric instead of just sitting there as a static number.
+  Widget _kpiCard(
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+    VoidCallback? onTap,
+  ) {
+    return Material(
+      color: _C.white,
+      borderRadius: BorderRadius.circular(_DS.radiusMd),
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(_DS.radiusMd),
-        border: Border.all(color: _C.border.withAlpha(128)),
-        boxShadow: _DS.cardShadow,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: color.withAlpha(26),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, size: 16, color: color),
+        child: Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(_DS.radiusMd),
+            border: Border.all(color: _C.border.withAlpha(128)),
+            boxShadow: _DS.cardShadow,
           ),
-          const SizedBox(height: 10),
-          Text(
-            value,
-            style: GoogleFonts.inter(
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              color: _C.charcoal,
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: color.withAlpha(26),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(icon, color: color, size: 20),
+                  ),
+                  Text(
+                    value,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: _C.charcoal,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                label,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: _C.muted,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: GoogleFonts.inter(fontSize: 11.5, color: _C.muted),
-          ),
-        ],
+        ),
       ),
     );
   }

@@ -92,7 +92,7 @@ class _OrgRegistrationFormsScreenState
     final horizontalPadding = isMobile ? 16.0 : 28.0;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F7F9),
+      backgroundColor: const Color(0xFFFBFCFE),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -428,8 +428,15 @@ class _OrgRegistrationFormsScreenState
               clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFEBEEF3)),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE8ECF0)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withAlpha(15),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
               child: Column(
                 children: [
@@ -501,11 +508,11 @@ class _FormRow extends StatelessWidget {
         onTap: onView,
         hoverColor: const Color(0xFFF8F9FB),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           decoration: BoxDecoration(
             border: isLast
                 ? null
-                : const Border(bottom: BorderSide(color: Color(0xFFF3F4F8))),
+                : const Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
           ),
           child: Row(
             children: [

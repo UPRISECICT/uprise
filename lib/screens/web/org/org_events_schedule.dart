@@ -1,4 +1,5 @@
 // ignore_for_file: unused_element_parameter
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -6,6 +7,8 @@ import 'package:intl/intl.dart';
 import '../admin/export_util.dart';
 import '../admin/export_pdf.dart';
 import '../../../theme/org_theme.dart';
+import '../../../utils/platform_file_utils.dart' as platform_file_utils;
+import '../../../widgets/org_attachment_preview.dart';
 import 'org_certificates.dart' show fetchRecipientStatus;
 import 'org_attendance_qr.dart' show showRegistrationAnswers;
 
@@ -155,32 +158,52 @@ Widget _overviewStatCard(
   IconData icon, {
   Color? accent,
 }) {
+  // Matches org_dashboard.dart's own _StatCardWidget exactly (icon badge
+  // top-left, big number top-right, label below) instead of the smaller
+  // icon-stacked-above-value layout this used before — the dashboard's
+  // stat cards are the reference "this looks good" style for the whole
+  // portal, so every stat card elsewhere should read as the same family.
   final c = accent ?? UpriseColors.primaryDark;
   return Container(
-    padding: const EdgeInsets.all(16),
+    padding: const EdgeInsets.all(18),
     decoration: BoxDecoration(
-      color: c.withAlpha(12),
+      color: Colors.white,
       borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: c.withAlpha(35)),
+      border: Border.all(color: const Color(0xFFE2E6EA)),
+      boxShadow: _DS.cardShadow,
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 18, color: c),
-        const SizedBox(height: 10),
-        Text(
-          value,
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 20,
-            fontWeight: FontWeight.w800,
-            color: const Color(0xFF1A202C),
-          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: c.withAlpha(26),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              alignment: Alignment.center,
+              child: Icon(icon, color: c, size: 20),
+            ),
+            Text(
+              value,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 28,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF1A202C),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 2),
+        const SizedBox(height: 12),
         Text(
           label,
           style: GoogleFonts.beVietnamPro(
-            fontSize: 11.5,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
             color: const Color(0xFF64748B),
           ),
         ),
@@ -320,20 +343,56 @@ class _RegistrationTab extends StatelessWidget {
   final EventModel event;
   const _RegistrationTab({required this.event});
 
+  // Registration docs only ever carry a bare userId — name/student number
+  // live on `students` (doc id = uid), so every registrant needs this
+  // lookup to show more than a raw Firestore ID. Mirrors the same
+  // _studentCache pattern org_attendance_qr.dart and the Live Tracker
+  // already use for the exact same reason.
+  Future<List<Map<String, dynamic>>> _load() async {
+    final snap = await FirebaseFirestore.instance
+        .collection('registrations')
+        .where('eventId', isEqualTo: event.id)
+        .get();
+    final regs = snap.docs.map((d) => {...d.data(), 'id': d.id}).toList();
+
+    final uids = regs
+        .map((r) => (r['userId'] ?? '').toString())
+        .where((u) => u.isNotEmpty)
+        .toSet()
+        .toList();
+    final studentNames = <String, String>{};
+    for (var i = 0; i < uids.length; i += 30) {
+      final chunk = uids.sublist(i, (i + 30).clamp(0, uids.length));
+      final studentSnap = await FirebaseFirestore.instance
+          .collection('students')
+          .where(FieldPath.documentId, whereIn: chunk)
+          .get();
+      for (final d in studentSnap.docs) {
+        final fullName = (d.data()['fullName'] ?? '').toString();
+        if (fullName.isNotEmpty) studentNames[d.id] = fullName;
+      }
+    }
+
+    for (final r in regs) {
+      final uid = (r['userId'] ?? '').toString();
+      final formName = (r['studentName'] as String?) ?? '';
+      r['resolvedName'] = formName.isNotEmpty
+          ? formName
+          : (studentNames[uid] ?? 'Unknown Student');
+    }
+    return regs;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<QuerySnapshot>(
-      future: FirebaseFirestore.instance
-          .collection('registrations')
-          .where('eventId', isEqualTo: event.id)
-          .get(),
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _load(),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return _overviewLoading();
         }
-        final docs = snap.data?.docs ?? [];
-        final withAnswers = docs.where((doc) {
-          final data = doc.data() as Map<String, dynamic>;
+        final docs = snap.data ?? [];
+        final withAnswers = docs.where((data) {
           return data['formResponses'] != null || data['formAnswers'] != null;
         }).length;
         return SingleChildScrollView(
@@ -360,35 +419,66 @@ class _RegistrationTab extends StatelessWidget {
               if (docs.isEmpty)
                 _overviewEmptyState('No one has registered yet.')
               else
-                ...docs.map((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  final name =
-                      (data['studentName'] ?? data['userId'] ?? 'Unknown')
-                          .toString();
+                ...docs.map((data) {
+                  final name = (data['resolvedName'] ?? 'Unknown Student')
+                      .toString();
                   final hasAnswers =
                       data['formResponses'] != null ||
                       data['formAnswers'] != null;
-                  return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(
-                      Icons.person_outline,
-                      size: 18,
-                      color: Color(0xFF6B7280),
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
                     ),
-                    title: Text(
-                      name,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFEDF0F3)),
                     ),
-                    trailing: hasAnswers
-                        ? TextButton(
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: UpriseColors.primaryDark.withAlpha(20),
+                            shape: BoxShape.circle,
+                          ),
+                          alignment: Alignment.center,
+                          child: Icon(
+                            Icons.person_outline,
+                            size: 16,
+                            color: UpriseColors.primaryDark,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            name,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFF1A202C),
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (hasAnswers)
+                          TextButton(
                             onPressed: () =>
                                 showRegistrationAnswers(context, name, data),
+                            style: TextButton.styleFrom(
+                              foregroundColor: UpriseColors.primaryDark,
+                              textStyle: GoogleFonts.beVietnamPro(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                             child: const Text('View Answers'),
-                          )
-                        : null,
+                          ),
+                      ],
+                    ),
                   );
                 }),
             ],
@@ -399,20 +489,143 @@ class _RegistrationTab extends StatelessWidget {
   }
 }
 
-class _AttendanceTab extends StatelessWidget {
+class _AttendanceTab extends StatefulWidget {
   final EventModel event;
   const _AttendanceTab({required this.event});
+
+  @override
+  State<_AttendanceTab> createState() => _AttendanceTabState();
+}
+
+class _AttendanceTabState extends State<_AttendanceTab> {
+  // registrations only ever carry a bare userId — name lives on `students`
+  // (doc id = uid), same _studentCache lookup pattern used by the
+  // Registration tab, org_attendance_qr.dart, and the Live Tracker.
+  final Map<String, Map<String, dynamic>> _studentCache = {};
+
+  Future<void> _ensureStudentsLoaded(Iterable<String> uids) async {
+    final missing = uids
+        .where((u) => u.isNotEmpty && !_studentCache.containsKey(u))
+        .toSet()
+        .toList();
+    if (missing.isEmpty) return;
+    for (var i = 0; i < missing.length; i += 30) {
+      final chunk = missing.sublist(i, (i + 30).clamp(0, missing.length));
+      try {
+        final snap = await FirebaseFirestore.instance
+            .collection('students')
+            .where(FieldPath.documentId, whereIn: chunk)
+            .get();
+        for (final d in snap.docs) {
+          _studentCache[d.id] = d.data();
+        }
+      } catch (_) {}
+      for (final id in chunk) {
+        _studentCache.putIfAbsent(id, () => const {});
+      }
+    }
+    if (mounted) setState(() {});
+  }
+
+  Widget _attendanceRow(String name, String status) {
+    final Color color;
+    final IconData icon;
+    final String label;
+    switch (status) {
+      case 'present':
+        color = UpriseColors.success;
+        icon = Icons.check_circle_outline;
+        label = 'Present';
+        break;
+      case 'late':
+        color = UpriseColors.warning;
+        icon = Icons.access_time_rounded;
+        label = 'Late';
+        break;
+      default:
+        color = UpriseColors.error;
+        icon = Icons.cancel_outlined;
+        label = 'Absent';
+    }
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFEDF0F3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: UpriseColors.primaryDark.withAlpha(20),
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              Icons.person_outline,
+              size: 16,
+              color: UpriseColors.primaryDark,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              name,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF1A202C),
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: color.withAlpha(24),
+              borderRadius: BorderRadius.circular(100),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 13, color: color),
+                const SizedBox(width: 5),
+                Text(
+                  label,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('events')
-          .doc(event.id)
+          .doc(widget.event.id)
           .collection('attendances')
           .snapshots(),
       builder: (context, attSnap) {
         final attDocs = attSnap.data?.docs ?? [];
+        final attByStudent = <String, Map<String, dynamic>>{};
+        for (final d in attDocs) {
+          final m = d.data() as Map<String, dynamic>;
+          final sid = (m['studentId'] ?? '').toString();
+          if (sid.isNotEmpty) attByStudent[sid] = m;
+        }
         final present = attDocs
             .where((d) => (d.data() as Map)['status'] == 'present')
             .length;
@@ -422,12 +635,37 @@ class _AttendanceTab extends StatelessWidget {
         return StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
               .collection('registrations')
-              .where('eventId', isEqualTo: event.id)
+              .where('eventId', isEqualTo: widget.event.id)
               .snapshots(),
           builder: (context, regSnap) {
-            final regCount = regSnap.data?.docs.length ?? 0;
+            final regDocs = regSnap.data?.docs ?? [];
+            final regCount = regDocs.length;
             final total = regCount > attDocs.length ? regCount : attDocs.length;
             final absent = (total - present - late).clamp(0, total);
+
+            final uids = regDocs
+                .map((d) => ((d.data() as Map)['userId'] ?? '').toString())
+                .where((u) => u.isNotEmpty);
+            _ensureStudentsLoaded(uids);
+
+            final rows = regDocs.map((doc) {
+              final d = doc.data() as Map<String, dynamic>;
+              final uid = (d['userId'] ?? '').toString();
+              final att = attByStudent[uid];
+              final status = att == null
+                  ? 'absent'
+                  : (att['status'] ?? 'present').toString();
+              final regFullName = (d['fullName'] as String?)?.trim();
+              final cachedFullName =
+                  (_studentCache[uid]?['fullName'] as String?)?.trim();
+              final name = regFullName?.isNotEmpty == true
+                  ? regFullName!
+                  : (cachedFullName?.isNotEmpty == true
+                        ? cachedFullName!
+                        : 'Unknown Student');
+              return (name: name, status: status);
+            }).toList()..sort((a, b) => a.name.compareTo(b.name));
+
             return SingleChildScrollView(
               padding: const EdgeInsets.all(20),
               child: Column(
@@ -460,6 +698,11 @@ class _AttendanceTab extends StatelessWidget {
                       accent: UpriseColors.error,
                     ),
                   ]),
+                  const SizedBox(height: 16),
+                  if (rows.isEmpty)
+                    _overviewEmptyState('No one has registered yet.')
+                  else
+                    ...rows.map((r) => _attendanceRow(r.name, r.status)),
                 ],
               ),
             );
@@ -540,10 +783,11 @@ class _FeedbackTab extends StatelessWidget {
                       (f) => Container(
                         width: double.infinity,
                         margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF8F9FB),
+                          color: Colors.white,
                           borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFEDF0F3)),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -628,6 +872,78 @@ class _CertificatesTab extends StatelessWidget {
                   color: const Color(0xFF9AA5B4),
                 ),
               ),
+              const SizedBox(height: 16),
+              if (rows.isEmpty)
+                _overviewEmptyState('No attendees to show yet.')
+              else
+                ...rows.map((r) {
+                  final rowEligible = r.attended && r.evaluated;
+                  final (Color color, String label) = r.certSent
+                      ? (UpriseColors.success, 'Issued')
+                      : (rowEligible
+                            ? (UpriseColors.info, 'Eligible')
+                            : (UpriseColors.darkGray, 'Not Eligible'));
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFEDF0F3)),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: UpriseColors.primaryDark.withAlpha(20),
+                            shape: BoxShape.circle,
+                          ),
+                          alignment: Alignment.center,
+                          child: Icon(
+                            Icons.person_outline,
+                            size: 16,
+                            color: UpriseColors.primaryDark,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            r.name,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFF1A202C),
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: color.withAlpha(24),
+                            borderRadius: BorderRadius.circular(100),
+                          ),
+                          child: Text(
+                            label,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: color,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
             ],
           ),
         );
@@ -726,7 +1042,7 @@ class _ReportTab extends StatelessWidget {
   final EventModel event;
   const _ReportTab({required this.event});
 
-  Future<(bool financial, bool accomplishment)> _load() async {
+  Future<(Map<String, dynamic>?, Map<String, dynamic>?)> _load() async {
     final financial = await FirebaseFirestore.instance
         .collection('reports')
         .where('orgId', isEqualTo: event.orgId)
@@ -739,47 +1055,141 @@ class _ReportTab extends StatelessWidget {
         .where('type', isEqualTo: 'accomplishment')
         .where('eventId', isEqualTo: event.id)
         .get();
-    return (financial.docs.isNotEmpty, accomplishment.docs.isNotEmpty);
+    return (
+      financial.docs.isEmpty ? null : financial.docs.first.data(),
+      accomplishment.docs.isEmpty ? null : accomplishment.docs.first.data(),
+    );
   }
 
-  Widget _statusRow(String label, bool submitted) => Container(
-    width: double.infinity,
-    margin: const EdgeInsets.only(bottom: 10),
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(
-      color: submitted ? const Color(0xFFECFDF5) : const Color(0xFFFFFBEB),
-      borderRadius: BorderRadius.circular(10),
-    ),
-    child: Row(
-      children: [
-        Icon(
-          submitted ? Icons.check_circle_outline : Icons.pending_outlined,
-          size: 18,
-          color: submitted ? UpriseColors.success : UpriseColors.warning,
-        ),
-        const SizedBox(width: 10),
-        Text(
-          '$label — ${submitted ? 'Submitted' : 'Pending'}',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: const Color(0xFF1A202C),
+  // Mirrors org_reports.dart's own (private, file-local) _mimeFromExt —
+  // small enough to duplicate rather than reach into another screen's
+  // private helper.
+  static String _mimeFromExt(String ext) {
+    switch (ext) {
+      case 'png':
+        return 'image/png';
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'pdf':
+        return 'application/pdf';
+      case 'doc':
+        return 'application/msword';
+      case 'docx':
+        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      case 'xlsx':
+        return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      default:
+        return 'application/octet-stream';
+    }
+  }
+
+  Future<void> _openAttachment(
+    BuildContext context,
+    Map<String, dynamic> report,
+  ) async {
+    final b64 = report['fileBase64'] as String?;
+    if (b64 == null || b64.isEmpty) return;
+    try {
+      final bytes = base64Decode(b64);
+      final name = (report['fileName'] as String?) ?? 'document';
+      final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
+      final mime = _mimeFromExt(ext);
+
+      if (mime.startsWith('image/')) {
+        OrgAttachmentPreview.showImage(
+          context: context,
+          bytes: bytes,
+          fileName: name,
+        );
+      } else if (mime == 'text/plain') {
+        final text = utf8.decode(bytes);
+        OrgAttachmentPreview.showText(
+          context: context,
+          fileName: name,
+          text: text,
+        );
+      } else {
+        await platform_file_utils.saveBytesToTempAndOpen(
+          bytes,
+          name,
+          mimeType: mime,
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error opening file: $e'),
+            backgroundColor: const Color(0xFFDC2626),
           ),
-        ),
-      ],
-    ),
-  );
+        );
+      }
+    }
+  }
+
+  Widget _statusRow(
+    BuildContext context,
+    String label,
+    Map<String, dynamic>? report,
+  ) {
+    final submitted = report != null;
+    final hasFile =
+        submitted && (report['fileBase64'] as String?)?.isNotEmpty == true;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: submitted ? const Color(0xFFECFDF5) : const Color(0xFFFFFBEB),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            submitted ? Icons.check_circle_outline : Icons.pending_outlined,
+            size: 18,
+            color: submitted ? UpriseColors.success : UpriseColors.warning,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '$label — ${submitted ? 'Submitted' : 'Pending'}',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF1A202C),
+              ),
+            ),
+          ),
+          if (hasFile)
+            TextButton.icon(
+              onPressed: () => _openAttachment(context, report),
+              icon: const Icon(Icons.description_outlined, size: 16),
+              label: const Text('View File'),
+              style: TextButton.styleFrom(
+                foregroundColor: UpriseColors.primaryDark,
+                textStyle: GoogleFonts.beVietnamPro(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<(bool, bool)>(
+    return FutureBuilder<(Map<String, dynamic>?, Map<String, dynamic>?)>(
       future: _load(),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return _overviewLoading();
         }
-        final financialSubmitted = snap.data?.$1 ?? false;
-        final accomplishmentSubmitted = snap.data?.$2 ?? false;
+        final financial = snap.data?.$1;
+        final accomplishment = snap.data?.$2;
         return SingleChildScrollView(
           padding: const EdgeInsets.all(20),
           child: Column(
@@ -789,8 +1199,8 @@ class _ReportTab extends StatelessWidget {
                 'Report Submissions',
                 icon: Icons.summarize_outlined,
               ),
-              _statusRow('Financial Report', financialSubmitted),
-              _statusRow('Accomplishment Report', accomplishmentSubmitted),
+              _statusRow(context, 'Financial Report', financial),
+              _statusRow(context, 'Accomplishment Report', accomplishment),
             ],
           ),
         );
@@ -1694,7 +2104,7 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
     final endTime = _overviewEndTime;
     final guestSpeaker = _overviewGuestSpeaker;
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FB),
+      backgroundColor: const Color(0xFFFBFCFE),
       body: DefaultTabController(
         length: 7,
         child: Column(
@@ -1838,6 +2248,12 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                         ),
                         child: TabBar(
                           isScrollable: true,
+                          tabAlignment: TabAlignment.start,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          labelPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 4,
+                          ),
                           labelColor: UpriseColors.primaryDark,
                           unselectedLabelColor: const Color(0xFF64748B),
                           indicatorColor: UpriseColors.primaryDark,
@@ -1870,51 +2286,80 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   // ── Key details as tidy cards ──────────────────
-                                  Wrap(
-                                    spacing: 12,
-                                    runSpacing: 12,
+                                  // A fixed 3+2 grid instead of a Wrap that
+                                  // reflowed unevenly (4 cards on one row,
+                                  // 1 alone on the next) — and a distinct
+                                  // accent color per field instead of one
+                                  // flat tint repeated five times, so the
+                                  // row reads at a glance instead of
+                                  // blurring into a single color block.
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      _detailCard(
-                                        'Date',
-                                        DateFormat(
-                                          'MMM d, yyyy',
-                                        ).format(event.date),
-                                        Icons.calendar_today_rounded,
-                                        accent: catColor,
-                                      ),
-                                      _detailCard(
-                                        'Time',
-                                        startTime.isNotEmpty
-                                            ? (endTime.isNotEmpty
-                                                  ? '$startTime - $endTime'
-                                                  : startTime)
-                                            : 'TBD',
-                                        Icons.access_time_rounded,
-                                        accent: catColor,
-                                      ),
-                                      _detailCard(
-                                        'Location',
-                                        event.location.isNotEmpty
-                                            ? event.location
-                                            : 'TBD',
-                                        Icons.location_on_outlined,
-                                        accent: catColor,
-                                      ),
-                                      _detailCard(
-                                        'Audience',
-                                        event.audience.isNotEmpty
-                                            ? event.audience
-                                            : 'Public',
-                                        Icons.group_outlined,
-                                        accent: catColor,
-                                      ),
-                                      if (event.orgName.isNotEmpty)
-                                        _detailCard(
-                                          'Organization',
-                                          event.orgName,
-                                          Icons.business_center,
-                                          accent: catColor,
+                                      Expanded(
+                                        child: _detailCard(
+                                          'Date',
+                                          DateFormat(
+                                            'MMM d, yyyy',
+                                          ).format(event.date),
+                                          Icons.calendar_today_rounded,
+                                          accent: const Color(0xFF3B82F6),
                                         ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: _detailCard(
+                                          'Time',
+                                          startTime.isNotEmpty
+                                              ? (endTime.isNotEmpty
+                                                    ? '$startTime - $endTime'
+                                                    : startTime)
+                                              : 'TBD',
+                                          Icons.access_time_rounded,
+                                          accent: const Color(0xFFF59E0B),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: _detailCard(
+                                          'Location',
+                                          event.location.isNotEmpty
+                                              ? event.location
+                                              : 'TBD',
+                                          Icons.location_on_outlined,
+                                          accent: const Color(0xFF8B5CF6),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(
+                                        child: _detailCard(
+                                          'Audience',
+                                          event.audience.isNotEmpty
+                                              ? event.audience
+                                              : 'Public',
+                                          Icons.group_outlined,
+                                          accent: const Color(0xFF06B6D4),
+                                        ),
+                                      ),
+                                      if (event.orgName.isNotEmpty) ...[
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: _detailCard(
+                                            'Organization',
+                                            event.orgName,
+                                            Icons.business_center,
+                                            accent: const Color(0xFF10B981),
+                                          ),
+                                        ),
+                                      ] else
+                                        const Spacer(),
                                     ],
                                   ),
                                   const SizedBox(height: 22),
@@ -1927,16 +2372,25 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                                     ),
                                     Container(
                                       width: double.infinity,
-                                      padding: const EdgeInsets.all(14),
+                                      padding: const EdgeInsets.fromLTRB(
+                                        18,
+                                        16,
+                                        18,
+                                        16,
+                                      ),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFFF8F9FB),
+                                        color: Colors.white,
                                         borderRadius: BorderRadius.circular(12),
-                                        border: Border(
-                                          left: BorderSide(
-                                            color: catColor,
-                                            width: 3,
-                                          ),
+                                        border: Border.all(
+                                          color: const Color(0xFFEDF0F3),
                                         ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withAlpha(8),
+                                            blurRadius: 10,
+                                            offset: const Offset(0, 3),
+                                          ),
+                                        ],
                                       ),
                                       child: Text(
                                         event.description,
@@ -2086,27 +2540,33 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
   }) {
     final c = accent ?? UpriseColors.primaryDark;
     return Container(
-      width: 260,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: c.withAlpha(12),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: c.withAlpha(35)),
+        border: Border.all(color: const Color(0xFFEDF0F3)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(8),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 32,
-            height: 32,
+            width: 34,
+            height: 34,
             decoration: BoxDecoration(
-              color: c.withAlpha(35),
-              borderRadius: BorderRadius.circular(9),
+              color: c.withAlpha(28),
+              borderRadius: BorderRadius.circular(10),
             ),
             alignment: Alignment.center,
-            child: Icon(icon, size: 16, color: c),
+            child: Icon(icon, size: 17, color: c),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2116,15 +2576,15 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                   style: GoogleFonts.beVietnamPro(
                     fontSize: 10.5,
                     fontWeight: FontWeight.w600,
-                    color: const Color(0xFF64748B),
-                    letterSpacing: 0.3,
+                    color: const Color(0xFF94A3B8),
+                    letterSpacing: 0.4,
                   ),
                 ),
                 const SizedBox(height: 3),
                 Text(
                   value,
                   style: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
+                    fontSize: 13.5,
                     fontWeight: FontWeight.w700,
                     color: const Color(0xFF1A202C),
                   ),

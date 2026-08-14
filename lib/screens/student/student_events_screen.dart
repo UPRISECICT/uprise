@@ -22,6 +22,8 @@ import 'student_feedback_screen.dart';
 import 'student_certificates_screen.dart';
 import 'student_webinar_code_screen.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import '../../services/webinar_attendance_service.dart';
 import '../../services/certificate_auto_issue_service.dart';
 
@@ -2734,6 +2736,14 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   final Map<String, TextEditingController> _fieldControllers = {};
   final Map<String, String?> _singleChoice = {};
   final Map<String, Set<String>> _multiChoice = {};
+  // 'file_upload' question answers — images are compressed and stored as a
+  // base64 data URI directly on the value (same convention org screens
+  // already use for product/banner photos); videos go to Firebase Storage
+  // instead since they'd blow past Firestore's 1 MiB document limit even
+  // compressed, so the value is a download URL for those.
+  final Map<String, String> _fileUploadValues = {};
+  final Map<String, String> _fileUploadNames = {};
+  final Map<String, bool> _fileUploadBusy = {};
 
   // Whether this student has actually been marked present/late for this
   // event (via QR/manual check-in) — separate from _isRegistered, since
@@ -3229,6 +3239,91 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     if (mounted) setState(() => _loadingForm = false);
   }
 
+  void _refreshFieldState(VoidCallback? onStateChanged) {
+    if (onStateChanged != null) {
+      onStateChanged();
+    } else if (mounted) {
+      setState(() {});
+    }
+  }
+
+  // Same compression settings org_merchandise.dart already uses for its own
+  // photo uploads (1280px max dimension, quality 72) — kept consistent so a
+  // registration-form photo answer stays comfortably under Firestore's
+  // 1 MiB document limit once base64-encoded, same as everywhere else in
+  // the app that stores an image inline on a document.
+  Future<Uint8List> _compressPickedImage(Uint8List bytes) async {
+    try {
+      final compressed = await FlutterImageCompress.compressWithList(
+        bytes,
+        minWidth: 1280,
+        minHeight: 1280,
+        quality: 72,
+        format: CompressFormat.jpeg,
+      );
+      return compressed.length < bytes.length ? compressed : bytes;
+    } catch (_) {
+      return bytes;
+    }
+  }
+
+  // A 'file_upload' question's picked answer. Images are compressed then
+  // stored as a base64 data URI directly on the answer (matches how org
+  // screens already store product/banner photos inline on a document).
+  // Videos go to Firebase Storage instead — even compressed, a video would
+  // blow past Firestore's 1 MiB document limit — and the answer stores the
+  // resulting download URL, which is also what the org-side answer viewer
+  // (showRegistrationAnswers in org_attendance_qr.dart) already renders as
+  // a tappable link for any http(s) value.
+  Future<void> _pickFileUploadAnswer(
+    String id, {
+    required bool asVideo,
+    VoidCallback? onStateChanged,
+  }) async {
+    final picker = ImagePicker();
+    final XFile? picked = asVideo
+        ? await picker.pickVideo(source: ImageSource.gallery)
+        : await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+    if (picked == null) return;
+
+    _fileUploadBusy[id] = true;
+    _refreshFieldState(onStateChanged);
+    try {
+      final bytes = await picked.readAsBytes();
+      if (asVideo) {
+        final user = FirebaseAuth.instance.currentUser;
+        final ext = picked.name.contains('.')
+            ? picked.name.split('.').last.toLowerCase()
+            : 'mp4';
+        final path =
+            'registration_uploads/${widget.event.id}/${user?.uid ?? 'anon'}/'
+            '${id}_${DateTime.now().millisecondsSinceEpoch}.$ext';
+        final ref = FirebaseStorage.instance.ref(path);
+        await ref.putData(bytes, SettableMetadata(contentType: 'video/$ext'));
+        final url = await ref.getDownloadURL();
+        _fileUploadValues[id] = url;
+        _fileUploadNames[id] = picked.name;
+      } else {
+        final compressed = await _compressPickedImage(bytes);
+        _fileUploadValues[id] =
+            'data:image/jpeg;base64,${base64Encode(compressed)}';
+        _fileUploadNames[id] = picked.name;
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Upload failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      _fileUploadBusy[id] = false;
+      _refreshFieldState(onStateChanged);
+    }
+  }
+
   static final RegExp _formEmailPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
 
   String? _validateDynamicFields() {
@@ -3249,6 +3344,15 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       if (type == 'checkboxes') {
         if (required && (_multiChoice[id] ?? {}).isEmpty) {
           return 'Please answer: $label';
+        }
+        continue;
+      }
+      if (type == 'file_upload') {
+        if (required && (_fileUploadValues[id] ?? '').isEmpty) {
+          return 'Please attach a photo/video for: $label';
+        }
+        if (_fileUploadBusy[id] == true) {
+          return 'Please wait for the upload to finish for: $label';
         }
         continue;
       }
@@ -3283,6 +3387,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         out[id] = {'label': label, 'value': _singleChoice[id]};
       } else if (type == 'checkboxes') {
         out[id] = {'label': label, 'value': (_multiChoice[id] ?? {}).toList()};
+      } else if (type == 'file_upload') {
+        out[id] = {'label': label, 'value': _fileUploadValues[id] ?? ''};
       } else {
         out[id] = {
           'label': label,
@@ -3563,6 +3669,99 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                 ),
               )
               .toList(),
+        );
+        break;
+      case 'file_upload':
+        final mediaType = (field['mediaType'] as String?) ?? 'both';
+        final hasValue = (_fileUploadValues[id] ?? '').isNotEmpty;
+        final busy = _fileUploadBusy[id] == true;
+        input = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (hasValue)
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.green.shade200),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.check_circle,
+                      color: Colors.green,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _fileUploadNames[id] ?? 'File attached',
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          color: Colors.black87,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    InkWell(
+                      onTap: () {
+                        _fileUploadValues.remove(id);
+                        _fileUploadNames.remove(id);
+                        if (onStateChanged != null) {
+                          onStateChanged();
+                        } else {
+                          setState(() {});
+                        }
+                      },
+                      child: const Icon(Icons.close, size: 16),
+                    ),
+                  ],
+                ),
+              ),
+            if (busy)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Center(
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              )
+            else
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  if (mediaType == 'image' || mediaType == 'both')
+                    OutlinedButton.icon(
+                      onPressed: () => _pickFileUploadAnswer(
+                        id,
+                        asVideo: false,
+                        onStateChanged: onStateChanged,
+                      ),
+                      icon: const Icon(Icons.image_outlined, size: 16),
+                      label: Text(hasValue ? 'Replace Photo' : 'Choose Photo'),
+                    ),
+                  if (mediaType == 'video' || mediaType == 'both')
+                    OutlinedButton.icon(
+                      onPressed: () => _pickFileUploadAnswer(
+                        id,
+                        asVideo: true,
+                        onStateChanged: onStateChanged,
+                      ),
+                      icon: const Icon(Icons.videocam_outlined, size: 16),
+                      label: Text(hasValue ? 'Replace Video' : 'Choose Video'),
+                    ),
+                ],
+              ),
+          ],
         );
         break;
       default:

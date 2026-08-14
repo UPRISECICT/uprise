@@ -642,7 +642,10 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
       ];
     }).toList();
     try {
-      if (choice == 'csv') {
+      // AdminExportButton's dropdown emits 'excel'/'pdf' (see
+      // admin_export_button.dart's _items), not 'csv' — this used to
+      // check for 'csv', so "Export as Excel" silently did nothing.
+      if (choice == 'excel') {
         final csv = [headers, ...rows]
             .map(
               (row) => row.map((c) => '"${c.replaceAll('"', '""')}"').join(','),

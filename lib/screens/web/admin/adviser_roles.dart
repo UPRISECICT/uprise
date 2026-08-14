@@ -1062,14 +1062,19 @@ class _AdviserRolesState extends State<AdviserRoles> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          data['orgName'] ?? '—',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: const Color(0xFF1A202C),
+                        Tooltip(
+                          message: (data['orgName'] ?? '—').toString(),
+                          child: Text(
+                            ((data['orgAbbrev'] ?? '').toString().isNotEmpty)
+                                ? data['orgAbbrev'].toString()
+                                : (data['orgName'] ?? '—').toString(),
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFF1A202C),
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          overflow: TextOverflow.ellipsis,
                         ),
                         if ((data['orgTag'] ?? '').toString().isNotEmpty)
                           Text(

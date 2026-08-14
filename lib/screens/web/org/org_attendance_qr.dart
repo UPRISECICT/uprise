@@ -1,4 +1,4 @@
-﻿// ignore_for_file: unused_element_parameter
+// ignore_for_file: unused_element_parameter
 
 import 'dart:async';
 import 'dart:typed_data';
@@ -346,11 +346,11 @@ _EState _eventState(EventModel e, {bool? activeOverride}) {
 }
 
 /// Determines the attendance status based on current time and event settings.
-/// 
+///
 /// If [markLate] is false, always returns 'present' (default behavior).
 /// If [markLate] is true, compares the current time with:
 /// event scheduled start time + lateAfterMinutes
-/// 
+///
 /// The late calculation ALWAYS uses the event's scheduled start time,
 /// not when the organization opened attendance.
 String _determineAttendanceStatus(
@@ -438,7 +438,7 @@ class _EventManagementScreenState extends State<EventManagementScreen> {
     final horizontalPadding = isMobile ? 16.0 : 28.0;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F7F9),
+      backgroundColor: const Color(0xFFFBFCFE),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1010,11 +1010,12 @@ class _AttendanceTabState extends State<AttendanceTab>
           .doc(widget.eventDocId)
           .get();
       final eventData = eventDocSnapshot.data() as Map<String, dynamic>?;
-      
+
       String status = 'present';
       try {
         final markLate = eventData?['markLate'] == true;
-        final lateAfterMinutes = (eventData?['lateAfterMinutes'] as num?)?.toInt() ?? 15;
+        final lateAfterMinutes =
+            (eventData?['lateAfterMinutes'] as num?)?.toInt() ?? 15;
         status = _determineAttendanceStatus(
           widget.event!.date,
           widget.event!.startTime,
@@ -1151,11 +1152,12 @@ class _AttendanceTabState extends State<AttendanceTab>
           .doc(widget.eventDocId)
           .get();
       final eventDataMap = eventDocSnapshot.data() as Map<String, dynamic>?;
-      
+
       String status = 'present';
       try {
         final markLate = eventDataMap?['markLate'] == true;
-        final lateAfterMinutes = (eventDataMap?['lateAfterMinutes'] as num?)?.toInt() ?? 15;
+        final lateAfterMinutes =
+            (eventDataMap?['lateAfterMinutes'] as num?)?.toInt() ?? 15;
         status = _determineAttendanceStatus(
           widget.event!.date,
           widget.event!.startTime,
@@ -1882,7 +1884,10 @@ class _AttendanceTabState extends State<AttendanceTab>
     }
   }
 
-  Widget _buildLateMarkingSettings(EventModel? event, DocumentSnapshot? eventDoc) {
+  Widget _buildLateMarkingSettings(
+    EventModel? event,
+    DocumentSnapshot? eventDoc,
+  ) {
     if (event == null) {
       return Container(
         padding: const EdgeInsets.all(16),
@@ -1904,10 +1909,12 @@ class _AttendanceTabState extends State<AttendanceTab>
     }
 
     // Get the live values from Firestore document if available, otherwise use event model
-    final liveMarkLate = (eventDoc?.data() as Map?)?.containsKey('markLate') ?? false
+    final liveMarkLate =
+        (eventDoc?.data() as Map?)?.containsKey('markLate') ?? false
         ? (eventDoc?.data() as Map)['markLate'] == true
         : event.markLate;
-    final liveLateAfterMinutes = (eventDoc?.data() as Map?)?.containsKey('lateAfterMinutes') ?? false
+    final liveLateAfterMinutes =
+        (eventDoc?.data() as Map?)?.containsKey('lateAfterMinutes') ?? false
         ? ((eventDoc?.data() as Map)['lateAfterMinutes'] as num?)?.toInt() ?? 15
         : event.lateAfterMinutes;
 
@@ -2100,7 +2107,9 @@ class _AttendanceTabState extends State<AttendanceTab>
                     ),
                     onChanged: (v) {
                       final parsed = int.tryParse(v.trim()) ?? 15;
-                      setState(() => _tempLateAfterMinutes = parsed.clamp(1, 300));
+                      setState(
+                        () => _tempLateAfterMinutes = parsed.clamp(1, 300),
+                      );
                     },
                   ),
                 ),
@@ -2136,9 +2145,7 @@ class _AttendanceTabState extends State<AttendanceTab>
                     : () => setState(() => _editingLateMark = false),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: const Color(0xFF94A3B8),
-                  side: BorderSide(
-                    color: const Color(0xFFE4E8EF),
-                  ),
+                  side: BorderSide(color: const Color(0xFFE4E8EF)),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 10,
@@ -2746,12 +2753,16 @@ class _AttendanceTabState extends State<AttendanceTab>
             AdminExportButton(
               enabled: canExport,
               label: 'Export',
+              // AdminExportButton's dropdown emits 'excel'/'pdf' (see
+              // admin_export_button.dart's _items), not 'csv' — this used
+              // to check for 'csv', so "Export as Excel" silently did
+              // nothing.
               onSelected: (choice) {
                 if (_subTab == 0) {
-                  if (choice == 'csv') _exportAttendanceCsv(filteredAttDocs);
+                  if (choice == 'excel') _exportAttendanceCsv(filteredAttDocs);
                   if (choice == 'pdf') _exportAttendancePdf(filteredAttDocs);
                 } else {
-                  if (choice == 'csv')
+                  if (choice == 'excel')
                     _exportRegistrantCsv(filteredRegDocs, attDocs);
                   if (choice == 'pdf')
                     _exportRegistrantPdf(filteredRegDocs, attDocs);
@@ -3233,17 +3244,21 @@ class _DataTable extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Header — was a solid saturated-orange banner that dominated the
-          // top of every table using this shared widget; softened to a
-          // neutral header with a slim accent underline, same fix already
-          // applied to the dashboard's and certificates' table headers.
+          // Header — matches every other org table's header treatment
+          // (certificates, finance, letter request, proposals, reports):
+          // a soft amber tint with a translucent bottom border, instead of
+          // this table's own one-off neutral-gray/solid-border variant.
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-            decoration: const BoxDecoration(
-              color: Color(0xFFF8F9FB),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF7ED),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(14),
+              ),
               border: Border(
-                bottom: BorderSide(color: UpriseColors.primaryDark, width: 2),
+                bottom: BorderSide(
+                  color: UpriseColors.primaryDark.withAlpha(60),
+                ),
               ),
             ),
             child: Row(
@@ -3494,14 +3509,15 @@ class _TableRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) => InkWell(
     onTap: onTap,
-    hoverColor: UpriseColors.primaryDark.withAlpha(12),
+    // Matches every other org table's row hover/divider treatment
+    // (certificates, finance, letter request, proposals, reports) instead
+    // of this table's own one-off zebra-striped/darker-hover variant.
+    hoverColor: const Color(0xFFF8F9FB),
     child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-      decoration: BoxDecoration(
-        // Faint zebra tint — makes wide rows easier to track across,
-        // same treatment already used on the dashboard's tables.
-        color: isEven ? Colors.white : const Color(0xFFFBFBFC),
-        border: const Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
       ),
       child: Row(
         children: [

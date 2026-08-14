@@ -381,7 +381,10 @@ class _OrgMerchandiseScreenState extends State<OrgMerchandiseScreen>
       return;
     }
     final now = DateFormat('yyyyMMdd').format(DateTime.now());
-    if (format == 'csv') {
+    // AdminExportButton's dropdown emits 'excel'/'pdf' (see
+    // admin_export_button.dart's _items), not 'csv' — this used to check
+    // for 'csv', so "Export as Excel" silently did nothing.
+    if (format == 'excel') {
       final buf = StringBuffer();
       buf.writeln('Product Name,Category,Price,Stock,Sold');
       for (final doc in docs) {
@@ -631,6 +634,7 @@ class _ProductsTabState extends State<_ProductsTab> {
     'Available',
     'Out of Stock',
     'Discontinued',
+    'Archived',
   ];
 
   bool _hasMore = true;
@@ -683,7 +687,7 @@ class _ProductsTabState extends State<_ProductsTab> {
       var query = FirebaseFirestore.instance
           .collection('products')
           .where('orgId', isEqualTo: widget.orgId)
-          .where('isArchived', isEqualTo: false)
+          .where('isArchived', isEqualTo: _statusFilter == 'Archived')
           .orderBy('createdAt', descending: true);
 
       if (!reset && _lastDocument != null) {
@@ -744,6 +748,7 @@ class _ProductsTabState extends State<_ProductsTab> {
           _categoryFilter == 'All' || p.category == _categoryFilter;
       final matchStatus =
           _statusFilter == 'All' ||
+          _statusFilter == 'Archived' ||
           (_statusFilter == 'Available' && p.status == 'available') ||
           (_statusFilter == 'Out of Stock' && p.status == 'out_of_stock') ||
           (_statusFilter == 'Discontinued' && p.status == 'discontinued');
@@ -873,6 +878,37 @@ class _ProductsTabState extends State<_ProductsTab> {
       );
       if (mounted) {
         _showSnack('Product archived', UpriseColors.success);
+        setState(() {
+          _products.removeWhere((p) => p.id == product.id);
+        });
+      }
+    } catch (e) {
+      if (mounted) _showSnack('Error: $e', UpriseColors.error);
+    }
+  }
+
+  // Archiving a product previously had no way back short of a manual
+  // Firestore edit — the confirm dialog said "hidden from the store" but
+  // there was no "Archived" filter to find it again afterward, making the
+  // action effectively permanent. Mirrors org_finance.dart's
+  // _unarchiveTransaction.
+  Future<void> _unarchiveProduct(ProductModel product) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('products')
+          .doc(product.id)
+          .update({'isArchived': false, 'archivedAt': FieldValue.delete()});
+      await activity_log.ActivityLogger.log(
+        action: 'unarchive_product',
+        module: 'merchandise',
+        details: {
+          'orgId': widget.orgId,
+          'productId': product.id,
+          'name': product.name,
+        },
+      );
+      if (mounted) {
+        _showSnack('Product restored', UpriseColors.success);
         setState(() {
           _products.removeWhere((p) => p.id == product.id);
         });
@@ -1105,7 +1141,9 @@ class _ProductsTabState extends State<_ProductsTab> {
             context: context,
             builder: (_) => _ProductDetailsModal(product: _products[index]),
           ),
-          onArchive: () => _archiveProduct(_products[index]),
+          onArchive: () => _products[index].isArchived
+              ? _unarchiveProduct(_products[index])
+              : _archiveProduct(_products[index]),
           onEdit: () => showDialog(
             context: context,
             barrierDismissible: false,
@@ -1147,14 +1185,7 @@ class _ProductsTabState extends State<_ProductsTab> {
             width: 96,
             height: 96,
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  UpriseColors.primaryDark.withAlpha(22),
-                  const Color(0xFFF59E0B).withAlpha(18),
-                ],
-              ),
+              color: UpriseColors.primaryDark.withAlpha(20),
               borderRadius: BorderRadius.circular(24),
             ),
             child: Icon(
@@ -1384,8 +1415,12 @@ class _ProductCardState extends State<_ProductCard> {
                                 ),
                                 const SizedBox(height: 6),
                                 _CardActionButton(
-                                  icon: Icons.archive_outlined,
-                                  tooltip: 'Archive',
+                                  icon: widget.product.isArchived
+                                      ? Icons.unarchive_outlined
+                                      : Icons.archive_outlined,
+                                  tooltip: widget.product.isArchived
+                                      ? 'Unarchive'
+                                      : 'Archive',
                                   onTap: widget.onArchive,
                                   color: UpriseColors.warning,
                                 ),
@@ -1530,16 +1565,7 @@ class _NoPhotoPlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            UpriseColors.primaryDark.withAlpha(14),
-            const Color(0xFFF8F9FB),
-          ],
-        ),
-      ),
+      decoration: const BoxDecoration(color: Color(0xFFF8F9FB)),
       alignment: Alignment.center,
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -3113,22 +3139,15 @@ class _ProductDetailsModal extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             // A flat white header here used to be a deliberate choice to
-            // avoid a "loud" solid color block — but a soft gradient tint
-            // (not a solid fill) gets the same restraint while actually
-            // matching every other modal's header treatment in this app
-            // (Registration Answers, the dashboard's detail modal, etc.),
-            // instead of being the one plain-white outlier next to them.
+            // avoid a "loud" solid color block — but a soft flat tint gets
+            // the same restraint while actually matching every other
+            // modal's header treatment in this app (Registration Answers,
+            // the dashboard's detail modal, etc.), instead of being the one
+            // plain-white outlier next to them.
             Container(
               padding: const EdgeInsets.fromLTRB(24, 20, 20, 18),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    UpriseColors.primaryDark.withAlpha(20),
-                    Colors.white,
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
+                color: UpriseColors.primaryDark.withAlpha(16),
                 border: const Border(
                   bottom: BorderSide(color: Color(0xFFEEF0F3)),
                 ),
@@ -6102,6 +6121,7 @@ class ProductModel {
   final String? imageBase64;
   final String? imageFormat;
   final String status;
+  final bool isArchived;
   final List<ProductVariant> variants;
   // Multiple angle photos for the swipeable product gallery. Falls back to
   // just [imageBase64] when empty, so existing products with a single photo
@@ -6121,6 +6141,7 @@ class ProductModel {
     this.imageBase64,
     this.imageFormat,
     this.status = 'available',
+    this.isArchived = false,
     this.variants = const [],
     this.rotationPhotos = const [],
   });
@@ -6140,6 +6161,7 @@ class ProductModel {
       imageBase64: d['imageBase64'] as String?,
       imageFormat: d['imageFormat'] as String?,
       status: d['status'] ?? 'available',
+      isArchived: d['isArchived'] == true,
       variants: ((d['variants'] as List?) ?? [])
           .map((v) => ProductVariant.fromMap(v as Map<String, dynamic>))
           .toList(),

@@ -1352,6 +1352,19 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
       'resendCount': 0,
     }, SetOptions(merge: true));
 
+    // Same cleanup as _sendCertificates/_GenerateCertificateModal's distribute
+    // flow — sending recipients one at a time via this button never touched
+    // the draft placeholder record, so it stuck around and permanently
+    // inflated this batch's totalRecipients count by 1, keeping it stuck on
+    // "Partially Sent" forever even once every recipient had their
+    // certificate.
+    if (draftMeta.status == 'draft') {
+      await FirebaseFirestore.instance
+          .collection('certificates')
+          .doc(draftMeta.id)
+          .delete();
+    }
+
     if (!isGuest) {
       await NotificationService.sendToUser(
         userId: recipientKey,

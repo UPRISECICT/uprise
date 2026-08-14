@@ -1108,14 +1108,7 @@ class _EmptyThreadState extends StatelessWidget {
             width: 84,
             height: 84,
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  _C.primaryDark.withAlpha(30),
-                  _C.primaryDark.withAlpha(10),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+              color: _C.primaryDark.withAlpha(20),
               shape: BoxShape.circle,
             ),
             child: const Icon(
@@ -1619,11 +1612,7 @@ class _ChatThreadState extends State<_ChatThread> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [_C.primaryDark.withAlpha(16), _C.white],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+            color: _C.primaryDark.withAlpha(14),
             border: const Border(bottom: BorderSide(color: _C.border)),
           ),
           child: Row(

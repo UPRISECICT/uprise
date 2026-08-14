@@ -813,6 +813,15 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
   DateTime _currentMonth = DateTime.now();
   List<EventModel> _cachedEvents = [];
 
+  // Set while Event Overview is showing — build() swaps to it in place of
+  // the calendar instead of pushing a new route, so org_dashboard.dart's
+  // sidebar/top bar (which wrap this whole screen) stay visible, the same
+  // way every other screen in this portal already works.
+  EventModel? _overviewEvent;
+  String _overviewStartTime = '';
+  String _overviewEndTime = '';
+  String _overviewGuestSpeaker = '';
+
   // Jump straight to a month/year instead of paging one month at a time —
   // mirrors admin's event_calendar.dart _pickMonth.
   Future<void> _pickMonth(BuildContext context) async {
@@ -920,6 +929,9 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_overviewEvent != null) {
+      return _buildEventOverviewPage(_overviewEvent!);
+    }
     final width = MediaQuery.of(context).size.width;
     final isMobile = width < 720;
     final isTablet = width >= 720 && width < 1200;
@@ -1664,480 +1676,408 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
     }
 
     if (!mounted) return;
+    setState(() {
+      _overviewEvent = event;
+      _overviewStartTime = startTime;
+      _overviewEndTime = endTime;
+      _overviewGuestSpeaker = guestSpeaker;
+    });
+  }
 
+  // Renders in place of the calendar (see build()) instead of a dialog or a
+  // pushed route — org_dashboard.dart's sidebar/top bar wrap this whole
+  // screen already, so swapping this screen's own content is what keeps
+  // them visible, the same way every other screen here behaves.
+  Widget _buildEventOverviewPage(EventModel event) {
     final catColor = _getCategoryColor(event.category);
-
-    showDialog(
-      context: context,
-      barrierColor: Colors.black54,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Container(
-          width: 720,
-          // Capped well below the old 0.88-of-screen ceiling — most tabs
-          // (Registration/Attendance/Feedback/Certificates/Finance/Report)
-          // hold only a couple of stat cards, and stretching the dialog to
-          // near full-screen height for them left a large empty area below
-          // the content. Details (the longest tab) still scrolls within
-          // this cap via its own SingleChildScrollView.
-          constraints: BoxConstraints(
-            maxHeight: (MediaQuery.of(context).size.height * 0.82).clamp(
-              420.0,
-              620.0,
-            ),
-          ),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.all(Radius.circular(20)),
-          ),
-          child: DefaultTabController(
-            length: 7,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // ─── HEADER ──────────────────────────────────────────────
-                ClipRRect(
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(20),
-                  ),
-                  child: Container(
-                    padding: const EdgeInsets.fromLTRB(26, 24, 18, 22),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          UpriseColors.primaryDark,
-                          catColor.withAlpha(230),
-                        ],
-                      ),
+    final startTime = _overviewStartTime;
+    final endTime = _overviewEndTime;
+    final guestSpeaker = _overviewGuestSpeaker;
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8F9FB),
+      body: DefaultTabController(
+        length: 7,
+        child: Column(
+          children: [
+            // ─── HEADER ──────────────────────────────────────────────
+            // Light, compact header instead of a full-bleed gradient banner
+            // — this content sits right below org_dashboard.dart's own top
+            // bar, so a second heavy colored block just doubled up on
+            // banner chrome. This reads as part of the same page instead.
+            Container(
+              padding: const EdgeInsets.fromLTRB(12, 12, 20, 12),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                border: Border(bottom: BorderSide(color: Color(0xFFE8ECF0))),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  IconButton(
+                    icon: const Icon(
+                      Icons.arrow_back_rounded,
+                      color: UpriseColors.primaryDark,
+                      size: 20,
                     ),
-                    child: Stack(
-                      clipBehavior: Clip.none,
+                    tooltip: 'Back',
+                    onPressed: () => setState(() => _overviewEvent = null),
+                  ),
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: catColor.withAlpha(30),
+                      borderRadius: BorderRadius.circular(11),
+                    ),
+                    child: Icon(Icons.event_rounded, color: catColor, size: 20),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Positioned(
-                          right: -30,
-                          top: -40,
-                          child: Container(
-                            width: 130,
-                            height: 130,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.white.withAlpha(18),
-                            ),
+                        Text(
+                          event.title,
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF1A202C),
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        Positioned(
-                          right: 40,
-                          bottom: -50,
-                          child: Container(
-                            width: 90,
-                            height: 90,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.white.withAlpha(14),
-                            ),
-                          ),
-                        ),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
-                            Container(
-                              width: 46,
-                              height: 46,
-                              decoration: BoxDecoration(
-                                color: Colors.white.withAlpha(35),
-                                borderRadius: BorderRadius.circular(13),
-                                border: Border.all(
-                                  color: Colors.white.withAlpha(90),
+                            _categoryChip(event.category),
+                            if (event.orgName.isNotEmpty &&
+                                event.orgName != 'Unknown')
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(100),
+                                ),
+                                child: Text(
+                                  event.orgName.toUpperCase(),
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color: const Color(0xFF64748B),
+                                    letterSpacing: 0.6,
+                                  ),
                                 ),
                               ),
-                              child: const Icon(
-                                Icons.event_rounded,
-                                color: Colors.white,
-                                size: 22,
-                              ),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'EVENT OVERVIEW',
-                                    style: GoogleFonts.beVietnamPro(
-                                      fontSize: 10.5,
-                                      fontWeight: FontWeight.w700,
-                                      color: Colors.white.withAlpha(190),
-                                      letterSpacing: 1.2,
-                                    ),
+                            if (event.status.toLowerCase() != 'approved')
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: _statusColor(
+                                    event.status,
+                                  ).withAlpha(30),
+                                  borderRadius: BorderRadius.circular(100),
+                                ),
+                                child: Text(
+                                  event.status.toUpperCase(),
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    color: _statusColor(event.status),
+                                    letterSpacing: 0.6,
                                   ),
-                                  const SizedBox(height: 4),
-                                  Wrap(
-                                    spacing: 8,
-                                    runSpacing: 6,
-                                    crossAxisAlignment:
-                                        WrapCrossAlignment.center,
-                                    children: [
-                                      _categoryChip(event.category),
-                                      if (event.orgName.isNotEmpty &&
-                                          event.orgName != 'Unknown')
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 10,
-                                            vertical: 4,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            borderRadius: BorderRadius.circular(
-                                              100,
-                                            ),
-                                            border: Border.all(
-                                              color: Colors.white.withAlpha(
-                                                150,
-                                              ),
-                                            ),
-                                          ),
-                                          child: Text(
-                                            event.orgName.toUpperCase(),
-                                            style: GoogleFonts.beVietnamPro(
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.w600,
-                                              color: Colors.white.withAlpha(
-                                                255,
-                                              ),
-                                              letterSpacing: 0.6,
-                                            ),
-                                          ),
-                                        ),
-                                      if (event.status.toLowerCase() !=
-                                          'approved')
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 10,
-                                            vertical: 4,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: _statusColor(event.status),
-                                            borderRadius: BorderRadius.circular(
-                                              100,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            event.status.toUpperCase(),
-                                            style: GoogleFonts.beVietnamPro(
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.w700,
-                                              color: Colors.white,
-                                              letterSpacing: 0.6,
-                                            ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 10),
-                                  Text(
-                                    event.title,
-                                    style: GoogleFonts.beVietnamPro(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.w700,
-                                      color: Colors.white,
-                                      height: 1.25,
-                                    ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
+                                ),
                               ),
-                            ),
-                            IconButton(
-                              icon: const Icon(
-                                Icons.close_rounded,
-                                color: Colors.white,
-                                size: 20,
-                              ),
-                              tooltip: 'Close',
-                              onPressed: () => Navigator.pop(ctx),
-                            ),
                           ],
                         ),
                       ],
                     ),
                   ),
-                ),
-
-                // ─── TAB BAR ─────────────────────────────────────────────
-                Container(
-                  decoration: const BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(color: Color(0xFFE8ECF0)),
-                    ),
-                  ),
-                  child: TabBar(
-                    isScrollable: true,
-                    labelColor: UpriseColors.primaryDark,
-                    unselectedLabelColor: const Color(0xFF64748B),
-                    indicatorColor: UpriseColors.primaryDark,
-                    labelStyle: GoogleFonts.beVietnamPro(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    unselectedLabelStyle: GoogleFonts.beVietnamPro(
-                      fontSize: 13,
-                    ),
-                    tabs: const [
-                      Tab(text: 'Details'),
-                      Tab(text: 'Registration'),
-                      Tab(text: 'Attendance'),
-                      Tab(text: 'Feedback'),
-                      Tab(text: 'Certificates'),
-                      Tab(text: 'Finance'),
-                      Tab(text: 'Report'),
-                    ],
-                  ),
-                ),
-
-                // ─── BODY ────────────────────────────────────────────────
-                Expanded(
-                  child: TabBarView(
-                    children: [
-                      SingleChildScrollView(
-                        padding: const EdgeInsets.fromLTRB(24, 22, 24, 8),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // ── Key details as tidy cards ──────────────────
-                            Wrap(
-                              spacing: 12,
-                              runSpacing: 12,
-                              children: [
-                                _detailCard(
-                                  'Date',
-                                  DateFormat('MMM d, yyyy').format(event.date),
-                                  Icons.calendar_today_rounded,
-                                  accent: catColor,
-                                ),
-                                _detailCard(
-                                  'Time',
-                                  startTime.isNotEmpty
-                                      ? (endTime.isNotEmpty
-                                            ? '$startTime - $endTime'
-                                            : startTime)
-                                      : 'TBD',
-                                  Icons.access_time_rounded,
-                                  accent: catColor,
-                                ),
-                                _detailCard(
-                                  'Location',
-                                  event.location.isNotEmpty
-                                      ? event.location
-                                      : 'TBD',
-                                  Icons.location_on_outlined,
-                                  accent: catColor,
-                                ),
-                                _detailCard(
-                                  'Audience',
-                                  event.audience.isNotEmpty
-                                      ? event.audience
-                                      : 'Public',
-                                  Icons.group_outlined,
-                                  accent: catColor,
-                                ),
-                                if (event.orgName.isNotEmpty)
-                                  _detailCard(
-                                    'Organization',
-                                    event.orgName,
-                                    Icons.business_center,
-                                    accent: catColor,
-                                  ),
-                              ],
-                            ),
-                            const SizedBox(height: 22),
-
-                            // ── Description ──────────────────────────────────
-                            if (event.description.isNotEmpty) ...[
-                              _sectionLabel(
-                                'Description',
-                                icon: Icons.description_outlined,
-                              ),
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(14),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFF8F9FB),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border(
-                                    left: BorderSide(color: catColor, width: 3),
-                                  ),
-                                ),
-                                child: Text(
-                                  event.description,
-                                  style: GoogleFonts.beVietnamPro(
-                                    fontSize: 13.5,
-                                    color: const Color(0xFF374151),
-                                    height: 1.65,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 22),
-                            ],
-
-                            // ── Guest Speaker ────────────────────────────────
-                            if (guestSpeaker.isNotEmpty) ...[
-                              _sectionLabel(
-                                'Guest Speaker',
-                                icon: Icons.person_outline_rounded,
-                              ),
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: catColor.withAlpha(15),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: catColor.withAlpha(45),
-                                  ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 38,
-                                      height: 38,
-                                      decoration: BoxDecoration(
-                                        color: catColor.withAlpha(30),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: Icon(
-                                        Icons.person_rounded,
-                                        color: catColor,
-                                        size: 18,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 14),
-                                    Expanded(
-                                      child: Text(
-                                        guestSpeaker,
-                                        style: GoogleFonts.beVietnamPro(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w600,
-                                          color: const Color(0xFF1A202C),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 22),
-                            ],
-
-                            // ── Resources ────────────────────────────────────
-                            if (event.resources.isNotEmpty) ...[
-                              _sectionLabel(
-                                'Resources',
-                                icon: Icons.folder_outlined,
-                              ),
-                              _buildBulletList(event.resources),
-                              const SizedBox(height: 22),
-                            ],
-
-                            // ── Lab Preparation ──────────────────────────────
-                            if (event.labPreparation.isNotEmpty) ...[
-                              _sectionLabel(
-                                'Lab Preparation',
-                                icon: Icons.build_circle_outlined,
-                              ),
-                              _buildBulletList(event.labPreparation),
-                              const SizedBox(height: 22),
-                            ],
-
-                            // ── Tags ─────────────────────────────────────────
-                            if (event.tags.isNotEmpty) ...[
-                              _sectionLabel(
-                                'Tags',
-                                icon: Icons.local_offer_outlined,
-                              ),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: event.tags.map((tag) {
-                                  return Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: catColor.withAlpha(15),
-                                      borderRadius: BorderRadius.circular(20),
-                                      border: Border.all(
-                                        color: catColor.withAlpha(60),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      tag,
-                                      style: GoogleFonts.beVietnamPro(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w500,
-                                        color: catColor,
-                                      ),
-                                    ),
-                                  );
-                                }).toList(),
-                              ),
-                              const SizedBox(height: 6),
-                            ],
-                          ],
-                        ),
+                ],
+              ),
+            ),
+            // ─── CONTENT CARD ────────────────────────────────────────
+            // A white card with a margin around it instead of the tab bar
+            // and tab content sitting directly on the page's flat gray
+            // canvas — this is what gives the page a designed, organized
+            // feel instead of everything floating loose on bare background.
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE8ECF0)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withAlpha(10),
+                        blurRadius: 16,
+                        offset: const Offset(0, 4),
                       ),
-                      _RegistrationTab(event: event),
-                      _AttendanceTab(event: event),
-                      _FeedbackTab(event: event),
-                      _CertificatesTab(event: event),
-                      _FinanceTab(event: event),
-                      _ReportTab(event: event),
                     ],
                   ),
-                ),
-
-                // ─── FOOTER ──────────────────────────────────────────────
-                Container(
-                  padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
-                  decoration: const BoxDecoration(
-                    border: Border(top: BorderSide(color: Color(0xFFEDF0F3))),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
+                  clipBehavior: Clip.antiAlias,
+                  child: Column(
                     children: [
-                      OutlinedButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF374151),
-                          side: const BorderSide(color: Color(0xFFE2E6EA)),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 11,
+                      // ─── TAB BAR ─────────────────────────────────────
+                      Container(
+                        decoration: const BoxDecoration(
+                          border: Border(
+                            bottom: BorderSide(color: Color(0xFFE8ECF0)),
                           ),
                         ),
-                        child: Text(
-                          'Close',
-                          style: GoogleFonts.beVietnamPro(
+                        child: TabBar(
+                          isScrollable: true,
+                          labelColor: UpriseColors.primaryDark,
+                          unselectedLabelColor: const Color(0xFF64748B),
+                          indicatorColor: UpriseColors.primaryDark,
+                          labelStyle: GoogleFonts.beVietnamPro(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
                           ),
+                          unselectedLabelStyle: GoogleFonts.beVietnamPro(
+                            fontSize: 13,
+                          ),
+                          tabs: const [
+                            Tab(text: 'Details'),
+                            Tab(text: 'Registration'),
+                            Tab(text: 'Attendance'),
+                            Tab(text: 'Feedback'),
+                            Tab(text: 'Certificates'),
+                            Tab(text: 'Finance'),
+                            Tab(text: 'Report'),
+                          ],
+                        ),
+                      ),
+
+                      // ─── BODY ──────────────────────────────────────
+                      Expanded(
+                        child: TabBarView(
+                          children: [
+                            SingleChildScrollView(
+                              padding: const EdgeInsets.fromLTRB(24, 22, 24, 8),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // ── Key details as tidy cards ──────────────────
+                                  Wrap(
+                                    spacing: 12,
+                                    runSpacing: 12,
+                                    children: [
+                                      _detailCard(
+                                        'Date',
+                                        DateFormat(
+                                          'MMM d, yyyy',
+                                        ).format(event.date),
+                                        Icons.calendar_today_rounded,
+                                        accent: catColor,
+                                      ),
+                                      _detailCard(
+                                        'Time',
+                                        startTime.isNotEmpty
+                                            ? (endTime.isNotEmpty
+                                                  ? '$startTime - $endTime'
+                                                  : startTime)
+                                            : 'TBD',
+                                        Icons.access_time_rounded,
+                                        accent: catColor,
+                                      ),
+                                      _detailCard(
+                                        'Location',
+                                        event.location.isNotEmpty
+                                            ? event.location
+                                            : 'TBD',
+                                        Icons.location_on_outlined,
+                                        accent: catColor,
+                                      ),
+                                      _detailCard(
+                                        'Audience',
+                                        event.audience.isNotEmpty
+                                            ? event.audience
+                                            : 'Public',
+                                        Icons.group_outlined,
+                                        accent: catColor,
+                                      ),
+                                      if (event.orgName.isNotEmpty)
+                                        _detailCard(
+                                          'Organization',
+                                          event.orgName,
+                                          Icons.business_center,
+                                          accent: catColor,
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 22),
+
+                                  // ── Description ──────────────────────────────────
+                                  if (event.description.isNotEmpty) ...[
+                                    _sectionLabel(
+                                      'Description',
+                                      icon: Icons.description_outlined,
+                                    ),
+                                    Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.all(14),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF8F9FB),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border(
+                                          left: BorderSide(
+                                            color: catColor,
+                                            width: 3,
+                                          ),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        event.description,
+                                        style: GoogleFonts.beVietnamPro(
+                                          fontSize: 13.5,
+                                          color: const Color(0xFF374151),
+                                          height: 1.65,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 22),
+                                  ],
+
+                                  // ── Guest Speaker ────────────────────────────────
+                                  if (guestSpeaker.isNotEmpty) ...[
+                                    _sectionLabel(
+                                      'Guest Speaker',
+                                      icon: Icons.person_outline_rounded,
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: catColor.withAlpha(15),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: catColor.withAlpha(45),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Container(
+                                            width: 38,
+                                            height: 38,
+                                            decoration: BoxDecoration(
+                                              color: catColor.withAlpha(30),
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: Icon(
+                                              Icons.person_rounded,
+                                              color: catColor,
+                                              size: 18,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 14),
+                                          Expanded(
+                                            child: Text(
+                                              guestSpeaker,
+                                              style: GoogleFonts.beVietnamPro(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w600,
+                                                color: const Color(0xFF1A202C),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 22),
+                                  ],
+
+                                  // ── Resources ────────────────────────────────────
+                                  if (event.resources.isNotEmpty) ...[
+                                    _sectionLabel(
+                                      'Resources',
+                                      icon: Icons.folder_outlined,
+                                    ),
+                                    _buildBulletList(event.resources),
+                                    const SizedBox(height: 22),
+                                  ],
+
+                                  // ── Lab Preparation ──────────────────────────────
+                                  if (event.labPreparation.isNotEmpty) ...[
+                                    _sectionLabel(
+                                      'Lab Preparation',
+                                      icon: Icons.build_circle_outlined,
+                                    ),
+                                    _buildBulletList(event.labPreparation),
+                                    const SizedBox(height: 22),
+                                  ],
+
+                                  // ── Tags ─────────────────────────────────────────
+                                  if (event.tags.isNotEmpty) ...[
+                                    _sectionLabel(
+                                      'Tags',
+                                      icon: Icons.local_offer_outlined,
+                                    ),
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: event.tags.map((tag) {
+                                        return Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 6,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: catColor.withAlpha(15),
+                                            borderRadius: BorderRadius.circular(
+                                              20,
+                                            ),
+                                            border: Border.all(
+                                              color: catColor.withAlpha(60),
+                                            ),
+                                          ),
+                                          child: Text(
+                                            tag,
+                                            style: GoogleFonts.beVietnamPro(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w500,
+                                              color: catColor,
+                                            ),
+                                          ),
+                                        );
+                                      }).toList(),
+                                    ),
+                                    const SizedBox(height: 6),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            _RegistrationTab(event: event),
+                            _AttendanceTab(event: event),
+                            _FeedbackTab(event: event),
+                            _CertificatesTab(event: event),
+                            _FinanceTab(event: event),
+                            _ReportTab(event: event),
+                          ],
                         ),
                       ),
                     ],
                   ),
                 ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
   }
 
-  // ─── DETAIL CARD helper (used in the dialog) ─────────────────────
+  // ─── DETAIL CARD helper (used in the overview page) ───────────────
   Widget _detailCard(
     String label,
     String value,

@@ -118,23 +118,35 @@ class EventModel {
       ? otherCategory
       : category;
 
-  /// Mirrors guest_events_screen.dart's `_audienceAllowed` — an event can
-  /// target more than one audience at once (comma-joined in the same
-  /// field), and passes if ANY one of them would allow this student. Only
-  /// 'Members Only' is actually enforced here: 'CICT Only'/'BulSUan' have
-  /// no equivalent student classification data to check against, so they
-  /// fall through as allowed on the student side (same as they always have).
-  /// [userData] is the signed-in student's own `users/{uid}` doc.
+  /// The org proposal form's audience chips treat 'Public' as exclusive of
+  /// the other three (selecting it clears/locks the rest), so a normal
+  /// event only ever has EITHER 'Public' alone OR one-to-three of
+  /// 'CICT Only' / 'Members Only' / 'BulSUan' combined. Combined non-public
+  /// audiences use AND logic — "CICT Only, Members Only" means the student
+  /// must satisfy both, not either. A legacy/manually-edited record that
+  /// still has 'Public' alongside other values is treated as unrestricted
+  /// (matches the org form's own rule and keeps old records from becoming
+  /// accidentally inaccessible) rather than evaluated against the rest.
+  /// [userData] is the signed-in student's own `users/{uid}` doc (for org
+  /// membership + email); [course] is their `students/{uid}.course`
+  /// (for the CICT check) — both already-existing fields, nothing new.
   static bool audienceAllowsMember({
     required String audience,
     required String eventOrgId,
     required Map<String, dynamic>? userData,
+    String? course,
   }) {
     final values = audience
         .split(',')
         .map((s) => s.trim())
-        .where((s) => s.isNotEmpty);
-    if (values.isEmpty) return true;
+        .where((s) => s.isNotEmpty)
+        .toSet();
+    if (values.isEmpty || values.contains('Public')) return true;
+
+    bool isCictStudent() {
+      const cictCourses = {'BSIT', 'BSIS', 'BLIS'};
+      return course != null && cictCourses.contains(course.toUpperCase());
+    }
 
     bool isMemberOfEventOrg() {
       if (userData == null) return false;
@@ -147,7 +159,26 @@ class EventModel {
           userData['isOrgOfficer'] == true;
     }
 
-    return values.any((v) => v == 'Members Only' ? isMemberOfEventOrg() : true);
+    bool isBulsuan() {
+      final email = (userData?['email'] ?? '').toString().toLowerCase();
+      return email.endsWith('@ms.bulsu.edu.ph');
+    }
+
+    bool singleAllowed(String v) {
+      switch (v) {
+        case 'CICT Only':
+          return isCictStudent();
+        case 'Members Only':
+          return isMemberOfEventOrg();
+        case 'BulSUan':
+          return isBulsuan();
+        default:
+          // Unrecognized/legacy label — don't block eligibility on it.
+          return true;
+      }
+    }
+
+    return values.every(singleAllowed);
   }
 
   factory EventModel.fromFirestore(DocumentSnapshot doc) {

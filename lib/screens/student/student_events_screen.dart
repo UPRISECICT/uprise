@@ -2716,15 +2716,20 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   Map<String, dynamic>? _formDef;
 
   // The signed-in student's own users/{uid} doc — fetched once so the
-  // Register button can be disabled up-front for "Members Only" events the
-  // student isn't part of, instead of only rejecting the write server-side
-  // after they've already filled out the whole form.
+  // Register button can be disabled up-front for audience-restricted
+  // events (CICT Only / Members Only / BulSUan) the student doesn't
+  // qualify for, instead of only rejecting the write server-side after
+  // they've already filled out the whole form.
   Map<String, dynamic>? _userData;
+  // students/{uid}.course — needed for the "CICT Only" audience check
+  // (course isn't on the users doc, only on the students one).
+  String? _studentCourse;
   bool _loadingUserData = true;
   bool get _isEligibleForEvent => EventModel.audienceAllowsMember(
     audience: widget.event.audience,
     eventOrgId: widget.event.orgId,
     userData: _userData,
+    course: _studentCourse,
   );
   final Map<String, TextEditingController> _fieldControllers = {};
   final Map<String, String?> _singleChoice = {};
@@ -2812,13 +2817,14 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       return;
     }
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
+      final results = await Future.wait([
+        FirebaseFirestore.instance.collection('users').doc(user.uid).get(),
+        FirebaseFirestore.instance.collection('students').doc(user.uid).get(),
+      ]);
       if (mounted) {
         setState(() {
-          _userData = doc.data();
+          _userData = results[0].data();
+          _studentCourse = (results[1].data()?['course'] as String?);
           _loadingUserData = false;
         });
       }
@@ -3347,14 +3353,21 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         final userDoc = await tx.get(
           FirebaseFirestore.instance.collection('users').doc(user.uid),
         );
+        final studentDoc = await tx.get(
+          FirebaseFirestore.instance.collection('students').doc(user.uid),
+        );
         final eligible = EventModel.audienceAllowsMember(
           audience: (evData['audience'] ?? 'Public').toString(),
           eventOrgId: (evData['orgId'] ?? '').toString(),
           userData: userDoc.data(),
+          course: studentDoc.data()?['course'] as String?,
         );
         if (!eligible) {
+          // Deliberately generic — doesn't reveal which specific condition
+          // (CICT status, org membership, BulSU account) the student failed.
           throw Exception(
-            'This event is for members of the organizing club/org only.',
+            'You\'re not eligible to register for this event based on its '
+            'audience restrictions.',
           );
         }
 
@@ -3800,7 +3813,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                             ),
                           ),
                           label: const Text(
-                            'Members Only',
+                            'Restricted Event',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
@@ -3809,9 +3822,12 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                         ),
                       ),
                       const SizedBox(height: 6),
+                      // Deliberately generic — doesn't reveal which specific
+                      // condition (CICT status, org membership, BulSU
+                      // account) this student failed.
                       Text(
-                        'Only ${widget.event.orgName} members can register '
-                        'for this event.',
+                        'You\'re not eligible to register for this event '
+                        'based on its audience restrictions.',
                         style: TextStyle(
                           fontSize: 12.5,
                           color: Colors.grey.shade600,

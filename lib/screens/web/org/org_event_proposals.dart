@@ -357,6 +357,14 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
   // Proposals currently being published, to guard against double-tap duplicates
   final Set<String> _publishingIds = {};
 
+  // Set while the Live Tracker is showing — build() swaps to it in place of
+  // the proposals table instead of opening a dialog, so org_dashboard.dart's
+  // sidebar/top bar (which wrap this whole screen) stay visible, matching
+  // Events & Schedules' Event Overview.
+  String? _liveTrackerEventDocId;
+  String _liveTrackerEventTitle = '';
+  bool _liveTrackerIsPast = false;
+
   // ── Streams ──────────────────────────────────────────────────────
   // Created once, not getters — these only ever depend on widget.orgId
   // (fixed for this screen's lifetime), so re-evaluating .snapshots() on
@@ -498,15 +506,11 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
     final eventDate = data['date'];
     final isPast =
         eventDate is Timestamp && !eventDate.toDate().isAfter(DateTime.now());
-    showDialog(
-      context: context,
-      barrierColor: Colors.black54,
-      builder: (_) => _LiveTrackerModal(
-        eventDocId: eventDocId,
-        eventTitle: (data['title'] ?? 'Event').toString(),
-        isPast: isPast,
-      ),
-    );
+    setState(() {
+      _liveTrackerEventDocId = eventDocId;
+      _liveTrackerEventTitle = (data['title'] ?? 'Event').toString();
+      _liveTrackerIsPast = isPast;
+    });
   }
 
   // ── Archive logic ────────────────────────────────────────────────
@@ -1138,6 +1142,14 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
   // ── Build ─────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    if (_liveTrackerEventDocId != null) {
+      return _LiveTrackerModal(
+        eventDocId: _liveTrackerEventDocId!,
+        eventTitle: _liveTrackerEventTitle,
+        isPast: _liveTrackerIsPast,
+        onBack: () => setState(() => _liveTrackerEventDocId = null),
+      );
+    }
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobile = screenWidth < 768;
     final isTablet = screenWidth < 1200;
@@ -2201,10 +2213,14 @@ class _LiveTrackerModal extends StatefulWidget {
   // "LIVE" badge for a neutral "ENDED" one since nothing is actually live
   // anymore, just a record of who registered and who checked in.
   final bool isPast;
+  // Returns to the proposals table — the parent screen owns the "which
+  // tracker is open" state, this widget just reports back when done.
+  final VoidCallback onBack;
   const _LiveTrackerModal({
     required this.eventDocId,
     required this.eventTitle,
     this.isPast = false,
+    required this.onBack,
   });
 
   @override
@@ -2308,445 +2324,606 @@ class _LiveTrackerModalState extends State<_LiveTrackerModal> {
 
   @override
   Widget build(BuildContext context) {
-    return OrgModalShell(
-      accentColor: UpriseColors.primaryDark,
-      icon: Icons.insights_rounded,
-      title: widget.eventTitle,
-      width: 760,
-      subtitleWidget: Row(
-        mainAxisSize: MainAxisSize.min,
+    // Rendered in place of the proposals table (see
+    // _OrgEventProposalsScreenState.build()) instead of as a dialog —
+    // org_dashboard.dart's sidebar/top bar wrap this whole screen already,
+    // matching how Events & Schedules' Event Overview behaves.
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8F9FB),
+      body: Column(
         children: [
+          // Light, compact header instead of a full-bleed colored banner —
+          // this sits right below org_dashboard.dart's own top bar, so a
+          // second heavy colored block just doubled up on banner chrome.
           Container(
-            width: 7,
-            height: 7,
-            decoration: BoxDecoration(
-              color: widget.isPast
-                  ? Colors.white.withAlpha(140)
-                  : const Color(0xFF4ADE80),
-              shape: BoxShape.circle,
+            padding: const EdgeInsets.fromLTRB(12, 12, 20, 12),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(bottom: BorderSide(color: Color(0xFFE8ECF0))),
             ),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            widget.isPast ? 'ENDED' : 'LIVE',
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: Colors.white.withAlpha(204),
-              letterSpacing: 0.6,
-            ),
-          ),
-        ],
-      ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('registrations')
-            .where('eventId', isEqualTo: widget.eventDocId)
-            .snapshots(),
-        builder: (context, regSnap) {
-          final regDocs = regSnap.data?.docs ?? [];
-          if (regDocs.isNotEmpty) {
-            _ensureStudentsLoaded(
-              regDocs.map(
-                (d) => ((d.data() as Map)['userId'] ?? '').toString(),
-              ),
-            );
-          }
-          return StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('events')
-                .doc(widget.eventDocId)
-                .collection('attendances')
-                .snapshots(),
-            builder: (context, attSnap) {
-              final attDocs = attSnap.data?.docs ?? [];
-              final attByStudent = <String, Map<String, dynamic>>{};
-              for (final d in attDocs) {
-                final m = d.data() as Map<String, dynamic>;
-                final sid = (m['studentId'] ?? '').toString();
-                if (sid.isNotEmpty) attByStudent[sid] = m;
-              }
-
-              final participants =
-                  regDocs.map((doc) {
-                    final d = doc.data() as Map<String, dynamic>;
-                    final uid = (d['userId'] ?? '').toString();
-                    final att = attByStudent[uid];
-                    final status = att == null
-                        ? 'not_checked_in'
-                        : (att['status'] ?? 'present').toString();
-                    final registeredAt = d['registeredAt'] as Timestamp?;
-                    final regFullName = (d['fullName'] as String?)?.trim();
-                    final cachedFullName =
-                        (_studentCache[uid]?['fullName'] as String?)?.trim();
-                    final name = regFullName?.isNotEmpty == true
-                        ? regFullName!
-                        : (cachedFullName?.isNotEmpty == true
-                              ? cachedFullName!
-                              : 'Unknown');
-                    return {
-                      'name': name,
-                      'email': (d['email'] ?? '').toString(),
-                      'status': status,
-                      'statusLabel': status == 'not_checked_in'
-                          ? 'Not Checked In'
-                          : (status == 'late' ? 'Late' : 'Present'),
-                      'registeredAtStr': registeredAt != null
-                          ? DateFormat(
-                              'MMM d, h:mm a',
-                            ).format(registeredAt.toDate())
-                          : '—',
-                    };
-                  }).toList()..sort(
-                    (a, b) =>
-                        (a['name'] as String).compareTo(b['name'] as String),
-                  );
-
-              // Same status categories as org_attendance_qr.dart's
-              // stat row (Present is present-only, Late is its own
-              // bucket) — this used to lump present+late together
-              // under "Checked In", which never lined up with the
-              // separate Present/Late counts shown on the
-              // attendance page for the exact same event.
-              final registered = participants.length;
-              final present = participants
-                  .where((p) => p['status'] == 'present')
-                  .length;
-              final late = participants
-                  .where((p) => p['status'] == 'late')
-                  .length;
-
-              final query = _search.trim().toLowerCase();
-              final filtered = participants.where((p) {
-                final matchSearch =
-                    query.isEmpty ||
-                    (p['name'] as String).toLowerCase().contains(query) ||
-                    (p['email'] as String).toLowerCase().contains(query);
-                final matchFilter =
-                    _statusFilter == 'All' ||
-                    (_statusFilter == 'Present' && p['status'] == 'present') ||
-                    (_statusFilter == 'Late' && p['status'] == 'late') ||
-                    (_statusFilter == 'Not Checked In' &&
-                        p['status'] == 'not_checked_in');
-                return matchSearch && matchFilter;
-              }).toList();
-
-              return Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _statTile(
-                            'Registered',
-                            '$registered',
-                            Icons.how_to_reg_rounded,
-                            const Color(0xFF2563EB),
-                          ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                IconButton(
+                  icon: const Icon(
+                    Icons.arrow_back_rounded,
+                    color: UpriseColors.primaryDark,
+                    size: 20,
+                  ),
+                  tooltip: 'Back',
+                  onPressed: widget.onBack,
+                ),
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: UpriseColors.primaryDark.withAlpha(28),
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  child: const Icon(
+                    Icons.insights_rounded,
+                    color: UpriseColors.primaryDark,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        widget.eventTitle,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF1A202C),
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _statTile(
-                            'Present',
-                            '$present',
-                            Icons.verified_rounded,
-                            const Color(0xFF059669),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _statTile(
-                            'Late',
-                            '$late',
-                            Icons.schedule_rounded,
-                            const Color(0xFFFB923C),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            onChanged: (v) => setState(() => _search = v),
-                            style: GoogleFonts.beVietnamPro(fontSize: 13),
-                            decoration: InputDecoration(
-                              hintText: 'Search by name or email…',
-                              hintStyle: GoogleFonts.beVietnamPro(
-                                fontSize: 13,
-                                color: const Color(0xFF9AA5B4),
-                              ),
-                              prefixIcon: const Icon(
-                                Icons.search_rounded,
-                                size: 18,
-                                color: Color(0xFF9AA5B4),
-                              ),
-                              isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 10,
-                              ),
-                              filled: true,
-                              fillColor: Colors.white,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: const BorderSide(
-                                  color: Color(0xFFE2E6EA),
-                                ),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: const BorderSide(
-                                  color: Color(0xFFE2E6EA),
-                                ),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide(
-                                  color: UpriseColors.primaryDark,
-                                  width: 1.5,
-                                ),
-                              ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 7,
+                            height: 7,
+                            decoration: BoxDecoration(
+                              color: widget.isPast
+                                  ? const Color(0xFF9AA5B4)
+                                  : const Color(0xFF16A34A),
+                              shape: BoxShape.circle,
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        _FilterDropdown(
-                          value: _statusFilter,
-                          items: const [
-                            'All',
-                            'Present',
-                            'Late',
-                            'Not Checked In',
-                          ],
-                          hint: 'Status',
-                          icon: Icons.filter_list_rounded,
-                          onChanged: (v) =>
-                              setState(() => _statusFilter = v ?? 'All'),
-                        ),
-                        const SizedBox(width: 10),
-                        AdminExportButton(
-                          enabled: filtered.isNotEmpty,
-                          label: 'Export',
-                          onSelected: (choice) =>
-                              _exportParticipants(choice, filtered),
-                        ),
-                      ],
+                          const SizedBox(width: 6),
+                          Text(
+                            widget.isPast ? 'ENDED' : 'LIVE',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: widget.isPast
+                                  ? const Color(0xFF9AA5B4)
+                                  : const Color(0xFF16A34A),
+                              letterSpacing: 0.6,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // ─── CONTENT CARD ──────────────────────────────────────────
+          // A white card with a margin around it instead of the stats/
+          // search/table sitting directly on the page's flat gray canvas.
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFE8ECF0)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withAlpha(10),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
                     ),
-                    const SizedBox(height: 14),
-                    Expanded(
-                      child: participants.isEmpty
-                          ? Center(
-                              child: Text(
-                                'No one has registered yet.',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 13,
-                                  color: const Color(0xFF9AA5B4),
-                                ),
+                  ],
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('registrations')
+                      .where('eventId', isEqualTo: widget.eventDocId)
+                      .snapshots(),
+                  builder: (context, regSnap) {
+                    final regDocs = regSnap.data?.docs ?? [];
+                    if (regDocs.isNotEmpty) {
+                      _ensureStudentsLoaded(
+                        regDocs.map(
+                          (d) => ((d.data() as Map)['userId'] ?? '').toString(),
+                        ),
+                      );
+                    }
+                    return StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection('events')
+                          .doc(widget.eventDocId)
+                          .collection('attendances')
+                          .snapshots(),
+                      builder: (context, attSnap) {
+                        final attDocs = attSnap.data?.docs ?? [];
+                        final attByStudent = <String, Map<String, dynamic>>{};
+                        for (final d in attDocs) {
+                          final m = d.data() as Map<String, dynamic>;
+                          final sid = (m['studentId'] ?? '').toString();
+                          if (sid.isNotEmpty) attByStudent[sid] = m;
+                        }
+
+                        final participants =
+                            regDocs.map((doc) {
+                              final d = doc.data() as Map<String, dynamic>;
+                              final uid = (d['userId'] ?? '').toString();
+                              final att = attByStudent[uid];
+                              final status = att == null
+                                  ? 'not_checked_in'
+                                  : (att['status'] ?? 'present').toString();
+                              final registeredAt =
+                                  d['registeredAt'] as Timestamp?;
+                              final regFullName = (d['fullName'] as String?)
+                                  ?.trim();
+                              final cachedFullName =
+                                  (_studentCache[uid]?['fullName'] as String?)
+                                      ?.trim();
+                              final name = regFullName?.isNotEmpty == true
+                                  ? regFullName!
+                                  : (cachedFullName?.isNotEmpty == true
+                                        ? cachedFullName!
+                                        : 'Unknown');
+                              return {
+                                'name': name,
+                                'email': (d['email'] ?? '').toString(),
+                                'status': status,
+                                'statusLabel': status == 'not_checked_in'
+                                    ? 'Not Checked In'
+                                    : (status == 'late' ? 'Late' : 'Present'),
+                                'registeredAtStr': registeredAt != null
+                                    ? DateFormat(
+                                        'MMM d, h:mm a',
+                                      ).format(registeredAt.toDate())
+                                    : '—',
+                              };
+                            }).toList()..sort(
+                              (a, b) => (a['name'] as String).compareTo(
+                                b['name'] as String,
                               ),
-                            )
-                          : filtered.isEmpty
-                          ? Center(
-                              child: Text(
-                                'No participants match your search/filter.',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 13,
-                                  color: const Color(0xFF9AA5B4),
-                                ),
-                              ),
-                            )
-                          : Container(
-                              decoration: BoxDecoration(
-                                border: Border.all(
-                                  color: const Color(0xFFE8ECF0),
-                                ),
-                                borderRadius: BorderRadius.circular(
-                                  _DS.radiusMd,
-                                ),
-                              ),
-                              clipBehavior: Clip.antiAlias,
-                              child: Column(
+                            );
+
+                        // Same status categories as org_attendance_qr.dart's
+                        // stat row (Present is present-only, Late is its own
+                        // bucket) — this used to lump present+late together
+                        // under "Checked In", which never lined up with the
+                        // separate Present/Late counts shown on the
+                        // attendance page for the exact same event.
+                        final registered = participants.length;
+                        final present = participants
+                            .where((p) => p['status'] == 'present')
+                            .length;
+                        final late = participants
+                            .where((p) => p['status'] == 'late')
+                            .length;
+
+                        final query = _search.trim().toLowerCase();
+                        final filtered = participants.where((p) {
+                          final matchSearch =
+                              query.isEmpty ||
+                              (p['name'] as String).toLowerCase().contains(
+                                query,
+                              ) ||
+                              (p['email'] as String).toLowerCase().contains(
+                                query,
+                              );
+                          final matchFilter =
+                              _statusFilter == 'All' ||
+                              (_statusFilter == 'Present' &&
+                                  p['status'] == 'present') ||
+                              (_statusFilter == 'Late' &&
+                                  p['status'] == 'late') ||
+                              (_statusFilter == 'Not Checked In' &&
+                                  p['status'] == 'not_checked_in');
+                          return matchSearch && matchFilter;
+                        }).toList();
+
+                        return Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
                                 children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 10,
-                                    ),
-                                    color: const Color(0xFFFFF7ED),
-                                    child: Row(
-                                      children: [
-                                        Expanded(
-                                          flex: 3,
-                                          child: Text(
-                                            'NAME',
-                                            style: GoogleFonts.beVietnamPro(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w700,
-                                              color: const Color(0xFF64748B),
-                                              letterSpacing: 0.7,
-                                            ),
-                                          ),
-                                        ),
-                                        Expanded(
-                                          flex: 3,
-                                          child: Text(
-                                            'EMAIL',
-                                            style: GoogleFonts.beVietnamPro(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w700,
-                                              color: const Color(0xFF64748B),
-                                              letterSpacing: 0.7,
-                                            ),
-                                          ),
-                                        ),
-                                        Expanded(
-                                          flex: 2,
-                                          child: Text(
-                                            'STATUS',
-                                            style: GoogleFonts.beVietnamPro(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w700,
-                                              color: const Color(0xFF64748B),
-                                              letterSpacing: 0.7,
-                                            ),
-                                          ),
-                                        ),
-                                        Expanded(
-                                          flex: 2,
-                                          child: Text(
-                                            'REGISTERED',
-                                            style: GoogleFonts.beVietnamPro(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w700,
-                                              color: const Color(0xFF64748B),
-                                              letterSpacing: 0.7,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
+                                  Expanded(
+                                    child: _statTile(
+                                      'Registered',
+                                      '$registered',
+                                      Icons.how_to_reg_rounded,
+                                      const Color(0xFF2563EB),
                                     ),
                                   ),
+                                  const SizedBox(width: 10),
                                   Expanded(
-                                    child: ListView.separated(
-                                      itemCount: filtered.length,
-                                      separatorBuilder: (_, __) =>
-                                          const Divider(
-                                            height: 1,
-                                            color: Color(0xFFF1F5F9),
+                                    child: _statTile(
+                                      'Present',
+                                      '$present',
+                                      Icons.verified_rounded,
+                                      const Color(0xFF059669),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: _statTile(
+                                      'Late',
+                                      '$late',
+                                      Icons.schedule_rounded,
+                                      const Color(0xFFFB923C),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 18),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      onChanged: (v) =>
+                                          setState(() => _search = v),
+                                      style: GoogleFonts.beVietnamPro(
+                                        fontSize: 13,
+                                      ),
+                                      decoration: InputDecoration(
+                                        hintText: 'Search by name or email…',
+                                        hintStyle: GoogleFonts.beVietnamPro(
+                                          fontSize: 13,
+                                          color: const Color(0xFF9AA5B4),
+                                        ),
+                                        prefixIcon: const Icon(
+                                          Icons.search_rounded,
+                                          size: 18,
+                                          color: Color(0xFF9AA5B4),
+                                        ),
+                                        isDense: true,
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 10,
+                                            ),
+                                        filled: true,
+                                        fillColor: Colors.white,
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            8,
                                           ),
-                                      itemBuilder: (context, i) {
-                                        final p = filtered[i];
-                                        final statusColor =
-                                            p['status'] == 'not_checked_in'
-                                            ? const Color(0xFF9AA5B4)
-                                            : (p['status'] == 'late'
-                                                  ? const Color(0xFFFB923C)
-                                                  : const Color(0xFF059669));
-                                        return Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 16,
-                                            vertical: 12,
+                                          borderSide: const BorderSide(
+                                            color: Color(0xFFE2E6EA),
                                           ),
-                                          child: Row(
-                                            children: [
-                                              Expanded(
-                                                flex: 3,
-                                                child: Text(
-                                                  p['name'] as String,
-                                                  style:
-                                                      GoogleFonts.beVietnamPro(
-                                                        fontSize: 13,
-                                                        fontWeight:
-                                                            FontWeight.w600,
-                                                        color: const Color(
-                                                          0xFF1A202C,
-                                                        ),
-                                                      ),
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                          borderSide: const BorderSide(
+                                            color: Color(0xFFE2E6EA),
+                                          ),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                          borderSide: BorderSide(
+                                            color: UpriseColors.primaryDark,
+                                            width: 1.5,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  _FilterDropdown(
+                                    value: _statusFilter,
+                                    items: const [
+                                      'All',
+                                      'Present',
+                                      'Late',
+                                      'Not Checked In',
+                                    ],
+                                    hint: 'Status',
+                                    icon: Icons.filter_list_rounded,
+                                    onChanged: (v) => setState(
+                                      () => _statusFilter = v ?? 'All',
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  AdminExportButton(
+                                    enabled: filtered.isNotEmpty,
+                                    label: 'Export',
+                                    onSelected: (choice) =>
+                                        _exportParticipants(choice, filtered),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 14),
+                              Expanded(
+                                child: participants.isEmpty
+                                    ? Center(
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.how_to_reg_outlined,
+                                              size: 40,
+                                              color: const Color(0xFFCBD5E1),
+                                            ),
+                                            const SizedBox(height: 10),
+                                            Text(
+                                              'No one has registered yet.',
+                                              style: GoogleFonts.beVietnamPro(
+                                                fontSize: 13,
+                                                color: const Color(0xFF9AA5B4),
                                               ),
-                                              Expanded(
-                                                flex: 3,
-                                                child: Text(
-                                                  p['email'] as String,
-                                                  style:
-                                                      GoogleFonts.beVietnamPro(
-                                                        fontSize: 12.5,
-                                                        color: const Color(
-                                                          0xFF64748B,
-                                                        ),
-                                                      ),
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
+                                            ),
+                                          ],
+                                        ),
+                                      )
+                                    : filtered.isEmpty
+                                    ? Center(
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.search_off_rounded,
+                                              size: 40,
+                                              color: const Color(0xFFCBD5E1),
+                                            ),
+                                            const SizedBox(height: 10),
+                                            Text(
+                                              'No participants match your search/filter.',
+                                              style: GoogleFonts.beVietnamPro(
+                                                fontSize: 13,
+                                                color: const Color(0xFF9AA5B4),
                                               ),
-                                              Expanded(
-                                                flex: 2,
-                                                child: Align(
-                                                  alignment:
-                                                      Alignment.centerLeft,
-                                                  child: Container(
-                                                    padding:
-                                                        const EdgeInsets.symmetric(
-                                                          horizontal: 8,
-                                                          vertical: 3,
-                                                        ),
-                                                    decoration: BoxDecoration(
-                                                      color: statusColor
-                                                          .withAlpha(26),
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            6,
-                                                          ),
-                                                    ),
+                                            ),
+                                          ],
+                                        ),
+                                      )
+                                    : Container(
+                                        decoration: BoxDecoration(
+                                          border: Border.all(
+                                            color: const Color(0xFFE8ECF0),
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            _DS.radiusMd,
+                                          ),
+                                        ),
+                                        clipBehavior: Clip.antiAlias,
+                                        child: Column(
+                                          children: [
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 16,
+                                                    vertical: 10,
+                                                  ),
+                                              color: const Color(0xFFFFF7ED),
+                                              child: Row(
+                                                children: [
+                                                  Expanded(
+                                                    flex: 3,
                                                     child: Text(
-                                                      p['statusLabel']
-                                                          as String,
+                                                      'NAME',
                                                       style:
                                                           GoogleFonts.beVietnamPro(
                                                             fontSize: 11,
                                                             fontWeight:
                                                                 FontWeight.w700,
-                                                            color: statusColor,
+                                                            color: const Color(
+                                                              0xFF64748B,
+                                                            ),
+                                                            letterSpacing: 0.7,
                                                           ),
                                                     ),
                                                   ),
-                                                ),
+                                                  Expanded(
+                                                    flex: 3,
+                                                    child: Text(
+                                                      'EMAIL',
+                                                      style:
+                                                          GoogleFonts.beVietnamPro(
+                                                            fontSize: 11,
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                            color: const Color(
+                                                              0xFF64748B,
+                                                            ),
+                                                            letterSpacing: 0.7,
+                                                          ),
+                                                    ),
+                                                  ),
+                                                  Expanded(
+                                                    flex: 2,
+                                                    child: Text(
+                                                      'STATUS',
+                                                      style:
+                                                          GoogleFonts.beVietnamPro(
+                                                            fontSize: 11,
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                            color: const Color(
+                                                              0xFF64748B,
+                                                            ),
+                                                            letterSpacing: 0.7,
+                                                          ),
+                                                    ),
+                                                  ),
+                                                  Expanded(
+                                                    flex: 2,
+                                                    child: Text(
+                                                      'REGISTERED',
+                                                      style:
+                                                          GoogleFonts.beVietnamPro(
+                                                            fontSize: 11,
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                            color: const Color(
+                                                              0xFF64748B,
+                                                            ),
+                                                            letterSpacing: 0.7,
+                                                          ),
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
-                                              Expanded(
-                                                flex: 2,
-                                                child: Text(
-                                                  p['registeredAtStr']
-                                                      as String,
-                                                  style:
-                                                      GoogleFonts.beVietnamPro(
-                                                        fontSize: 12,
-                                                        color: const Color(
-                                                          0xFF9AA5B4,
+                                            ),
+                                            Expanded(
+                                              child: ListView.separated(
+                                                itemCount: filtered.length,
+                                                separatorBuilder: (_, __) =>
+                                                    const Divider(
+                                                      height: 1,
+                                                      color: Color(0xFFF1F5F9),
+                                                    ),
+                                                itemBuilder: (context, i) {
+                                                  final p = filtered[i];
+                                                  final statusColor =
+                                                      p['status'] ==
+                                                          'not_checked_in'
+                                                      ? const Color(0xFF9AA5B4)
+                                                      : (p['status'] == 'late'
+                                                            ? const Color(
+                                                                0xFFFB923C,
+                                                              )
+                                                            : const Color(
+                                                                0xFF059669,
+                                                              ));
+                                                  return Padding(
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 16,
+                                                          vertical: 12,
                                                         ),
-                                                      ),
-                                                ),
+                                                    child: Row(
+                                                      children: [
+                                                        Expanded(
+                                                          flex: 3,
+                                                          child: Text(
+                                                            p['name'] as String,
+                                                            style: GoogleFonts.beVietnamPro(
+                                                              fontSize: 13,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w600,
+                                                              color:
+                                                                  const Color(
+                                                                    0xFF1A202C,
+                                                                  ),
+                                                            ),
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
+                                                          ),
+                                                        ),
+                                                        Expanded(
+                                                          flex: 3,
+                                                          child: Text(
+                                                            p['email']
+                                                                as String,
+                                                            style: GoogleFonts.beVietnamPro(
+                                                              fontSize: 12.5,
+                                                              color:
+                                                                  const Color(
+                                                                    0xFF64748B,
+                                                                  ),
+                                                            ),
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
+                                                          ),
+                                                        ),
+                                                        Expanded(
+                                                          flex: 2,
+                                                          child: Align(
+                                                            alignment: Alignment
+                                                                .centerLeft,
+                                                            child: Container(
+                                                              padding:
+                                                                  const EdgeInsets.symmetric(
+                                                                    horizontal:
+                                                                        8,
+                                                                    vertical: 3,
+                                                                  ),
+                                                              decoration: BoxDecoration(
+                                                                color: statusColor
+                                                                    .withAlpha(
+                                                                      26,
+                                                                    ),
+                                                                borderRadius:
+                                                                    BorderRadius.circular(
+                                                                      6,
+                                                                    ),
+                                                              ),
+                                                              child: Text(
+                                                                p['statusLabel']
+                                                                    as String,
+                                                                style: GoogleFonts.beVietnamPro(
+                                                                  fontSize: 11,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w700,
+                                                                  color:
+                                                                      statusColor,
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        Expanded(
+                                                          flex: 2,
+                                                          child: Text(
+                                                            p['registeredAtStr']
+                                                                as String,
+                                                            style: GoogleFonts.beVietnamPro(
+                                                              fontSize: 12,
+                                                              color:
+                                                                  const Color(
+                                                                    0xFF9AA5B4,
+                                                                  ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  );
+                                                },
                                               ),
-                                            ],
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
                               ),
-                            ),
-                    ),
-                  ],
+                            ],
+                          ),
+                        );
+                      },
+                    );
+                  },
                 ),
-              );
-            },
-          );
-        },
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2971,9 +3148,18 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
           .map((s) => s.trim())
           .where((s) => _audiences.contains(s))
           .toSet();
+      // Legacy/manually-created proposals could have 'Public' saved
+      // alongside other audiences (no longer possible from this form going
+      // forward) — normalize back to Public-only when editing one, so the
+      // exclusive-Public UI rule below isn't loaded into a contradictory
+      // state.
       _selectedAudiences
         ..clear()
-        ..addAll(parsed.isEmpty ? {'Public'} : parsed);
+        ..addAll(
+          parsed.isEmpty
+              ? {'Public'}
+              : (parsed.contains('Public') ? {'Public'} : parsed),
+        );
       _issuesCertificate = e['issuesCertificate'] == true;
       _schoolYear = (e['schoolYear'] ?? '').toString().isNotEmpty
           ? e['schoolYear']
@@ -3358,61 +3544,96 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
 
   Widget _audienceChip(String a) {
     final selected = _selectedAudiences.contains(a);
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () => setState(() {
+    // Public is exclusive — it can't be combined with the other three, so
+    // while it's selected they're locked out entirely rather than just
+    // being togglable alongside it.
+    final publicSelected = _selectedAudiences.contains('Public');
+    final disabled = publicSelected && a != 'Public';
+
+    void handleTap() {
+      if (disabled) return;
+      setState(() {
+        if (a == 'Public') {
           if (selected) {
-            if (_selectedAudiences.length > 1) {
-              _selectedAudiences.remove(a);
-            }
+            _selectedAudiences.remove('Public');
           } else {
-            _selectedAudiences.add(a);
+            // Selecting Public always clears whatever else was picked —
+            // "CICT Only + Members Only" then tapping Public must become
+            // just "Public", never "Public + CICT Only + Members Only".
+            _selectedAudiences
+              ..clear()
+              ..add('Public');
           }
-        }),
+          return;
+        }
+        if (selected) {
+          if (_selectedAudiences.length > 1) {
+            _selectedAudiences.remove(a);
+          }
+        } else {
+          _selectedAudiences.add(a);
+        }
+      });
+    }
+
+    return MouseRegion(
+      cursor: disabled
+          ? SystemMouseCursors.forbidden
+          : SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: handleTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
           decoration: BoxDecoration(
-            color: selected
-                ? UpriseColors.primaryDark.withAlpha(20)
-                : Colors.white,
+            color: disabled
+                ? const Color(0xFFF3F4F6)
+                : (selected
+                      ? UpriseColors.primaryDark.withAlpha(20)
+                      : Colors.white),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: selected
+              color: (selected && !disabled)
                   ? UpriseColors.primaryDark
                   : const Color(0xFFE2E6EA),
-              width: selected ? 1.5 : 1,
+              width: (selected && !disabled) ? 1.5 : 1,
             ),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                selected
-                    ? Icons.check_box_rounded
-                    : Icons.check_box_outline_blank_rounded,
-                size: 18,
-                color: selected
-                    ? UpriseColors.primaryDark
-                    : const Color(0xFF9AA5B4),
-              ),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  a,
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                    color: selected
-                        ? const Color(0xFF1A202C)
-                        : const Color(0xFF64748B),
+          child: Opacity(
+            opacity: disabled ? 0.5 : 1,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  selected
+                      ? Icons.check_box_rounded
+                      : Icons.check_box_outline_blank_rounded,
+                  size: 18,
+                  color: (selected && !disabled)
+                      ? UpriseColors.primaryDark
+                      : const Color(0xFF9AA5B4),
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    a,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 13,
+                      fontWeight: (selected && !disabled)
+                          ? FontWeight.w600
+                          : FontWeight.w400,
+                      color: disabled
+                          ? const Color(0xFFB0B7C3)
+                          : (selected
+                                ? const Color(0xFF1A202C)
+                                : const Color(0xFF64748B)),
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

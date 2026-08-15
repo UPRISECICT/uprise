@@ -14,6 +14,7 @@ import '../../../services/activity_logger.dart' as activity_log;
 import '../../../services/notification_service.dart';
 import '../../../widgets/admin_export_button.dart';
 import '../../../widgets/anchored_dropdown.dart';
+import '../../../widgets/org_action_icon_button.dart';
 import '../../../widgets/org_attachment_preview.dart';
 import '../../../widgets/org_modal_shell.dart';
 import 'export_util.dart';
@@ -1728,45 +1729,133 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
                 ),
               ),
             ),
-            // ACTIONS
+            // ACTIONS — icon row at full desktop width (the "old form"),
+            // collapsing to the single 3-dot popup below a width threshold.
+            // The popup exists specifically because a Row of up to 6
+            // always-visible icons has no overflow handling and breaks
+            // (icons overlapping/clipping) once squeezed narrow — so the
+            // icon row is only shown when there's comfortably enough room
+            // for it, and the popup remains the safe fallback everywhere
+            // else instead of being the only option at every width.
             Expanded(
               flex: 2,
               child: Align(
                 alignment: Alignment.centerRight,
-                child: _ActionPopupButton(
-                  // Past events: "View" absorbs the live tracker's
-                  // participants/attendance view when the event was
-                  // actually published; otherwise it's just the plain
-                  // proposal details (nothing was ever published to view
-                  // attendance for).
-                  onView: (isPastEvent && isPublished)
-                      ? () => _openLiveTrackerModal(data)
-                      : () => _openViewModal(docId, data),
-                  viewIsAttendance: isPastEvent && isPublished,
-                  onEdit: (!isPastEvent && status == 'pending')
-                      ? () => _openEditModal(docId, data)
-                      : null,
-                  onRevise: (!isPastEvent && status == 'for_review')
-                      ? () => _openEditModal(docId, data)
-                      : null,
-                  onFormBuilder: (!isPastEvent && status == 'approved')
-                      ? () => _openFormBuilder(docId, data)
-                      : null,
-                  onPublish:
-                      (!isPastEvent && status == 'approved' && !isPublished)
-                      ? () => _confirmPublish(docId, data)
-                      : null,
-                  // Folded into "View" above once the event is past.
-                  onLiveTracker: (!isPastEvent && isPublished)
-                      ? () => _openLiveTrackerModal(data)
-                      : null,
-                  onArchive:
-                      (isPastEvent ||
-                          status == 'approved' ||
-                          status == 'rejected')
-                      ? () =>
-                            _confirmArchive(docId, data['title'] ?? 'Proposal')
-                      : null,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final onView = (isPastEvent && isPublished)
+                        ? () => _openLiveTrackerModal(data)
+                        : () => _openViewModal(docId, data);
+                    final viewIsAttendance = isPastEvent && isPublished;
+                    final onEdit = (!isPastEvent && status == 'pending')
+                        ? () => _openEditModal(docId, data)
+                        : null;
+                    final onRevise = (!isPastEvent && status == 'for_review')
+                        ? () => _openEditModal(docId, data)
+                        : null;
+                    final onFormBuilder = (!isPastEvent && status == 'approved')
+                        ? () => _openFormBuilder(docId, data)
+                        : null;
+                    final onPublish =
+                        (!isPastEvent && status == 'approved' && !isPublished)
+                        ? () => _confirmPublish(docId, data)
+                        : null;
+                    final onLiveTracker = (!isPastEvent && isPublished)
+                        ? () => _openLiveTrackerModal(data)
+                        : null;
+                    final onArchive =
+                        (isPastEvent ||
+                            status == 'approved' ||
+                            status == 'rejected')
+                        ? () => _confirmArchive(
+                            docId,
+                            data['title'] ?? 'Proposal',
+                          )
+                        : null;
+
+                    // Full desktop table (sidebar + generous content width)
+                    // reliably has room for the icon row; MediaQuery is used
+                    // instead of this cell's own narrow flex-based
+                    // constraints, which never reflect the real window
+                    // width.
+                    final isWideView =
+                        MediaQuery.of(context).size.width >= 1300;
+
+                    if (!isWideView) {
+                      return _ActionPopupButton(
+                        onView: onView,
+                        viewIsAttendance: viewIsAttendance,
+                        onEdit: onEdit,
+                        onRevise: onRevise,
+                        onFormBuilder: onFormBuilder,
+                        onPublish: onPublish,
+                        onLiveTracker: onLiveTracker,
+                        onArchive: onArchive,
+                      );
+                    }
+
+                    return Wrap(
+                      alignment: WrapAlignment.end,
+                      spacing: OrgTableStyle.actionIconGap,
+                      runSpacing: OrgTableStyle.actionIconGap,
+                      children: [
+                        OrgActionIconButton(
+                          icon: viewIsAttendance
+                              ? Icons.insights_outlined
+                              : Icons.visibility_outlined,
+                          tooltip: viewIsAttendance
+                              ? 'View Participants & Attendance'
+                              : 'View Details',
+                          color: viewIsAttendance
+                              ? const Color(0xFF059669)
+                              : const Color(0xFF3B82F6),
+                          onTap: onView,
+                        ),
+                        if (onEdit != null)
+                          OrgActionIconButton(
+                            icon: Icons.edit_outlined,
+                            tooltip: 'Edit Proposal',
+                            color: UpriseColors.primaryDark,
+                            onTap: onEdit,
+                          ),
+                        if (onRevise != null)
+                          OrgActionIconButton(
+                            icon: Icons.rate_review_outlined,
+                            tooltip: 'Revise & Resubmit',
+                            color: const Color(0xFF7C3AED),
+                            onTap: onRevise,
+                          ),
+                        if (onFormBuilder != null)
+                          OrgActionIconButton(
+                            icon: Icons.dynamic_form_outlined,
+                            tooltip: 'Registration Form',
+                            color: const Color(0xFF0D9488),
+                            onTap: onFormBuilder,
+                          ),
+                        if (onPublish != null)
+                          OrgActionIconButton(
+                            icon: Icons.publish_outlined,
+                            tooltip: 'Publish to Students',
+                            color: const Color(0xFF2563EB),
+                            onTap: onPublish,
+                          ),
+                        if (onLiveTracker != null)
+                          OrgActionIconButton(
+                            icon: Icons.insights_outlined,
+                            tooltip: 'Live Participants',
+                            color: const Color(0xFF059669),
+                            onTap: onLiveTracker,
+                          ),
+                        if (onArchive != null)
+                          OrgActionIconButton(
+                            icon: Icons.inventory_2_outlined,
+                            tooltip: 'Archive',
+                            color: const Color(0xFF6B7280),
+                            onTap: onArchive,
+                          ),
+                      ],
+                    );
+                  },
                 ),
               ),
             ),
@@ -2543,9 +2632,23 @@ class _LiveTrackerModalState extends State<_LiveTrackerModal> {
                                   : (cachedFullName?.isNotEmpty == true
                                         ? cachedFullName!
                                         : 'Unknown');
+                              // Registration docs don't always carry their
+                              // own 'email' field — same reason 'name' falls
+                              // back to the students collection above, this
+                              // was reading only d['email'] with no
+                              // fallback, so the column rendered blank
+                              // whenever a registration doc predated (or
+                              // never had) that field.
+                              final regEmail = (d['email'] as String?)?.trim();
+                              final cachedEmail =
+                                  (_studentCache[uid]?['email'] as String?)
+                                      ?.trim();
+                              final email = regEmail?.isNotEmpty == true
+                                  ? regEmail!
+                                  : (cachedEmail ?? '');
                               return {
                                 'name': name,
-                                'email': (d['email'] ?? '').toString(),
+                                'email': email,
                                 'status': status,
                                 'statusLabel': status == 'not_checked_in'
                                     ? 'Not Checked In'
@@ -2610,6 +2713,9 @@ class _LiveTrackerModalState extends State<_LiveTrackerModal> {
                                       '$registered',
                                       Icons.how_to_reg_rounded,
                                       const Color(0xFF2563EB),
+                                      isSelected: _statusFilter == 'All',
+                                      onTap: () =>
+                                          setState(() => _statusFilter = 'All'),
                                     ),
                                   ),
                                   const SizedBox(width: 10),
@@ -2619,6 +2725,10 @@ class _LiveTrackerModalState extends State<_LiveTrackerModal> {
                                       '$present',
                                       Icons.verified_rounded,
                                       const Color(0xFF059669),
+                                      isSelected: _statusFilter == 'Present',
+                                      onTap: () => setState(
+                                        () => _statusFilter = 'Present',
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(width: 10),
@@ -2628,6 +2738,10 @@ class _LiveTrackerModalState extends State<_LiveTrackerModal> {
                                       '$late',
                                       Icons.schedule_rounded,
                                       const Color(0xFFFB923C),
+                                      isSelected: _statusFilter == 'Late',
+                                      onTap: () => setState(
+                                        () => _statusFilter = 'Late',
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -2989,57 +3103,79 @@ class _LiveTrackerModalState extends State<_LiveTrackerModal> {
   // Matches org_dashboard.dart's own _StatCardWidget exactly (icon badge
   // top-left, big number top-right, label below) — the dashboard's stat
   // cards are the reference "this looks good" style for the whole portal.
-  Widget _statTile(String label, String value, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(_DS.radiusMd),
-        border: Border.all(color: const Color(0xFFE2E6EA)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(15),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+  // Tappable — filters the table below to that status, reusing the same
+  // _statusFilter the Status dropdown already drives, instead of sitting
+  // there as a static number with no relation to the list underneath it.
+  Widget _statTile(
+    String label,
+    String value,
+    IconData icon,
+    Color color, {
+    VoidCallback? onTap,
+    bool isSelected = false,
+  }) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(_DS.radiusMd),
+            border: Border.all(
+              color: isSelected ? color : const Color(0xFFE2E6EA),
+              width: isSelected ? 1.5 : 1,
+            ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: color.withAlpha(46),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : _DS.cardShadow,
           ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: color.withAlpha(26),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                alignment: Alignment.center,
-                child: Icon(icon, color: color, size: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: color.withAlpha(26),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(icon, color: color, size: 20),
+                  ),
+                  Text(
+                    value,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF1A202C),
+                    ),
+                  ),
+                ],
               ),
+              const SizedBox(height: 12),
               Text(
-                value,
+                label,
                 style: GoogleFonts.beVietnamPro(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w800,
-                  color: const Color(0xFF1A202C),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF64748B),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Text(
-            label,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: const Color(0xFF64748B),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

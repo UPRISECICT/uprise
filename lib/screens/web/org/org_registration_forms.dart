@@ -225,6 +225,11 @@ class _OrgRegistrationFormsScreenState
                       child: DropdownButton<String>(
                         value: _event?.id,
                         isExpanded: true,
+                        // No max height here defaults to unbounded, so with
+                        // enough events the menu just grew to fill nearly
+                        // the whole screen instead of staying a compact,
+                        // internally-scrollable panel near the button.
+                        menuMaxHeight: 320,
                         icon: const Icon(
                           Icons.keyboard_arrow_down_rounded,
                           size: 20,

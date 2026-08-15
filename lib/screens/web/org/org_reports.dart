@@ -764,15 +764,16 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
 
     final searchCtrl = TextEditingController();
 
-    showModalBottomSheet(
+    // A centered Dialog instead of a bottom sheet — every other detail/edit
+    // panel in the org web portal (certificates, event overview, etc.) uses
+    // a centered Dialog; the mobile-style bottom sheet was the odd one out
+    // here and read as less "desktop admin tool" than the rest of the app.
+    showDialog(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => DraggableScrollableSheet(
-        initialChildSize: 0.65,
-        maxChildSize: 0.9,
-        minChildSize: 0.4,
-        builder: (_, scrollCtrl) => StatefulBuilder(
+      builder: (ctx) => Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        child: StatefulBuilder(
           builder: (context, setSheetState) {
             final query = searchCtrl.text.trim().toLowerCase();
             final visibleEventIds = query.isEmpty
@@ -785,32 +786,27 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
                       )
                       .toList();
             return Container(
+              width: 640,
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.85,
+              ),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(24),
-                ),
-                boxShadow: _DS.cardShadow,
+                borderRadius: BorderRadius.circular(18),
               ),
+              clipBehavior: Clip.antiAlias,
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Handle
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE2E6EA),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
+                  // Header
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFF8F9FB),
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(18),
                       ),
                     ),
-                  ),
-                  // Header
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
                     child: Row(
                       children: [
                         Container(
@@ -833,7 +829,7 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
                               Text(
                                 'All Pending Reports',
                                 style: GoogleFonts.beVietnamPro(
-                                  fontSize: 20,
+                                  fontSize: 18,
                                   fontWeight: FontWeight.w700,
                                   color: _DS.textPrimary,
                                 ),
@@ -841,14 +837,14 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
                               Text(
                                 '$totalPending event${totalPending > 1 ? 's' : ''} need${totalPending > 1 ? '' : 's'} attention',
                                 style: GoogleFonts.beVietnamPro(
-                                  fontSize: 14,
+                                  fontSize: 13,
                                   color: _DS.textSecondary,
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        if (overdueCount > 0)
+                        if (overdueCount > 0) ...[
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 14,
@@ -881,6 +877,13 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
                               ],
                             ),
                           ),
+                          const SizedBox(width: 8),
+                        ],
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded, size: 20),
+                          tooltip: 'Close',
+                          onPressed: () => Navigator.pop(context),
+                        ),
                       ],
                     ),
                   ),
@@ -937,20 +940,26 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
                     ),
                   ),
                   const Divider(height: 20, color: _DS.border),
-                  // List
-                  Expanded(
+                  // List — Flexible (not Expanded) so a short list just
+                  // shrinks to fit instead of leaving a big empty area
+                  // below it, while a long one still scrolls within the
+                  // dialog's max height.
+                  Flexible(
                     child: visibleEventIds.isEmpty
-                        ? Center(
-                            child: Text(
-                              'No pending reports match "$query"',
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 13,
-                                color: _DS.textSecondary,
+                        ? Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 40),
+                            child: Center(
+                              child: Text(
+                                'No pending reports match "$query"',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 13,
+                                  color: _DS.textSecondary,
+                                ),
                               ),
                             ),
                           )
                         : ListView.builder(
-                            controller: scrollCtrl,
+                            shrinkWrap: true,
                             padding: const EdgeInsets.symmetric(
                               horizontal: 24,
                               vertical: 8,

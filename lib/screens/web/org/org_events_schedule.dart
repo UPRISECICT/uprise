@@ -9,6 +9,7 @@ import '../admin/export_pdf.dart';
 import '../../../theme/org_theme.dart';
 import '../../../utils/platform_file_utils.dart' as platform_file_utils;
 import '../../../widgets/org_attachment_preview.dart';
+import '../../../widgets/org_modal_shell.dart';
 import 'org_certificates.dart' show fetchRecipientStatus;
 import 'org_attendance_qr.dart' show showRegistrationAnswers;
 
@@ -2285,113 +2286,128 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  // ── Key details as tidy cards ──────────────────
-                                  // A fixed 3+2 grid instead of a Wrap that
-                                  // reflowed unevenly (4 cards on one row,
-                                  // 1 alone on the next) — and a distinct
-                                  // accent color per field instead of one
-                                  // flat tint repeated five times, so the
-                                  // row reads at a glance instead of
-                                  // blurring into a single color block.
-                                  Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Expanded(
-                                        child: _detailCard(
-                                          'Date',
-                                          DateFormat(
-                                            'MMM d, yyyy',
-                                          ).format(event.date),
-                                          Icons.calendar_today_rounded,
-                                          accent: const Color(0xFF3B82F6),
+                                  // One consolidated card instead of five
+                                  // separately-bordered-and-shadowed mini
+                                  // cards — matches the shared detail-list
+                                  // pattern already used elsewhere in the
+                                  // app (certificates, letter request)
+                                  // instead of a "grid of loud boxes" that
+                                  // read as busier the more fields an event
+                                  // has.
+                                  OrgModalSection(
+                                    title: 'Event Details',
+                                    icon: Icons.info_outline_rounded,
+                                    accentColor: catColor,
+                                    child: Column(
+                                      children: [
+                                        Row(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Expanded(
+                                              child: OrgDetailItem(
+                                                label: 'Date',
+                                                value: DateFormat(
+                                                  'MMM d, yyyy',
+                                                ).format(event.date),
+                                                icon: Icons
+                                                    .calendar_today_rounded,
+                                                iconColor: const Color(
+                                                  0xFF3B82F6,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 16),
+                                            Expanded(
+                                              child: OrgDetailItem(
+                                                label: 'Time',
+                                                value: startTime.isNotEmpty
+                                                    ? (endTime.isNotEmpty
+                                                          ? '$startTime - $endTime'
+                                                          : startTime)
+                                                    : 'TBD',
+                                                icon: Icons.access_time_rounded,
+                                                iconColor: const Color(
+                                                  0xFFF59E0B,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: _detailCard(
-                                          'Time',
-                                          startTime.isNotEmpty
-                                              ? (endTime.isNotEmpty
-                                                    ? '$startTime - $endTime'
-                                                    : startTime)
-                                              : 'TBD',
-                                          Icons.access_time_rounded,
-                                          accent: const Color(0xFFF59E0B),
+                                        const SizedBox(height: 14),
+                                        Divider(
+                                          height: 1,
+                                          color: const Color(0xFFE8ECF0),
                                         ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: _detailCard(
-                                          'Location',
-                                          event.location.isNotEmpty
-                                              ? event.location
-                                              : 'TBD',
-                                          Icons.location_on_outlined,
-                                          accent: const Color(0xFF8B5CF6),
+                                        const SizedBox(height: 14),
+                                        Row(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Expanded(
+                                              child: OrgDetailItem(
+                                                label: 'Location',
+                                                value: event.location.isNotEmpty
+                                                    ? event.location
+                                                    : 'TBD',
+                                                icon:
+                                                    Icons.location_on_outlined,
+                                                iconColor: const Color(
+                                                  0xFF8B5CF6,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 16),
+                                            Expanded(
+                                              child: OrgDetailItem(
+                                                label: 'Audience',
+                                                value: event.audience.isNotEmpty
+                                                    ? event.audience
+                                                    : 'Public',
+                                                icon: Icons.group_outlined,
+                                                iconColor: const Color(
+                                                  0xFF06B6D4,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Expanded(
-                                        child: _detailCard(
-                                          'Audience',
-                                          event.audience.isNotEmpty
-                                              ? event.audience
-                                              : 'Public',
-                                          Icons.group_outlined,
-                                          accent: const Color(0xFF06B6D4),
-                                        ),
-                                      ),
-                                      if (event.orgName.isNotEmpty) ...[
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: _detailCard(
-                                            'Organization',
-                                            event.orgName,
-                                            Icons.business_center,
-                                            accent: const Color(0xFF10B981),
+                                        if (event.orgName.isNotEmpty) ...[
+                                          const SizedBox(height: 14),
+                                          Divider(
+                                            height: 1,
+                                            color: const Color(0xFFE8ECF0),
                                           ),
-                                        ),
-                                      ] else
-                                        const Spacer(),
-                                    ],
+                                          const SizedBox(height: 14),
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: OrgDetailItem(
+                                                  label: 'Organization',
+                                                  value: event.orgName,
+                                                  icon: Icons.business_center,
+                                                  iconColor: const Color(
+                                                    0xFF10B981,
+                                                  ),
+                                                ),
+                                              ),
+                                              const Expanded(
+                                                child: SizedBox.shrink(),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ],
+                                    ),
                                   ),
-                                  const SizedBox(height: 22),
+                                  const SizedBox(height: 16),
 
                                   // ── Description ──────────────────────────────────
                                   if (event.description.isNotEmpty) ...[
-                                    _sectionLabel(
-                                      'Description',
+                                    OrgModalSection(
+                                      title: 'Description',
                                       icon: Icons.description_outlined,
-                                    ),
-                                    Container(
-                                      width: double.infinity,
-                                      padding: const EdgeInsets.fromLTRB(
-                                        18,
-                                        16,
-                                        18,
-                                        16,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(
-                                          color: const Color(0xFFEDF0F3),
-                                        ),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: Colors.black.withAlpha(8),
-                                            blurRadius: 10,
-                                            offset: const Offset(0, 3),
-                                          ),
-                                        ],
-                                      ),
+                                      accentColor: catColor,
                                       child: Text(
                                         event.description,
                                         style: GoogleFonts.beVietnamPro(
@@ -2401,52 +2417,39 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(height: 22),
+                                    const SizedBox(height: 16),
                                   ],
 
                                   // ── Guest Speaker ────────────────────────────────
+                                  // A plain labeled row instead of its own
+                                  // tinted, bordered card — this is one
+                                  // extra fact, not content that needs the
+                                  // same visual weight as the details grid
+                                  // or the description above it.
                                   if (guestSpeaker.isNotEmpty) ...[
                                     _sectionLabel(
                                       'Guest Speaker',
                                       icon: Icons.person_outline_rounded,
                                     ),
-                                    Container(
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: catColor.withAlpha(15),
-                                        borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(
-                                          color: catColor.withAlpha(45),
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.person_rounded,
+                                          color: catColor,
+                                          size: 18,
                                         ),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Container(
-                                            width: 38,
-                                            height: 38,
-                                            decoration: BoxDecoration(
-                                              color: catColor.withAlpha(30),
-                                              shape: BoxShape.circle,
-                                            ),
-                                            child: Icon(
-                                              Icons.person_rounded,
-                                              color: catColor,
-                                              size: 18,
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Text(
+                                            guestSpeaker,
+                                            style: GoogleFonts.beVietnamPro(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                              color: const Color(0xFF1A202C),
                                             ),
                                           ),
-                                          const SizedBox(width: 14),
-                                          Expanded(
-                                            child: Text(
-                                              guestSpeaker,
-                                              style: GoogleFonts.beVietnamPro(
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w600,
-                                                color: const Color(0xFF1A202C),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
+                                        ),
+                                      ],
                                     ),
                                     const SizedBox(height: 22),
                                   ],

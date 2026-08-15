@@ -17,53 +17,97 @@ import '../../../widgets/org_action_icon_button.dart';
 import '../../../widgets/org_modal_shell.dart';
 
 // ─── STATUS SUMMARY ITEM ──────────────────────────────────────
+// Matches the app's established stat-card look (white card, colored icon
+// badge, big bold number, label below) instead of the small tinted pill
+// this used to be — that one-off style read as a lot less professional
+// than every other stat row in the portal. Tappable, same as those.
 class _StatusSummaryItem extends StatelessWidget {
   final String label;
   final int count;
   final Color color;
   final IconData? icon;
+  final bool isSelected;
+  final VoidCallback? onTap;
 
   const _StatusSummaryItem({
     required this.label,
     required this.count,
     required this.color,
     this.icon,
+    this.isSelected = false,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.2)),
-      ),
-      child: Column(
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected ? color : const Color(0xFFE8ECF0),
+              width: isSelected ? 1.5 : 1,
+            ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: color.withAlpha(46),
+                      blurRadius: 14,
+                      offset: const Offset(0, 3),
+                    ),
+                  ]
+                : [
+                    BoxShadow(
+                      color: Colors.black.withAlpha(10),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (icon != null) Icon(icon, size: 14, color: color),
-              const SizedBox(width: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  if (icon != null)
+                    Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: color.withAlpha(26),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      alignment: Alignment.center,
+                      child: Icon(icon, color: color, size: 17),
+                    ),
+                  Text(
+                    '$count',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF1A202C),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
               Text(
-                '$count',
+                label,
                 style: GoogleFonts.beVietnamPro(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: color,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w600,
+                  color: UpriseColors.darkGray,
                 ),
               ),
             ],
           ),
-          Text(
-            label,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 9,
-              color: UpriseColors.darkGray,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -2055,6 +2099,280 @@ class _BatchDetailModal extends StatefulWidget {
 }
 
 class _BatchDetailModalState extends State<_BatchDetailModal> {
+  // 'All' | 'evaluated' | 'waiting' | 'ready' — set by tapping a summary
+  // card, filters the recipient list below to just that status.
+  String _statusFilter = 'All';
+  // 'All' is also the untouched default, so without this the Total card
+  // would render pre-highlighted on open even though nothing was clicked.
+  bool _filterTouched = false;
+
+  // fetchRecipientStatus does 3 sequential Firestore reads (attendances,
+  // feedback across two collections, certificates) — it was being called
+  // fresh inline in TWO separate FutureBuilders (footer button + body),
+  // so it re-ran twice on open and AGAIN on every rebuild (e.g. tapping a
+  // summary card to filter), which is what made this one modal feel so
+  // much slower than every other one. Caching it once here means both
+  // FutureBuilders below share the same in-flight/completed future.
+  late final Future<List<_RecipientStatusRow>> _recipientStatusFuture =
+      fetchRecipientStatus(widget.eventId);
+
+  // Same admin remark shown in the Import Template modal's Signatories
+  // section (signatoryAuthorization.remarks on the originating proposal)
+  // — this view had no way to see it at all, so events -> proposal ->
+  // remarks is resolved once here too.
+  late final Future<String?> _adminRemarksFuture = _loadAdminRemarks();
+
+  Future<String?> _loadAdminRemarks() async {
+    if (widget.eventId.isEmpty) return null;
+    try {
+      final eventDoc = await FirebaseFirestore.instance
+          .collection('events')
+          .doc(widget.eventId)
+          .get();
+      final proposalId = eventDoc.data()?['createdFromProposalId'] as String?;
+      if (proposalId == null || proposalId.isEmpty) return null;
+      final proposalDoc = await FirebaseFirestore.instance
+          .collection('event_proposals')
+          .doc(proposalId)
+          .get();
+      final auth = proposalDoc.data()?['signatoryAuthorization'];
+      if (auth is! Map) return null;
+      final remarks = (auth['remarks'] as String?)?.trim() ?? '';
+      return remarks.isEmpty ? null : remarks;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Widget _buildSummarySection(
+    int total,
+    int evaluated,
+    int awaitingEval,
+    int readyToSend,
+  ) {
+    return OrgModalSection(
+      title: 'Summary',
+      icon: Icons.bar_chart_rounded,
+      accentColor: UpriseColors.primaryDark,
+      child: Row(
+        children: [
+          Expanded(
+            child: _StatusSummaryItem(
+              label: 'Total',
+              count: total,
+              color: UpriseColors.charcoal,
+              icon: Icons.people_outline,
+              isSelected: _statusFilter == 'All' && _filterTouched,
+              onTap: () => setState(() {
+                _statusFilter = 'All';
+                _filterTouched = true;
+              }),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _StatusSummaryItem(
+              label: 'Evaluated',
+              count: evaluated,
+              color: UpriseColors.success,
+              icon: Icons.check_circle_outline,
+              isSelected: _statusFilter == 'evaluated',
+              onTap: () => setState(() {
+                _filterTouched = true;
+                _statusFilter = _statusFilter == 'evaluated'
+                    ? 'All'
+                    : 'evaluated';
+              }),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _StatusSummaryItem(
+              label: 'Waiting',
+              count: awaitingEval,
+              color: UpriseColors.warning,
+              icon: Icons.hourglass_empty,
+              isSelected: _statusFilter == 'waiting',
+              onTap: () => setState(() {
+                _filterTouched = true;
+                _statusFilter = _statusFilter == 'waiting' ? 'All' : 'waiting';
+              }),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _StatusSummaryItem(
+              label: 'Ready',
+              count: readyToSend,
+              color: UpriseColors.primaryDark,
+              icon: Icons.send_outlined,
+              isSelected: _statusFilter == 'ready',
+              onTap: () => setState(() {
+                _filterTouched = true;
+                _statusFilter = _statusFilter == 'ready' ? 'All' : 'ready';
+              }),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecipientRow(CertificateBatch b, _RecipientStatusRow row) {
+    final bool canSend = row.evaluated && !row.certSent;
+    final bool awaitingEval = !row.evaluated;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        color: canSend
+            ? UpriseColors.warning.withOpacity(0.08)
+            : (awaitingEval
+                  ? Colors.grey.shade50
+                  : UpriseColors.success.withOpacity(0.05)),
+      ),
+      child: Row(
+        children: [
+          // Name
+          Expanded(
+            flex: 2,
+            child: Text(
+              row.name,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: const Color(0xFF1A202C),
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          // Status badge
+          Expanded(flex: 1, child: _buildStatusBadge(row)),
+          const SizedBox(width: 8),
+          // Action button
+          if (awaitingEval)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.grey[200],
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                'Waiting',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 11,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            )
+          else if (canSend)
+            ElevatedButton.icon(
+              onPressed: () async {
+                await widget.onSendSingle(row.key, row.name, row.isGuest);
+                if (mounted) {
+                  setState(() {});
+                }
+              },
+              icon: const Icon(Icons.send_rounded, size: 14),
+              label: const Text('Send'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: UpriseColors.primaryDark,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 7,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                elevation: 0,
+              ),
+            )
+          else if (row.certSent)
+            OutlinedButton.icon(
+              onPressed: () {
+                // Find the existing record for this recipient
+                final record = b.records.firstWhere(
+                  (r) => r.recipientName == row.name,
+                  orElse: () => b.records.first,
+                );
+                widget.onResend(record);
+              },
+              icon: const Icon(Icons.refresh_rounded, size: 14),
+              label: Text(
+                row.resendCount > 0
+                    ? 'Resend ×${row.resendCount + 1}'
+                    : 'Resend',
+                style: GoogleFonts.beVietnamPro(fontSize: 11),
+              ),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 7,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                side: BorderSide(
+                  color: UpriseColors.primaryDark.withOpacity(0.4),
+                ),
+              ),
+            )
+          else
+            const SizedBox.shrink(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecipientsSection(
+    CertificateBatch b,
+    List<_RecipientStatusRow> rows,
+  ) {
+    final filteredRows = switch (_statusFilter) {
+      'evaluated' => rows.where((r) => r.evaluated),
+      'waiting' => rows.where((r) => !r.evaluated),
+      'ready' => rows.where((r) => r.evaluated && !r.certSent),
+      _ => rows,
+    }.toList();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 0),
+      child: OrgModalSection(
+        title: 'Recipients',
+        icon: Icons.groups_outlined,
+        accentColor: UpriseColors.primaryDark,
+        // Expanded so the list scrolls within the right column's own
+        // bounded height instead of trying to grow to its full content
+        // height — the right column is the thing that scrolls now, not
+        // the whole modal.
+        child: filteredRows.isEmpty
+            ? Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: Text(
+                    'No recipients match this filter.',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 13,
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                ),
+              )
+            : Expanded(
+                child: ListView.separated(
+                  padding: EdgeInsets.zero,
+                  itemCount: filteredRows.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (_, i) => _buildRecipientRow(b, filteredRows[i]),
+                ),
+              ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final b = widget.batch;
@@ -2081,7 +2399,7 @@ class _BatchDetailModalState extends State<_BatchDetailModal> {
       accentColor: UpriseColors.primaryDark,
       icon: Icons.card_membership_outlined,
       title: b.eventName,
-      width: 720,
+      width: 1040,
       maxHeightFraction: 0.85,
       subtitleWidget: Row(
         children: [
@@ -2102,7 +2420,7 @@ class _BatchDetailModalState extends State<_BatchDetailModal> {
       footerActions: [
         // Use FutureBuilder to check if there are eligible recipients
         FutureBuilder<List<_RecipientStatusRow>>(
-          future: fetchRecipientStatus(eventId),
+          future: _recipientStatusFuture,
           builder: (context, snapshot) {
             // Check if there's anyone eligible
             final hasEligible =
@@ -2136,247 +2454,130 @@ class _BatchDetailModalState extends State<_BatchDetailModal> {
           },
         ),
       ],
-      body: Column(
-        children: [
-          _buildTemplatePreview(b),
-          Expanded(
-            child: FutureBuilder<List<_RecipientStatusRow>>(
-              future: fetchRecipientStatus(eventId),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text(
-                        'Error: ${snapshot.error}',
-                        style: GoogleFonts.beVietnamPro(
-                          color: UpriseColors.error,
-                        ),
-                      ),
-                    ),
-                  );
-                }
-                final rows = snapshot.data ?? [];
-                if (rows.isEmpty) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text(
-                        'No attendees found for this event.',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 14,
-                          color: const Color(0xFF64748B),
-                        ),
-                      ),
-                    ),
-                  );
-                }
-
-                // 👇 THIS IS THE NEW PART - Calculate stats
-                final total = rows.length;
-                final evaluated = rows.where((r) => r.evaluated).length;
-                final sent = rows.where((r) => r.certSent).length;
-                final awaitingEval = total - evaluated;
-                final readyToSend = evaluated - sent;
-                // 👆 NEW PART ENDS HERE
-
-                // 👇 THIS IS THE UPDATED RETURN - Now with summary
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // ── Summary Cards ──
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: _StatusSummaryItem(
-                              label: 'Total',
-                              count: total,
-                              color: UpriseColors.charcoal,
-                              icon: Icons.people_outline,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _StatusSummaryItem(
-                              label: 'Evaluated',
-                              count: evaluated,
-                              color: UpriseColors.success,
-                              icon: Icons.check_circle_outline,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _StatusSummaryItem(
-                              label: 'Waiting',
-                              count: awaitingEval,
-                              color: UpriseColors.warning,
-                              icon: Icons.hourglass_empty,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _StatusSummaryItem(
-                              label: 'Ready',
-                              count: readyToSend,
-                              color: UpriseColors.primaryDark,
-                              icon: Icons.send_outlined,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const Divider(),
-
-                    // ── Recipient List ──
-                    Expanded(
-                      child: ListView.separated(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: rows.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
-                        itemBuilder: (_, i) {
-                          final row = rows[i];
-                          final bool canSend = row.evaluated && !row.certSent;
-                          final bool awaitingEval = !row.evaluated;
-
-                          return Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(8),
-                              color: canSend
-                                  ? UpriseColors.warning.withOpacity(0.08)
-                                  : (awaitingEval
-                                        ? Colors.grey.shade50
-                                        : UpriseColors.success.withOpacity(
-                                            0.05,
-                                          )),
-                            ),
-                            child: Row(
-                              children: [
-                                // Name
-                                Expanded(
-                                  flex: 2,
-                                  child: Text(
-                                    row.name,
-                                    style: GoogleFonts.beVietnamPro(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w500,
-                                      color: const Color(0xFF1A202C),
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
+      // Certificate Preview on the left, Summary + Recipients on the
+      // right — a bounded-height Row instead of one long scrolling
+      // column, so the design and the recipient list are visible side by
+      // side rather than the design scrolling out of view once you're
+      // looking at recipients.
+      body: SizedBox(
+        height: 560,
+        child: FutureBuilder<List<_RecipientStatusRow>>(
+          future: _recipientStatusFuture,
+          builder: (context, snapshot) {
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildTemplatePreview(b),
+                        FutureBuilder<String?>(
+                          future: _adminRemarksFuture,
+                          builder: (context, remarksSnap) {
+                            final remarks = remarksSnap.data;
+                            if (remarks == null || remarks.isEmpty) {
+                              return const SizedBox.shrink();
+                            }
+                            return Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFEFF6FF),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: const Color(0xFFBFDBFE),
                                   ),
                                 ),
-                                // Status badge
-                                Expanded(
-                                  flex: 1,
-                                  child: _buildStatusBadge(row),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Icon(
+                                      Icons.info_outline_rounded,
+                                      size: 15,
+                                      color: Color(0xFF2563EB),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Note from admin: $remarks',
+                                        style: GoogleFonts.beVietnamPro(
+                                          fontSize: 11.5,
+                                          color: const Color(0xFF1E3A8A),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                const SizedBox(width: 8),
-                                // Action button
-                                if (awaitingEval)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.grey[200],
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Text(
-                                      'Waiting',
-                                      style: GoogleFonts.beVietnamPro(
-                                        fontSize: 11,
-                                        color: Colors.grey[600],
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  )
-                                else if (canSend)
-                                  ElevatedButton.icon(
-                                    onPressed: () async {
-                                      await widget.onSendSingle(
-                                        row.key,
-                                        row.name,
-                                        row.isGuest,
-                                      );
-                                      if (mounted) setState(() {});
-                                    },
-                                    icon: const Icon(
-                                      Icons.send_rounded,
-                                      size: 14,
-                                    ),
-                                    label: const Text('Send'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: UpriseColors.primaryDark,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 14,
-                                        vertical: 7,
-                                      ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      elevation: 0,
-                                    ),
-                                  )
-                                else if (row.certSent)
-                                  OutlinedButton.icon(
-                                    onPressed: () {
-                                      // Find the existing record for this recipient
-                                      final record = b.records.firstWhere(
-                                        (r) => r.recipientName == row.name,
-                                        orElse: () => b.records.first,
-                                      );
-                                      widget.onResend(record);
-                                    },
-                                    icon: const Icon(
-                                      Icons.refresh_rounded,
-                                      size: 14,
-                                    ),
-                                    label: Text(
-                                      row.resendCount > 0
-                                          ? 'Resend ×${row.resendCount + 1}'
-                                          : 'Resend',
-                                      style: GoogleFonts.beVietnamPro(
-                                        fontSize: 11,
-                                      ),
-                                    ),
-                                    style: OutlinedButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 14,
-                                        vertical: 7,
-                                      ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      side: BorderSide(
-                                        color: UpriseColors.primaryDark
-                                            .withOpacity(0.4),
-                                      ),
-                                    ),
-                                  )
-                                else
-                                  const SizedBox.shrink(),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
                     ),
-                  ],
-                );
-              },
+                  ),
+                ),
+                const VerticalDivider(width: 1, color: Color(0xFFE8ECF0)),
+                Expanded(flex: 6, child: _buildRecipientsColumn(b, snapshot)),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRecipientsColumn(
+    CertificateBatch b,
+    AsyncSnapshot<List<_RecipientStatusRow>> snapshot,
+  ) {
+    if (snapshot.connectionState == ConnectionState.waiting) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (snapshot.hasError) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            'Error: ${snapshot.error}',
+            style: GoogleFonts.beVietnamPro(color: UpriseColors.error),
+          ),
+        ),
+      );
+    }
+    final rows = snapshot.data ?? [];
+    if (rows.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            'No attendees found for this event.',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 14,
+              color: const Color(0xFF64748B),
             ),
           ),
+        ),
+      );
+    }
+
+    final total = rows.length;
+    final evaluated = rows.where((r) => r.evaluated).length;
+    final sent = rows.where((r) => r.certSent).length;
+    final awaitingEval = total - evaluated;
+    final readyToSend = evaluated - sent;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSummarySection(total, evaluated, awaitingEval, readyToSend),
+          const Divider(),
+          Expanded(child: _buildRecipientsSection(b, rows)),
         ],
       ),
     );
@@ -2386,107 +2587,139 @@ class _BatchDetailModalState extends State<_BatchDetailModal> {
     final r = b.primary;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'CERTIFICATE PREVIEW',
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 10.5,
-              fontWeight: FontWeight.w700,
-              color: UpriseColors.darkGray,
-              letterSpacing: 0.6,
-            ),
-          ),
-          const SizedBox(height: 8),
-          // Was a raw image floating flush against the modal's gray body
-          // with nothing separating it — a white card frame gives it the
-          // same visual weight as every other content block in this modal.
-          Container(
-            height: 200,
+      // Matches every other section card in this app's modals (white card,
+      // icon badge + title, divider) instead of a one-off caps-label — was
+      // the only section here that didn't look like it belonged to the
+      // same design system as the Summary/Recipients sections below it.
+      child: OrgModalSection(
+        title: 'Certificate Preview',
+        icon: Icons.image_outlined,
+        accentColor: UpriseColors.primaryDark,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          // Sizing this to the certificate's own 600:424 aspect ratio from
+          // the full card width would need ~480px of height — taller than
+          // this modal has room for once Summary and Recipients are also
+          // on screen, which is what caused the overflow. A bounded height
+          // (up from the original 200px, still comfortably fits the modal)
+          // keeps the FittedBox below guaranteed to fit with no overflow,
+          // just less letterboxing than before.
+          child: Container(
+            height: 260,
             width: double.infinity,
-            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
               border: Border.all(color: const Color(0xFFE8ECF0)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withAlpha(15),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+              borderRadius: BorderRadius.circular(10),
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: r.templateFileUrl != null
-                  ? FittedBox(
-                      fit: BoxFit.contain,
-                      child: Image.network(
-                        _renderableTemplateUrl(r.templateFileUrl!),
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          color: const Color(0xFFF1F5F9),
-                          alignment: Alignment.center,
-                          child: const Icon(
-                            Icons.broken_image_outlined,
-                            color: Color(0xFF9AA5B4),
+            child: r.templateFileUrl != null
+                // This used to just be the raw uploaded image with no
+                // overlay at all — for a custom/imported template the
+                // recipient name and signatories are placed on top at
+                // render time (same as the Generate modal's Live
+                // Preview), not baked into the file, so skipping that
+                // overlay here meant this preview never showed either
+                // one. '[Recipient Name]' mirrors the placeholder the
+                // generated-template branch below already uses — this is
+                // a preview of the design, not one specific recipient's
+                // certificate.
+                ? StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('signatories')
+                        .snapshots(),
+                    builder: (context, snap) {
+                      final signatories = <String, SignatoryData>{};
+                      for (final doc in (snap.data?.docs ?? [])) {
+                        final data = doc.data() as Map<String, dynamic>? ?? {};
+                        final id = doc.id;
+                        signatories[id] = SignatoryData(
+                          id: id,
+                          placeholderKey: id,
+                          fullName: (data['fullName'] ?? '').toString(),
+                          title: (data['title'] ?? '').toString(),
+                          signatureBase64: data['signatureBase64'] as String?,
+                        );
+                      }
+
+                      final rawPlacements = r.signatoryPlacements ?? {};
+                      final validPlacements = <String, CertNamePlacement>{};
+                      for (final entry in rawPlacements.entries) {
+                        if (!signatories.containsKey(entry.key)) continue;
+                        validPlacements[entry.key] = CertNamePlacement.fromMap(
+                          entry.value is Map
+                              ? Map<String, dynamic>.from(entry.value as Map)
+                              : null,
+                        );
+                      }
+
+                      return FittedBox(
+                        fit: BoxFit.contain,
+                        child: SizedBox(
+                          width: 600,
+                          height: 424,
+                          child: _CertificateComposite(
+                            recipientName: '[Recipient Name]',
+                            namePlacement: CertNamePlacement.fromMap(
+                              r.namePlacement,
+                            ),
+                            signatoryPlacements: validPlacements,
+                            signatories: signatories,
+                            background: NetworkImage(
+                              _renderableTemplateUrl(r.templateFileUrl!),
+                            ),
                           ),
                         ),
-                      ),
-                    )
-                  // CertificatePreview lays itself out at fixed, hardcoded
-                  // sizing (unlike CertificateImageWithName, it doesn't scale
-                  // its own content to whatever box it's given) — squeezing it
-                  // directly into a 200px-tall box overflowed by however much
-                  // its natural content exceeded that. FittedBox lets it render
-                  // at its real intended size (matching the 600/424 aspect
-                  // ratio used everywhere else this widget appears) and then
-                  // uniformly scales the whole thing down to fit, guaranteeing
-                  // no overflow regardless of its actual content height.
-                  : FittedBox(
-                      fit: BoxFit.contain,
-                      child: SizedBox(
-                        width: 600,
-                        height: 424,
-                        child: CertificatePreview(
-                          theme: CertTheme.forType(
-                            r.templateType,
-                            primaryDark: UpriseColors.primaryDark,
-                            primaryLight: UpriseColors.primaryLight,
-                            accentColor: UpriseColors.accent,
-                          ),
-                          orgName: r.organization,
-                          eventTitle: r.eventName,
-                          eventDate: DateFormat('MMMM dd, yyyy').format(r.date),
-                          recipient: '[Recipient Name]',
-                          signatories: r.signatories.isNotEmpty
-                              ? r.signatories
-                                    .map(
-                                      (s) => CertSignatory(
-                                        name: (s['name'] ?? '').toString(),
-                                        title: (s['title'] ?? '').toString(),
-                                        signatureImageBase64:
-                                            s['signatureImage'] as String?,
+                      );
+                    },
+                  )
+                // CertificatePreview lays itself out at fixed, hardcoded
+                // sizing (unlike CertificateImageWithName, it doesn't scale
+                // its own content to whatever box it's given) — squeezing it
+                // directly into a 200px-tall box overflowed by however much
+                // its natural content exceeded that. FittedBox lets it render
+                // at its real intended size (matching the 600/424 aspect
+                // ratio used everywhere else this widget appears) and then
+                // uniformly scales the whole thing down to fit, guaranteeing
+                // no overflow regardless of its actual content height.
+                : FittedBox(
+                    fit: BoxFit.contain,
+                    child: SizedBox(
+                      width: 600,
+                      height: 424,
+                      child: CertificatePreview(
+                        theme: CertTheme.forType(
+                          r.templateType,
+                          primaryDark: UpriseColors.primaryDark,
+                          primaryLight: UpriseColors.primaryLight,
+                          accentColor: UpriseColors.accent,
+                        ),
+                        orgName: r.organization,
+                        eventTitle: r.eventName,
+                        eventDate: DateFormat('MMMM dd, yyyy').format(r.date),
+                        recipient: '[Recipient Name]',
+                        signatories: r.signatories.isNotEmpty
+                            ? r.signatories
+                                  .map(
+                                    (s) => CertSignatory(
+                                      name: (s['name'] ?? '').toString(),
+                                      title: (s['title'] ?? '').toString(),
+                                      signatureImageBase64:
+                                          s['signatureImage'] as String?,
+                                    ),
+                                  )
+                                  .toList()
+                            : (r.signatureImage != null
+                                  ? [
+                                      CertSignatory(
+                                        name: 'Authorized Signatory',
+                                        signatureImageBase64: r.signatureImage,
                                       ),
-                                    )
-                                    .toList()
-                              : (r.signatureImage != null
-                                    ? [
-                                        CertSignatory(
-                                          name: 'Authorized Signatory',
-                                          signatureImageBase64:
-                                              r.signatureImage,
-                                        ),
-                                      ]
-                                    : const []),
-                        ),
+                                    ]
+                                  : const []),
                       ),
                     ),
-            ),
+                  ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -2589,7 +2822,10 @@ class _CertificateComposite extends StatelessWidget {
               ),
             ),
             for (final entry in signatoryPlacements.entries)
-              if (signatories.containsKey(entry.key))
+              if (signatories.containsKey(entry.key) &&
+                  (signatories[entry.key]!.fullName.isNotEmpty ||
+                      (signatories[entry.key]!.signatureBase64?.isNotEmpty ??
+                          false)))
                 _buildSignatoryOverlay(
                   boxSize: boxSize,
                   placement: entry.value,
@@ -2874,19 +3110,82 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
 
           return ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: FittedBox(
-              // <-- ADD THIS
-              fit: BoxFit.contain, // <-- ADD THIS
-              child: _CertificateComposite(
-                recipientName: 'Recipient Name',
-                namePlacement:
-                    _selectedTemplatePlacement ?? const CertNamePlacement(),
-                signatoryPlacements: validPlacements,
-                signatories: signatories,
-                background: NetworkImage(
-                  _renderableTemplateUrl(_selectedTemplateUrl!),
-                ),
-              ),
+            // _CertificateComposite sizes itself from its parent's
+            // constraints (LayoutBuilder reading constraints.biggest) —
+            // the AspectRatio wrapping this whole preview already gives it
+            // a real, bounded size. Wrapping it in a FittedBox additionally
+            // measured it at its own "natural" size first, which it
+            // doesn't have, so it collapsed to nothing and the preview
+            // rendered blank.
+            child: LayoutBuilder(
+              builder: (context, previewConstraints) {
+                final boxSize = previewConstraints.biggest;
+                // Dragging used to call the modal's own setState, which
+                // rebuilt the entire two-column form on every pointer-move
+                // frame — that's what made it feel slow. Scoping the
+                // rebuild to this StatefulBuilder means dragging only
+                // repaints this small preview Stack; _selectedTemplatePlacement
+                // is still updated the same way, so Save/Generate behave
+                // identically.
+                return StatefulBuilder(
+                  builder: (context, setPreviewState) {
+                    final livePlacement =
+                        _selectedTemplatePlacement ?? const CertNamePlacement();
+                    return Stack(
+                      children: [
+                        _CertificateComposite(
+                          recipientName: 'Recipient Name',
+                          namePlacement: livePlacement,
+                          signatoryPlacements: validPlacements,
+                          signatories: signatories,
+                          background: NetworkImage(
+                            _renderableTemplateUrl(_selectedTemplateUrl!),
+                          ),
+                        ),
+                        // Invisible drag handle over the recipient name —
+                        // nudges the same xPct/yPct this screen already
+                        // saves on Generate & Distribute / Save as Draft.
+                        // No visible box, just a grab cursor on hover.
+                        Positioned(
+                          left: (livePlacement.xPct * boxSize.width - 60).clamp(
+                            0.0,
+                            math.max(0.0, boxSize.width - 120),
+                          ),
+                          top: (livePlacement.yPct * boxSize.height - 14).clamp(
+                            0.0,
+                            math.max(0.0, boxSize.height - 28),
+                          ),
+                          width: 120,
+                          height: 28,
+                          child: MouseRegion(
+                            cursor: SystemMouseCursors.grab,
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.translucent,
+                              onPanUpdate: (details) {
+                                final newX =
+                                    (livePlacement.xPct * boxSize.width +
+                                            details.delta.dx)
+                                        .clamp(0.0, boxSize.width);
+                                final newY =
+                                    (livePlacement.yPct * boxSize.height +
+                                            details.delta.dy)
+                                        .clamp(0.0, boxSize.height);
+                                setPreviewState(() {
+                                  _selectedTemplatePlacement = livePlacement
+                                      .copyWith(
+                                        xPct: newX / boxSize.width,
+                                        yPct: newY / boxSize.height,
+                                      );
+                                });
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                );
+              },
             ),
           );
         },
@@ -4165,6 +4464,13 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
   PlatformFile? _file;
   bool _isUploading = false;
   CertNamePlacement _placement = const CertNamePlacement();
+  // Editor-only preview width for the recipient-name box — purely a local
+  // UI affordance for previewing how "Recipient: <name>" reflows at
+  // different widths while placing it. Not part of CertNamePlacement and
+  // never saved: the actual rendered certificate has no stored box width,
+  // it just centers text at the saved xPct/yPct point, so this doesn't
+  // change what gets written to Firestore or how any certificate renders.
+  double _recipientBoxWidth = 150;
 
   // NEW: signatory placeholders placed on this template — key -> position.
   final Map<String, CertNamePlacement> _signatoryPlacements = {};
@@ -4177,10 +4483,11 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
   // Which signatory IDs the admin authorized for this event at approval
   // time, resolved once from the proposal doc rather than re-fetched on
   // every rebuild.
-  late final Future<Set<String>?> _authorizedSignatoryIdsFuture =
-      _loadAuthorizedSignatoryIds();
+  late final Future<({Set<String> ids, String remarks})?>
+  _authorizedSignatoryIdsFuture = _loadAuthorizedSignatoryIds();
 
-  Future<Set<String>?> _loadAuthorizedSignatoryIds() async {
+  Future<({Set<String> ids, String remarks})?>
+  _loadAuthorizedSignatoryIds() async {
     final proposalId = widget.proposalId;
     if (proposalId == null) return null;
     try {
@@ -4189,11 +4496,15 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
           .doc(proposalId)
           .get();
       final auth = doc.data()?['signatoryAuthorization'];
-      if (auth is! Map || auth['required'] != true) return const {};
+      if (auth is! Map) return (ids: const <String>{}, remarks: '');
+      final remarks = (auth['remarks'] as String?)?.trim() ?? '';
+      if (auth['required'] != true) {
+        return (ids: const <String>{}, remarks: remarks);
+      }
       final ids = (auth['signatoryIds'] as List?) ?? [];
-      return ids.map((e) => e.toString()).toSet();
+      return (ids: ids.map((e) => e.toString()).toSet(), remarks: remarks);
     } catch (_) {
-      return const {};
+      return (ids: const <String>{}, remarks: '');
     }
   }
 
@@ -4364,62 +4675,122 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
                         child: Image.memory(bytes, fit: BoxFit.cover),
                       ),
                       Positioned(
-                        left: (_placement.xPct * boxSize.width - 60).clamp(
-                          0.0,
-                          boxSize.width - 120,
-                        ),
+                        left:
+                            (_placement.xPct * boxSize.width -
+                                    _recipientBoxWidth / 2)
+                                .clamp(
+                                  0.0,
+                                  math.max(
+                                    0.0,
+                                    boxSize.width - _recipientBoxWidth,
+                                  ),
+                                ),
                         top: (_placement.yPct * boxSize.height - 14).clamp(
                           0.0,
                           boxSize.height - 28,
                         ),
-                        width: 120,
-                        child: GestureDetector(
-                          onPanUpdate: (details) {
-                            setState(() {
-                              final newX =
-                                  (_placement.xPct * boxSize.width +
-                                          details.delta.dx)
-                                      .clamp(0.0, boxSize.width);
-                              final newY =
-                                  (_placement.yPct * boxSize.height +
-                                          details.delta.dy)
-                                      .clamp(0.0, boxSize.height);
-                              _placement = _placement.copyWith(
-                                xPct: newX / boxSize.width,
-                                yPct: newY / boxSize.height,
-                              );
-                            });
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color:
-                                  (_placement.light
-                                          ? Colors.black
-                                          : Colors.white)
-                                      .withAlpha(180),
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(
-                                color: UpriseColors.primaryDark,
-                                width: 1.5,
+                        width: _recipientBoxWidth,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            GestureDetector(
+                              onPanUpdate: (details) {
+                                setState(() {
+                                  final newX =
+                                      (_placement.xPct * boxSize.width +
+                                              details.delta.dx)
+                                          .clamp(0.0, boxSize.width);
+                                  final newY =
+                                      (_placement.yPct * boxSize.height +
+                                              details.delta.dy)
+                                          .clamp(0.0, boxSize.height);
+                                  _placement = _placement.copyWith(
+                                    xPct: newX / boxSize.width,
+                                    yPct: newY / boxSize.height,
+                                  );
+                                });
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color:
+                                      (_placement.light
+                                              ? Colors.black
+                                              : Colors.white)
+                                          .withAlpha(180),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: UpriseColors.primaryDark,
+                                    width: 1.5,
+                                  ),
+                                ),
+                                // Wraps onto its own line when the box is
+                                // narrow, sits on one line when it's wide
+                                // enough — Wrap does this automatically
+                                // based on the box's actual rendered width,
+                                // no manual text-measuring needed.
+                                child: Wrap(
+                                  alignment: WrapAlignment.center,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: [
+                                    Text(
+                                      'Recipient Name',
+                                      textAlign: TextAlign.center,
+                                      style: GoogleFonts.beVietnamPro(
+                                        fontSize: _placement.fontSize,
+                                        fontWeight: FontWeight.w700,
+                                        color: _placement.light
+                                            ? Colors.white
+                                            : const Color(0xFF1A202C),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                            child: Text(
-                              'Recipient Name',
-                              textAlign: TextAlign.center,
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                fontStyle: FontStyle.italic,
-                                color: _placement.light
-                                    ? Colors.white
-                                    : const Color(0xFF1A202C),
+                            // Resize handle — bottom-right corner, drag to
+                            // widen/narrow the box and watch the text
+                            // above reflow live, the same interaction as a
+                            // typical design editor's text-box handle.
+                            Positioned(
+                              right: -7,
+                              bottom: -7,
+                              child: GestureDetector(
+                                onPanUpdate: (details) {
+                                  setState(() {
+                                    _recipientBoxWidth =
+                                        (_recipientBoxWidth +
+                                                details.delta.dx * 2)
+                                            .clamp(70.0, boxSize.width);
+                                  });
+                                },
+                                child: MouseRegion(
+                                  cursor: SystemMouseCursors.resizeLeftRight,
+                                  child: Container(
+                                    width: 14,
+                                    height: 14,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: UpriseColors.primaryDark,
+                                        width: 1.5,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withAlpha(60),
+                                          blurRadius: 3,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
+                          ],
                         ),
                       ),
                       // NEW: draggable chips for each placed signatory.
@@ -4575,7 +4946,7 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
           ),
         ),
         const SizedBox(height: 8),
-        FutureBuilder<Set<String>?>(
+        FutureBuilder<({Set<String> ids, String remarks})?>(
           future: _authorizedSignatoryIdsFuture,
           builder: (context, authSnap) {
             if (widget.proposalId == null) {
@@ -4598,108 +4969,163 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
                 ),
               );
             }
-            final authorizedIds = authSnap.data ?? const {};
-            if (authorizedIds.isEmpty) {
-              return Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFFBEB),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFFDE68A)),
-                ),
-                child: Text(
-                  'No signature was authorized for this event — ask your '
-                  'admin to authorize one when approving it, or continue '
-                  'without a signature on this certificate.',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 11.5,
-                    color: const Color(0xFF92400E),
-                  ),
-                ),
-              );
-            }
-            return StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('signatories')
-                  .snapshots(),
-              builder: (context, snap) {
-                final roster = (snap.data?.docs ?? [])
-                    .map((d) => SignatoryData.fromDoc(d))
-                    .where((s) => authorizedIds.contains(s.id))
-                    .toList();
-
-                for (final s in roster) {
-                  _signatoryNames[s.id] = s.fullName;
-                }
-                if (roster.isEmpty) {
-                  return Text(
-                    'The signatory authorized for this event no longer '
-                    'exists in Admin Settings → Signatories.',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11.5,
-                      color: const Color(0xFF9AA5B4),
-                    ),
-                  );
-                }
-                return Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: roster.map((s) {
-                    final placed = _signatoryPlacements.containsKey(s.id);
-                    return InkWell(
-                      onTap: () => setState(() {
-                        if (placed) {
-                          _signatoryPlacements.remove(s.id);
-                        } else {
-                          _signatoryPlacements[s.id] = const CertNamePlacement()
-                              .copyWith(xPct: 0.5, yPct: 0.75);
-                        }
-                      }),
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 7,
-                        ),
-                        decoration: BoxDecoration(
-                          color: placed
-                              ? UpriseColors.primaryDark
-                              : const Color(0xFFF7F8FA),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: placed
-                                ? UpriseColors.primaryDark
-                                : const Color(0xFFE4E8EF),
+            final authorizedIds = authSnap.data?.ids ?? const {};
+            final remarks = authSnap.data?.remarks ?? '';
+            // The admin's free-text note from the approval dialog (e.g.
+            // why a signatory was/wasn't authorized) — previously only
+            // ever stored on the event_proposals doc and never surfaced
+            // to the org anywhere.
+            final remarksBox = remarks.isEmpty
+                ? const SizedBox.shrink()
+                : Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFF6FF),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFFBFDBFE)),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(
+                            Icons.info_outline_rounded,
+                            size: 15,
+                            color: Color(0xFF2563EB),
                           ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              placed ? Icons.check_rounded : Icons.add_rounded,
-                              size: 13,
-                              color: placed
-                                  ? Colors.white
-                                  : const Color(0xFF374151),
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              s.fullName,
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Note from admin: $remarks',
                               style: GoogleFonts.beVietnamPro(
                                 fontSize: 11.5,
-                                fontWeight: FontWeight.w600,
-                                color: placed
-                                    ? Colors.white
-                                    : const Color(0xFF374151),
+                                color: const Color(0xFF1E3A8A),
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
+                    ),
+                  );
+            if (authorizedIds.isEmpty) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  remarksBox,
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFFBEB),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFFDE68A)),
+                    ),
+                    child: Text(
+                      'No signature was authorized for this event — ask '
+                      'your admin to authorize one when approving it, or '
+                      'continue without a signature on this certificate.',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 11.5,
+                        color: const Color(0xFF92400E),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                remarksBox,
+                StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('signatories')
+                      .snapshots(),
+                  builder: (context, snap) {
+                    final roster = (snap.data?.docs ?? [])
+                        .map((d) => SignatoryData.fromDoc(d))
+                        .where((s) => authorizedIds.contains(s.id))
+                        .toList();
+
+                    for (final s in roster) {
+                      _signatoryNames[s.id] = s.fullName;
+                    }
+                    if (roster.isEmpty) {
+                      return Text(
+                        'The signatory authorized for this event no longer '
+                        'exists in Admin Settings → Signatories.',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 11.5,
+                          color: const Color(0xFF9AA5B4),
+                        ),
+                      );
+                    }
+                    return Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: roster.map((s) {
+                        final placed = _signatoryPlacements.containsKey(s.id);
+                        return InkWell(
+                          onTap: () => setState(() {
+                            if (placed) {
+                              _signatoryPlacements.remove(s.id);
+                            } else {
+                              _signatoryPlacements[s.id] =
+                                  const CertNamePlacement().copyWith(
+                                    xPct: 0.5,
+                                    yPct: 0.75,
+                                  );
+                            }
+                          }),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 7,
+                            ),
+                            decoration: BoxDecoration(
+                              color: placed
+                                  ? UpriseColors.primaryDark
+                                  : const Color(0xFFF7F8FA),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: placed
+                                    ? UpriseColors.primaryDark
+                                    : const Color(0xFFE4E8EF),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  placed
+                                      ? Icons.check_rounded
+                                      : Icons.add_rounded,
+                                  size: 13,
+                                  color: placed
+                                      ? Colors.white
+                                      : const Color(0xFF374151),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  s.fullName,
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: placed
+                                        ? Colors.white
+                                        : const Color(0xFF374151),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }).toList(),
                     );
-                  }).toList(),
-                );
-              },
+                  },
+                ),
+              ],
             );
           },
         ),
@@ -4891,6 +5317,18 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
                                 ],
                               ),
                             ),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Max file size: 5 MB. Landscape designs work best — '
+                          'the preview and every issued certificate render '
+                          'the image at a 600:424 ratio (roughly '
+                          '1200×848px), so a design close to that shape '
+                          'won\'t get cropped or letterboxed.',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 11,
+                            color: const Color(0xFF94A3B8),
                           ),
                         ),
                         _buildPositionPicker(),

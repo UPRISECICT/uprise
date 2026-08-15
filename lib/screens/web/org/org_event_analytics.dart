@@ -135,6 +135,26 @@ class _AnalyticsData {
     return totalAttended / totalSlots * 100;
   }
 
+  // Org-wide Present/Late/Absent split — same "slots" math as
+  // attendanceRate above, just broken out by status instead of collapsed
+  // into a single attended/not-attended rate.
+  Map<String, int> get attendanceStatusBreakdown {
+    final regByEvent = registrationCountByEvent;
+    final attDocsByEvent = attendanceDocCountByEvent;
+    final eventIds = {...regByEvent.keys, ...attDocsByEvent.keys};
+
+    int totalSlots = 0;
+    for (final id in eventIds) {
+      totalSlots += math.max(regByEvent[id] ?? 0, attDocsByEvent[id] ?? 0);
+    }
+
+    final present = attendances.where((a) => a['status'] == 'present').length;
+    final late = attendances.where((a) => a['status'] == 'late').length;
+    final absent = (totalSlots - present - late).clamp(0, totalSlots);
+
+    return {'present': present, 'late': late, 'absent': absent};
+  }
+
   // Registered vs. attended per event, keyed by event id (chart widgets
   // resolve the display title via eventDisplayTitle(), same as avgByEvent).
   Map<String, ({int registered, int attended})>
@@ -709,22 +729,22 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
             onTapAttendance: () => _scrollToSection(_regAttendanceKey),
             onTapRating: () => _scrollToSection(_ratingKey),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 14),
           KeyedSubtree(
             key: _distributionKey,
             child: _DistributionCard(data: data),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 14),
           KeyedSubtree(
             key: _ratingKey,
             child: _RatingByEventChart(data: data),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 14),
           KeyedSubtree(
             key: _regAttendanceKey,
             child: _RegistrationAttendanceChart(data: data),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 14),
           _FinanceByEventChart(data: data),
         ],
       ),
@@ -855,15 +875,14 @@ class _KpiStatsRow extends StatelessWidget {
     Color color,
     VoidCallback? onTap,
   ) {
-    return Material(
-      color: _C.white,
-      borderRadius: BorderRadius.circular(_DS.radiusMd),
-      child: InkWell(
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(_DS.radiusMd),
         child: Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
+            color: _C.white,
             borderRadius: BorderRadius.circular(_DS.radiusMd),
             border: Border.all(color: _C.border.withAlpha(128)),
             boxShadow: _DS.cardShadow,
@@ -960,7 +979,7 @@ class _RatingByEventChart extends StatelessWidget {
                 const SizedBox(width: 10),
                 Text(
                   'Average rating by event',
-                  style: GoogleFonts.inter(
+                  style: GoogleFonts.beVietnamPro(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: _C.charcoal,
@@ -970,7 +989,10 @@ class _RatingByEventChart extends StatelessWidget {
                   const Spacer(),
                   Text(
                     'Top ${shown.length} of ${sorted.length}',
-                    style: GoogleFonts.inter(fontSize: 11, color: _C.muted),
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11,
+                      color: _C.muted,
+                    ),
                   ),
                 ],
               ],
@@ -983,7 +1005,10 @@ class _RatingByEventChart extends StatelessWidget {
               child: Center(
                 child: Text(
                   'No feedback data yet',
-                  style: GoogleFonts.inter(fontSize: 13, color: _C.muted),
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 13,
+                    color: _C.muted,
+                  ),
                 ),
               ),
             )
@@ -1020,7 +1045,7 @@ class _RatingByEventChart extends StatelessWidget {
                           interval: 1,
                           getTitlesWidget: (v, _) => Text(
                             '${v.toInt()}',
-                            style: GoogleFonts.inter(
+                            style: GoogleFonts.beVietnamPro(
                               fontSize: 10,
                               color: _C.muted,
                             ),
@@ -1044,7 +1069,7 @@ class _RatingByEventChart extends StatelessWidget {
                               padding: const EdgeInsets.only(top: 8),
                               child: Text(
                                 short,
-                                style: GoogleFonts.inter(
+                                style: GoogleFonts.beVietnamPro(
                                   fontSize: 10,
                                   color: _C.muted,
                                 ),
@@ -1065,7 +1090,7 @@ class _RatingByEventChart extends StatelessWidget {
                           );
                           return BarTooltipItem(
                             '$title\n',
-                            GoogleFonts.inter(
+                            GoogleFonts.beVietnamPro(
                               color: Colors.white,
                               fontWeight: FontWeight.w700,
                               fontSize: 11,
@@ -1073,7 +1098,7 @@ class _RatingByEventChart extends StatelessWidget {
                             children: [
                               TextSpan(
                                 text: '${rod.toY.toStringAsFixed(1)} ★ average',
-                                style: GoogleFonts.inter(
+                                style: GoogleFonts.beVietnamPro(
                                   color: Colors.white70,
                                   fontSize: 11,
                                 ),
@@ -1127,7 +1152,10 @@ class _RegistrationAttendanceChart extends StatelessWidget {
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
         const SizedBox(width: 5),
-        Text(label, style: GoogleFonts.inter(fontSize: 11, color: _C.muted)),
+        Text(
+          label,
+          style: GoogleFonts.beVietnamPro(fontSize: 11, color: _C.muted),
+        ),
       ],
     );
   }
@@ -1148,7 +1176,10 @@ class _RegistrationAttendanceChart extends StatelessWidget {
                 'No registration or attendance records yet — they will '
                 'show up here once students register or check in to an '
                 'event.',
-                style: GoogleFonts.inter(fontSize: 12.5, color: _C.muted),
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 12.5,
+                  color: _C.muted,
+                ),
               ),
             ),
           ],
@@ -1200,7 +1231,7 @@ class _RegistrationAttendanceChart extends StatelessWidget {
                     children: [
                       Text(
                         'Registration vs. attendance by event',
-                        style: GoogleFonts.inter(
+                        style: GoogleFonts.beVietnamPro(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                           color: _C.charcoal,
@@ -1220,7 +1251,10 @@ class _RegistrationAttendanceChart extends StatelessWidget {
                 if (entries.length > shown.length)
                   Text(
                     'Top ${shown.length} of ${entries.length}',
-                    style: GoogleFonts.inter(fontSize: 11, color: _C.muted),
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11,
+                      color: _C.muted,
+                    ),
                   ),
               ],
             ),
@@ -1256,7 +1290,7 @@ class _RegistrationAttendanceChart extends StatelessWidget {
                         interval: chartMaxY / 4,
                         getTitlesWidget: (v, _) => Text(
                           NumberFormat.compact().format(v),
-                          style: GoogleFonts.inter(
+                          style: GoogleFonts.beVietnamPro(
                             fontSize: 9,
                             color: _C.muted,
                           ),
@@ -1280,7 +1314,7 @@ class _RegistrationAttendanceChart extends StatelessWidget {
                             padding: const EdgeInsets.only(top: 8),
                             child: Text(
                               short,
-                              style: GoogleFonts.inter(
+                              style: GoogleFonts.beVietnamPro(
                                 fontSize: 10,
                                 color: _C.muted,
                               ),
@@ -1302,7 +1336,7 @@ class _RegistrationAttendanceChart extends StatelessWidget {
                         final label = rodIndex == 0 ? 'Registered' : 'Attended';
                         return BarTooltipItem(
                           '$title\n',
-                          GoogleFonts.inter(
+                          GoogleFonts.beVietnamPro(
                             color: Colors.white,
                             fontWeight: FontWeight.w700,
                             fontSize: 11,
@@ -1310,7 +1344,7 @@ class _RegistrationAttendanceChart extends StatelessWidget {
                           children: [
                             TextSpan(
                               text: '$label: ${rod.toY.toInt()}',
-                              style: GoogleFonts.inter(
+                              style: GoogleFonts.beVietnamPro(
                                 color: Colors.white70,
                                 fontSize: 11,
                               ),
@@ -1372,7 +1406,10 @@ class _FinanceByEventChart extends StatelessWidget {
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
         const SizedBox(width: 5),
-        Text(label, style: GoogleFonts.inter(fontSize: 11, color: _C.muted)),
+        Text(
+          label,
+          style: GoogleFonts.beVietnamPro(fontSize: 11, color: _C.muted),
+        ),
       ],
     );
   }
@@ -1394,7 +1431,10 @@ class _FinanceByEventChart extends StatelessWidget {
                 'No financial records tied to an event yet — transactions '
                 'in Finance whose event name matches an event here will show '
                 'up as a chart.',
-                style: GoogleFonts.inter(fontSize: 12.5, color: _C.muted),
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 12.5,
+                  color: _C.muted,
+                ),
               ),
             ),
           ],
@@ -1450,7 +1490,7 @@ class _FinanceByEventChart extends StatelessWidget {
                     children: [
                       Text(
                         'Income vs. expense by event',
-                        style: GoogleFonts.inter(
+                        style: GoogleFonts.beVietnamPro(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                           color: _C.charcoal,
@@ -1470,7 +1510,10 @@ class _FinanceByEventChart extends StatelessWidget {
                 if (entries.length > shown.length)
                   Text(
                     'Top ${shown.length} of ${entries.length}',
-                    style: GoogleFonts.inter(fontSize: 11, color: _C.muted),
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11,
+                      color: _C.muted,
+                    ),
                   ),
               ],
             ),
@@ -1506,7 +1549,7 @@ class _FinanceByEventChart extends StatelessWidget {
                         interval: chartMaxY / 4,
                         getTitlesWidget: (v, _) => Text(
                           '₱${NumberFormat.compact().format(v)}',
-                          style: GoogleFonts.inter(
+                          style: GoogleFonts.beVietnamPro(
                             fontSize: 9,
                             color: _C.muted,
                           ),
@@ -1530,7 +1573,7 @@ class _FinanceByEventChart extends StatelessWidget {
                             padding: const EdgeInsets.only(top: 8),
                             child: Text(
                               short,
-                              style: GoogleFonts.inter(
+                              style: GoogleFonts.beVietnamPro(
                                 fontSize: 10,
                                 color: _C.muted,
                               ),
@@ -1550,7 +1593,7 @@ class _FinanceByEventChart extends StatelessWidget {
                         final label = rodIndex == 0 ? 'Income' : 'Expense';
                         return BarTooltipItem(
                           '$title\n',
-                          GoogleFonts.inter(
+                          GoogleFonts.beVietnamPro(
                             color: Colors.white,
                             fontWeight: FontWeight.w700,
                             fontSize: 11,
@@ -1558,7 +1601,7 @@ class _FinanceByEventChart extends StatelessWidget {
                           children: [
                             TextSpan(
                               text: '$label: ₱${money.format(rod.toY)}',
-                              style: GoogleFonts.inter(
+                              style: GoogleFonts.beVietnamPro(
                                 color: Colors.white70,
                                 fontSize: 11,
                               ),
@@ -1606,15 +1649,22 @@ class _DistributionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final counts = data.starCounts;
-    final total = data.totalFeedbacks;
-
-    final segs = [
-      _Seg(5, counts[5]!, const Color(0xFF10B981)),
-      _Seg(4, counts[4]!, const Color(0xFF34D399)),
-      _Seg(3, counts[3]!, const Color(0xFFFBBF24)),
-      _Seg(2, counts[2]!, const Color(0xFFFB923C)),
-      _Seg(1, counts[1]!, const Color(0xFFF87171)),
+    final totalRatings = data.totalFeedbacks;
+    final ratingSlices = [
+      _DonutSlice('5 stars', counts[5]!, const Color(0xFF10B981)),
+      _DonutSlice('4 stars', counts[4]!, const Color(0xFF34D399)),
+      _DonutSlice('3 stars', counts[3]!, const Color(0xFFFBBF24)),
+      _DonutSlice('2 stars', counts[2]!, const Color(0xFFFB923C)),
+      _DonutSlice('1 star', counts[1]!, const Color(0xFFF87171)),
     ];
+
+    final att = data.attendanceStatusBreakdown;
+    final attendanceSlices = [
+      _DonutSlice('Present', att['present']!, const Color(0xFF10B981)),
+      _DonutSlice('Late', att['late']!, const Color(0xFFFB923C)),
+      _DonutSlice('Absent', att['absent']!, const Color(0xFFF87171)),
+    ];
+    final attTotal = attendanceSlices.fold<int>(0, (s, e) => s + e.count);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1643,8 +1693,8 @@ class _DistributionCard extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Text(
-                'Rating distribution',
-                style: GoogleFonts.inter(
+                'Rating & attendance breakdown',
+                style: GoogleFonts.beVietnamPro(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: _C.charcoal,
@@ -1653,134 +1703,315 @@ class _DistributionCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          if (total == 0)
-            Container(
-              height: 140,
-              alignment: Alignment.center,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.insert_chart_outlined, size: 40, color: _C.border),
-                  const SizedBox(height: 8),
-                  Text(
-                    'No feedback yet',
-                    style: GoogleFonts.inter(fontSize: 13, color: _C.muted),
-                  ),
-                ],
-              ),
-            )
-          else
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SizedBox(
-                  width: 140,
-                  height: 140,
-                  child: CustomPaint(
-                    painter: _DonutPainter(
-                      segs: segs,
-                      total: total,
-                      label: data.avgRating.toStringAsFixed(1),
-                    ),
+                Expanded(
+                  child: _DonutSection(
+                    label: 'By rating',
+                    slices: ratingSlices,
+                    centerBig: totalRatings == 0
+                        ? '—'
+                        : data.avgRating.toStringAsFixed(1),
+                    centerSmall: 'average',
+                    emptyText: 'No feedback yet',
                   ),
                 ),
-                const SizedBox(width: 16),
+                Container(
+                  width: 1,
+                  margin: const EdgeInsets.symmetric(horizontal: 18),
+                  color: _C.border.withOpacity(0.5),
+                ),
                 Expanded(
-                  child: Column(
-                    children: segs.map((s) {
-                      final pct = total > 0
-                          ? (s.count / total * 100).toStringAsFixed(0)
-                          : '0';
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 3),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 12,
-                              height: 12,
-                              decoration: BoxDecoration(
-                                color: s.color,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              '${s.stars} star${s.stars > 1 ? 's' : ''}',
-                              style: GoogleFonts.inter(
-                                fontSize: 12,
-                                color: _C.muted,
-                              ),
-                            ),
-                            const Spacer(),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: s.color.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                '$pct%',
-                                style: GoogleFonts.inter(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: s.color,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
+                  child: _DonutSection(
+                    label: 'By attendance',
+                    slices: attendanceSlices,
+                    centerBig: attTotal == 0
+                        ? '—'
+                        : '${data.attendanceRate.toStringAsFixed(0)}%',
+                    centerSmall: 'attended',
+                    emptyText: 'No attendance yet',
                   ),
                 ),
               ],
             ),
+          ),
         ],
       ),
     );
   }
 }
 
-class _Seg {
-  final int stars, count;
+// One donut + its own legend, with hover: hovering a wedge or a legend row
+// highlights the other and pops a small info chip above the donut showing
+// that slice's exact label/percentage/count — the counts underneath were
+// already there, this just surfaces them without a click.
+class _DonutSection extends StatefulWidget {
+  final String label;
+  final List<_DonutSlice> slices;
+  final String centerBig;
+  final String centerSmall;
+  final String emptyText;
+  const _DonutSection({
+    required this.label,
+    required this.slices,
+    required this.centerBig,
+    required this.centerSmall,
+    required this.emptyText,
+  });
+
+  @override
+  State<_DonutSection> createState() => _DonutSectionState();
+}
+
+class _DonutSectionState extends State<_DonutSection> {
+  static const double _size = 140;
+  static const double _ringWidth = 24;
+  int? _hovered;
+
+  int get _total => widget.slices.fold(0, (s, e) => s + e.count);
+
+  void _setHover(int? idx) {
+    if (idx != _hovered) setState(() => _hovered = idx);
+  }
+
+  // Maps a pointer position over the donut to the slice under it, using
+  // the exact same start-angle/sweep math the painter below uses to draw
+  // the wedges, so the hit area lines up with what's actually rendered.
+  int? _hitTest(Offset local) {
+    final total = _total;
+    if (total == 0) return null;
+    const center = Offset(_size / 2, _size / 2);
+    final dx = local.dx - center.dx, dy = local.dy - center.dy;
+    final dist = math.sqrt(dx * dx + dy * dy);
+    final r = _size / 2 - 14;
+    if (dist < r - _ringWidth / 2 || dist > r + _ringWidth / 2) return null;
+    var angle = math.atan2(dy, dx) + math.pi / 2;
+    if (angle < 0) angle += 2 * math.pi;
+    double acc = 0;
+    for (var i = 0; i < widget.slices.length; i++) {
+      final s = widget.slices[i];
+      if (s.count == 0) continue;
+      final sweep = s.count / total * 2 * math.pi;
+      if (angle >= acc && angle < acc + sweep) return i;
+      acc += sweep;
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final total = _total;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          widget.label,
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w600,
+            color: _C.muted,
+          ),
+        ),
+        const SizedBox(height: 10),
+        if (total == 0)
+          Container(
+            height: _size,
+            alignment: Alignment.center,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.insert_chart_outlined, size: 32, color: _C.border),
+                const SizedBox(height: 6),
+                Text(
+                  widget.emptyText,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 12,
+                    color: _C.muted,
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                alignment: Alignment.center,
+                children: [
+                  MouseRegion(
+                    onHover: (e) => _setHover(_hitTest(e.localPosition)),
+                    onExit: (_) => _setHover(null),
+                    child: SizedBox(
+                      width: _size,
+                      height: _size,
+                      child: CustomPaint(
+                        painter: _DonutPainter(
+                          slices: widget.slices,
+                          hoveredIndex: _hovered,
+                          centerBig: widget.centerBig,
+                          centerSmall: widget.centerSmall,
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (_hovered != null)
+                    Positioned(
+                      top: -32,
+                      child: IgnorePointer(
+                        child: _HoverInfoChip(
+                          slice: widget.slices[_hovered!],
+                          total: total,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  children: [
+                    for (var i = 0; i < widget.slices.length; i++)
+                      _legendRow(i, total),
+                  ],
+                ),
+              ),
+            ],
+          ),
+      ],
+    );
+  }
+
+  Widget _legendRow(int i, int total) {
+    final s = widget.slices[i];
+    final pct = total > 0 ? (s.count / total * 100).toStringAsFixed(0) : '0';
+    return MouseRegion(
+      onEnter: (_) => _setHover(i),
+      onExit: (_) => _setHover(null),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(
+          children: [
+            Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(color: s.color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              s.label,
+              style: GoogleFonts.beVietnamPro(fontSize: 12, color: _C.muted),
+            ),
+            const SizedBox(width: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: s.color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                '$pct%',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: s.color,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HoverInfoChip extends StatelessWidget {
+  final _DonutSlice slice;
+  final int total;
+  const _HoverInfoChip({required this.slice, required this.total});
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = total > 0
+        ? (slice.count / total * 100).toStringAsFixed(0)
+        : '0';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: _C.charcoal,
+        borderRadius: BorderRadius.circular(6),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Text(
+        '${slice.label} · $pct% · ${slice.count}',
+        style: GoogleFonts.beVietnamPro(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w600,
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
+}
+
+class _DonutSlice {
+  final String label;
+  final int count;
   final Color color;
-  const _Seg(this.stars, this.count, this.color);
+  const _DonutSlice(this.label, this.count, this.color);
 }
 
 class _DonutPainter extends CustomPainter {
-  final List<_Seg> segs;
-  final int total;
-  final String label;
+  final List<_DonutSlice> slices;
+  final int? hoveredIndex;
+  final String centerBig;
+  final String centerSmall;
   const _DonutPainter({
-    required this.segs,
-    required this.total,
-    required this.label,
+    required this.slices,
+    required this.centerBig,
+    required this.centerSmall,
+    this.hoveredIndex,
   });
+
+  int get _total => slices.fold(0, (s, e) => s + e.count);
 
   @override
   void paint(Canvas canvas, Size size) {
     final cx = size.width / 2, cy = size.height / 2;
     final r = math.min(cx, cy) - 14;
     const sw = 24.0, gap = 0.012;
+    final total = _total;
     final paint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = sw
       ..strokeCap = StrokeCap.butt;
 
     if (total == 0) {
-      paint.color = const Color(0xFFE5E7EB);
+      paint
+        ..color = const Color(0xFFE5E7EB)
+        ..strokeWidth = sw;
       canvas.drawCircle(Offset(cx, cy), r, paint);
     } else {
       double start = -math.pi / 2;
-      final nonZero = segs.where((s) => s.count > 0).length;
-      for (final s in segs) {
+      final nonZero = slices.where((s) => s.count > 0).length;
+      for (var i = 0; i < slices.length; i++) {
+        final s = slices[i];
         if (s.count == 0) continue;
         final sweep = s.count / total * 2 * math.pi;
         final actual = nonZero > 1 ? math.max(0.0, sweep - gap) : sweep;
-        paint.color = s.color;
+        final isHovered = hoveredIndex == i;
+        final dim = hoveredIndex != null && !isHovered;
+        paint
+          ..color = dim ? s.color.withValues(alpha: 0.35) : s.color
+          ..strokeWidth = isHovered ? sw + 5 : sw;
         canvas.drawArc(
           Rect.fromCircle(center: Offset(cx, cy), radius: r),
           start,
@@ -1792,23 +2023,23 @@ class _DonutPainter extends CustomPainter {
       }
     }
 
-    final bigStyle = GoogleFonts.inter(
+    final bigStyle = GoogleFonts.beVietnamPro(
       fontSize: 22,
       fontWeight: FontWeight.w700,
       color: _C.charcoal,
     );
-    final smStyle = GoogleFonts.inter(
+    final smStyle = GoogleFonts.beVietnamPro(
       fontSize: 11,
       color: _C.muted,
       fontWeight: FontWeight.w500,
     );
 
     final tp1 = TextPainter(
-      text: TextSpan(text: label, style: bigStyle),
+      text: TextSpan(text: centerBig, style: bigStyle),
       textDirection: ui.TextDirection.ltr,
     )..layout();
     final tp2 = TextPainter(
-      text: TextSpan(text: 'average', style: smStyle),
+      text: TextSpan(text: centerSmall, style: smStyle),
       textDirection: ui.TextDirection.ltr,
     )..layout();
 
@@ -1818,5 +2049,7 @@ class _DonutPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_DonutPainter old) =>
-      old.total != total || old.label != label;
+      old._total != _total ||
+      old.centerBig != centerBig ||
+      old.hoveredIndex != hoveredIndex;
 }

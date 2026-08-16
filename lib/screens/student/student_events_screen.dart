@@ -21,6 +21,7 @@ import '../../widgets/student/student_app_bar.dart';
 import 'student_feedback_screen.dart';
 import 'student_certificates_screen.dart';
 import 'student_webinar_code_screen.dart';
+import 'student_organization_details_screen.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
@@ -66,9 +67,9 @@ class _StudentEventsScreenState extends State<StudentEventsScreen>
   void initState() {
     super.initState();
     _tabController = TabController(
-      length: 4,
+      length: 3,
       vsync: this,
-      initialIndex: widget.initialTabIndex.clamp(0, 3),
+      initialIndex: widget.initialTabIndex.clamp(0, 2),
     );
   }
 
@@ -82,7 +83,7 @@ class _StudentEventsScreenState extends State<StudentEventsScreen>
     // passing eventsSubTab: 1 — since the widget is only ever constructed
     // once now.
     if (widget.jumpToken != oldWidget.jumpToken) {
-      _tabController.animateTo(widget.initialTabIndex.clamp(0, 3));
+      _tabController.animateTo(widget.initialTabIndex.clamp(0, 2));
     }
   }
 
@@ -150,22 +151,23 @@ class _StudentEventsScreenState extends State<StudentEventsScreen>
           indicatorWeight: 3,
           dividerColor: Colors.transparent,
           tabs: const [
+            Tab(text: 'Discover'),
             Tab(text: 'Calendar'),
-            Tab(text: 'Events'),
-            Tab(text: 'Registered'),
-            Tab(text: 'Evaluations'),
+            Tab(text: 'My Events'),
           ],
         ),
       ),
+      // Discover | Calendar | My Events — Registered and Evaluations used
+      // to be separate tabs; they're merged into My Events now (a single
+      // registered event naturally carries a Registered -> Needs Feedback
+      // -> Completed status instead of living in two different tabs
+      // depending on where it is in that lifecycle).
       body: TabBarView(
         controller: _tabController,
         children: [
-          CalendarTab(registeredEventIdsStream: _registeredEventIdsStream),
           UpcomingTab(registeredEventIdsStream: _registeredEventIdsStream),
-          RegisteredEventsTab(
-            registeredEventIdsStream: _registeredEventIdsStream,
-          ),
-          EvaluationsTab(registeredEventIdsStream: _registeredEventIdsStream),
+          CalendarTab(registeredEventIdsStream: _registeredEventIdsStream),
+          MyEventsTab(registeredEventIdsStream: _registeredEventIdsStream),
         ],
       ),
     );
@@ -401,6 +403,23 @@ class _UpcomingTabState extends State<UpcomingTab>
   // ── Status filter (Upcoming / Ongoing / Past) ──
   _RegStatus _selectedFilter = _RegStatus.upcoming;
 
+  // ── Search + organization filter ──
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _searchQuery = '';
+  String? _selectedOrgId; // null = All Organizations
+  late final Future<List<QueryDocumentSnapshot>> _orgsFuture = FirebaseFirestore
+      .instance
+      .collection('organizations')
+      .where('status', isEqualTo: 'active')
+      .get()
+      .then((s) => s.docs);
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
   DateTime? _combineDateAndTime(DateTime date, String? timeStr) {
     if (timeStr == null || timeStr.trim().isEmpty) return null;
     final cleaned = timeStr.trim().toUpperCase();
@@ -566,9 +585,19 @@ class _UpcomingTabState extends State<UpcomingTab>
                 .map((d) => EventModel.fromFirestore(d))
                 .toList();
 
-            final allEvents = allApprovedEvents
-                .where((e) => _statusFor(e) == _selectedFilter)
-                .toList();
+            final query = _searchQuery.trim().toLowerCase();
+            final allEvents = allApprovedEvents.where((e) {
+              if (_statusFor(e) != _selectedFilter) return false;
+              if (_selectedOrgId != null && e.orgId != _selectedOrgId) {
+                return false;
+              }
+              if (query.isNotEmpty &&
+                  !e.title.toLowerCase().contains(query) &&
+                  !e.orgName.toLowerCase().contains(query)) {
+                return false;
+              }
+              return true;
+            }).toList();
 
             // Past events read best most-recent-first; upcoming/ongoing stay
             // in ascending date order (already sorted by the Firestore query).
@@ -581,7 +610,61 @@ class _UpcomingTabState extends State<UpcomingTab>
             return Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                  child: TextField(
+                    controller: _searchCtrl,
+                    onChanged: (v) => setState(() => _searchQuery = v),
+                    style: const TextStyle(fontSize: 13.5),
+                    decoration: InputDecoration(
+                      hintText: 'Search events or organizations',
+                      hintStyle: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade500,
+                      ),
+                      prefixIcon: const Icon(Icons.search, size: 20),
+                      suffixIcon: _searchQuery.isEmpty
+                          ? null
+                          : IconButton(
+                              icon: const Icon(Icons.close, size: 18),
+                              onPressed: () => setState(() {
+                                _searchCtrl.clear();
+                                _searchQuery = '';
+                              }),
+                            ),
+                      isDense: true,
+                      filled: true,
+                      fillColor: Colors.grey.shade100,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: FutureBuilder<List<QueryDocumentSnapshot>>(
+                          future: _orgsFuture,
+                          builder: (context, orgSnap) {
+                            final orgs = orgSnap.data ?? const [];
+                            return _OrgFilterDropdown(
+                              orgs: orgs,
+                              selectedOrgId: _selectedOrgId,
+                              onChanged: (id) =>
+                                  setState(() => _selectedOrgId = id),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                   child: Row(
                     children: [
                       Expanded(child: _buildSegmentedControl()),
@@ -686,6 +769,61 @@ class _UpcomingTabState extends State<UpcomingTab>
           onTap: () => _openDetail(event),
         );
       },
+    );
+  }
+}
+
+// Organization filter for Discover — same `organizations` collection and
+// `status == 'active'` filter every other org picker in the app uses.
+class _OrgFilterDropdown extends StatelessWidget {
+  final List<QueryDocumentSnapshot> orgs;
+  final String? selectedOrgId;
+  final ValueChanged<String?> onChanged;
+
+  const _OrgFilterDropdown({
+    required this.orgs,
+    required this.selectedOrgId,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String?>(
+          value: selectedOrgId,
+          isExpanded: true,
+          icon: const Icon(Icons.expand_more, size: 20),
+          style: const TextStyle(fontSize: 13, color: Colors.black87),
+          hint: Text(
+            'All Organizations',
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+          ),
+          items: [
+            const DropdownMenuItem<String?>(
+              value: null,
+              child: Text('All Organizations'),
+            ),
+            for (final doc in orgs)
+              DropdownMenuItem<String?>(
+                value: doc.id,
+                child: Text(
+                  ((doc.data() as Map<String, dynamic>)['orgName'] ??
+                          (doc.data() as Map<String, dynamic>)['name'] ??
+                          'Organization')
+                      .toString(),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+          ],
+          onChanged: onChanged,
+        ),
+      ),
     );
   }
 }
@@ -834,28 +972,42 @@ class _CompactUpcomingCard extends StatelessWidget {
 // ═══════════════════════════════════════════════════════════════
 //  TAB 3: REGISTERED EVENTS - FIXED
 // ═══════════════════════════════════════════════════════════════
-class RegisteredEventsTab extends StatefulWidget {
+// The student's personal event activity center — merges what used to be
+// two separate tabs (Registered, Evaluations). A registered event now
+// naturally shows one of: Registered (upcoming or past-but-not-attended),
+// Needs Feedback (attended, not yet evaluated), or Completed (evaluated),
+// instead of living in two different tabs depending on where it is in
+// that lifecycle. Uses the exact same attendance/feedback queries the old
+// Evaluations tab used.
+class MyEventsTab extends StatefulWidget {
   final Stream<Set<String>> registeredEventIdsStream;
-  const RegisteredEventsTab({
-    required this.registeredEventIdsStream,
-    super.key,
-  });
+  const MyEventsTab({required this.registeredEventIdsStream, super.key});
 
   @override
-  State<RegisteredEventsTab> createState() => _RegisteredEventsTabState();
+  State<MyEventsTab> createState() => _MyEventsTabState();
 }
 
 enum _ViewFilter { all, active, archived }
 
 enum _RegStatus { upcoming, ongoing, completed }
 
-class _RegisteredEventsTabState extends State<RegisteredEventsTab>
+// Activity status for My Events — distinct from _RegStatus (which is a
+// pure time-based upcoming/ongoing/past used by the Discover tab).
+enum _MyEventStatus { registered, needsFeedback, completed }
+
+class _MyEventsTabState extends State<MyEventsTab>
     with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
 
   Stream<QuerySnapshot>? _registrationsStream;
   _ViewFilter _viewFilter = _ViewFilter.all;
+
+  // Attendance + feedback-submitted event IDs — same two queries the old
+  // Evaluations tab used (collectionGroup('attendances') for attendance,
+  // both event_feedback and feedback for "already submitted", since the
+  // app never finished migrating off the legacy `feedback` collection).
+  Future<({Set<String> attended, Set<String> evaluated})>? _statusDataFuture;
 
   @override
   void initState() {
@@ -866,6 +1018,65 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
           .collection('registrations')
           .where('userId', isEqualTo: user.uid)
           .snapshots();
+      _statusDataFuture = _loadStatusData(user.uid);
+    }
+  }
+
+  Future<({Set<String> attended, Set<String> evaluated})> _loadStatusData(
+    String uid,
+  ) async {
+    final attendanceSnap = await FirebaseFirestore.instance
+        .collectionGroup('attendances')
+        .where('studentId', isEqualTo: uid)
+        .get();
+    final attended = <String>{};
+    for (final doc in attendanceSnap.docs) {
+      final status = doc.data()['status']?.toString() ?? '';
+      if (status != 'present' && status != 'late') continue;
+      final eventRef = doc.reference.parent.parent;
+      if (eventRef != null) attended.add(eventRef.id);
+    }
+
+    final evaluated = <String>{};
+    final fb1 = await FirebaseFirestore.instance
+        .collection('event_feedback')
+        .where('userId', isEqualTo: uid)
+        .get();
+    for (final doc in fb1.docs) {
+      final eid = doc.data()['eventId']?.toString();
+      if (eid != null && eid.isNotEmpty) evaluated.add(eid);
+    }
+    final fb2 = await FirebaseFirestore.instance
+        .collection('feedback')
+        .where('userId', isEqualTo: uid)
+        .get();
+    for (final doc in fb2.docs) {
+      final eid = doc.data()['eventId']?.toString();
+      if (eid != null && eid.isNotEmpty) evaluated.add(eid);
+    }
+    return (attended: attended, evaluated: evaluated);
+  }
+
+  _MyEventStatus _myEventStatusFor(
+    EventModel event,
+    _RegStatus timeStatus,
+    Set<String> attended,
+    Set<String> evaluated,
+  ) {
+    if (timeStatus != _RegStatus.completed) return _MyEventStatus.registered;
+    if (!attended.contains(event.id)) return _MyEventStatus.registered;
+    if (evaluated.contains(event.id)) return _MyEventStatus.completed;
+    return _MyEventStatus.needsFeedback;
+  }
+
+  ({String label, Color color}) _myStatusStyle(_MyEventStatus status) {
+    switch (status) {
+      case _MyEventStatus.registered:
+        return (label: 'REGISTERED', color: const Color(0xFF2563EB));
+      case _MyEventStatus.needsFeedback:
+        return (label: 'NEEDS FEEDBACK', color: const Color(0xFFD97706));
+      case _MyEventStatus.completed:
+        return (label: 'COMPLETED', color: const Color(0xFF059669));
     }
   }
 
@@ -902,17 +1113,6 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
     if (now.isBefore(start)) return _RegStatus.upcoming;
     if (now.isAfter(end)) return _RegStatus.completed;
     return _RegStatus.ongoing;
-  }
-
-  ({String label, Color color}) _statusStyle(_RegStatus status) {
-    switch (status) {
-      case _RegStatus.upcoming:
-        return (label: 'UPCOMING', color: const Color(0xFF2563EB));
-      case _RegStatus.ongoing:
-        return (label: 'ONGOING', color: const Color(0xFF059669));
-      case _RegStatus.completed:
-        return (label: 'COMPLETED', color: Colors.grey.shade600);
-    }
   }
 
   void _openDetail(EventModel event, bool isPast) {
@@ -1151,7 +1351,24 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
             const Divider(height: 1, color: Color(0xFFF0F0F0)),
 
             // ─── Content Area ───
-            Expanded(child: _buildContent(eventIds, regSnap)),
+            Expanded(
+              child:
+                  FutureBuilder<
+                    ({Set<String> attended, Set<String> evaluated})
+                  >(
+                    future: _statusDataFuture,
+                    builder: (context, statusSnap) {
+                      final attended = statusSnap.data?.attended ?? const {};
+                      final evaluated = statusSnap.data?.evaluated ?? const {};
+                      return _buildContent(
+                        eventIds,
+                        regSnap,
+                        attended,
+                        evaluated,
+                      );
+                    },
+                  ),
+            ),
           ],
         );
       },
@@ -1161,6 +1378,8 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
   Widget _buildContent(
     List<String> eventIds,
     AsyncSnapshot<QuerySnapshot> regSnap,
+    Set<String> attended,
+    Set<String> evaluated,
   ) {
     if (eventIds.isEmpty) {
       // ⭐ Show empty state with appropriate message based on filter
@@ -1239,18 +1458,20 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
             .map((d) => EventModel.fromFirestore(d))
             .toList();
 
+        // Needs Feedback first (most actionable), then Registered (soonest
+        // first), then Completed (most recently finished first).
         events.sort((a, b) {
-          final sa = _statusFor(a);
-          final sb = _statusFor(b);
+          final sa = _myEventStatusFor(a, _statusFor(a), attended, evaluated);
+          final sb = _myEventStatusFor(b, _statusFor(b), attended, evaluated);
           if (sa != sb) {
             const order = {
-              _RegStatus.ongoing: 0,
-              _RegStatus.upcoming: 1,
-              _RegStatus.completed: 2,
+              _MyEventStatus.needsFeedback: 0,
+              _MyEventStatus.registered: 1,
+              _MyEventStatus.completed: 2,
             };
             return order[sa]!.compareTo(order[sb]!);
           }
-          return sa == _RegStatus.completed
+          return sa == _MyEventStatus.completed
               ? b.date.compareTo(a.date)
               : a.date.compareTo(b.date);
         });
@@ -1265,8 +1486,13 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
           itemCount: events.length,
           itemBuilder: (context, index) {
             final event = events[index];
-            final status = _statusFor(event);
-            final style = _statusStyle(status);
+            final myStatus = _myEventStatusFor(
+              event,
+              _statusFor(event),
+              attended,
+              evaluated,
+            );
+            final style = _myStatusStyle(myStatus);
 
             bool isArchived = false;
             if (_viewFilter == _ViewFilter.all) {
@@ -1418,12 +1644,15 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
                               child: ElevatedButton(
                                 onPressed: () => _openDetail(
                                   event,
-                                  status == _RegStatus.completed,
+                                  _statusFor(event) == _RegStatus.completed,
                                 ),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: isArchived
                                       ? Colors.grey
-                                      : AppColors.primaryDark,
+                                      : (myStatus ==
+                                                _MyEventStatus.needsFeedback
+                                            ? style.color
+                                            : AppColors.primaryDark),
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 8,
                                   ),
@@ -1431,9 +1660,11 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                 ),
-                                child: const Text(
-                                  'View',
-                                  style: TextStyle(
+                                child: Text(
+                                  myStatus == _MyEventStatus.needsFeedback
+                                      ? 'Give Feedback'
+                                      : 'View',
+                                  style: const TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w600,
                                     color: Colors.white,
@@ -1489,402 +1720,10 @@ class _RegisteredEventsTabState extends State<RegisteredEventsTab>
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  TAB 4: EVALUATIONS - FIXED
-// ═══════════════════════════════════════════════════════════════
-class EvaluationsTab extends StatefulWidget {
-  final Stream<Set<String>> registeredEventIdsStream;
-  const EvaluationsTab({required this.registeredEventIdsStream, super.key});
-
-  @override
-  State<EvaluationsTab> createState() => _EvaluationsTabState();
-}
-
-class _EvaluationsTabState extends State<EvaluationsTab>
-    with AutomaticKeepAliveClientMixin {
-  @override
-  bool get wantKeepAlive => true;
-
-  String _userId = '';
-  List<EventModel> _pendingEvents = [];
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _getCurrentUser();
-    _loadData();
-  }
-
-  void _getCurrentUser() {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      _userId = user.uid;
-    }
-  }
-
-  Future<void> _loadData() async {
-    if (_userId.isEmpty) {
-      setState(() => _isLoading = false);
-      return;
-    }
-
-    setState(() => _isLoading = true);
-
-    try {
-      // 1. Get registered event IDs
-      final registrationsSnap = await FirebaseFirestore.instance
-          .collection('registrations')
-          .where('userId', isEqualTo: _userId)
-          .get();
-
-      final registeredIds = registrationsSnap.docs
-          .map((doc) => doc['eventId'] as String)
-          .toSet();
-
-      print('🔍 Registered IDs: $registeredIds');
-
-      if (registeredIds.isEmpty) {
-        setState(() {
-          _pendingEvents = [];
-          _isLoading = false;
-        });
-        return;
-      }
-
-      // 1.5 Get attended event IDs — being registered isn't being present;
-      // only events actually checked into (QR/manual, status present/late)
-      // belong in a feedback queue. Same collectionGroup query
-      // student_feedback_prompt.dart / student_feedback_screen.dart already
-      // use for this exact purpose.
-      final attendanceSnap = await FirebaseFirestore.instance
-          .collectionGroup('attendances')
-          .where('studentId', isEqualTo: _userId)
-          .get();
-      final attendedIds = <String>{};
-      for (final doc in attendanceSnap.docs) {
-        final status = doc.data()['status']?.toString() ?? '';
-        if (status != 'present' && status != 'late') continue;
-        final eventRef = doc.reference.parent.parent;
-        if (eventRef != null) attendedIds.add(eventRef.id);
-      }
-
-      // 2. Get evaluated event IDs - CHECK BOTH COLLECTIONS
-      final allEvaluatedIds = <String>{};
-
-      // Check event_feedback
-      final feedbackSnap1 = await FirebaseFirestore.instance
-          .collection('event_feedback')
-          .where('userId', isEqualTo: _userId)
-          .get();
-
-      for (final doc in feedbackSnap1.docs) {
-        final data = doc.data();
-        final eventId = data['eventId']?.toString();
-        if (eventId != null && eventId.isNotEmpty) {
-          allEvaluatedIds.add(eventId);
-        }
-      }
-
-      // Check feedback (without event_ prefix)
-      final feedbackSnap2 = await FirebaseFirestore.instance
-          .collection('feedback')
-          .where('userId', isEqualTo: _userId)
-          .get();
-
-      for (final doc in feedbackSnap2.docs) {
-        final data = doc.data();
-        final eventId = data['eventId']?.toString();
-        if (eventId != null && eventId.isNotEmpty) {
-          allEvaluatedIds.add(eventId);
-        }
-      }
-
-      print('🔍 All evaluated IDs: $allEvaluatedIds');
-
-      // 3. Get events
-      final eventIds = registeredIds.toList();
-      final chunks = <List<String>>[];
-      for (var i = 0; i < eventIds.length; i += 30) {
-        chunks.add(
-          eventIds.sublist(
-            i,
-            i + 30 > eventIds.length ? eventIds.length : i + 30,
-          ),
-        );
-      }
-
-      final allEvents = <EventModel>[];
-      for (final chunk in chunks) {
-        try {
-          final snap = await FirebaseFirestore.instance
-              .collection('events')
-              .where(FieldPath.documentId, whereIn: chunk)
-              .get();
-          allEvents.addAll(snap.docs.map((d) => EventModel.fromFirestore(d)));
-        } catch (e) {
-          print('Error fetching events chunk: $e');
-        }
-      }
-
-      print('🔍 All registered events: ${allEvents.length}');
-
-      // 4. Filter: only PAST events the student actually ATTENDED and
-      // hasn't evaluated yet — registered-but-absent no longer qualifies.
-      final now = DateTime.now();
-      final pending = allEvents
-          .where(
-            (event) =>
-                event.date.isBefore(now) && // Past event
-                attendedIds.contains(event.id) && // Actually attended
-                !allEvaluatedIds.contains(event.id), // Not evaluated
-          )
-          .toList();
-
-      // Print which events are being filtered out
-      for (final event in allEvents) {
-        final isPast = event.date.isBefore(now);
-        final isEvaluated = allEvaluatedIds.contains(event.id);
-        print(
-          'Event: ${event.title}, ID: ${event.id}, Past: $isPast, Evaluated: $isEvaluated',
-        );
-      }
-
-      print('🔍 Pending events count: ${pending.length}');
-
-      // Sort by date (most recent first)
-      pending.sort((a, b) => b.date.compareTo(a.date));
-
-      setState(() {
-        _pendingEvents = pending;
-        _isLoading = false;
-      });
-    } catch (e) {
-      print('Error loading evaluations: $e');
-      setState(() => _isLoading = false);
-    }
-  }
-
-  void _openDetail(EventModel event) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => EventDetailScreen(
-          event: event,
-          onRegistered: () {
-            // Refresh when returning
-            _loadData();
-          },
-          isPastEvent: event.isPast,
-        ),
-      ),
-    ).then((_) {
-      // Refresh after coming back from detail screen
-      _loadData();
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    super.build(context);
-
-    if (_userId.isEmpty) {
-      return const Center(
-        child: Text(
-          'Please log in to view evaluations',
-          style: TextStyle(color: Colors.grey),
-        ),
-      );
-    }
-
-    if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: AppColors.primaryDark),
-      );
-    }
-
-    if (_pendingEvents.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.feedback_outlined,
-              size: 80,
-              color: Colors.grey.shade400,
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'No pending evaluations',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: Colors.grey,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40),
-              child: const Text(
-                'Past events you attended will appear here for feedback.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 13, color: Colors.grey),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: _loadData,
-      color: AppColors.primaryDark,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: _pendingEvents.length,
-        itemBuilder: (context, index) {
-          final event = _pendingEvents[index];
-          return _EvaluationCard(event: event, onTap: () => _openDetail(event));
-        },
-      ),
-    );
-  }
-}
-
-// ─── EVALUATION CARD - Same style as Registered Events ──────
-class _EvaluationCard extends StatelessWidget {
-  final EventModel event;
-  final VoidCallback onTap;
-
-  const _EvaluationCard({required this.event, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          EventImage(
-            imageUrl: event.imageUrl,
-            height: 120,
-            width: double.infinity,
-            fit: BoxFit.cover,
-            showLoadingIndicator: true,
-          ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  event.title,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black87,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  event.orgName,
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.calendar_today_outlined,
-                      size: 12,
-                      color: Colors.grey,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      event.formattedDate,
-                      style: const TextStyle(fontSize: 11, color: Colors.grey),
-                    ),
-                    const SizedBox(width: 12),
-                    const Icon(Icons.access_time, size: 12, color: Colors.grey),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        event.formattedTime,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.location_on_outlined,
-                      size: 12,
-                      color: Colors.grey,
-                    ),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        event.location,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: onTap,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryDark,
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: const Text(
-                      'Evaluate',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+// Evaluations used to be a separate tab (EvaluationsTab/_EvaluationCard) —
+// merged into MyEventsTab below, which now computes the same
+// attended-but-not-evaluated status per event instead of keeping a
+// separate queue screen.
 
 // ─── CALENDAR GRID ─────────────────────────────────────────────
 class _CalendarGrid extends StatelessWidget {
@@ -2695,6 +2534,75 @@ class _CategoryBadge extends StatelessWidget {
 }
 
 // ─── EVENT DETAIL SCREEN ──────────────────────────────────────
+// Audience/eligibility — always visible regardless of registration state,
+// parsed the same comma-separated way EventModel.audienceAllowsMember
+// already does, so the labels shown here always match what's actually
+// being enforced.
+class _AudienceBadgeRow extends StatelessWidget {
+  final String audience;
+  const _AudienceBadgeRow({required this.audience});
+
+  @override
+  Widget build(BuildContext context) {
+    final values = audience
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    final labels = values.isEmpty || values.contains('Public')
+        ? const ['Public']
+        : values;
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 6,
+      children: [
+        for (final label in labels)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: label == 'Public'
+                  ? Colors.green.withOpacity(0.1)
+                  : AppColors.primaryDark.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(100),
+              border: Border.all(
+                color: label == 'Public'
+                    ? Colors.green.withOpacity(0.3)
+                    : AppColors.primaryDark.withOpacity(0.25),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  label == 'Public'
+                      ? Icons.public
+                      : Icons.verified_user_outlined,
+                  size: 12,
+                  color: label == 'Public'
+                      ? Colors.green.shade700
+                      : AppColors.primaryDark,
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  label.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.4,
+                    color: label == 'Public'
+                        ? Colors.green.shade700
+                        : AppColors.primaryDark,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 class EventDetailScreen extends StatefulWidget {
   final EventModel event;
   final VoidCallback onRegistered;
@@ -2805,6 +2713,21 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     return DateTime(date.year, date.month, date.day, hour, minute);
   }
 
+  // Certificate status for the My Event section — same `certificates`
+  // collection and `recipientUid` field the Certificates screen already
+  // queries, just scoped to this one event via `eventId`.
+  late final Future<QuerySnapshot<Map<String, dynamic>>> _certFuture =
+      _loadCertStatus();
+
+  Future<QuerySnapshot<Map<String, dynamic>>> _loadCertStatus() {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    return FirebaseFirestore.instance
+        .collection('certificates')
+        .where('recipientUid', isEqualTo: uid)
+        .where('eventId', isEqualTo: widget.event.id)
+        .get();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -2880,6 +2803,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   // actually attended; a doc simply existing isn't enough on its own since
   // nothing else writes to this subcollection with another status today,
   // but checking the value explicitly keeps this correct if that changes.
+  DateTime? _attendanceTimestamp;
+  String? _attendanceStatusRaw;
+
   Future<void> _checkAttendanceStatus() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -2890,9 +2816,14 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           .collection('attendances')
           .doc(user.uid)
           .get();
-      final status = doc.data()?['status']?.toString() ?? '';
+      final data = doc.data();
+      final status = data?['status']?.toString() ?? '';
       if (mounted) {
-        setState(() => _hasAttended = status == 'present' || status == 'late');
+        setState(() {
+          _hasAttended = status == 'present' || status == 'late';
+          _attendanceStatusRaw = status.isEmpty ? null : status;
+          _attendanceTimestamp = (data?['timestamp'] as Timestamp?)?.toDate();
+        });
       }
     } catch (_) {
       // Leave _hasAttended false — the feedback section just stays hidden.
@@ -3053,6 +2984,178 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     );
   }
 
+  Widget _buildMyEventSection() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.primaryDark.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.primaryDark.withOpacity(0.15)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.event_available_rounded,
+                size: 16,
+                color: AppColors.primaryDark,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'MY EVENT',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.6,
+                  color: AppColors.primaryDark,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _buildAttendanceStatusRow(),
+          const SizedBox(height: 12),
+          _buildCertificateStatusRow(),
+        ],
+      ),
+    );
+  }
+
+  Widget _myEventStatusRow({
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required String value,
+    Widget? trailing,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Icon(icon, size: 18, color: iconColor),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black87,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (trailing != null) trailing,
+      ],
+    );
+  }
+
+  // Digital ID QR scanning (org_attendance_qr.dart) stays the primary
+  // attendance path and isn't touched here — this only surfaces the
+  // status that path already writes, plus the existing alternate
+  // "enter a code" path (StudentWebinarCodeScreen) for when scanning
+  // isn't available.
+  Widget _buildAttendanceStatusRow() {
+    if (_hasAttended) {
+      final ts = _attendanceTimestamp;
+      final late = _attendanceStatusRaw == 'late';
+      final value = ts != null
+          ? '${late ? 'Late' : 'Present'} — ${DateFormat('MMM dd, yyyy • h:mm a').format(ts)}'
+          : (late ? 'Marked late' : 'Attendance Recorded');
+      return _myEventStatusRow(
+        icon: Icons.verified_rounded,
+        iconColor: Colors.green.shade600,
+        label: 'Attendance',
+        value: value,
+      );
+    }
+    if (_isEventReallyOver) {
+      return _myEventStatusRow(
+        icon: Icons.cancel_outlined,
+        iconColor: Colors.grey,
+        label: 'Attendance',
+        value: 'Not recorded',
+      );
+    }
+    return _myEventStatusRow(
+      icon: Icons.schedule_rounded,
+      iconColor: Colors.orange.shade700,
+      label: 'Attendance',
+      value: 'Not yet recorded',
+      trailing: TextButton(
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const StudentWebinarCodeScreen()),
+        ),
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          minimumSize: Size.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        child: const Text(
+          'Enter Code',
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCertificateStatusRow() {
+    return FutureBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      future: _certFuture,
+      builder: (context, snap) {
+        final hasCert = (snap.data?.docs.length ?? 0) > 0;
+        if (!hasCert) {
+          return _myEventStatusRow(
+            icon: Icons.workspace_premium_outlined,
+            iconColor: Colors.grey,
+            label: 'Certificate',
+            value: 'Not yet available',
+          );
+        }
+        return _myEventStatusRow(
+          icon: Icons.workspace_premium_rounded,
+          iconColor: const Color(0xFFD97706),
+          label: 'Certificate',
+          value: 'Available',
+          trailing: TextButton(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const StudentCertificatesScreen(),
+              ),
+            ),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text(
+              'View',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildFeedbackSection() {
     if (_checkingFeedback) {
       return const Center(
@@ -3132,34 +3235,59 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 4),
-          InkWell(
-            borderRadius: BorderRadius.circular(8),
-            onTap: _feedbackSubmitted
-                ? null
-                : () => setState(() => _isAnonymous = !_isAnonymous),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  Checkbox(
-                    value: _isAnonymous,
-                    activeColor: AppColors.primaryDark,
-                    onChanged: _feedbackSubmitted
-                        ? null
-                        : (v) => setState(() => _isAnonymous = v ?? false),
-                  ),
-                  Expanded(
-                    child: Text(
-                      'Submit anonymously (your name won\'t be shown to the organization)',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade700,
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Anonymous Feedback',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black87,
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _isAnonymous
+                            ? 'The organization won\'t see your name.'
+                            : 'The organization can see who submitted this.',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+                Text(
+                  _isAnonymous ? 'ON' : 'OFF',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: _isAnonymous
+                        ? AppColors.primaryDark
+                        : Colors.grey.shade500,
+                  ),
+                ),
+                Switch(
+                  value: _isAnonymous,
+                  activeColor: AppColors.primaryDark,
+                  onChanged: _feedbackSubmitted
+                      ? null
+                      : (v) => setState(() => _isAnonymous = v),
+                ),
+              ],
             ),
           ),
           if (!_feedbackSubmitted) ...[
@@ -3943,9 +4071,35 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    'Hosted by ${widget.event.orgName}',
-                    style: const TextStyle(fontSize: 14, color: Colors.grey),
+                  // Organizer information — tappable through to the same
+                  // public org profile the Organizations tab already uses,
+                  // instead of just being static text.
+                  InkWell(
+                    onTap: widget.event.orgId.isEmpty
+                        ? null
+                        : () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => StudentOrganizationsDetailsScreen(
+                                orgId: widget.event.orgId,
+                              ),
+                            ),
+                          ),
+                    child: Text(
+                      'Hosted by ${widget.event.orgName}',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: widget.event.orgId.isEmpty
+                            ? Colors.grey
+                            : AppColors.primaryDark,
+                        fontWeight: widget.event.orgId.isEmpty
+                            ? FontWeight.normal
+                            : FontWeight.w600,
+                        decoration: widget.event.orgId.isEmpty
+                            ? TextDecoration.none
+                            : TextDecoration.underline,
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 20),
                   _InfoRow(
@@ -3962,6 +4116,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     icon: Icons.location_on_outlined,
                     text: widget.event.location,
                   ),
+                  const SizedBox(height: 12),
+                  _AudienceBadgeRow(audience: widget.event.audience),
                   if (widget.event.capacity != null) ...[
                     const SizedBox(height: 12),
                     _InfoRow(
@@ -3974,7 +4130,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   ],
                   const SizedBox(height: 20),
                   const Text(
-                    'Description',
+                    'About the Event',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 8),
@@ -4096,6 +4252,13 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                         ),
                       ),
                     ),
+
+                  // MY EVENT — attendance + certificate status, grouped
+                  // together the way the redesign calls for, both read
+                  // from data this screen already fetches/queries
+                  // (events/{id}/attendances and certificates), no new
+                  // collections.
+                  if (_isRegistered) _buildMyEventSection(),
 
                   // Feedback only for students who registered AND were
                   // actually marked present/late — a past event you never

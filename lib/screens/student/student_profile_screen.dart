@@ -16,6 +16,8 @@ import '../auth/role_router.dart';
 import '../student/student_login.dart';
 import '../student/student_events_screen.dart';
 import '../student/student_feedback_screen.dart';
+import '../student/student_certificates_screen.dart';
+import '../student/student_organization_details_screen.dart';
 import '../../models/profile_model.dart';
 import '../../widgets/shared/app_support.dart';
 import '../../widgets/student/app_colors.dart';
@@ -456,44 +458,6 @@ class _ProfileImage extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Small reusable pieces for the redesigned Profile header
-// ─────────────────────────────────────────────────────────────
-class _HeaderChip extends StatelessWidget {
-  final IconData icon;
-  final String text;
-  const _HeaderChip({required this.icon, required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.18),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: Colors.white),
-          const SizedBox(width: 5),
-          Flexible(
-            child: Text(
-              text,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 12,
-                color: Colors.white,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _QuickActionCard extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -520,7 +484,7 @@ class _QuickActionCard extends StatelessWidget {
           onTap: onTap,
           child: Container(
             decoration: kCardDecoration(),
-            padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 14),
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -528,33 +492,37 @@ class _QuickActionCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(10),
+                      padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
                         color: color.withOpacity(0.12),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Icon(icon, color: color, size: 22),
+                      child: Icon(icon, color: color, size: 19),
                     ),
                     Icon(
                       Icons.arrow_forward_ios_rounded,
-                      size: 12,
+                      size: 11,
                       color: Colors.grey[300],
                     ),
                   ],
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 12),
                 Text(
                   title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontWeight: FontWeight.w700,
-                    fontSize: 14,
+                    fontSize: 13,
                     color: Colors.black87,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
-                  style: TextStyle(fontSize: 11.5, color: Colors.grey[500]),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11, color: Colors.grey[500]),
                 ),
               ],
             ),
@@ -634,44 +602,28 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ── Gradient hero header ──
+                // ── Profile header — plain card, avatar/name/ID/email.
+                // Orange is used only as an accent (edit-badge, icon) per
+                // the redesign's "amber accent, not a dominant fill" rule.
                 Container(
                   width: double.infinity,
                   margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                  padding: const EdgeInsets.fromLTRB(20, 28, 20, 26),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(22),
-                    gradient: const LinearGradient(
-                      colors: [kOrange, AppColors.primaryLight],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: kOrange.withOpacity(0.25),
-                        blurRadius: 16,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
+                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 22),
+                  decoration: kCardDecoration(radius: 18),
                   child: Column(
                     children: [
                       Stack(
                         children: [
                           Container(
-                            width: 92,
-                            height: 92,
+                            width: 84,
+                            height: 84,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: Colors.white,
-                              border: Border.all(color: Colors.white, width: 3),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.15),
-                                  blurRadius: 12,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
+                              color: kOrangeLight,
+                              border: Border.all(
+                                color: Colors.grey.shade200,
+                                width: 1,
+                              ),
                             ),
                             child: ClipOval(
                               child: _profile.photoUrl.isNotEmpty
@@ -679,13 +631,13 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                                       photoUrl: _profile.photoUrl,
                                       errorBuilder: (_, __, ___) => const Icon(
                                         Icons.person,
-                                        size: 50,
+                                        size: 46,
                                         color: kOrange,
                                       ),
                                     )
                                   : const Icon(
                                       Icons.person,
-                                      size: 50,
+                                      size: 46,
                                       color: kOrange,
                                     ),
                             ),
@@ -697,60 +649,65 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                               onTap: () =>
                                   _pickAndUploadPhoto(context, _profile),
                               child: Container(
-                                width: 28,
-                                height: 28,
+                                width: 26,
+                                height: 26,
                                 decoration: BoxDecoration(
-                                  color: Colors.white,
+                                  color: kOrange,
                                   shape: BoxShape.circle,
-                                  border: Border.all(color: kOrange, width: 2),
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 2,
+                                  ),
                                 ),
                                 child: const Icon(
                                   Icons.edit,
-                                  color: kOrange,
-                                  size: 14,
+                                  color: Colors.white,
+                                  size: 13,
                                 ),
                               ),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 12),
                       Text(
                         _profile.fullName.isNotEmpty
                             ? _profile.fullName
                             : 'Student Name',
                         textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black87,
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        alignment: WrapAlignment.center,
-                        spacing: 8,
-                        runSpacing: 6,
-                        children: [
-                          _HeaderChip(
-                            icon: Icons.badge_outlined,
-                            text: _profile.studentId.isNotEmpty
-                                ? _profile.studentId
-                                : 'No student ID',
-                          ),
-                          _HeaderChip(
-                            icon: Icons.mail_outline,
-                            text: _profile.email.isNotEmpty
-                                ? _profile.email
-                                : 'No email',
-                          ),
-                        ],
+                      const SizedBox(height: 4),
+                      Text(
+                        _profile.studentId.isNotEmpty
+                            ? _profile.studentId
+                            : 'No student ID',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey[600],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _profile.email.isNotEmpty ? _profile.email : 'No email',
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 13, color: Colors.grey[500]),
                       ),
                     ],
                   ),
                 ),
 
-                // ── Quick actions: Edit Profile / Digital ID ──
+                // ── Quick actions: Edit Profile / Digital ID / Certificates ──
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
                   child: Row(
@@ -758,7 +715,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                       _QuickActionCard(
                         icon: Icons.edit_outlined,
                         title: 'Edit Profile',
-                        subtitle: 'Update your info',
+                        subtitle: 'Update info',
                         color: kOrange,
                         onTap: () async {
                           final result = await Navigator.push(
@@ -773,7 +730,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                           }
                         },
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 10),
                       _QuickActionCard(
                         icon: Icons.credit_card,
                         title: 'Digital ID',
@@ -787,109 +744,117 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                           ),
                         ),
                       ),
+                      const SizedBox(width: 10),
+                      _QuickActionCard(
+                        icon: Icons.workspace_premium_outlined,
+                        title: 'Certificates',
+                        subtitle: 'Your awards',
+                        color: const Color(0xFF16A34A),
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const StudentCertificatesScreen(),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
 
-                // ── Organization ──
+                // ── My Organizations — membership is a single orgId on
+                // students/{uid} today, not an array, so this renders it as
+                // a 0-1 item list (same pattern as Home and the
+                // Organizations tab) rather than assuming one fixed org.
                 if (_profile.orgName.isNotEmpty) ...[
-                  kSectionLabel('Organization'),
-                  Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 16),
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [kOrange, AppColors.primaryLight],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
+                  kSectionLabel('My Organizations'),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: InkWell(
                       borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: kOrange.withOpacity(0.18),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.25),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.groups,
-                            color: Colors.white,
-                            size: 22,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'ASSIGNED ORGANIZATION',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.white70,
-                                  letterSpacing: 0.8,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                _profile.orgName,
-                                style: const TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              // The card above already proved "assigned to
-                              // an org," but nothing distinguished an
-                              // officer from a plain member — this pill is
-                              // the actual "you are part of this org" tag.
-                              if (_profile.isOrgOfficer ||
-                                  _profile.isOrgMember) ...[
-                                const SizedBox(height: 6),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 3,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.25),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Text(
-                                    _profile.isOrgOfficer
-                                        ? (_profile.officerPosition.isNotEmpty
-                                              ? 'OFFICER · ${_profile.officerPosition.toUpperCase()}'
-                                              : 'OFFICER')
-                                        : 'MEMBER',
-                                    style: const TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w800,
-                                      color: Colors.white,
-                                      letterSpacing: 0.5,
+                      onTap: _profile.orgId.isEmpty
+                          ? null
+                          : () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    StudentOrganizationsDetailsScreen(
+                                      orgId: _profile.orgId,
                                     ),
+                              ),
+                            ),
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: kCardDecoration(),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: kOrange.withOpacity(0.1),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.groups,
+                                color: kOrange,
+                                size: 22,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                _profile.orgName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            ),
+                            if (_profile.isOrgOfficer ||
+                                _profile.isOrgMember) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 9,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: kOrange.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  _profile.isOrgOfficer
+                                      ? (_profile.officerPosition.isNotEmpty
+                                            ? _profile.officerPosition
+                                                  .toUpperCase()
+                                            : 'OFFICER')
+                                      : 'MEMBER',
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    color: kOrange,
+                                    letterSpacing: 0.4,
                                   ),
                                 ),
-                              ],
+                              ),
                             ],
-                          ),
+                            const SizedBox(width: 6),
+                            Icon(
+                              Icons.arrow_forward_ios_rounded,
+                              size: 12,
+                              color: Colors.grey[300],
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
                   ),
                 ],
 
-                // ── ID Information ──
-                kSectionLabel('ID Information'),
+                // ── Account Information ──
+                kSectionLabel('Account Information'),
                 Container(
                   margin: const EdgeInsets.symmetric(horizontal: 16),
                   padding: const EdgeInsets.all(16),

@@ -13,6 +13,7 @@ import 'package:uprise/models/event_model.dart';
 import 'student_broadcast_screen.dart';
 import 'student_events_screen.dart';
 import 'student_announcements_screen.dart';
+import 'student_merchandise_screen.dart';
 
 // ─────────────────────────────────────────────────────────────
 //  ORGANIZATION DETAILS SCREEN
@@ -735,6 +736,10 @@ class _StudentOrganizationsDetailsScreenState
                           orgId: widget.orgId,
                           onAnnouncementTap: _navigateToAnnouncementDetail,
                         ),
+
+                        // ── Merchandise (hidden entirely if this org has
+                        // none — display-only catalog, no ordering here) ──
+                        _OrgMerchandiseSection(orgId: widget.orgId),
                         const SizedBox(height: 32),
                       ],
                     ),
@@ -1140,6 +1145,137 @@ class _RecentAnnouncementsList extends StatelessWidget {
               ),
             );
           },
+        );
+      },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  ORGANIZATION MERCHANDISE PREVIEW
+// ─────────────────────────────────────────────────────────────
+class _OrgMerchandiseSection extends StatelessWidget {
+  final String orgId;
+
+  const _OrgMerchandiseSection({required this.orgId});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<QuerySnapshot>(
+      future: FirebaseFirestore.instance
+          .collection('products')
+          .where('orgId', isEqualTo: orgId)
+          .where('isArchived', isEqualTo: false)
+          .limit(6)
+          .get(),
+      builder: (context, snapshot) {
+        final docs = snapshot.data?.docs ?? [];
+        if (docs.isEmpty) return const SizedBox.shrink();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Merchandise',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black87,
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const StudentMerchandiseScreen(),
+                    ),
+                  ),
+                  child: const Text('View all'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            SizedBox(
+              height: 168,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: docs.length,
+                itemBuilder: (context, index) {
+                  final data = docs[index].data() as Map<String, dynamic>;
+                  final name = (data['name'] ?? '').toString();
+                  final price = ((data['price'] ?? 0) as num).toDouble();
+                  final imageSource = (data['imageBase64'] ?? '').toString();
+
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: GestureDetector(
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const StudentMerchandiseScreen(),
+                        ),
+                      ),
+                      child: Container(
+                        width: 128,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey.shade200),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SizedBox(
+                              height: 96,
+                              width: double.infinity,
+                              child: AppImage(
+                                source: imageSource,
+                                fit: BoxFit.cover,
+                                showLoadingIndicator: false,
+                                placeholderIcon: Icons.shopping_bag_outlined,
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.all(8),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    name.isNotEmpty ? name : 'Item',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.black87,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '₱${price.toStringAsFixed(2)}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.primaryDark,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
         );
       },
     );

@@ -23,6 +23,7 @@ import '../../widgets/student/app_image.dart';
 // Screens (navigation targets)
 import 'student_events_screen.dart';
 import 'student_organizations_screen.dart';
+import 'student_organization_details_screen.dart';
 import 'student_certificates_screen.dart';
 import 'student_profile_screen.dart';
 import 'student_announcements_screen.dart';
@@ -30,8 +31,6 @@ import 'student_notifications_screen.dart';
 import 'student_merchandise_screen.dart';
 import 'student_feedback_prompt.dart';
 import 'student_new_event_promo.dart';
-import 'student_events_screen.dart'; // adjust if needed
-import 'student_announcements_screen.dart'; // adjust if needed
 
 // ─────────────────────────────────────────────────────────────
 // Shared style tokens
@@ -372,11 +371,6 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         items: const [
           BottomNavItem(Icons.home_outlined, Icons.home, 'Home'),
           BottomNavItem(
-            Icons.announcement_outlined,
-            Icons.announcement,
-            'Announcements',
-          ),
-          BottomNavItem(
             Icons.calendar_today_outlined,
             Icons.calendar_today,
             'Events',
@@ -388,16 +382,19 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     );
   }
 
+  // Announcements is no longer a bottom-nav tab (it's a Home preview
+  // section + notification bell now), so the tab indices shifted down by
+  // one: Events moved from 2 to 1, Orgs from 3 to 2, Profile from 4 to 3.
   List<Widget> get _screens => [
     _HomeContent(key: _homeKey, userName: _userName, onNavigateToTab: _goToTab),
-    const StudentAnnouncementsScreen(),
     StudentEventsScreen(
       initialTabIndex: _eventsSubTab,
       jumpToken: _eventsJumpToken,
     ),
     const StudentOrganizationsScreen(),
     StudentProfileScreen(
-      onViewAllRegistrations: () => _goToTab(2, eventsSubTab: 1),
+      // Events tab order is Discover(0) / Calendar(1) / My Events(2).
+      onViewAllRegistrations: () => _goToTab(1, eventsSubTab: 2),
     ),
   ];
 }
@@ -423,6 +420,12 @@ class _HomeContentState extends State<_HomeContent> {
   // Cached future for registered events – prevents duplicate queries.
   Future<List<EventModel>>? _registeredEventsFuture;
 
+  // Membership is still a single orgId on students/{uid} today (not an
+  // array) — wrapped as a 0-1 item "my organizations" list here so the UI
+  // is already shaped for multiple memberships whenever the backend
+  // actually supports it, without inventing a new field now.
+  late final Future<_MyOrgPreview?> _myOrgFuture = _loadMyOrgPreview();
+
   @override
   void initState() {
     super.initState();
@@ -443,6 +446,40 @@ class _HomeContentState extends State<_HomeContent> {
   void dispose() {
     _cacheMonitor?.cancel();
     super.dispose();
+  }
+
+  Future<_MyOrgPreview?> _loadMyOrgPreview() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return null;
+    try {
+      final studentDoc = await FirebaseFirestore.instance
+          .collection('students')
+          .doc(user.uid)
+          .get();
+      final data = studentDoc.data();
+      final orgId = (data?['orgId'] ?? '').toString();
+      if (orgId.isEmpty) return null;
+
+      String logoUrl = '';
+      try {
+        final orgDoc = await FirebaseFirestore.instance
+            .collection('organizations')
+            .doc(orgId)
+            .get();
+        logoUrl = (orgDoc.data()?['logoUrl'] ?? '').toString();
+      } catch (_) {
+        // Org preview still works without a logo.
+      }
+
+      return _MyOrgPreview(
+        orgId: orgId,
+        orgName: (data?['orgName'] ?? '').toString(),
+        isOfficer: data?['isOrgOfficer'] == true,
+        logoUrl: logoUrl,
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   // Refresh the cached future for registered events.
@@ -746,6 +783,58 @@ class _HomeContentState extends State<_HomeContent> {
             ),
           ),
 
+          // Quick Actions — compact icon shortcuts, not full cards, to the
+          // student's most frequent destinations.
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _QuickAction(
+                      icon: Icons.explore_outlined,
+                      label: 'Events',
+                      // Discover tab is index 0 within Events.
+                      onTap: () => widget.onNavigateToTab(1, eventsSubTab: 0),
+                    ),
+                  ),
+                  Expanded(
+                    child: _QuickAction(
+                      icon: Icons.event_available_outlined,
+                      label: 'My Events',
+                      onTap: () => widget.onNavigateToTab(1, eventsSubTab: 2),
+                    ),
+                  ),
+                  Expanded(
+                    child: _QuickAction(
+                      icon: Icons.badge_outlined,
+                      label: 'Digital ID',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              PersonalIdentityScreen(profile: ProfileModel()),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: _QuickAction(
+                      icon: Icons.workspace_premium_outlined,
+                      label: 'Certificates',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const StudentCertificatesScreen(),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
           // ⭐ COUNTDOWN SECTION – using the cached future
           SliverToBoxAdapter(
             child: FutureBuilder<List<EventModel>>(
@@ -798,7 +887,8 @@ class _HomeContentState extends State<_HomeContent> {
               child: _SectionHeader(
                 title: 'Upcoming Events',
                 actionLabel: 'View all',
-                onAction: () => widget.onNavigateToTab(2, eventsSubTab: 1),
+                // Discover tab is index 0 within Events.
+                onAction: () => widget.onNavigateToTab(1, eventsSubTab: 0),
               ),
             ),
           ),
@@ -987,7 +1077,15 @@ class _HomeContentState extends State<_HomeContent> {
               child: _SectionHeader(
                 title: 'Announcements',
                 actionLabel: 'See all',
-                onAction: () => widget.onNavigateToTab(1),
+                // Announcements is no longer a bottom-nav tab — this is
+                // Home's preview of it, so "See all" pushes the full
+                // announcements screen instead of jumping tabs.
+                onAction: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const StudentAnnouncementsScreen(),
+                  ),
+                ),
               ),
             ),
           ),
@@ -1001,8 +1099,338 @@ class _HomeContentState extends State<_HomeContent> {
             ),
           ),
 
+          // My Organizations preview — hidden entirely when the student
+          // has no org yet, same "don't show empty previews" rule as
+          // Merchandise below (the full Organizations tab still has a
+          // proper empty state for this; this is just a Home preview).
+          SliverToBoxAdapter(
+            child: FutureBuilder<_MyOrgPreview?>(
+              future: _myOrgFuture,
+              builder: (context, snapshot) {
+                final org = snapshot.data;
+                if (org == null) return const SizedBox.shrink();
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 26, 20, 10),
+                      child: _SectionHeader(
+                        title: 'My Organizations',
+                        actionLabel: 'View all',
+                        onAction: () => widget.onNavigateToTab(2),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: _MyOrgPreviewTile(
+                        org: org,
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => StudentOrganizationsDetailsScreen(
+                              orgId: org.orgId,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+
+          // Merchandise preview — only for the student's own org, and only
+          // when that org actually has active products. Merch belongs to
+          // a specific organization, not a sitewide catalog, so this stays
+          // empty (and hidden) for students not in an org, or whose org
+          // hasn't listed anything.
+          SliverToBoxAdapter(
+            child: FutureBuilder<_MyOrgPreview?>(
+              future: _myOrgFuture,
+              builder: (context, orgSnapshot) {
+                final org = orgSnapshot.data;
+                if (org == null) return const SizedBox.shrink();
+                return FutureBuilder<QuerySnapshot>(
+                  future: FirebaseFirestore.instance
+                      .collection('products')
+                      .where('orgId', isEqualTo: org.orgId)
+                      .where('isArchived', isEqualTo: false)
+                      .limit(6)
+                      .get(),
+                  builder: (context, productSnap) {
+                    final docs = productSnap.data?.docs ?? [];
+                    if (docs.isEmpty) return const SizedBox.shrink();
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 26, 20, 10),
+                          child: _SectionHeader(
+                            title: 'Merchandise',
+                            actionLabel: 'View all',
+                            onAction: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    const StudentMerchandiseScreen(),
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          height: 168,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            itemCount: docs.length,
+                            itemBuilder: (context, index) {
+                              final data =
+                                  docs[index].data() as Map<String, dynamic>;
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 12),
+                                child: _MerchPreviewCard(
+                                  name: (data['name'] ?? '').toString(),
+                                  price: ((data['price'] ?? 0) as num)
+                                      .toDouble(),
+                                  imageBase64: (data['imageBase64'] ?? '')
+                                      .toString(),
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          const StudentMerchandiseScreen(),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+
           const SliverToBoxAdapter(child: SizedBox(height: 84)),
         ],
+      ),
+    );
+  }
+}
+
+// Compact icon-shortcut, not a card — Home's Quick Actions row.
+class _QuickAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _QuickAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(_UiTokens.radius),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: AppColors.primaryDark.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(icon, color: AppColors.primaryDark, size: 21),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: _UiTokens.headingText,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Membership is a single orgId on students/{uid} today, not an array —
+// this just gives Home's preview a typed 0-1-item shape to render, so the
+// UI doesn't have to change if that ever becomes a real list.
+class _MyOrgPreview {
+  final String orgId;
+  final String orgName;
+  final bool isOfficer;
+  final String logoUrl;
+
+  const _MyOrgPreview({
+    required this.orgId,
+    required this.orgName,
+    required this.isOfficer,
+    required this.logoUrl,
+  });
+}
+
+class _MyOrgPreviewTile extends StatelessWidget {
+  final _MyOrgPreview org;
+  final VoidCallback onTap;
+
+  const _MyOrgPreviewTile({required this.org, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(_UiTokens.radius),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: _UiTokens.card(),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: org.logoUrl.isNotEmpty
+                  ? Base64Image(
+                      base64String: org.logoUrl,
+                      height: 44,
+                      width: 44,
+                      fit: BoxFit.cover,
+                    )
+                  : Container(
+                      height: 44,
+                      width: 44,
+                      color: AppColors.primaryDark.withOpacity(0.08),
+                      child: const Icon(
+                        Icons.groups_outlined,
+                        color: AppColors.primaryDark,
+                        size: 20,
+                      ),
+                    ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                org.orgName.isNotEmpty ? org.orgName : 'My Organization',
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                  color: _UiTokens.headingText,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: AppColors.primaryDark.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(100),
+              ),
+              child: Text(
+                org.isOfficer ? 'Officer' : 'Member',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primaryDark,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MerchPreviewCard extends StatelessWidget {
+  final String name;
+  final double price;
+  final String imageBase64;
+  final VoidCallback onTap;
+
+  const _MerchPreviewCard({
+    required this.name,
+    required this.price,
+    required this.imageBase64,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 132,
+        decoration: _UiTokens.card(),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            imageBase64.isNotEmpty
+                ? Base64Image(
+                    base64String: imageBase64,
+                    height: 90,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                  )
+                : Container(
+                    height: 90,
+                    width: double.infinity,
+                    color: AppColors.primaryDark.withOpacity(0.08),
+                    child: const Icon(
+                      Icons.shopping_bag_outlined,
+                      color: AppColors.primaryDark,
+                      size: 28,
+                    ),
+                  ),
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name.isNotEmpty ? name : 'Product',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: _UiTokens.headingText,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '₱${price.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.primaryDark,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

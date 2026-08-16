@@ -13,6 +13,11 @@ class StudentAppBar extends StatelessWidget implements PreferredSizeWidget {
   final bool centerTitle;
   final Widget? leading;
   final bool showDivider;
+  // Optional TabBar (or any PreferredSizeWidget) below the title — when
+  // set, this replaces the plain 1px divider rather than stacking with it,
+  // since AppBar only has one `bottom` slot. Null preserves every existing
+  // call site's behavior exactly.
+  final PreferredSizeWidget? bottom;
 
   const StudentAppBar({
     super.key,
@@ -21,10 +26,12 @@ class StudentAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.centerTitle = true,
     this.leading,
     this.showDivider = true,
+    this.bottom,
   });
 
   @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight + 1);
+  Size get preferredSize =>
+      Size.fromHeight(kToolbarHeight + (bottom?.preferredSize.height ?? 1));
 
   @override
   Widget build(BuildContext context) {
@@ -53,12 +60,14 @@ class StudentAppBar extends StatelessWidget implements PreferredSizeWidget {
         ),
       ),
       actions: actions,
-      bottom: showDivider
-          ? PreferredSize(
-              preferredSize: const Size.fromHeight(1),
-              child: Container(height: 1, color: AppColors.divider),
-            )
-          : null,
+      bottom:
+          bottom ??
+          (showDivider
+              ? PreferredSize(
+                  preferredSize: const Size.fromHeight(1),
+                  child: Container(height: 1, color: AppColors.divider),
+                )
+              : null),
     );
   }
 }

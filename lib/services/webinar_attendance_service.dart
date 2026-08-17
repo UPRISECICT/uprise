@@ -230,6 +230,9 @@ class WebinarAttendanceService {
     return result;
   }
 
+  // ============================================================
+  // ⚠️ ITO ANG UPDATED NA FUNCTION WITH ALL DEBUG PRINTS ⚠️
+  // ============================================================
   static Future<String> _recordAttendance(
     String eventDocId,
     String studentUid,
@@ -262,6 +265,63 @@ class WebinarAttendanceService {
           .get();
       if (!regDoc.exists) return 'not_registered';
 
+      // ✅ GET THE EVENT DATA FOR LATE MARKING SETTINGS
+      final eventDoc = await FirebaseFirestore.instance
+          .collection('events')
+          .doc(eventDocId)
+          .get();
+      final eventData = eventDoc.data() as Map<String, dynamic>?;
+
+      // 🔴🔴🔴 DEBUG PRINTS - CHECK EVENT DATA 🔴🔴🔴
+      print('🔍 ===== WEBINAR ATTENDANCE DEBUG =====');
+      print('🔍 EVENT DATA: $eventData');
+      print('🔍 markLate: ${eventData?['markLate']}');
+      print('🔍 lateAfterMinutes: ${eventData?['lateAfterMinutes']}');
+      print('🔍 startTime: ${eventData?['startTime']}');
+      print('🔍 date: ${eventData?['date']}');
+      print('🔍 studentUid: $studentUid');
+      // 🔴🔴🔴 END OF DEBUG PRINTS 🔴🔴🔴
+
+      // ✅ DETERMINE IF LATE OR PRESENT
+      String status = 'present';
+      try {
+        final markLate = eventData?['markLate'] == true;
+        final lateAfterMinutes = (eventData?['lateAfterMinutes'] as num?)?.toInt() ?? 15;
+        
+        // Get the event start time and date
+        final startTime = (eventData?['startTime'] as String?) ?? '';
+        final eventDate = (eventData?['date'] as Timestamp?)?.toDate();
+        
+        // 🔴 DEBUG PRINT 🔴
+        print('🔍 Checking late: markLate=$markLate, startTime="$startTime", eventDate=$eventDate');
+        
+        if (markLate && startTime.isNotEmpty && eventDate != null) {
+          final startDt = _timeOfDay(eventDate, startTime);
+          final cutoffTime = startDt.add(Duration(minutes: lateAfterMinutes));
+          final now = DateTime.now();
+          
+          // 🔴 DEBUG PRINT 🔴
+          print('🔍 startDt=$startDt, cutoffTime=$cutoffTime, now=$now');
+          
+          if (now.isAfter(cutoffTime)) {
+            status = 'late';
+            print('🔴 ✅ STATUS SET TO: LATE');
+          } else {
+            print('🔴 ✅ STATUS SET TO: PRESENT (on time)');
+          }
+        } else {
+          print('🔴 ⚠️ Skipping late check because: markLate=$markLate, startTime="$startTime", eventDate=$eventDate');
+        }
+      } catch (e) {
+        print('❌ ERROR in late check: $e');
+        // Default to present if something fails
+      }
+
+      // 🔴 DEBUG PRINT 🔴
+      print('🔴 FINAL STATUS: $status');
+      print('🔴 METHOD: webinar_code');
+      print('🔴 ===== END DEBUG =====');
+
       await attRef.set({
         'studentId': studentUid,
         'studentName':
@@ -270,28 +330,23 @@ class WebinarAttendanceService {
         'program': studentData['course'] ?? 'N/A',
         'yearLevel': studentData['yearLevel'] ?? '',
         'timestamp': FieldValue.serverTimestamp(),
-        'status': 'present',
+        'status': status,  // ✅ NGAYON DYNAMIC NA!
         'method': 'webinar_code',
       });
 
-      // Wrapped so a notification failure never undoes or blocks attendance
-      // that was already recorded — mirrors org_attendance_qr.dart's QR/
-      // manual check-in, which already notifies; this path silently didn't.
+      // Send notification
       try {
-        final eventDoc = await FirebaseFirestore.instance
-            .collection('events')
-            .doc(eventDocId)
-            .get();
-        final eventTitle =
-            (eventDoc.data()?['title'] as String?) ?? 'the event';
-        final orgId = (eventDoc.data()?['orgId'] as String?) ?? '';
+        final eventTitle = (eventData?['title'] as String?) ?? 'the event';
+        final orgId = (eventData?['orgId'] as String?) ?? '';
         await NotificationService.sendToUser(
           userId: studentUid,
-          title: "You're Marked Present!",
-          body: 'You\'ve been marked present for "$eventTitle".',
+          title: status == 'late' ? 'Marked Late' : "You're Marked Present!",
+          body: status == 'late'
+              ? 'You checked in late to "$eventTitle".'
+              : 'You\'ve been marked present for "$eventTitle".',
           type: 'event',
           orgId: orgId,
-          data: {'eventId': eventDocId, 'status': 'present'},
+          data: {'eventId': eventDocId, 'status': status},
         );
       } catch (_) {}
 
@@ -302,6 +357,39 @@ class WebinarAttendanceService {
       if (snap.data()?['checkOutAt'] != null) return 'duplicate';
       await attRef.update({'checkOutAt': FieldValue.serverTimestamp()});
       return 'success';
+    }
+  }
+
+  // ============================================================
+  // ✅ HELPER FUNCTION (KINUHA SA org_attendance_qr.dart)
+  // ============================================================
+  // Handles both "7:30 PM" and 24-hour "19:30" startTime strings.
+  static DateTime _timeOfDay(DateTime date, String timeStr) {
+    try {
+      int hour = 0;
+      int minute = 0;
+      if (timeStr.isNotEmpty) {
+        if (timeStr.toLowerCase().contains('am') ||
+            timeStr.toLowerCase().contains('pm')) {
+          final clean = timeStr
+              .replaceAll(RegExp(r'[AP]M', caseSensitive: false), '')
+              .trim();
+          final parts = clean.split(':');
+          hour = int.parse(parts[0].trim());
+          minute = int.parse(parts.length > 1 ? parts[1].trim() : '0');
+          if (timeStr.toLowerCase().contains('pm') && hour < 12) hour += 12;
+          if (timeStr.toLowerCase().contains('am') && hour == 12) hour = 0;
+        } else {
+          final parts = timeStr.split(':');
+          hour = int.parse(parts[0]);
+          minute = int.parse(
+            parts.length > 1 ? parts[1].replaceAll(RegExp(r'[^0-9]'), '') : '0',
+          );
+        }
+      }
+      return DateTime(date.year, date.month, date.day, hour, minute);
+    } catch (_) {
+      return date;
     }
   }
 }

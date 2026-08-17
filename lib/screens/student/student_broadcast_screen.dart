@@ -1,8 +1,3 @@
-// lib/screens/student/student_broadcast_screen.dart
-// Two-way private message thread between this student and their org. Each
-// student has exactly one thread per org, so there's a single persistent
-// view (no inbox needed here). Mirrors lib/screens/web/org/org_broadcast.dart,
-// which renders the org side of the same `conversations` collection.
 
 import 'dart:convert';
 import 'dart:io';

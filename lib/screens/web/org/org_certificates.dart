@@ -1,4 +1,4 @@
-// ignore_for_file: unnecessary_cast, unused_field, deprecated_member_use
+﻿// ignore_for_file: unnecessary_cast, unused_field, deprecated_member_use
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -3565,53 +3565,100 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
   /// disambiguated via the 'isGuest' flag ('true'/'false' string, since this
   /// method's `Map<String, String>` signature is relied on elsewhere).
   Future<List<Map<String, String>>> _fetchEligibleRecipients(
-    String eventDocId,
-  ) async {
-    final attSnap = await FirebaseFirestore.instance
+  String eventDocId,
+) async {
+  final attSnap = await FirebaseFirestore.instance
+      .collection('events')
+      .doc(eventDocId)
+      .collection('attendances')
+      .where('status', whereIn: ['present', 'late'])
+      .get();
+
+  // ✅ Check if webinar requires check-out
+  final eventDoc = await FirebaseFirestore.instance
+      .collection('events')
+      .doc(eventDocId)
+      .get();
+  final eventData = eventDoc.data() ?? {};
+  final isWebinar = eventData['type'] == 'webinar' || eventData['isWebinar'] == true;
+  final requireCheckOut = eventData['requireCheckOut'] == true;
+
+  // Fetch feedback
+  final feedbackDocs = await _fetchAllFeedbackForEvent(eventDocId);
+  final evaluatedUids = feedbackDocs
+      .map((d) => d.data()['userId']?.toString())
+      .whereType<String>()
+      .toSet();
+  final evaluatedGuestEmails = feedbackDocs
+      .where((d) => _feedbackMarkedGuest(d.data()))
+      .map((d) => d.data()['guestEmail']?.toString())
+      .whereType<String>()
+      .toSet();
+
+  // ✅ Get checked-out students if webinar requires it
+  Map<String, bool> checkedOutStudents = {};
+  Map<String, bool> checkedOutGuests = {};
+  
+  if (isWebinar && requireCheckOut) {
+    final subSnap = await FirebaseFirestore.instance
         .collection('events')
         .doc(eventDocId)
-        .collection('attendances')
+        .collection('webinar_submissions')
+        .where('type', isEqualTo: 'checkout')
         .get();
-
-    // See _fetchAllFeedbackForEvent above — feedback is split across two
-    // collections from an incomplete migration, so both are checked.
-    final feedbackDocs = await _fetchAllFeedbackForEvent(eventDocId);
-    final evaluatedUids = feedbackDocs
-        .map((d) => d.data()['userId']?.toString())
-        .whereType<String>()
-        .toSet();
-    final evaluatedGuestEmails = feedbackDocs
-        .where((d) => _feedbackMarkedGuest(d.data()))
-        .map((d) => d.data()['guestEmail']?.toString())
-        .whereType<String>()
-        .toSet();
-
-    final eligible = <Map<String, String>>[];
-    for (final doc in attSnap.docs) {
+    
+    for (final doc in subSnap.docs) {
       final data = doc.data();
-      final status = (data['status'] ?? '').toString();
-      if (status != 'present' && status != 'late') continue;
-
-      if (data['isGuest'] == true) {
-        final email = (data['guestEmail'] ?? '').toString();
-        if (email.isEmpty || !evaluatedGuestEmails.contains(email)) continue;
-        eligible.add({
-          'recipientKey': email,
-          'recipientName': (data['studentName'] ?? 'Guest').toString(),
-          'isGuest': 'true',
-        });
-      } else {
-        final studentId = (data['studentId'] ?? '').toString();
-        if (studentId.isEmpty || !evaluatedUids.contains(studentId)) continue;
-        eligible.add({
-          'recipientKey': studentId,
-          'recipientName': (data['studentName'] ?? 'Unknown').toString(),
-          'isGuest': 'false',
-        });
+      final studentId = data['studentId'] as String?;
+      if (studentId != null && studentId.isNotEmpty) {
+        checkedOutStudents[studentId] = true;
+      }
+      
+      final guestEmail = data['guestEmail'] as String?;
+      if (guestEmail != null && guestEmail.isNotEmpty) {
+        checkedOutGuests[guestEmail] = true;
       }
     }
-    return eligible;
   }
+
+  final eligible = <Map<String, String>>[];
+  for (final doc in attSnap.docs) {
+    final data = doc.data();
+    final status = (data['status'] ?? '').toString();
+    if (status != 'present' && status != 'late') continue;
+
+    if (data['isGuest'] == true) {
+      final email = (data['guestEmail'] ?? '').toString();
+      if (email.isEmpty) continue;
+    
+      if (isWebinar && requireCheckOut && !(checkedOutGuests[email] ?? false)) {
+        continue;
+      }
+      
+      if (!evaluatedGuestEmails.contains(email)) continue;
+      eligible.add({
+        'recipientKey': email,
+        'recipientName': (data['studentName'] ?? 'Guest').toString(),
+        'isGuest': 'true',
+      });
+    } else {
+      final studentId = (data['studentId'] ?? '').toString();
+      if (studentId.isEmpty) continue;
+      
+      if (isWebinar && requireCheckOut && !(checkedOutStudents[studentId] ?? false)) {
+        continue;
+      }
+      
+      if (!evaluatedUids.contains(studentId)) continue;
+      eligible.add({
+        'recipientKey': studentId,
+        'recipientName': (data['studentName'] ?? 'Unknown').toString(),
+        'isGuest': 'false',
+      });
+    }
+  }
+  return eligible;
+}
 
   @override
   Widget build(BuildContext context) {

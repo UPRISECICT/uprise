@@ -8,13 +8,13 @@ class EventModel {
   final String location;
   final String category;
 
-  /// Org-typed custom label when [category] is 'Other' — blank otherwise.
+
   final String otherCategory;
   final bool issuesCertificate;
   final String orgName;
   final String orgId;
 
-  /// Date only (from Firestore)
+  
   final DateTime date;
 
   /// Time strings (e.g. "7:00 AM" or "19:00")

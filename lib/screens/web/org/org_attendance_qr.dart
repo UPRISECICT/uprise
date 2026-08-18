@@ -1,4 +1,4 @@
-// ignore_for_file: unused_element_parameter
+﻿// ignore_for_file: unused_element_parameter
 
 import 'dart:async';
 import 'dart:typed_data';
@@ -718,6 +718,7 @@ class _AttendanceTabState extends State<AttendanceTab>
   final _scanner = MobileScannerController();
   final _search = TextEditingController();
   final _manualCtrl = TextEditingController();
+  final _lateController = TextEditingController();
 
   bool _scanning = true;
   String _lastCode = '';
@@ -832,6 +833,9 @@ class _AttendanceTabState extends State<AttendanceTab>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     widget.visibleTabIndex?.addListener(_onVisibleTabChanged);
+
+    _tempLateAfterMinutes = 15; 
+    _lateController.text = _tempLateAfterMinutes.toString();
   }
 
   void _stopScanner() {
@@ -1981,6 +1985,8 @@ class _AttendanceTabState extends State<AttendanceTab>
                   _editingLateMark = true;
                   _tempMarkLate = liveMarkLate;
                   _tempLateAfterMinutes = liveLateAfterMinutes;
+
+                  _lateController.text = liveLateAfterMinutes.toString();
                 });
               },
               icon: const Icon(Icons.edit_outlined, size: 13),
@@ -2074,45 +2080,45 @@ class _AttendanceTabState extends State<AttendanceTab>
             Row(
               children: [
                 SizedBox(
-                  width: 100,
-                  child: TextField(
-                    keyboardType: TextInputType.number,
-                    style: GoogleFonts.beVietnamPro(fontSize: 13),
-                    decoration: InputDecoration(
-                      hintText: 'Minutes',
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(_DS.radiusSm),
-                        borderSide: const BorderSide(color: Color(0xFFE4E8EF)),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(_DS.radiusSm),
-                        borderSide: const BorderSide(color: Color(0xFFE4E8EF)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(_DS.radiusSm),
-                        borderSide: BorderSide(
-                          color: UpriseColors.primaryDark,
-                          width: 1.5,
-                        ),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 12,
-                      ),
-                    ),
-                    controller: TextEditingController(
-                      text: _tempLateAfterMinutes.toString(),
-                    ),
-                    onChanged: (v) {
-                      final parsed = int.tryParse(v.trim()) ?? 15;
-                      setState(
-                        () => _tempLateAfterMinutes = parsed.clamp(1, 300),
-                      );
-                    },
-                  ),
-                ),
+  width: 100,
+  child: TextField(
+    controller: _lateController,  // ✅ ITO NA! GAMITIN MO ITO
+    keyboardType: TextInputType.number,
+    style: GoogleFonts.beVietnamPro(fontSize: 13),
+    decoration: InputDecoration(
+      hintText: 'Minutes',
+      filled: true,
+      fillColor: Colors.white,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(_DS.radiusSm),
+        borderSide: const BorderSide(color: Color(0xFFE4E8EF)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(_DS.radiusSm),
+        borderSide: const BorderSide(color: Color(0xFFE4E8EF)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(_DS.radiusSm),
+        borderSide: BorderSide(
+          color: UpriseColors.primaryDark,
+          width: 1.5,
+        ),
+      ),
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 12,
+      ),
+    ),
+    onChanged: (v) {
+      final parsed = int.tryParse(v.trim()) ?? 15;
+      if (parsed >= 1 && parsed <= 300) {  // ✅ MAS MAGANDA ITO
+        setState(() {
+          _tempLateAfterMinutes = parsed;
+        });
+      }
+    },
+  ),
+),  
                 const SizedBox(width: 8),
                 Text(
                   'minutes',
@@ -4500,5 +4506,5 @@ class _CodeCountdownState extends State<_CodeCountdown> {
         color: const Color(0xFF94A3B8),
       ),
     );
-  }
+  }   
 }

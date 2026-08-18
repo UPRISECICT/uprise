@@ -31,7 +31,62 @@
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../models/event_model.dart';
 import 'notification_service.dart';
+
+// Mirrors org_attendance_qr.dart's _timeOfDay/_determineAttendanceStatus
+// (those are library-private to that file and can't be imported) so the
+// webinar-code check-in path applies the exact same late-arrival rule as
+// the QR/manual path instead of always marking 'present'.
+DateTime _timeOfDay(DateTime date, String timeStr) {
+  try {
+    int hour = 0;
+    int minute = 0;
+    if (timeStr.isNotEmpty) {
+      if (timeStr.toLowerCase().contains('am') ||
+          timeStr.toLowerCase().contains('pm')) {
+        final clean = timeStr
+            .replaceAll(RegExp(r'[AP]M', caseSensitive: false), '')
+            .trim();
+        final parts = clean.split(':');
+        hour = int.parse(parts[0].trim());
+        minute = int.parse(parts.length > 1 ? parts[1].trim() : '0');
+        if (timeStr.toLowerCase().contains('pm') && hour < 12) hour += 12;
+        if (timeStr.toLowerCase().contains('am') && hour == 12) hour = 0;
+      } else {
+        final parts = timeStr.split(':');
+        hour = int.parse(parts[0]);
+        minute = int.parse(
+          parts.length > 1 ? parts[1].replaceAll(RegExp(r'[^0-9]'), '') : '0',
+        );
+      }
+    }
+    return DateTime(date.year, date.month, date.day, hour, minute);
+  } catch (_) {
+    return date;
+  }
+}
+
+String _determineAttendanceStatus(
+  DateTime eventDate,
+  String eventStartTime,
+  bool markLate,
+  int lateAfterMinutes,
+) {
+  if (!markLate) {
+    return 'present';
+  }
+  try {
+    final startDt = _timeOfDay(eventDate, eventStartTime);
+    final cutoffTime = startDt.add(Duration(minutes: lateAfterMinutes));
+    if (DateTime.now().isAfter(cutoffTime)) {
+      return 'late';
+    }
+    return 'present';
+  } catch (_) {
+    return 'present';
+  }
+}
 
 class WebinarAttendanceService {
   static final Random _rng = Random.secure();
@@ -262,6 +317,21 @@ class WebinarAttendanceService {
           .get();
       if (!regDoc.exists) return 'not_registered';
 
+      // Same late-arrival rule as org_attendance_qr.dart's QR/manual
+      // check-in — previously this path hardcoded 'present' regardless of
+      // the event's markLate/lateAfterMinutes settings.
+      final eventDoc = await FirebaseFirestore.instance
+          .collection('events')
+          .doc(eventDocId)
+          .get();
+      final event = EventModel.fromFirestore(eventDoc);
+      final status = _determineAttendanceStatus(
+        event.date,
+        event.startTime,
+        event.markLate,
+        event.lateAfterMinutes,
+      );
+
       await attRef.set({
         'studentId': studentUid,
         'studentName':
@@ -270,7 +340,7 @@ class WebinarAttendanceService {
         'program': studentData['course'] ?? 'N/A',
         'yearLevel': studentData['yearLevel'] ?? '',
         'timestamp': FieldValue.serverTimestamp(),
-        'status': 'present',
+        'status': status,
         'method': 'webinar_code',
       });
 
@@ -278,20 +348,14 @@ class WebinarAttendanceService {
       // that was already recorded — mirrors org_attendance_qr.dart's QR/
       // manual check-in, which already notifies; this path silently didn't.
       try {
-        final eventDoc = await FirebaseFirestore.instance
-            .collection('events')
-            .doc(eventDocId)
-            .get();
-        final eventTitle =
-            (eventDoc.data()?['title'] as String?) ?? 'the event';
-        final orgId = (eventDoc.data()?['orgId'] as String?) ?? '';
+        final statusLabel = status == 'late' ? 'Late' : 'Present';
         await NotificationService.sendToUser(
           userId: studentUid,
-          title: "You're Marked Present!",
-          body: 'You\'ve been marked present for "$eventTitle".',
+          title: "You're Marked $statusLabel!",
+          body: 'You\'ve been marked $statusLabel for "${event.title}".',
           type: 'event',
-          orgId: orgId,
-          data: {'eventId': eventDocId, 'status': 'present'},
+          orgId: event.orgId,
+          data: {'eventId': eventDocId, 'status': status},
         );
       } catch (_) {}
 

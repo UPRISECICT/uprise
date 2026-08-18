@@ -31,6 +31,14 @@ class _StudentOrganizationsDetailsScreenState
     extends State<StudentOrganizationsDetailsScreen> {
   bool _coverImageFailed = false;
 
+  // Cached once instead of created inline in build() — a fresh Stream
+  // object there would resubscribe (and flash the whole screen, cover
+  // image included) on every local setState, e.g. _coverImageFailed.
+  late final Stream<DocumentSnapshot> _orgStream = FirebaseFirestore.instance
+      .collection('organizations')
+      .doc(widget.orgId)
+      .snapshots();
+
   ImageProvider? _buildLogoImage(String? logoUrl) {
     return AppImage.provider(logoUrl ?? '');
   }
@@ -184,10 +192,7 @@ class _StudentOrganizationsDetailsScreenState
     return Scaffold(
       backgroundColor: AppColors.background,
       body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('organizations')
-            .doc(widget.orgId)
-            .snapshots(),
+        stream: _orgStream,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const UpriseLoader();
@@ -757,20 +762,30 @@ class _StudentOrganizationsDetailsScreenState
 // ─────────────────────────────────────────────────────────────
 //  UPCOMING EVENTS LIST (CLICKABLE)
 // ─────────────────────────────────────────────────────────────
-class _UpcomingEventsList extends StatelessWidget {
+class _UpcomingEventsList extends StatefulWidget {
   final String orgId;
   final Function(String) onEventTap;
 
   const _UpcomingEventsList({required this.orgId, required this.onEventTap});
 
   @override
+  State<_UpcomingEventsList> createState() => _UpcomingEventsListState();
+}
+
+class _UpcomingEventsListState extends State<_UpcomingEventsList> {
+  // Cached once — was being created inline in build() before, so every
+  // rebuild of the parent org screen resubscribed and flashed the loading
+  // spinner again.
+  late final Stream<QuerySnapshot> _eventsStream = FirebaseFirestore.instance
+      .collection('events')
+      .where('orgId', isEqualTo: widget.orgId)
+      .where('date', isGreaterThanOrEqualTo: Timestamp.now())
+      .snapshots();
+
+  @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('events')
-          .where('orgId', isEqualTo: orgId)
-          .where('date', isGreaterThanOrEqualTo: Timestamp.now())
-          .snapshots(),
+      stream: _eventsStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return Container(
@@ -840,7 +855,7 @@ class _UpcomingEventsList extends StatelessWidget {
             final day = DateFormat('dd').format(date);
 
             return GestureDetector(
-              onTap: () => onEventTap(doc.id),
+              onTap: () => widget.onEventTap(doc.id),
               child: Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
@@ -967,7 +982,7 @@ class _UpcomingEventsList extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────
 //  RECENT ANNOUNCEMENTS LIST (CLICKABLE)
 // ─────────────────────────────────────────────────────────────
-class _RecentAnnouncementsList extends StatelessWidget {
+class _RecentAnnouncementsList extends StatefulWidget {
   final String orgId;
   final Function(String) onAnnouncementTap;
 
@@ -977,13 +992,23 @@ class _RecentAnnouncementsList extends StatelessWidget {
   });
 
   @override
+  State<_RecentAnnouncementsList> createState() =>
+      _RecentAnnouncementsListState();
+}
+
+class _RecentAnnouncementsListState extends State<_RecentAnnouncementsList> {
+  // Cached once — same fix as _UpcomingEventsList above.
+  late final Stream<QuerySnapshot> _announcementsStream = FirebaseFirestore
+      .instance
+      .collection('announcements')
+      .where('orgId', isEqualTo: widget.orgId)
+      .where('isPublished', isEqualTo: true)
+      .snapshots();
+
+  @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('announcements')
-          .where('orgId', isEqualTo: orgId)
-          .where('isPublished', isEqualTo: true)
-          .snapshots(),
+      stream: _announcementsStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return Container(
@@ -1068,7 +1093,7 @@ class _RecentAnnouncementsList extends StatelessWidget {
                 );
 
             return GestureDetector(
-              onTap: () => onAnnouncementTap(doc.id),
+              onTap: () => widget.onAnnouncementTap(doc.id),
               child: Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
@@ -1154,20 +1179,33 @@ class _RecentAnnouncementsList extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────
 //  ORGANIZATION MERCHANDISE PREVIEW
 // ─────────────────────────────────────────────────────────────
-class _OrgMerchandiseSection extends StatelessWidget {
+class _OrgMerchandiseSection extends StatefulWidget {
   final String orgId;
 
   const _OrgMerchandiseSection({required this.orgId});
 
   @override
+  State<_OrgMerchandiseSection> createState() => _OrgMerchandiseSectionState();
+}
+
+class _OrgMerchandiseSectionState extends State<_OrgMerchandiseSection> {
+  // The org profile's own StreamBuilder (above, in the parent screen)
+  // rebuilds this section on every snapshot event, including metadata-only
+  // ones — as a plain StatelessWidget with an inline `.get()` in build(),
+  // that meant a fresh Firestore query (and a brief loading flash) every
+  // single time. Caching it once in State fixes that without changing what
+  // data is fetched.
+  late final Future<QuerySnapshot> _productsFuture = FirebaseFirestore.instance
+      .collection('products')
+      .where('orgId', isEqualTo: widget.orgId)
+      .where('isArchived', isEqualTo: false)
+      .limit(6)
+      .get();
+
+  @override
   Widget build(BuildContext context) {
     return FutureBuilder<QuerySnapshot>(
-      future: FirebaseFirestore.instance
-          .collection('products')
-          .where('orgId', isEqualTo: orgId)
-          .where('isArchived', isEqualTo: false)
-          .limit(6)
-          .get(),
+      future: _productsFuture,
       builder: (context, snapshot) {
         final docs = snapshot.data?.docs ?? [];
         if (docs.isEmpty) return const SizedBox.shrink();

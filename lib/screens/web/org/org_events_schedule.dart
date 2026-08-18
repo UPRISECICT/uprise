@@ -158,20 +158,36 @@ Widget _overviewStatCard(
   String value,
   IconData icon, {
   Color? accent,
+  VoidCallback? onTap,
+  bool isSelected = false,
 }) {
   // Matches org_dashboard.dart's own _StatCardWidget exactly (icon badge
-  // top-left, big number top-right, label below) instead of the smaller
-  // icon-stacked-above-value layout this used before — the dashboard's
-  // stat cards are the reference "this looks good" style for the whole
-  // portal, so every stat card elsewhere should read as the same family.
+  // top-left, big number top-right, label below), including the same
+  // selected/clickable treatment (colored border + tinted shadow when
+  // isSelected, click cursor when onTap is given) for cards where tapping
+  // filters the list below — the dashboard's stat cards are the reference
+  // "this looks good" style for the whole portal, so every stat card
+  // elsewhere should read as the same family.
   final c = accent ?? UpriseColors.primaryDark;
-  return Container(
+  final card = AnimatedContainer(
+    duration: const Duration(milliseconds: 150),
     padding: const EdgeInsets.all(18),
     decoration: BoxDecoration(
       color: Colors.white,
       borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: const Color(0xFFE2E6EA)),
-      boxShadow: _DS.cardShadow,
+      border: Border.all(
+        color: isSelected ? c : const Color(0xFFE2E6EA),
+        width: isSelected ? 2 : 1,
+      ),
+      boxShadow: isSelected
+          ? [
+              BoxShadow(
+                color: c.withAlpha(46),
+                blurRadius: 16,
+                offset: const Offset(0, 4),
+              ),
+            ]
+          : _DS.cardShadow,
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -210,6 +226,11 @@ Widget _overviewStatCard(
         ),
       ],
     ),
+  );
+  if (onTap == null) return card;
+  return MouseRegion(
+    cursor: SystemMouseCursors.click,
+    child: GestureDetector(onTap: onTap, child: card),
   );
 }
 
@@ -504,6 +525,11 @@ class _AttendanceTabState extends State<_AttendanceTab> {
   // Registration tab, org_attendance_qr.dart, and the Live Tracker.
   final Map<String, Map<String, dynamic>> _studentCache = {};
 
+  // Tapping a stat card filters the list below to that status — null means
+  // "Registered" (no filter, show everyone), matching org_attendance_qr.dart's
+  // own Attendance page. Tapping the active filter again clears it.
+  String? _statusFilter;
+
   Future<void> _ensureStudentsLoaded(Iterable<String> uids) async {
     final missing = uids
         .where((u) => u.isNotEmpty && !_studentCache.containsKey(u))
@@ -667,6 +693,16 @@ class _AttendanceTabState extends State<_AttendanceTab> {
               return (name: name, status: status);
             }).toList()..sort((a, b) => a.name.compareTo(b.name));
 
+            final filteredRows = _statusFilter == null
+                ? rows
+                : rows.where((r) => r.status == _statusFilter).toList();
+
+            void toggleFilter(String? status) {
+              setState(() {
+                _statusFilter = _statusFilter == status ? null : status;
+              });
+            }
+
             return SingleChildScrollView(
               padding: const EdgeInsets.all(20),
               child: Column(
@@ -679,31 +715,45 @@ class _AttendanceTabState extends State<_AttendanceTab> {
                       '$total',
                       Icons.people_outline,
                       accent: UpriseColors.info,
+                      isSelected: _statusFilter == null,
+                      onTap: () => toggleFilter(null),
                     ),
                     _overviewStatCard(
                       'Present',
                       '$present',
                       Icons.check_circle_outline,
                       accent: UpriseColors.success,
+                      isSelected: _statusFilter == 'present',
+                      onTap: () => toggleFilter('present'),
                     ),
                     _overviewStatCard(
                       'Late',
                       '$late',
                       Icons.access_time_rounded,
                       accent: UpriseColors.warning,
+                      isSelected: _statusFilter == 'late',
+                      onTap: () => toggleFilter('late'),
                     ),
                     _overviewStatCard(
                       'Absent',
                       '$absent',
                       Icons.cancel_outlined,
                       accent: UpriseColors.error,
+                      isSelected: _statusFilter == 'absent',
+                      onTap: () => toggleFilter('absent'),
                     ),
                   ]),
                   const SizedBox(height: 16),
-                  if (rows.isEmpty)
-                    _overviewEmptyState('No one has registered yet.')
+                  if (filteredRows.isEmpty)
+                    _overviewEmptyState(
+                      rows.isEmpty
+                          ? 'No one has registered yet.'
+                          : 'No one matches this status.',
+                    )
                   else
-                    ...rows.map((r) => _attendanceRow(r.name, r.status)),
+                    ...filteredRows.map(
+                      (r) => _attendanceRow(r.name, r.status),
+                    ),
                 ],
               ),
             );

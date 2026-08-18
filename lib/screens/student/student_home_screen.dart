@@ -426,6 +426,36 @@ class _HomeContentState extends State<_HomeContent> {
   // actually supports it, without inventing a new field now.
   late final Future<_MyOrgPreview?> _myOrgFuture = _loadMyOrgPreview();
 
+  // Chained off _myOrgFuture and cached the same way — without this, the
+  // inline `.get()` call that used to sit directly in build() re-fired a
+  // fresh Firestore query on every rebuild of this widget (e.g. every
+  // scroll-triggered sliver rebuild), not just on first load.
+  late final Future<List<QueryDocumentSnapshot>> _merchPreviewFuture =
+      _loadMerchPreview();
+
+  // Both of these used to be created inline inside build() as
+  // `stream: FirebaseFirestore.instance....snapshots()`. A new Stream
+  // object has a different identity every time, so StreamBuilder treated
+  // every rebuild as a brand-new subscription and reset to "waiting" —
+  // which is why the unread badge and Upcoming Events flashed their
+  // loading skeleton on every scroll frame and every time this tab was
+  // revisited. Caching the Stream once (same fix as the futures above)
+  // keeps the same live subscription across rebuilds.
+  late final Stream<QuerySnapshot> _unreadNotifStream = FirebaseFirestore
+      .instance
+      .collection('notifications')
+      .where('userId', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
+      .where('isRead', isEqualTo: false)
+      .snapshots();
+
+  late final Stream<QuerySnapshot> _upcomingEventsStream = FirebaseFirestore
+      .instance
+      .collection('events')
+      .where('date', isGreaterThanOrEqualTo: Timestamp.now())
+      .orderBy('date', descending: false)
+      .limit(5)
+      .snapshots();
+
   @override
   void initState() {
     super.initState();
@@ -479,6 +509,22 @@ class _HomeContentState extends State<_HomeContent> {
       );
     } catch (_) {
       return null;
+    }
+  }
+
+  Future<List<QueryDocumentSnapshot>> _loadMerchPreview() async {
+    final org = await _myOrgFuture;
+    if (org == null) return [];
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('products')
+          .where('orgId', isEqualTo: org.orgId)
+          .where('isArchived', isEqualTo: false)
+          .limit(6)
+          .get();
+      return snap.docs;
+    } catch (_) {
+      return [];
     }
   }
 
@@ -640,11 +686,7 @@ class _HomeContentState extends State<_HomeContent> {
                 },
               ),
               StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('notifications')
-                    .where('userId', isEqualTo: user?.uid)
-                    .where('isRead', isEqualTo: false)
-                    .snapshots(),
+                stream: _unreadNotifStream,
                 builder: (context, snapshot) {
                   final unreadCount = snapshot.hasData
                       ? snapshot.data!.docs.length
@@ -896,12 +938,7 @@ class _HomeContentState extends State<_HomeContent> {
           // Upcoming Events - Horizontal Scroll Cards
           SliverToBoxAdapter(
             child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('events')
-                  .where('date', isGreaterThanOrEqualTo: Timestamp.now())
-                  .orderBy('date', descending: false)
-                  .limit(5)
-                  .snapshots(),
+              stream: _upcomingEventsStream,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Padding(
@@ -1146,70 +1183,56 @@ class _HomeContentState extends State<_HomeContent> {
           // empty (and hidden) for students not in an org, or whose org
           // hasn't listed anything.
           SliverToBoxAdapter(
-            child: FutureBuilder<_MyOrgPreview?>(
-              future: _myOrgFuture,
-              builder: (context, orgSnapshot) {
-                final org = orgSnapshot.data;
-                if (org == null) return const SizedBox.shrink();
-                return FutureBuilder<QuerySnapshot>(
-                  future: FirebaseFirestore.instance
-                      .collection('products')
-                      .where('orgId', isEqualTo: org.orgId)
-                      .where('isArchived', isEqualTo: false)
-                      .limit(6)
-                      .get(),
-                  builder: (context, productSnap) {
-                    final docs = productSnap.data?.docs ?? [];
-                    if (docs.isEmpty) return const SizedBox.shrink();
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 26, 20, 10),
-                          child: _SectionHeader(
-                            title: 'Merchandise',
-                            actionLabel: 'View all',
-                            onAction: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    const StudentMerchandiseScreen(),
+            child: FutureBuilder<List<QueryDocumentSnapshot>>(
+              future: _merchPreviewFuture,
+              builder: (context, productSnap) {
+                final docs = productSnap.data ?? [];
+                if (docs.isEmpty) return const SizedBox.shrink();
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 26, 20, 10),
+                      child: _SectionHeader(
+                        title: 'Merchandise',
+                        actionLabel: 'View all',
+                        onAction: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const StudentMerchandiseScreen(),
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(
+                      height: 168,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        itemCount: docs.length,
+                        itemBuilder: (context, index) {
+                          final data =
+                              docs[index].data() as Map<String, dynamic>;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 12),
+                            child: _MerchPreviewCard(
+                              name: (data['name'] ?? '').toString(),
+                              price: ((data['price'] ?? 0) as num).toDouble(),
+                              imageBase64: (data['imageBase64'] ?? '')
+                                  .toString(),
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      const StudentMerchandiseScreen(),
+                                ),
                               ),
                             ),
-                          ),
-                        ),
-                        SizedBox(
-                          height: 168,
-                          child: ListView.builder(
-                            scrollDirection: Axis.horizontal,
-                            padding: const EdgeInsets.symmetric(horizontal: 20),
-                            itemCount: docs.length,
-                            itemBuilder: (context, index) {
-                              final data =
-                                  docs[index].data() as Map<String, dynamic>;
-                              return Padding(
-                                padding: const EdgeInsets.only(right: 12),
-                                child: _MerchPreviewCard(
-                                  name: (data['name'] ?? '').toString(),
-                                  price: ((data['price'] ?? 0) as num)
-                                      .toDouble(),
-                                  imageBase64: (data['imageBase64'] ?? '')
-                                      .toString(),
-                                  onTap: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) =>
-                                          const StudentMerchandiseScreen(),
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ],
-                    );
-                  },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 );
               },
             ),

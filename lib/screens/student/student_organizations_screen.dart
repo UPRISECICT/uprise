@@ -65,6 +65,28 @@ class _StudentOrganizationsScreenState extends State<StudentOrganizationsScreen>
   // backend actually supports it, without inventing a new field now.
   late final Future<_MyOrgInfo?> _myOrgFuture = _loadMyOrg();
 
+  // Both cached once — they used to be created inline inside the
+  // _buildMyOrganizationsTab()/_buildDiscoverTab() methods called from
+  // build(), so typing in search or toggling grid/list view (both call
+  // setState on this screen) resubscribed every stream and flashed the
+  // loading spinner on both tabs, not just the one being interacted with.
+  late final Stream<QuerySnapshot> _activeOrgsStream = FirebaseFirestore
+      .instance
+      .collection('organizations')
+      .where('status', isEqualTo: 'active')
+      .snapshots();
+
+  // Memoized on first call rather than created inline in the builder below
+  // — orgId is only known after _myOrgFuture resolves, so it can't be a
+  // simple `late final` field, but it still only needs to be created once.
+  Stream<DocumentSnapshot>? _myOrgDocStream;
+  Stream<DocumentSnapshot> _getMyOrgDocStream(String orgId) {
+    return _myOrgDocStream ??= FirebaseFirestore.instance
+        .collection('organizations')
+        .doc(orgId)
+        .snapshots();
+  }
+
   Future<_MyOrgInfo?> _loadMyOrg() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return null;
@@ -167,10 +189,7 @@ class _StudentOrganizationsScreenState extends State<StudentOrganizationsScreen>
           );
         }
         return StreamBuilder<DocumentSnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('organizations')
-              .doc(myOrg.orgId)
-              .snapshots(),
+          stream: _getMyOrgDocStream(myOrg.orgId),
           builder: (context, orgSnap) {
             if (!orgSnap.hasData) {
               return const Padding(
@@ -280,10 +299,7 @@ class _StudentOrganizationsScreenState extends State<StudentOrganizationsScreen>
             builder: (context, myOrgSnap) {
               final myOrg = myOrgSnap.data;
               return StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('organizations')
-                    .where('status', isEqualTo: 'active')
-                    .snapshots(),
+                stream: _activeOrgsStream,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting ||
                       !snapshot.hasData) {

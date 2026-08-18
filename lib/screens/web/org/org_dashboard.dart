@@ -801,7 +801,11 @@ class _OrgDashboardState extends State<OrgDashboard> {
 
   void _buildScreens() {
     _screens = [
-      _OrgDashboardHome(orgId: _orgId, orgName: _orgName),
+      _OrgDashboardHome(
+        orgId: _orgId,
+        orgName: _orgName,
+        onViewMerchandise: () => _selectTab(12), // OrgMerchandiseScreen
+      ),
       OrgEventProposalsScreen(orgId: _orgId),
       OrgEventsScheduleScreen(orgId: _orgId),
       EventManagementScreen(
@@ -2131,7 +2135,12 @@ class CategoryColors {
 class _OrgDashboardHome extends StatefulWidget {
   final String orgId;
   final String orgName;
-  const _OrgDashboardHome({required this.orgId, required this.orgName});
+  final VoidCallback onViewMerchandise;
+  const _OrgDashboardHome({
+    required this.orgId,
+    required this.orgName,
+    required this.onViewMerchandise,
+  });
 
   @override
   State<_OrgDashboardHome> createState() => _OrgDashboardHomeState();
@@ -2790,21 +2799,25 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                     color: OrgColors.charcoal,
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: OrgColors.primaryDark.withAlpha(20),
-                    borderRadius: BorderRadius.circular(_DS.radiusPill),
-                  ),
-                  child: Text(
-                    'View All',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: OrgColors.primaryDark,
+                InkWell(
+                  onTap: widget.onViewMerchandise,
+                  borderRadius: BorderRadius.circular(_DS.radiusPill),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: OrgColors.primaryDark.withAlpha(20),
+                      borderRadius: BorderRadius.circular(_DS.radiusPill),
+                    ),
+                    child: Text(
+                      'View All',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: OrgColors.primaryDark,
+                      ),
                     ),
                   ),
                 ),

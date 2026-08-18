@@ -549,6 +549,17 @@ class StudentProfileScreen extends StatefulWidget {
 class _StudentProfileScreenState extends State<StudentProfileScreen> {
   final ProfileModel _profile = ProfileModel();
 
+  // Cached once — this whole screen is wrapped in an AnimatedBuilder tied
+  // to _profile, which rebuilds on every notifyListeners() (cache load,
+  // then network load, then any profile edit). A stream created inline in
+  // build() would resubscribe on each of those and flash the "Recent
+  // registrations" list every time, not just on first load.
+  late final Stream<QuerySnapshot> _registrationsStream = FirebaseFirestore
+      .instance
+      .collection('registrations')
+      .where('userId', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
+      .snapshots();
+
   Future<List<QueryDocumentSnapshot>> _fetchEventsByIds(
     List<String> eventIds,
   ) async {
@@ -986,13 +997,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                       ),
                       const SizedBox(height: 8),
                       StreamBuilder<QuerySnapshot>(
-                        stream: FirebaseFirestore.instance
-                            .collection('registrations')
-                            .where(
-                              'userId',
-                              isEqualTo: FirebaseAuth.instance.currentUser?.uid,
-                            )
-                            .snapshots(),
+                        stream: _registrationsStream,
                         builder: (context, regSnapshot) {
                           if (regSnapshot.connectionState ==
                               ConnectionState.waiting) {

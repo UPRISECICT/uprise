@@ -192,6 +192,19 @@ class _CalendarTabState extends State<CalendarTab>
 
   DateTime _selectedDate = DateTime.now();
 
+  // Cached once — this same query used to be created inline in build() in
+  // two separate places (the day-count badge and the events list below),
+  // so every calendar tap (_selectedDate change via setState) resubscribed
+  // both and flashed the loading spinner even though the query result
+  // itself doesn't depend on _selectedDate at all (filtering happens
+  // client-side after the snapshot arrives).
+  late final Stream<QuerySnapshot> _approvedEventsStream = FirebaseFirestore
+      .instance
+      .collection('events')
+      .where('status', isEqualTo: 'approved')
+      .orderBy('date')
+      .snapshots();
+
   void _previousMonth() => setState(() {
     _selectedDate = DateTime(_selectedDate.year, _selectedDate.month - 1);
   });
@@ -274,11 +287,7 @@ class _CalendarTabState extends State<CalendarTab>
                 builder: (context, regSnap) {
                   final regIds = regSnap.data ?? {};
                   return StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('events')
-                        .where('status', isEqualTo: 'approved')
-                        .orderBy('date')
-                        .snapshots(),
+                    stream: _approvedEventsStream,
                     builder: (context, snap) {
                       if (!snap.hasData) return const SizedBox.shrink();
                       final count = snap.data!.docs
@@ -312,11 +321,7 @@ class _CalendarTabState extends State<CalendarTab>
             builder: (context, regSnap) {
               final regIds = regSnap.data ?? {};
               return StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('events')
-                    .where('status', isEqualTo: 'approved')
-                    .orderBy('date')
-                    .snapshots(),
+                stream: _approvedEventsStream,
                 builder: (context, snap) {
                   if (!snap.hasData) {
                     return const Center(
@@ -413,6 +418,19 @@ class _UpcomingTabState extends State<UpcomingTab>
       .where('status', isEqualTo: 'active')
       .get()
       .then((s) => s.docs);
+
+  // Cached once — this was being created inline in build() before, so
+  // every keystroke in the search box (_searchQuery is a setState field)
+  // resubscribed the whole events query and flashed the loading spinner
+  // on every character typed. Filtering by search/org/status all happens
+  // client-side after the snapshot arrives, so the query itself never
+  // needs to change.
+  late final Stream<QuerySnapshot> _approvedEventsStream = FirebaseFirestore
+      .instance
+      .collection('events')
+      .where('status', isEqualTo: 'approved')
+      .orderBy('date')
+      .snapshots();
 
   @override
   void dispose() {
@@ -569,11 +587,7 @@ class _UpcomingTabState extends State<UpcomingTab>
       builder: (context, regSnap) {
         final regIds = regSnap.data ?? {};
         return StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('events')
-              .where('status', isEqualTo: 'approved')
-              .orderBy('date')
-              .snapshots(),
+          stream: _approvedEventsStream,
           builder: (context, snap) {
             if (!snap.hasData) {
               return const Center(

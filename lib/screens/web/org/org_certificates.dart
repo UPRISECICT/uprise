@@ -1,4 +1,4 @@
-﻿// ignore_for_file: unnecessary_cast, unused_field, deprecated_member_use
+// ignore_for_file: unnecessary_cast, unused_field, deprecated_member_use
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -40,12 +40,19 @@ class _StatusSummaryItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Icon-left, number/label-right — the old icon-top-left /
+    // number-top-right layout only reads well with a lot of card width to
+    // stretch across; in the narrow right-hand column of the batch detail
+    // modal (4 of these squeezed into ~half the dialog's width) it left the
+    // icon and number jammed into opposite corners of a barely-there card.
+    // This layout stays legible and balanced no matter how narrow the card
+    // gets.
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(12),
@@ -69,40 +76,46 @@ class _StatusSummaryItem extends StatelessWidget {
                     ),
                   ],
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  if (icon != null)
-                    Container(
-                      width: 34,
-                      height: 34,
-                      decoration: BoxDecoration(
-                        color: color.withAlpha(26),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      alignment: Alignment.center,
-                      child: Icon(icon, color: color, size: 17),
-                    ),
-                  Text(
-                    '$count',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF1A202C),
-                    ),
+              if (icon != null)
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: color.withAlpha(26),
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                label,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w600,
-                  color: UpriseColors.darkGray,
+                  alignment: Alignment.center,
+                  child: Icon(icon, color: color, size: 17),
+                ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '$count',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF1A202C),
+                        height: 1.1,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      label,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                        color: UpriseColors.darkGray,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -414,21 +427,29 @@ Widget _sendStatusBadge(String? status) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Section label helper
 // ─────────────────────────────────────────────────────────────────────────────
+// Colored accent bar instead of a generic icon, same reasoning as
+// org_merchandise.dart/org_profile.dart's identical helper — [icon] kept
+// for existing call sites but intentionally unused now.
 Widget _sectionLabel(String text, {IconData? icon}) {
   return Padding(
     padding: const EdgeInsets.only(bottom: 12),
     child: Row(
       children: [
-        if (icon != null) ...[
-          Icon(icon, size: 16, color: UpriseColors.darkGray),
-          const SizedBox(width: 8),
-        ],
+        Container(
+          width: 3,
+          height: 15,
+          decoration: BoxDecoration(
+            color: UpriseColors.primaryDark,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 10),
         Text(
           text,
           style: GoogleFonts.beVietnamPro(
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: UpriseColors.charcoal,
+            color: UpriseColors.primaryDark,
             letterSpacing: 0.3,
           ),
         ),
@@ -450,9 +471,9 @@ InputDecoration _fieldDecoration({
   return InputDecoration(
     labelText: label,
     hintText: hint,
-    prefixIcon: icon != null
-        ? Icon(icon, size: 18, color: const Color(0xFF9AA5B4))
-        : null,
+    // [icon] intentionally unused now — a generic prefixIcon on every field
+    // (label text already says what it is) was clutter, not disambiguation.
+    // Kept for existing call sites.
     labelStyle: GoogleFonts.beVietnamPro(
       fontSize: 13,
       color: const Color(0xFF64748B),
@@ -2150,68 +2171,82 @@ class _BatchDetailModalState extends State<_BatchDetailModal> {
     int awaitingEval,
     int readyToSend,
   ) {
+    // 2×2 grid instead of a single row of 4 — this section lives in the
+    // narrower of the modal's two columns, and 4 cards side by side left
+    // each one too thin to read comfortably. Two rows of two gives every
+    // card roughly double the width.
     return OrgModalSection(
       title: 'Summary',
       icon: Icons.bar_chart_rounded,
       accentColor: UpriseColors.primaryDark,
-      child: Row(
+      child: Column(
         children: [
-          Expanded(
-            child: _StatusSummaryItem(
-              label: 'Total',
-              count: total,
-              color: UpriseColors.charcoal,
-              icon: Icons.people_outline,
-              isSelected: _statusFilter == 'All' && _filterTouched,
-              onTap: () => setState(() {
-                _statusFilter = 'All';
-                _filterTouched = true;
-              }),
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: _StatusSummaryItem(
+                  label: 'Total',
+                  count: total,
+                  color: UpriseColors.charcoal,
+                  icon: Icons.people_outline,
+                  isSelected: _statusFilter == 'All' && _filterTouched,
+                  onTap: () => setState(() {
+                    _statusFilter = 'All';
+                    _filterTouched = true;
+                  }),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _StatusSummaryItem(
+                  label: 'Evaluated',
+                  count: evaluated,
+                  color: UpriseColors.success,
+                  icon: Icons.check_circle_outline,
+                  isSelected: _statusFilter == 'evaluated',
+                  onTap: () => setState(() {
+                    _filterTouched = true;
+                    _statusFilter = _statusFilter == 'evaluated'
+                        ? 'All'
+                        : 'evaluated';
+                  }),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _StatusSummaryItem(
-              label: 'Evaluated',
-              count: evaluated,
-              color: UpriseColors.success,
-              icon: Icons.check_circle_outline,
-              isSelected: _statusFilter == 'evaluated',
-              onTap: () => setState(() {
-                _filterTouched = true;
-                _statusFilter = _statusFilter == 'evaluated'
-                    ? 'All'
-                    : 'evaluated';
-              }),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _StatusSummaryItem(
-              label: 'Waiting',
-              count: awaitingEval,
-              color: UpriseColors.warning,
-              icon: Icons.hourglass_empty,
-              isSelected: _statusFilter == 'waiting',
-              onTap: () => setState(() {
-                _filterTouched = true;
-                _statusFilter = _statusFilter == 'waiting' ? 'All' : 'waiting';
-              }),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _StatusSummaryItem(
-              label: 'Ready',
-              count: readyToSend,
-              color: UpriseColors.primaryDark,
-              icon: Icons.send_outlined,
-              isSelected: _statusFilter == 'ready',
-              onTap: () => setState(() {
-                _filterTouched = true;
-                _statusFilter = _statusFilter == 'ready' ? 'All' : 'ready';
-              }),
-            ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _StatusSummaryItem(
+                  label: 'Waiting',
+                  count: awaitingEval,
+                  color: UpriseColors.warning,
+                  icon: Icons.hourglass_empty,
+                  isSelected: _statusFilter == 'waiting',
+                  onTap: () => setState(() {
+                    _filterTouched = true;
+                    _statusFilter = _statusFilter == 'waiting'
+                        ? 'All'
+                        : 'waiting';
+                  }),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _StatusSummaryItem(
+                  label: 'Ready',
+                  count: readyToSend,
+                  color: UpriseColors.primaryDark,
+                  icon: Icons.send_outlined,
+                  isSelected: _statusFilter == 'ready',
+                  onTap: () => setState(() {
+                    _filterTouched = true;
+                    _statusFilter = _statusFilter == 'ready' ? 'All' : 'ready';
+                  }),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -2221,9 +2256,19 @@ class _BatchDetailModalState extends State<_BatchDetailModal> {
   Widget _buildRecipientRow(CertificateBatch b, _RecipientStatusRow row) {
     final bool canSend = row.evaluated && !row.certSent;
     final bool awaitingEval = !row.evaluated;
+    final rowColor = canSend
+        ? UpriseColors.warning
+        : (awaitingEval ? UpriseColors.darkGray : UpriseColors.success);
+    final initials = row.name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty)
+        .take(2)
+        .map((p) => p[0].toUpperCase())
+        .join();
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
         color: canSend
@@ -2234,6 +2279,23 @@ class _BatchDetailModalState extends State<_BatchDetailModal> {
       ),
       child: Row(
         children: [
+          // A bare name in a plain row read as a spreadsheet line — a
+          // small initials avatar (tinted by the row's own status color)
+          // gives each recipient a visual anchor without needing a real
+          // photo.
+          CircleAvatar(
+            radius: 15,
+            backgroundColor: rowColor.withAlpha(31),
+            child: Text(
+              initials.isEmpty ? '?' : initials,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: rowColor,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
           // Name
           Expanded(
             flex: 2,
@@ -3565,100 +3627,105 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
   /// disambiguated via the 'isGuest' flag ('true'/'false' string, since this
   /// method's `Map<String, String>` signature is relied on elsewhere).
   Future<List<Map<String, String>>> _fetchEligibleRecipients(
-  String eventDocId,
-) async {
-  final attSnap = await FirebaseFirestore.instance
-      .collection('events')
-      .doc(eventDocId)
-      .collection('attendances')
-      .where('status', whereIn: ['present', 'late'])
-      .get();
-
-  // ✅ Check if webinar requires check-out
-  final eventDoc = await FirebaseFirestore.instance
-      .collection('events')
-      .doc(eventDocId)
-      .get();
-  final eventData = eventDoc.data() ?? {};
-  final isWebinar = eventData['type'] == 'webinar' || eventData['isWebinar'] == true;
-  final requireCheckOut = eventData['requireCheckOut'] == true;
-
-  // Fetch feedback
-  final feedbackDocs = await _fetchAllFeedbackForEvent(eventDocId);
-  final evaluatedUids = feedbackDocs
-      .map((d) => d.data()['userId']?.toString())
-      .whereType<String>()
-      .toSet();
-  final evaluatedGuestEmails = feedbackDocs
-      .where((d) => _feedbackMarkedGuest(d.data()))
-      .map((d) => d.data()['guestEmail']?.toString())
-      .whereType<String>()
-      .toSet();
-
-  // ✅ Get checked-out students if webinar requires it
-  Map<String, bool> checkedOutStudents = {};
-  Map<String, bool> checkedOutGuests = {};
-  
-  if (isWebinar && requireCheckOut) {
-    final subSnap = await FirebaseFirestore.instance
+    String eventDocId,
+  ) async {
+    final attSnap = await FirebaseFirestore.instance
         .collection('events')
         .doc(eventDocId)
-        .collection('webinar_submissions')
-        .where('type', isEqualTo: 'checkout')
+        .collection('attendances')
+        .where('status', whereIn: ['present', 'late'])
         .get();
-    
-    for (final doc in subSnap.docs) {
+
+    // ✅ Check if webinar requires check-out
+    final eventDoc = await FirebaseFirestore.instance
+        .collection('events')
+        .doc(eventDocId)
+        .get();
+    final eventData = eventDoc.data() ?? {};
+    final isWebinar =
+        eventData['type'] == 'webinar' || eventData['isWebinar'] == true;
+    final requireCheckOut = eventData['requireCheckOut'] == true;
+
+    // Fetch feedback
+    final feedbackDocs = await _fetchAllFeedbackForEvent(eventDocId);
+    final evaluatedUids = feedbackDocs
+        .map((d) => d.data()['userId']?.toString())
+        .whereType<String>()
+        .toSet();
+    final evaluatedGuestEmails = feedbackDocs
+        .where((d) => _feedbackMarkedGuest(d.data()))
+        .map((d) => d.data()['guestEmail']?.toString())
+        .whereType<String>()
+        .toSet();
+
+    // ✅ Get checked-out students if webinar requires it
+    Map<String, bool> checkedOutStudents = {};
+    Map<String, bool> checkedOutGuests = {};
+
+    if (isWebinar && requireCheckOut) {
+      final subSnap = await FirebaseFirestore.instance
+          .collection('events')
+          .doc(eventDocId)
+          .collection('webinar_submissions')
+          .where('type', isEqualTo: 'checkout')
+          .get();
+
+      for (final doc in subSnap.docs) {
+        final data = doc.data();
+        final studentId = data['studentId'] as String?;
+        if (studentId != null && studentId.isNotEmpty) {
+          checkedOutStudents[studentId] = true;
+        }
+
+        final guestEmail = data['guestEmail'] as String?;
+        if (guestEmail != null && guestEmail.isNotEmpty) {
+          checkedOutGuests[guestEmail] = true;
+        }
+      }
+    }
+
+    final eligible = <Map<String, String>>[];
+    for (final doc in attSnap.docs) {
       final data = doc.data();
-      final studentId = data['studentId'] as String?;
-      if (studentId != null && studentId.isNotEmpty) {
-        checkedOutStudents[studentId] = true;
-      }
-      
-      final guestEmail = data['guestEmail'] as String?;
-      if (guestEmail != null && guestEmail.isNotEmpty) {
-        checkedOutGuests[guestEmail] = true;
+      final status = (data['status'] ?? '').toString();
+      if (status != 'present' && status != 'late') continue;
+
+      if (data['isGuest'] == true) {
+        final email = (data['guestEmail'] ?? '').toString();
+        if (email.isEmpty) continue;
+
+        if (isWebinar &&
+            requireCheckOut &&
+            !(checkedOutGuests[email] ?? false)) {
+          continue;
+        }
+
+        if (!evaluatedGuestEmails.contains(email)) continue;
+        eligible.add({
+          'recipientKey': email,
+          'recipientName': (data['studentName'] ?? 'Guest').toString(),
+          'isGuest': 'true',
+        });
+      } else {
+        final studentId = (data['studentId'] ?? '').toString();
+        if (studentId.isEmpty) continue;
+
+        if (isWebinar &&
+            requireCheckOut &&
+            !(checkedOutStudents[studentId] ?? false)) {
+          continue;
+        }
+
+        if (!evaluatedUids.contains(studentId)) continue;
+        eligible.add({
+          'recipientKey': studentId,
+          'recipientName': (data['studentName'] ?? 'Unknown').toString(),
+          'isGuest': 'false',
+        });
       }
     }
+    return eligible;
   }
-
-  final eligible = <Map<String, String>>[];
-  for (final doc in attSnap.docs) {
-    final data = doc.data();
-    final status = (data['status'] ?? '').toString();
-    if (status != 'present' && status != 'late') continue;
-
-    if (data['isGuest'] == true) {
-      final email = (data['guestEmail'] ?? '').toString();
-      if (email.isEmpty) continue;
-    
-      if (isWebinar && requireCheckOut && !(checkedOutGuests[email] ?? false)) {
-        continue;
-      }
-      
-      if (!evaluatedGuestEmails.contains(email)) continue;
-      eligible.add({
-        'recipientKey': email,
-        'recipientName': (data['studentName'] ?? 'Guest').toString(),
-        'isGuest': 'true',
-      });
-    } else {
-      final studentId = (data['studentId'] ?? '').toString();
-      if (studentId.isEmpty) continue;
-      
-      if (isWebinar && requireCheckOut && !(checkedOutStudents[studentId] ?? false)) {
-        continue;
-      }
-      
-      if (!evaluatedUids.contains(studentId)) continue;
-      eligible.add({
-        'recipientKey': studentId,
-        'recipientName': (data['studentName'] ?? 'Unknown').toString(),
-        'isGuest': 'false',
-      });
-    }
-  }
-  return eligible;
-}
 
   @override
   Widget build(BuildContext context) {
@@ -4313,6 +4380,10 @@ class _CertPreviewDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Dialog(
+      // Was unset — Dialog falls back to Flutter's default Material
+      // surface color, which skews purple/lavender on this app's
+      // unseeded theme.
+      backgroundColor: Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: SizedBox(
         width: 440,

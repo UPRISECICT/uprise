@@ -412,6 +412,10 @@ Future<void> showReportMessageDialog(
     barrierColor: Colors.black54,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setDialogState) => Dialog(
+        // Was unset — Dialog falls back to Flutter's default Material
+        // surface color, which skews purple/lavender on this app's
+        // unseeded theme.
+        backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Container(
           width: 400,
@@ -1163,6 +1167,10 @@ class _StudentPickerDialogState extends State<_StudentPickerDialog> {
   @override
   Widget build(BuildContext context) {
     return Dialog(
+      // Was unset — Dialog falls back to Flutter's default Material
+      // surface color, which skews purple/lavender on this app's
+      // unseeded theme.
+      backgroundColor: Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 480, maxHeight: 560),

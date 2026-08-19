@@ -145,8 +145,13 @@ class OrgModalShell extends StatelessWidget {
 }
 
 /// A section card used inside [OrgModalShell]'s body — white card with a
-/// colored icon badge + title, matching the section-label pattern already
-/// used across org screens.
+/// colored accent bar + title. Used to badge every icon in a boxed icon
+/// container next to the title; with every modal having 3-4 sections plus
+/// an [OrgDetailItem] icon badge on every row inside them, that added up to
+/// a wall of near-identical icon badges. A colored left accent bar carries
+/// the same "this section belongs to this color" signal without another
+/// icon — the [icon] param is kept (existing call sites all still pass
+/// one) but intentionally unused now.
 class OrgModalSection extends StatelessWidget {
   final String title;
   final IconData icon;
@@ -188,13 +193,12 @@ class OrgModalSection extends StatelessWidget {
             child: Row(
               children: [
                 Container(
-                  width: 26,
-                  height: 26,
+                  width: 3,
+                  height: 15,
                   decoration: BoxDecoration(
-                    color: accentColor.withAlpha(28),
-                    borderRadius: BorderRadius.circular(7),
+                    color: accentColor,
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  child: Icon(icon, size: 14, color: accentColor),
                 ),
                 const SizedBox(width: 10),
                 Text.rich(
@@ -235,11 +239,13 @@ class OrgModalSection extends StatelessWidget {
 }
 
 /// A label/value detail row for read-only "View Details"-style modals — a
-/// small colored icon badge, faint label, and bold value. Deliberately
-/// avoids combining a non-uniform Border with a borderRadius on its own
-/// decoration (that combination throws a paint-time FlutterError unless
-/// every visible side is the same color — see org_letter_request.dart's
-/// history for the exact bug this caused).
+/// faint uppercase label above a bold value, with a thin colored accent bar
+/// standing in for what used to be a full icon-in-box badge on every single
+/// row (a 6-row detail modal meant 6 near-identical badges — pure repeated
+/// noise, not 6 pieces of new information). The accent bar still carries
+/// [iconColor]'s meaning (e.g. red for an overdue amount) so rows stay
+/// colorful without the icon clutter. [icon] is kept for existing call
+/// sites but intentionally unused now.
 class OrgDetailItem extends StatelessWidget {
   final String label;
   final String value;
@@ -262,16 +268,15 @@ class OrgDetailItem extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          width: 26,
-          height: 26,
+          width: 3,
+          height: 30,
           margin: const EdgeInsets.only(top: 1),
           decoration: BoxDecoration(
-            color: iconColor.withAlpha(28),
-            borderRadius: BorderRadius.circular(7),
+            color: iconColor,
+            borderRadius: BorderRadius.circular(2),
           ),
-          child: Icon(icon, size: 13, color: iconColor),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

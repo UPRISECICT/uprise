@@ -230,21 +230,30 @@ Widget _categoryBadge(String category) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Section label helper
 // ─────────────────────────────────────────────────────────────────────────────
+// Colored accent bar instead of a generic icon, same reasoning as the
+// identical helper in org_merchandise.dart/org_profile.dart/
+// org_certificates.dart — [icon] kept for existing call sites but
+// intentionally unused now.
 Widget _sectionLabel(String text, {IconData? icon}) {
   return Padding(
     padding: const EdgeInsets.only(bottom: 12),
     child: Row(
       children: [
-        if (icon != null) ...[
-          Icon(icon, size: 16, color: UpriseColors.darkGray),
-          const SizedBox(width: 8),
-        ],
+        Container(
+          width: 3,
+          height: 15,
+          decoration: BoxDecoration(
+            color: UpriseColors.primaryDark,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 10),
         Text(
           text,
           style: GoogleFonts.beVietnamPro(
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: UpriseColors.charcoal,
+            color: UpriseColors.primaryDark,
             letterSpacing: 0.3,
           ),
         ),
@@ -299,9 +308,9 @@ InputDecoration _orgEventProposalsInputDecoration(
           )
         : null,
     hintText: hint,
-    prefixIcon: icon != null
-        ? Icon(icon, size: 18, color: const Color(0xFF9AA5B4))
-        : null,
+    // [icon] intentionally unused now — a generic prefixIcon on every field
+    // (label text already says what it is) was clutter, not disambiguation.
+    // Kept for existing call sites.
     labelStyle: GoogleFonts.beVietnamPro(
       fontSize: 13,
       color: const Color(0xFF64748B),
@@ -2374,6 +2383,11 @@ class _LiveTrackerModal extends StatefulWidget {
 class _LiveTrackerModalState extends State<_LiveTrackerModal> {
   String _search = '';
   String _statusFilter = 'All';
+  // 'All' is the default, no-filter state — not a deliberate selection —
+  // so the "Registered" card shouldn't show the selected glow until the
+  // user actually taps something. Same bug/fix as this file's other stat
+  // cards and org_letter_request.dart's.
+  bool _filterTouched = false;
 
   // Registration docs don't always carry a usable 'fullName' (e.g. rows
   // written before that field was reliably populated at registration time)
@@ -2713,9 +2727,13 @@ class _LiveTrackerModalState extends State<_LiveTrackerModal> {
                                       '$registered',
                                       Icons.how_to_reg_rounded,
                                       const Color(0xFF2563EB),
-                                      isSelected: _statusFilter == 'All',
-                                      onTap: () =>
-                                          setState(() => _statusFilter = 'All'),
+                                      isSelected:
+                                          _statusFilter == 'All' &&
+                                          _filterTouched,
+                                      onTap: () => setState(() {
+                                        _filterTouched = true;
+                                        _statusFilter = 'All';
+                                      }),
                                     ),
                                   ),
                                   const SizedBox(width: 10),
@@ -2726,9 +2744,13 @@ class _LiveTrackerModalState extends State<_LiveTrackerModal> {
                                       Icons.verified_rounded,
                                       const Color(0xFF059669),
                                       isSelected: _statusFilter == 'Present',
-                                      onTap: () => setState(
-                                        () => _statusFilter = 'Present',
-                                      ),
+                                      onTap: () => setState(() {
+                                        _filterTouched = true;
+                                        _statusFilter =
+                                            _statusFilter == 'Present'
+                                            ? 'All'
+                                            : 'Present';
+                                      }),
                                     ),
                                   ),
                                   const SizedBox(width: 10),
@@ -2739,9 +2761,12 @@ class _LiveTrackerModalState extends State<_LiveTrackerModal> {
                                       Icons.schedule_rounded,
                                       const Color(0xFFFB923C),
                                       isSelected: _statusFilter == 'Late',
-                                      onTap: () => setState(
-                                        () => _statusFilter = 'Late',
-                                      ),
+                                      onTap: () => setState(() {
+                                        _filterTouched = true;
+                                        _statusFilter = _statusFilter == 'Late'
+                                            ? 'All'
+                                            : 'Late';
+                                      }),
                                     ),
                                   ),
                                 ],
@@ -4371,7 +4396,13 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
               ),
               const SizedBox(height: 2),
               Text(
-                'Max 700 KB',
+                // The only place this image actually displays today is
+                // Home's event preview card, cropped to 200×100 — a 2:1
+                // ratio — so an image shot at a very different ratio gets
+                // an off-center BoxFit.cover crop there. Naming the ratio
+                // here lets the org avoid that instead of finding out after
+                // publishing.
+                'Max 700 KB · recommended ratio 2:1 (e.g. 1200×600)',
                 style: GoogleFonts.beVietnamPro(
                   fontSize: 11,
                   color: const Color(0xFF9AA5B4),

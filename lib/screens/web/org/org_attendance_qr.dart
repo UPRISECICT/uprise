@@ -1,4 +1,4 @@
-﻿// ignore_for_file: unused_element_parameter
+// ignore_for_file: unused_element_parameter
 
 import 'dart:async';
 import 'dart:typed_data';
@@ -54,13 +54,9 @@ class _DS {
     return InputDecoration(
       labelText: label,
       hintText: hint,
-      prefixIcon: icon != null
-          ? Padding(
-              padding: const EdgeInsets.only(left: 14, right: 10),
-              child: Icon(icon, size: 17, color: const Color(0xFFB0BAC8)),
-            )
-          : null,
-      prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+      // [icon] intentionally unused now — a generic prefixIcon on every
+      // field (label text already says what it is) was clutter, not
+      // disambiguation. Kept for existing call sites.
       labelStyle: GoogleFonts.beVietnamPro(
         fontSize: 12.5,
         color: const Color(0xFF8492A6),
@@ -128,28 +124,28 @@ class _DS {
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
+// Colored accent bar instead of a boxed icon badge, same reasoning as the
+// identical helper elsewhere in the org portal — [icon] kept for existing
+// call sites but intentionally unused now.
 Widget _sectionLabel(String text, {IconData? icon}) => Padding(
   padding: const EdgeInsets.only(bottom: 14),
   child: Row(
     children: [
-      if (icon != null) ...[
-        Container(
-          width: 22,
-          height: 22,
-          decoration: BoxDecoration(
-            color: UpriseColors.primaryDark.withOpacity(0.09),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Icon(icon, size: 13, color: UpriseColors.primaryDark),
+      Container(
+        width: 3,
+        height: 15,
+        decoration: BoxDecoration(
+          color: UpriseColors.primaryDark,
+          borderRadius: BorderRadius.circular(2),
         ),
-        const SizedBox(width: 9),
-      ],
+      ),
+      const SizedBox(width: 10),
       Text(
         text,
         style: GoogleFonts.beVietnamPro(
           fontSize: 11.5,
           fontWeight: FontWeight.w700,
-          color: const Color(0xFF64748B),
+          color: UpriseColors.primaryDark,
           letterSpacing: 0.6,
         ),
       ),
@@ -789,38 +785,45 @@ class _AttendanceTabState extends State<AttendanceTab>
         });
         final isLate = status == 'late';
         return Dialog(
+          // Was unset — Dialog falls back to Flutter's default Material
+          // surface color, which skews purple/lavender on this app's
+          // unseeded theme.
+          backgroundColor: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(28),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.check_circle_rounded,
-                  size: 72,
-                  color: isLate
-                      ? const Color(0xFFFB923C)
-                      : const Color(0xFF059669),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  name,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
+          child: SizedBox(
+            width: 300,
+            child: Padding(
+              padding: const EdgeInsets.all(28),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.check_circle_rounded,
+                    size: 72,
+                    color: isLate
+                        ? const Color(0xFFFB923C)
+                        : const Color(0xFF059669),
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Marked ${status.toUpperCase()}',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 14,
-                    color: const Color(0xFF64748B),
+                  const SizedBox(height: 16),
+                  Text(
+                    name,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 6),
+                  Text(
+                    'Marked ${status.toUpperCase()}',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 14,
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -834,7 +837,7 @@ class _AttendanceTabState extends State<AttendanceTab>
     WidgetsBinding.instance.addObserver(this);
     widget.visibleTabIndex?.addListener(_onVisibleTabChanged);
 
-    _tempLateAfterMinutes = 15; 
+    _tempLateAfterMinutes = 15;
     _lateController.text = _tempLateAfterMinutes.toString();
   }
 
@@ -2080,45 +2083,46 @@ class _AttendanceTabState extends State<AttendanceTab>
             Row(
               children: [
                 SizedBox(
-  width: 100,
-  child: TextField(
-    controller: _lateController,  // ✅ ITO NA! GAMITIN MO ITO
-    keyboardType: TextInputType.number,
-    style: GoogleFonts.beVietnamPro(fontSize: 13),
-    decoration: InputDecoration(
-      hintText: 'Minutes',
-      filled: true,
-      fillColor: Colors.white,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(_DS.radiusSm),
-        borderSide: const BorderSide(color: Color(0xFFE4E8EF)),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(_DS.radiusSm),
-        borderSide: const BorderSide(color: Color(0xFFE4E8EF)),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(_DS.radiusSm),
-        borderSide: BorderSide(
-          color: UpriseColors.primaryDark,
-          width: 1.5,
-        ),
-      ),
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: 12,
-        vertical: 12,
-      ),
-    ),
-    onChanged: (v) {
-      final parsed = int.tryParse(v.trim()) ?? 15;
-      if (parsed >= 1 && parsed <= 300) {  // ✅ MAS MAGANDA ITO
-        setState(() {
-          _tempLateAfterMinutes = parsed;
-        });
-      }
-    },
-  ),
-),  
+                  width: 100,
+                  child: TextField(
+                    controller: _lateController, // ✅ ITO NA! GAMITIN MO ITO
+                    keyboardType: TextInputType.number,
+                    style: GoogleFonts.beVietnamPro(fontSize: 13),
+                    decoration: InputDecoration(
+                      hintText: 'Minutes',
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(_DS.radiusSm),
+                        borderSide: const BorderSide(color: Color(0xFFE4E8EF)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(_DS.radiusSm),
+                        borderSide: const BorderSide(color: Color(0xFFE4E8EF)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(_DS.radiusSm),
+                        borderSide: BorderSide(
+                          color: UpriseColors.primaryDark,
+                          width: 1.5,
+                        ),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 12,
+                      ),
+                    ),
+                    onChanged: (v) {
+                      final parsed = int.tryParse(v.trim()) ?? 15;
+                      if (parsed >= 1 && parsed <= 300) {
+                        // ✅ MAS MAGANDA ITO
+                        setState(() {
+                          _tempLateAfterMinutes = parsed;
+                        });
+                      }
+                    },
+                  ),
+                ),
                 const SizedBox(width: 8),
                 Text(
                   'minutes',
@@ -4506,5 +4510,5 @@ class _CodeCountdownState extends State<_CodeCountdown> {
         color: const Color(0xFF94A3B8),
       ),
     );
-  }   
+  }
 }

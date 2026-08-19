@@ -13,9 +13,21 @@ class OrgExportPdf {
   // for characters Helvetica can't draw, so normal text is unaffected.
   static Future<pw.ThemeData>? _themeFuture;
   static Future<pw.ThemeData> _loadTheme() {
-    return _themeFuture ??= PdfGoogleFonts.notoSansRegular().then(
-      (font) => pw.ThemeData.withFont(fontFallback: [font]),
-    );
+    // ??= only (re)computes when _themeFuture is null — but a *rejected*
+    // Future is still non-null, so one transient network failure fetching
+    // the font used to cache that rejection forever: every PDF export in
+    // the org portal (this feeds both generateTablePdf and
+    // generateFinancialReportPdf) would keep failing from then on, for the
+    // rest of the browser session, with no way to recover short of a full
+    // page reload. Clearing the cache on failure lets the next export
+    // attempt actually retry the fetch instead of reusing the dead Future.
+    _themeFuture ??= PdfGoogleFonts.notoSansRegular()
+        .then((font) => pw.ThemeData.withFont(fontFallback: [font]))
+        .catchError((e) {
+          _themeFuture = null;
+          throw e;
+        });
+    return _themeFuture!;
   }
 
   /// Letterhead: UPRISE + CICT + BSU logos, plus the org's own logo when

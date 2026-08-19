@@ -1,4 +1,4 @@
-﻿// lib/screens/web/org/org_dashboard.dart
+// lib/screens/web/org/org_dashboard.dart
 //
 // Redesigned to match AdminDashboard pattern exactly:
 //  - Gradient welcome header card with icon
@@ -1294,6 +1294,10 @@ class _OrgDashboardState extends State<OrgDashboard> {
       context: context,
       barrierColor: Colors.black54,
       builder: (ctx) => Dialog(
+        // Was unset — Dialog falls back to Flutter's default Material
+        // surface color, which skews purple/lavender on this app's
+        // unseeded theme.
+        backgroundColor: OrgColors.white,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(_DS.radiusLg),
         ),
@@ -2681,65 +2685,66 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
       ],
     );
   }
-  // ── Detail row with colored BADGE ──
-Widget _detailRowWithBadge({
-  required String label,
-  required String value,
-  required Color color,
-}) {
-  return Container(
-    margin: const EdgeInsets.only(bottom: 10),
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(
-      color: OrgColors.surface,
-      borderRadius: BorderRadius.circular(_DS.radiusSm),
-    ),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(
-          _fieldIcons[label] ?? Icons.info_outline_rounded,
-          size: 16,
-          color: OrgColors.darkGray,
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label.toUpperCase(),
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w700,
-                  color: OrgColors.textFaint,
-                  letterSpacing: 0.5,
-                ),
-              ),
-              const SizedBox(height: 5),
-              _cellBadge(value, color),
-            ],
-          ),
-        ),
-      ],
-    ),
-  );
-}
 
-// ── Icon map ──
-static const Map<String, IconData> _fieldIcons = {
-  'Category': Icons.label_outline_rounded,
-  'Status': Icons.assignment_turned_in_rounded,
-  'Date': Icons.calendar_today_rounded,
-  'Event Date': Icons.calendar_today_rounded,
-  'Time': Icons.schedule_rounded,
-  'Location': Icons.location_on_outlined,
-  'Audience': Icons.groups_outlined,
-  'Description': Icons.notes_rounded,
-  'Submitted': Icons.upload_file_outlined,
-  'Price': Icons.sell_outlined,
-  'In Stock': Icons.inventory_2_outlined,
-};
+  // ── Detail row with colored BADGE ──
+  Widget _detailRowWithBadge({
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: OrgColors.surface,
+        borderRadius: BorderRadius.circular(_DS.radiusSm),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            _fieldIcons[label] ?? Icons.info_outline_rounded,
+            size: 16,
+            color: OrgColors.darkGray,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label.toUpperCase(),
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    color: OrgColors.textFaint,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                _cellBadge(value, color),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Icon map ──
+  static const Map<String, IconData> _fieldIcons = {
+    'Category': Icons.label_outline_rounded,
+    'Status': Icons.assignment_turned_in_rounded,
+    'Date': Icons.calendar_today_rounded,
+    'Event Date': Icons.calendar_today_rounded,
+    'Time': Icons.schedule_rounded,
+    'Location': Icons.location_on_outlined,
+    'Audience': Icons.groups_outlined,
+    'Description': Icons.notes_rounded,
+    'Submitted': Icons.upload_file_outlined,
+    'Price': Icons.sell_outlined,
+    'In Stock': Icons.inventory_2_outlined,
+  };
   // ── Chart card ────────────────────────────────────────────────────
   Widget _buildChartCard() {
     return Container(
@@ -3084,21 +3089,24 @@ static const Map<String, IconData> _fieldIcons = {
                   isLast: i == rows.length - 1,
                   isEven: i.isEven,
                   onTap: () => _showDetailDialog(
-  title: rows[i]['title'] as String,
-  icon: Icons.event_available_rounded,
-  accentColor: OrgColors.primaryDark,
-  categoryColorOf: (c) => CategoryColors.getFg(c),
-  actionLabel: 'Open in Events & Schedules →',
-  navigateToTabIndex: 2, // OrgEventsScheduleScreen
-  fields: [
-    MapEntry('Category', rows[i]['category'] as String),
-    MapEntry('Date', _fmtDate(rows[i]['date'] as DateTime?)),
-    MapEntry('Time', _fmtTimeRange(rows[i]['time'], rows[i]['endTime'])),
-    MapEntry('Location', rows[i]['location'] as String),
-    MapEntry('Audience', rows[i]['audience'] as String),
-    MapEntry('Description', rows[i]['description'] as String),
-  ],
-),
+                    title: rows[i]['title'] as String,
+                    icon: Icons.event_available_rounded,
+                    accentColor: OrgColors.primaryDark,
+                    categoryColorOf: (c) => CategoryColors.getFg(c),
+                    actionLabel: 'Open in Events & Schedules →',
+                    navigateToTabIndex: 2, // OrgEventsScheduleScreen
+                    fields: [
+                      MapEntry('Category', rows[i]['category'] as String),
+                      MapEntry('Date', _fmtDate(rows[i]['date'] as DateTime?)),
+                      MapEntry(
+                        'Time',
+                        _fmtTimeRange(rows[i]['time'], rows[i]['endTime']),
+                      ),
+                      MapEntry('Location', rows[i]['location'] as String),
+                      MapEntry('Audience', rows[i]['audience'] as String),
+                      MapEntry('Description', rows[i]['description'] as String),
+                    ],
+                  ),
                   cells: [
                     _cellText(rows[i]['title'] as String, bold: true),
                     _cellBadge(
@@ -3193,19 +3201,25 @@ static const Map<String, IconData> _fieldIcons = {
                   isLast: i == rows.length - 1,
                   isEven: i.isEven,
                   onTap: () => _showDetailDialog(
-  title: rows[i]['title'] as String,
-  icon: Icons.pending_actions_rounded,
-  accentColor: OrgColors.warning,
-  categoryColorOf: (c) => CategoryColors.getFg(c),
-  actionLabel: 'Open in Event Proposals →',
-  navigateToTabIndex: 1, // OrgEventProposalsScreen
-  fields: [
-    MapEntry('Category', rows[i]['category'] as String),
-    MapEntry('Event Date', _fmtDate(rows[i]['eventDate'] as DateTime?)),
-    MapEntry('Submitted', _fmtDate(rows[i]['submittedAt'] as DateTime?)),
-    MapEntry('Description', rows[i]['description'] as String),
-  ],
-),
+                    title: rows[i]['title'] as String,
+                    icon: Icons.pending_actions_rounded,
+                    accentColor: OrgColors.warning,
+                    categoryColorOf: (c) => CategoryColors.getFg(c),
+                    actionLabel: 'Open in Event Proposals →',
+                    navigateToTabIndex: 1, // OrgEventProposalsScreen
+                    fields: [
+                      MapEntry('Category', rows[i]['category'] as String),
+                      MapEntry(
+                        'Event Date',
+                        _fmtDate(rows[i]['eventDate'] as DateTime?),
+                      ),
+                      MapEntry(
+                        'Submitted',
+                        _fmtDate(rows[i]['submittedAt'] as DateTime?),
+                      ),
+                      MapEntry('Description', rows[i]['description'] as String),
+                    ],
+                  ),
                   cells: [
                     _cellText(rows[i]['title'] as String, bold: true),
                     _cellBadge(
@@ -3411,18 +3425,18 @@ static const Map<String, IconData> _fieldIcons = {
                   isLast: i == rows.length - 1,
                   isEven: i.isEven,
                   onTap: () => _showDetailDialog(
-  title: rows[i]['name'] as String,
-  icon: Icons.shopping_bag_rounded,
-  accentColor: const Color(0xFF6366F1),
-  categoryColorOf: (c) => _merchCategoryBadgeColor(c),
-  actionLabel: 'Open in Merchandise Catalog →',
-  navigateToTabIndex: 12, // OrgMerchandiseScreen
-  fields: [
-    MapEntry('Category', rows[i]['category'] as String),
-    MapEntry('Price', money(rows[i]['price'] as double)),
-    MapEntry('In Stock', '${rows[i]['stock']}'),
-  ],
-),
+                    title: rows[i]['name'] as String,
+                    icon: Icons.shopping_bag_rounded,
+                    accentColor: const Color(0xFF6366F1),
+                    categoryColorOf: (c) => _merchCategoryBadgeColor(c),
+                    actionLabel: 'Open in Merchandise Catalog →',
+                    navigateToTabIndex: 12, // OrgMerchandiseScreen
+                    fields: [
+                      MapEntry('Category', rows[i]['category'] as String),
+                      MapEntry('Price', money(rows[i]['price'] as double)),
+                      MapEntry('In Stock', '${rows[i]['stock']}'),
+                    ],
+                  ),
                   cells: [
                     _cellText(rows[i]['name'] as String, bold: true),
                     _cellBadge(
@@ -3716,177 +3730,178 @@ static const Map<String, IconData> _fieldIcons = {
     );
   }
 
-
-    void _showDetailDialog({
-  required String title,
-  required List<MapEntry<String, String>> fields,
-  IconData icon = Icons.info_outline_rounded,
-  Color accentColor = OrgColors.primaryDark,
-  Color Function(String category)? categoryColorOf,
-  String? actionLabel,
-  int? navigateToTabIndex,
-}) {
-  showDialog(
-    context: context,
-    barrierColor: Colors.black54,
-    builder: (ctx) => Dialog(
-      backgroundColor: Colors.transparent,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(_DS.radiusLg),
-      ),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: 460,
-          maxHeight: MediaQuery.of(ctx).size.height * 0.85,
+  void _showDetailDialog({
+    required String title,
+    required List<MapEntry<String, String>> fields,
+    IconData icon = Icons.info_outline_rounded,
+    Color accentColor = OrgColors.primaryDark,
+    Color Function(String category)? categoryColorOf,
+    String? actionLabel,
+    int? navigateToTabIndex,
+  }) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(_DS.radiusLg),
         ),
-        child: Container(
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(_DS.radiusLg),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 460,
+            maxHeight: MediaQuery.of(ctx).size.height * 0.85,
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── HEADER (colored strip - gaya ng admin) ──
-              Container(
-                padding: const EdgeInsets.fromLTRB(22, 20, 16, 18),
-                decoration: BoxDecoration(
-                  color: accentColor.withAlpha(16),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: accentColor.withAlpha(28),
-                        borderRadius: BorderRadius.circular(11),
-                      ),
-                      child: Icon(icon, color: accentColor, size: 19),
-                    ),
-                    const SizedBox(width: 13),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 5),
-                        child: Text(
-                          title,
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: OrgColors.charcoal,
-                          ),
-                        ),
-                      ),
-                    ),
-                    Tooltip(
-                      message: 'Close',
-                      waitDuration: const Duration(milliseconds: 400),
-                      child: MouseRegion(
-                        cursor: SystemMouseCursors.click,
-                        child: GestureDetector(
-                          onTap: () => Navigator.pop(ctx),
-                          child: Container(
-                            width: 28,
-                            height: 28,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(
-                              Icons.close_rounded,
-                              size: 16,
-                              color: OrgColors.darkGray,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // ── BODY ──
-              Flexible(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
-                  child: Column(
+          child: Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(_DS.radiusLg),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── HEADER (colored strip - gaya ng admin) ──
+                Container(
+                  padding: const EdgeInsets.fromLTRB(22, 20, 16, 18),
+                  decoration: BoxDecoration(color: accentColor.withAlpha(16)),
+                  child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      for (final f in fields) ...[
-                        if (f.key == 'Category' && categoryColorOf != null)
-                          _detailRowWithBadge(
-                            label: f.key,
-                            value: f.value,
-                            color: categoryColorOf(f.value),
-                          )
-                        else
-                          _detailRow(f.key, f.value),
-                      ],
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: accentColor.withAlpha(28),
+                          borderRadius: BorderRadius.circular(11),
+                        ),
+                        child: Icon(icon, color: accentColor, size: 19),
+                      ),
+                      const SizedBox(width: 13),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 5),
+                          child: Text(
+                            title,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: OrgColors.charcoal,
+                            ),
+                          ),
+                        ),
+                      ),
+                      Tooltip(
+                        message: 'Close',
+                        waitDuration: const Duration(milliseconds: 400),
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            onTap: () => Navigator.pop(ctx),
+                            child: Container(
+                              width: 28,
+                              height: 28,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.close_rounded,
+                                size: 16,
+                                color: OrgColors.darkGray,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
-              ),
-              // ── FOOTER ──
-              Container(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
-                decoration: const BoxDecoration(
-                  border: Border(top: BorderSide(color: Color(0xFFF1F5F9))),
+                // ── BODY ──
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (final f in fields) ...[
+                          if (f.key == 'Category' && categoryColorOf != null)
+                            _detailRowWithBadge(
+                              label: f.key,
+                              value: f.value,
+                              color: categoryColorOf(f.value),
+                            )
+                          else
+                            _detailRow(f.key, f.value),
+                        ],
+                      ],
+                    ),
+                  ),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    if (actionLabel != null && navigateToTabIndex != null)
-                      TextButton.icon(
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          widget.onNavigateToTab?.call(navigateToTabIndex);
-                        },
-                        icon: const Icon(Icons.arrow_forward_rounded, size: 15),
-                        label: Text(
-                          actionLabel,
-                          style: GoogleFonts.beVietnamPro(
-                            fontWeight: FontWeight.w600,
-                            color: accentColor,
+                // ── FOOTER ──
+                Container(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
+                  decoration: const BoxDecoration(
+                    border: Border(top: BorderSide(color: Color(0xFFF1F5F9))),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      if (actionLabel != null && navigateToTabIndex != null)
+                        TextButton.icon(
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            widget.onNavigateToTab?.call(navigateToTabIndex);
+                          },
+                          icon: const Icon(
+                            Icons.arrow_forward_rounded,
+                            size: 15,
+                          ),
+                          label: Text(
+                            actionLabel,
+                            style: GoogleFonts.beVietnamPro(
+                              fontWeight: FontWeight.w600,
+                              color: accentColor,
+                            ),
+                          ),
+                          style: TextButton.styleFrom(
+                            foregroundColor: accentColor,
                           ),
                         ),
-                        style: TextButton.styleFrom(
-                          foregroundColor: accentColor,
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: accentColor,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 22,
+                            vertical: 12,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(_DS.radiusSm),
+                          ),
+                        ),
+                        child: const Text(
+                          'Close',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: accentColor,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 22,
-                          vertical: 12,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(_DS.radiusSm),
-                        ),
-                      ),
-                      child: const Text(
-                        'Close',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
+
   Widget _tableCardSimple(Widget child) => Container(
     width: double.infinity,
     padding: const EdgeInsets.all(24),

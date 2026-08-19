@@ -507,13 +507,22 @@ Widget _actionIconButton(
   );
 }
 
+// Colored accent bar instead of a generic icon — used 16x across this
+// screen's edit sheets, so a per-section icon meant a wall of
+// near-identical icons; the bar still gives each section a splash of
+// color. [icon] is kept for existing call sites but intentionally unused.
 Widget _sectionLabel(String title, {IconData? icon}) {
   return Row(
     children: [
-      if (icon != null) ...[
-        Icon(icon, size: 16, color: _C.primaryDark),
-        const SizedBox(width: 8),
-      ],
+      Container(
+        width: 3,
+        height: 15,
+        decoration: BoxDecoration(
+          color: _C.primaryDark,
+          borderRadius: BorderRadius.circular(2),
+        ),
+      ),
+      const SizedBox(width: 10),
       Text(
         title,
         style: GoogleFonts.beVietnamPro(
@@ -566,7 +575,11 @@ InputDecoration _inputDecoration(String label, {String? hint, IconData? icon}) {
           )
         : null,
     hintText: hint,
-    prefixIcon: icon != null ? Icon(icon, size: 18, color: _C.textFaint) : null,
+    // Was a prefixIcon on every field regardless of [icon] — with ~20
+    // fields across this screen's edit sheets that was a wall of
+    // near-identical generic icons doing no real disambiguating work; the
+    // label text already says what the field is. [icon] is kept for
+    // existing call sites but intentionally unused now.
     labelStyle: GoogleFonts.beVietnamPro(fontSize: 13, color: _C.darkGray),
     hintStyle: GoogleFonts.beVietnamPro(fontSize: 13, color: _C.textFaint),
     filled: true,
@@ -828,6 +841,10 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
       barrierDismissible: false,
       barrierColor: Colors.black54,
       builder: (_) => Dialog(
+        // Was unset — Dialog falls back to Flutter's default Material
+        // surface color, which skews purple/lavender on this app's
+        // unseeded theme.
+        backgroundColor: _C.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         child: _EditOrgProfileSheet(
           orgId: widget.orgId,
@@ -860,6 +877,10 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
       barrierDismissible: false,
       barrierColor: Colors.black54,
       builder: (_) => Dialog(
+        // Was unset — Dialog falls back to Flutter's default Material
+        // surface color, which skews purple/lavender on this app's
+        // unseeded theme.
+        backgroundColor: _C.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         child: _AddAdviserDialog(
           orgId: widget.orgId,
@@ -878,6 +899,10 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
       barrierDismissible: false,
       barrierColor: Colors.black54,
       builder: (_) => Dialog(
+        // Was unset — Dialog falls back to Flutter's default Material
+        // surface color, which skews purple/lavender on this app's
+        // unseeded theme.
+        backgroundColor: _C.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         child: _AddAdviserDialog(
           orgId: widget.orgId,
@@ -897,6 +922,10 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
       context: context,
       barrierColor: Colors.black54,
       builder: (ctx) => Dialog(
+        // Was unset — Dialog falls back to Flutter's default Material
+        // surface color, which skews purple/lavender on this app's
+        // unseeded theme.
+        backgroundColor: _C.white,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(_DS.radiusLg),
         ),
@@ -1047,6 +1076,10 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => Dialog(
+        // Was unset — Dialog falls back to Flutter's default Material
+        // surface color, which skews purple/lavender on this app's
+        // unseeded theme.
+        backgroundColor: _C.white,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(_DS.radiusLg),
         ),
@@ -2545,6 +2578,10 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
       context: context,
       barrierColor: Colors.black54,
       builder: (ctx) => Dialog(
+        // Was unset — Dialog falls back to Flutter's default Material
+        // surface color, which skews purple/lavender on this app's
+        // unseeded theme.
+        backgroundColor: _C.white,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(_DS.radiusLg),
         ),
@@ -2654,6 +2691,10 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
       context: context,
       barrierColor: Colors.black54,
       builder: (ctx) => Dialog(
+        // Was unset — Dialog falls back to Flutter's default Material
+        // surface color, which skews purple/lavender on this app's
+        // unseeded theme.
+        backgroundColor: _C.white,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(_DS.radiusLg),
         ),

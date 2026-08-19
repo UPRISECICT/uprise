@@ -779,6 +779,14 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
                   borderRadius: BorderRadius.circular(18),
                   boxShadow: _DS.cardShadow,
                 ),
+                // Without this, nothing actually clips content to the
+                // rounded decoration above — the header's own top corners
+                // and the footer's own bottom corners round themselves
+                // independently, but the dialog barrier behind them can
+                // still show through at the true (unclipped) rectangular
+                // edge, which is what read as a second gray box peeking out
+                // past the rounded corner.
+                clipBehavior: Clip.antiAlias,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -2870,6 +2878,10 @@ class _TransactionModalState extends State<_TransactionModal> {
             ),
           ],
         ),
+        // Same fix as _showGenerateReportDialog above — without this the
+        // header/footer's own rounded corners don't actually clip content
+        // to the outer decoration's rounded shape.
+        clipBehavior: Clip.antiAlias,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

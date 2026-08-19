@@ -74,9 +74,9 @@ class _DS {
           : null,
       labelText: isRequired ? null : label,
       hintText: hint,
-      prefixIcon: icon != null
-          ? Icon(icon, size: 18, color: const Color(0xFF9AA5B4))
-          : null,
+      // [icon] intentionally unused now — a generic prefixIcon on every
+      // field (label text already says what it is) was clutter, not
+      // disambiguation. Kept for existing call sites.
       labelStyle: GoogleFonts.beVietnamPro(
         fontSize: 13,
         color: const Color(0xFF64748B),

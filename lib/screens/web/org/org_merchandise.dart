@@ -64,9 +64,11 @@ class _DS {
           : null,
       labelText: required ? null : label,
       hintText: hint,
-      prefixIcon: icon != null
-          ? Icon(icon, size: 18, color: const Color(0xFF9AA5B4))
-          : null,
+      // Was a prefixIcon on every field regardless of [icon] — a form with
+      // a dozen fields meant a dozen near-identical generic icons doing no
+      // real disambiguating work. Label text already says what the field
+      // is; [icon] is kept for existing call sites but intentionally
+      // unused now.
       labelStyle: labelStyle,
       hintStyle: GoogleFonts.beVietnamPro(
         fontSize: 13,
@@ -761,6 +763,10 @@ class _ProductsTabState extends State<_ProductsTab> {
       context: context,
       barrierColor: Colors.black54,
       builder: (ctx) => Dialog(
+        // Was unset — Dialog falls back to Flutter's default Material
+        // surface color, which skews purple/lavender on this app's
+        // unseeded theme.
+        backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Container(
           width: 420,
@@ -1295,16 +1301,36 @@ class _ProductCardState extends State<_ProductCard> {
   @override
   void didUpdateWidget(covariant _ProductCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.product.imageBase64 != widget.product.imageBase64) {
+    if (oldWidget.product.imageBase64 != widget.product.imageBase64 ||
+        !identical(
+          oldWidget.product.rotationPhotos,
+          widget.product.rotationPhotos,
+        )) {
       _decodeImage();
     }
   }
 
   void _decodeImage() {
-    final b64 = widget.product.imageBase64;
+    // Was reading product.imageBase64 (the single "main photo" field)
+    // directly — but a product whose org only ever used the "Add Photos"
+    // rotation-gallery picker and never set a separate main image has that
+    // field empty while rotationPhotos holds the real data. displayPhotos
+    // (rotationPhotos first, imageBase64 as fallback) is the same accessor
+    // the mobile catalog's gallery always renders through, which is why
+    // those products showed up fine there but not here.
+    final photos = widget.product.displayPhotos;
+    final b64 = photos.isNotEmpty ? photos.first : null;
     if (b64 != null && b64.isNotEmpty) {
       try {
-        _decodedImage = base64Decode(b64);
+        // Some products were saved with a `data:image/...;base64,` prefix,
+        // others with plain base64 — base64Decode() on the prefixed form
+        // throws (invalid characters in "data:image/jpeg;base64"), which
+        // this silently swallowed and fell back to "No photo" even though
+        // the image data was there. Stripping a comma-delimited prefix
+        // when present handles both, matching the pattern already used
+        // elsewhere in this file (see the raw.split(',').last usage below).
+        final raw = b64.contains(',') ? b64.split(',').last : b64;
+        _decodedImage = base64Decode(raw);
         return;
       } catch (_) {}
     }
@@ -1718,9 +1744,16 @@ class _ProductModalState extends State<_ProductModal> {
       _variants = List.from(p.variants);
 
       // ── LOAD EXISTING BASE64 IMAGE ──
+      // Strips a `data:image/...;base64,` prefix when present — same fix
+      // as _ProductCard._decodeImage() below, otherwise editing a product
+      // whose image was saved with that prefix showed the upload dropzone
+      // as if no image existed at all.
       if (p.imageBase64 != null && p.imageBase64!.isNotEmpty) {
         try {
-          _imageBytes = base64Decode(p.imageBase64!);
+          final raw = p.imageBase64!.contains(',')
+              ? p.imageBase64!.split(',').last
+              : p.imageBase64!;
+          _imageBytes = base64Decode(raw);
         } catch (_) {
           _imageBytes = null;
         }
@@ -1729,7 +1762,8 @@ class _ProductModalState extends State<_ProductModal> {
       // ── LOAD EXISTING ROTATION PHOTOS ──
       for (final photo in p.rotationPhotos) {
         try {
-          _rotationPhotoBytes.add(base64Decode(photo));
+          final raw = photo.contains(',') ? photo.split(',').last : photo;
+          _rotationPhotoBytes.add(base64Decode(raw));
         } catch (_) {}
       }
     }
@@ -2432,7 +2466,11 @@ class _ProductModalState extends State<_ProductModal> {
                         )
                       else
                         Image.memory(
-                          base64Decode(existingBase64),
+                          base64Decode(
+                            existingBase64.contains(',')
+                                ? existingBase64.split(',').last
+                                : existingBase64,
+                          ),
                           fit: BoxFit.cover,
                           width: double.infinity,
                           height: 140,
@@ -2848,21 +2886,30 @@ class _ProductModalState extends State<_ProductModal> {
     );
   }
 
+  // Colored accent bar instead of a generic gray icon — the icon was purely
+  // decorative (label text already says what the section is) and this modal
+  // has several of these, so it was several near-identical icons in a row.
+  // The accent bar still gives each section a splash of color.
   Widget _sectionLabel(String text, {IconData? icon}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         children: [
-          if (icon != null) ...[
-            Icon(icon, size: 16, color: UpriseColors.darkGray),
-            const SizedBox(width: 8),
-          ],
+          Container(
+            width: 3,
+            height: 15,
+            decoration: BoxDecoration(
+              color: UpriseColors.primaryDark,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 10),
           Text(
             text,
             style: GoogleFonts.beVietnamPro(
               fontSize: 13,
               fontWeight: FontWeight.w700,
-              color: UpriseColors.charcoal,
+              color: UpriseColors.primaryDark,
               letterSpacing: 0.3,
             ),
           ),
@@ -2947,6 +2994,10 @@ class _VariantDialogState extends State<_VariantDialog> {
   @override
   Widget build(BuildContext context) {
     return Dialog(
+      // Was unset — Dialog falls back to Flutter's default Material
+      // surface color, which skews purple/lavender on this app's
+      // unseeded theme.
+      backgroundColor: Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: Container(
         width: 440,
@@ -3966,6 +4017,10 @@ class _OrdersTabState extends State<_OrdersTab> {
     return await showDialog<bool>(
           context: context,
           builder: (ctx) => Dialog(
+            // Was unset — Dialog falls back to Flutter's default Material
+            // surface color, which skews purple/lavender on this app's
+            // unseeded theme.
+            backgroundColor: Colors.white,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),
@@ -3987,7 +4042,11 @@ class _OrdersTabState extends State<_OrdersTab> {
                         ),
                         child: const Icon(
                           Icons.update_rounded,
-                          color: Color(0xFFEA580C),
+                          // Was a stale, more-vivid orange that didn't
+                          // match the rest of this file's UpriseColors.
+                          // primaryDark modals — same drift bug fixed
+                          // elsewhere in the org portal this session.
+                          color: UpriseColors.primaryDark,
                           size: 20,
                         ),
                       ),
@@ -5043,6 +5102,13 @@ class _OrderDetailsModalState extends State<_OrderDetailsModal> {
     showDialog(
       context: context,
       builder: (_) => Dialog(
+        // Explicit, not just unset — this is a bare image viewer with no
+        // card chrome around it, so it should be transparent on purpose
+        // (matching the same pattern elsewhere in the app), not fall back
+        // to Flutter's default Material surface color, which would show
+        // as a purple/lavender edge around the image on this app's
+        // unseeded theme.
+        backgroundColor: Colors.transparent,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(12),
           child: Image.memory(
@@ -5057,6 +5123,10 @@ class _OrderDetailsModalState extends State<_OrderDetailsModal> {
   @override
   Widget build(BuildContext context) {
     return Dialog(
+      // Was unset — Dialog falls back to Flutter's default Material
+      // surface color, which skews purple/lavender on this app's
+      // unseeded theme.
+      backgroundColor: Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: Container(
         width: 520,
@@ -5545,6 +5615,10 @@ class _SalesReportModal extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Dialog(
+      // Was unset — Dialog falls back to Flutter's default Material
+      // surface color, which skews purple/lavender on this app's
+      // unseeded theme.
+      backgroundColor: Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: Container(
         width: 720,
@@ -6376,6 +6450,10 @@ class _GcashSettingsDialogState extends State<_GcashSettingsDialog> {
   @override
   Widget build(BuildContext context) {
     return Dialog(
+      // Was unset — Dialog falls back to Flutter's default Material
+      // surface color, which skews purple/lavender on this app's
+      // unseeded theme.
+      backgroundColor: Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: Container(
         width: 480,

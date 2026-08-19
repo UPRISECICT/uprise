@@ -529,6 +529,11 @@ class _AttendanceTabState extends State<_AttendanceTab> {
   // "Registered" (no filter, show everyone), matching org_attendance_qr.dart's
   // own Attendance page. Tapping the active filter again clears it.
   String? _statusFilter;
+  // _statusFilter == null already means "Registered/no filter," which made
+  // that card render pre-highlighted on open before anything was clicked —
+  // same fix as org_certificates.dart's _BatchDetailModal (_filterTouched)
+  // for the identical issue.
+  bool _filterTouched = false;
 
   Future<void> _ensureStudentsLoaded(Iterable<String> uids) async {
     final missing = uids
@@ -699,6 +704,7 @@ class _AttendanceTabState extends State<_AttendanceTab> {
 
             void toggleFilter(String? status) {
               setState(() {
+                _filterTouched = true;
                 _statusFilter = _statusFilter == status ? null : status;
               });
             }
@@ -715,7 +721,7 @@ class _AttendanceTabState extends State<_AttendanceTab> {
                       '$total',
                       Icons.people_outline,
                       accent: UpriseColors.info,
-                      isSelected: _statusFilter == null,
+                      isSelected: _statusFilter == null && _filterTouched,
                       onTap: () => toggleFilter(null),
                     ),
                     _overviewStatCard(
@@ -1938,6 +1944,10 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
       context: context,
       barrierColor: Colors.black54,
       builder: (ctx) => Dialog(
+        // Was unset — Dialog falls back to Flutter's default Material
+        // surface color, which skews purple/lavender on this app's
+        // unseeded theme.
+        backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         child: Container(
           width: 460,

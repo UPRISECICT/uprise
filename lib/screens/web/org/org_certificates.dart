@@ -797,8 +797,14 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
         final distributed = batchesForCounts
             .where((b) => b.sentCount > 0)
             .length;
+        // Archiving a batch is the org's own "I'm done with this, hide it"
+        // action — an archived batch counting as "Pending" meant a batch
+        // the org had already dismissed (e.g. one stuck with a leftover
+        // draft placeholder from before that cleanup bug was fixed) could
+        // sit here forever, showing a nonzero Pending count with nothing
+        // in the visible/default table actually needing action.
         final pending = batchesForCounts
-            .where((b) => b.sentCount < b.totalRecipients)
+            .where((b) => !b.isArchived && b.sentCount < b.totalRecipients)
             .length;
 
         final horizontalPadding = isMobile ? 16.0 : (isTablet ? 20.0 : 28.0);
@@ -848,7 +854,10 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
             icon: Icons.pending_outlined,
             color: UpriseColors.warning,
             isSelected: _selectedStatCard == 3,
-            onTap: () => selectCard(3, (b) => b.sentCount < b.totalRecipients),
+            onTap: () => selectCard(
+              3,
+              (b) => !b.isArchived && b.sentCount < b.totalRecipients,
+            ),
           ),
         ];
 

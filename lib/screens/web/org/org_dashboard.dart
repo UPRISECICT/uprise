@@ -18,6 +18,7 @@ import 'package:universal_html/html.dart' as html;
 import 'package:fl_chart/fl_chart.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../auth/change_password_screen.dart';
 import 'org_event_proposals.dart';
@@ -38,6 +39,7 @@ import 'export_pdf.dart';
 import 'export_util.dart';
 import 'export_excel.dart';
 import '../../../services/notification_service.dart';
+import '../../../services/firestore_collections.dart';
 import '../../../widgets/admin_export_button.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -370,7 +372,15 @@ const Map<String, Map<String, dynamic>> _navGroups = {
 class _SidebarNav extends StatefulWidget {
   final int selectedIndex;
   final ValueChanged<int> onSelect;
-  const _SidebarNav({required this.selectedIndex, required this.onSelect});
+  // Nav index -> live "needs action" count stream. Only indices with a
+  // genuine pending/unread concept get an entry (see _buildBadgeStreams in
+  // _OrgDashboardState) — everything else renders with no badge at all.
+  final Map<int, Stream<int>> badgeStreams;
+  const _SidebarNav({
+    required this.selectedIndex,
+    required this.onSelect,
+    this.badgeStreams = const {},
+  });
 
   @override
   State<_SidebarNav> createState() => _SidebarNavState();
@@ -380,11 +390,74 @@ class _SidebarNavState extends State<_SidebarNav> {
   // Now using a Set to allow multiple groups to be open at once
   final Set<String> _openGroups = {};
 
+  // Latest known count per badge index, kept current for the whole
+  // lifetime of the sidebar via one persistent subscription each (started
+  // in initState, never cancelled/recreated) — read synchronously by both
+  // _navTile and _groupHeaderTile. A per-widget StreamBuilder was used
+  // here originally, but its subscription only lives as long as that
+  // particular badge widget is mounted: expanding a group unmounts the
+  // header's combined-badge StreamBuilder and mounts a fresh one on the
+  // now-visible individual row, and a brand-new Firestore listener has no
+  // value until the next actual change — so the number visibly vanished
+  // on expand instead of just relocating. Decoupling "have we ever heard
+  // a count" from "is this particular badge currently on screen" fixes it.
+  final Map<int, int> _badgeCounts = {};
+  final List<StreamSubscription<int>> _badgeSubs = [];
+  // The live count as of the moment each index was last opened — a badge
+  // is hidden once its live count drops to/stays at this baseline (i.e.
+  // everything visible when you opened the page), and only reappears once
+  // the live count climbs past it (a genuinely new pending item), not
+  // just because the underlying item you already saw is still unresolved.
+  // Persisted to SharedPreferences (keyed by uid) — kept only in memory
+  // originally, so a reload/restart wiped every dismissal and every badge
+  // you'd already opened came right back, even with nothing new pending.
+  final Map<int, int> _dismissedAtCount = {};
+
+  String _dismissKey(String uid, int index) =>
+      'sidebar_badge_seen_${uid}_$index';
+
+  Future<void> _loadDismissedBaselines() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    final loaded = <int, int>{};
+    for (final index in widget.badgeStreams.keys) {
+      final v = prefs.getInt(_dismissKey(uid, index));
+      if (v != null) loaded[index] = v;
+    }
+    if (mounted && loaded.isNotEmpty) {
+      setState(() => _dismissedAtCount.addAll(loaded));
+    }
+  }
+
+  Future<void> _persistDismissed(int index, int value) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_dismissKey(uid, index), value);
+  }
+
   @override
   void initState() {
     super.initState();
     final initialGroup = _groupContaining(widget.selectedIndex);
     if (initialGroup != null) _openGroups.add(initialGroup);
+    for (final entry in widget.badgeStreams.entries) {
+      _badgeSubs.add(
+        entry.value.listen((v) {
+          if (mounted) setState(() => _badgeCounts[entry.key] = v);
+        }),
+      );
+    }
+    _loadDismissedBaselines();
+  }
+
+  @override
+  void dispose() {
+    for (final s in _badgeSubs) {
+      s.cancel();
+    }
+    super.dispose();
   }
 
   @override
@@ -395,7 +468,24 @@ class _SidebarNavState extends State<_SidebarNav> {
       if (match != null) {
         _openGroups.add(match);
       }
+      final baseline = _badgeCounts[widget.selectedIndex] ?? 0;
+      _dismissedAtCount[widget.selectedIndex] = baseline;
+      if (widget.badgeStreams.containsKey(widget.selectedIndex)) {
+        _persistDismissed(widget.selectedIndex, baseline);
+      }
     }
+  }
+
+  int _visibleCount(int index) {
+    final live = _badgeCounts[index] ?? 0;
+    final baseline = _dismissedAtCount[index];
+    if (baseline != null && live <= baseline) return 0;
+    return live;
+  }
+
+  int _groupCount(String groupKey) {
+    final children = _navGroups[groupKey]!['children'] as List<int>;
+    return children.fold<int>(0, (a, i) => a + _visibleCount(i));
   }
 
   String? _groupContaining(int index) {
@@ -404,6 +494,33 @@ class _SidebarNavState extends State<_SidebarNav> {
         return entry.key;
     }
     return null;
+  }
+
+  Widget _badgePill(int count, {bool onSelected = false}) {
+    if (count <= 0) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(left: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      constraints: const BoxConstraints(minWidth: 18),
+      decoration: BoxDecoration(
+        // White pill on the selected (already-white-tinted) row so it stays
+        // legible against that lighter background; solid red otherwise —
+        // same "needs attention" red as the top-bar notification bell.
+        color: onSelected ? Colors.white : const Color(0xFFEF4444),
+        borderRadius: BorderRadius.circular(9),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        count > 99 ? '99+' : '$count',
+        textAlign: TextAlign.center,
+        style: GoogleFonts.beVietnamPro(
+          color: onSelected ? const Color(0xFFEF4444) : Colors.white,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          height: 1,
+        ),
+      ),
+    );
   }
 
   Widget _navTile(int index, {double indent = 14}) {
@@ -450,8 +567,11 @@ class _SidebarNavState extends State<_SidebarNav> {
                   ),
                 ),
               ),
+              if (widget.badgeStreams.containsKey(index))
+                _badgePill(_visibleCount(index), onSelected: isSelected),
               if (isSelected)
                 Container(
+                  margin: const EdgeInsets.only(left: 8),
                   width: 6,
                   height: 6,
                   decoration: const BoxDecoration(
@@ -501,6 +621,7 @@ class _SidebarNavState extends State<_SidebarNav> {
                   ),
                 ),
               ),
+              if (!expanded) _badgePill(_groupCount(groupKey)),
               Icon(
                 expanded
                     ? Icons.keyboard_arrow_down
@@ -669,9 +790,81 @@ class _OrgDashboardState extends State<OrgDashboard> {
   final TextEditingController _searchController = TextEditingController();
   int _unreadNotifications = 0;
   List<Map<String, dynamic>> _notifications = [];
+  // Cached once instead of calling NotificationService.unreadCountStream()
+  // inline in build() — this top bar is part of _OrgDashboardState's own
+  // build(), which re-runs on every sidebar navigation click, every 60s
+  // clock tick (_updateDateTime), and every notification action's own
+  // setState, so an inline call there was tearing down and re-subscribing
+  // a live Firestore listener constantly. A freshly re-subscribed listener
+  // isn't guaranteed to get pushed a fresh value right away, which is what
+  // let the bell badge get stuck showing a stale count after actions like
+  // "Mark all as read" that should have brought it to 0. Same fix already
+  // applied to admin_dashboard.dart's identical bell.
+  late final Stream<int> _unreadCountStream =
+      FirebaseAuth.instance.currentUser != null
+      ? NotificationService.unreadCountStream(
+          FirebaseAuth.instance.currentUser!.uid,
+        )
+      : const Stream<int>.empty();
 
   late List<Widget> _screens;
   bool _screensBuilt = false;
+
+  // Live "needs action" counts for the sidebar's badge pills — only built
+  // once _orgId is known (first accessed from _buildSidebar, which only
+  // renders once loading has finished), keyed by the same _navItems index
+  // used everywhere else in this file. Each stream reuses the exact query
+  // its own destination screen already runs, so no new tracking logic is
+  // introduced here beyond the badge counting itself.
+  late final Map<int, Stream<int>> _badgeStreams = {
+    // Event Proposals — pending proposals awaiting admin action.
+    1: FirebaseFirestore.instance
+        .collection('event_proposals')
+        .where('orgId', isEqualTo: _orgId)
+        .where('status', isEqualTo: 'pending')
+        .snapshots()
+        .map((s) => s.docs.length),
+    // Certificates — event batches with certs generated but not fully sent.
+    // Archived batches are excluded — archiving is the org's own "done,
+    // hide it" action, and a batch stuck with a leftover draft placeholder
+    // (from before that cleanup bug was fixed) could otherwise count as
+    // "pending" forever with nothing actionable actually visible.
+    4: FirebaseFirestore.instance
+        .collection('certificates')
+        .where('orgId', isEqualTo: _orgId)
+        .snapshots()
+        .map((s) {
+          final records = s.docs
+              .map((d) => CertificateRecord.fromFirestore(d))
+              .toList();
+          final batches = CertificateBatch.groupByEvent(records);
+          return batches
+              .where((b) => !b.isArchived && b.sentCount < b.totalRecipients)
+              .length;
+        }),
+    // Messages — conversations with an unread reply from a student.
+    7: FirebaseFirestore.instance
+        .collection('conversations')
+        .where('orgId', isEqualTo: _orgId)
+        .where('unreadForOrg', isEqualTo: true)
+        .snapshots()
+        .map((s) => s.docs.length),
+    // Letter Requests — awaiting admin action.
+    9: FirestoreCollections.letterRequests
+        .where('orgId', isEqualTo: _orgId)
+        .where('isArchived', isEqualTo: false)
+        .where('status', isEqualTo: 'pending')
+        .snapshots()
+        .map((s) => s.docs.length),
+    // Merchandise — GCash orders awaiting payment verification.
+    12: FirebaseFirestore.instance
+        .collection('orders')
+        .where('orgId', isEqualTo: _orgId)
+        .where('paymentMethod', isEqualTo: 'GCash')
+        .where('paymentVerified', isEqualTo: false)
+        .snapshots()
+        .map((s) => s.docs.length),
+  };
 
   @override
   void initState() {
@@ -1132,19 +1325,20 @@ class _OrgDashboardState extends State<OrgDashboard> {
   }
 
   Future<void> _markAllNotificationsAsRead() async {
-    final unread = _notifications.where((n) => n['isRead'] == false).toList();
-    if (unread.isEmpty) return;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
     try {
-      final batch = FirebaseFirestore.instance.batch();
-      for (final n in unread) {
-        batch.update(
-          FirebaseFirestore.instance
-              .collection('notifications')
-              .doc(n['id'] as String),
-          {'isRead': true},
-        );
-      }
-      await batch.commit();
+      // Was batching only the notifications already loaded into
+      // _notifications (capped at the 50 most recent, see
+      // _fetchUnreadNotifications) — an org with more than 50 unread
+      // notifications (e.g. accumulated recurring deadline reminders)
+      // would have older unread ones sitting outside that window,
+      // silently un-touched by "Mark all as read", while the bell's badge
+      // (NotificationService.unreadCountStream, unbounded) kept counting
+      // them — the badge stayed stuck nonzero after "reading everything".
+      // NotificationService.markAllAsRead queries every isRead==false doc
+      // for this user directly, no cap.
+      await NotificationService.markAllAsRead(uid);
       if (mounted) {
         setState(() {
           _notifications = _notifications
@@ -1152,8 +1346,23 @@ class _OrgDashboardState extends State<OrgDashboard> {
               .toList();
           _unreadNotifications = 0;
         });
+        // Re-pull from Firestore right after the write so any mismatch
+        // between "what we just wrote" and "what's actually there" (e.g.
+        // a write that silently didn't apply to every doc) shows up
+        // immediately instead of only on the next natural refresh.
+        await _fetchUnreadNotifications();
       }
-    } catch (_) {}
+    } catch (e) {
+      // Was silently swallowed — surfacing it is temporary but necessary:
+      // the badge staying stuck after "Mark all as read" with no visible
+      // error is exactly what an unnoticed Firestore permission-denied (or
+      // any other write failure) looks like from the outside.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not mark notifications as read: $e')),
+        );
+      }
+    }
   }
 
   // Maps a notification's type to the sidebar tab it's about, so clicking
@@ -1765,6 +1974,7 @@ class _OrgDashboardState extends State<OrgDashboard> {
             child: _SidebarNav(
               selectedIndex: _selectedIndex,
               onSelect: _selectTab,
+              badgeStreams: _badgeStreams,
             ),
           ),
           const SizedBox(height: 12),
@@ -1920,11 +2130,7 @@ class _OrgDashboardState extends State<OrgDashboard> {
                 // immediately, without needing to reopen the dropdown —
                 // matches the admin bell instead of only refreshing on tap.
                 child: StreamBuilder<int>(
-                  stream: FirebaseAuth.instance.currentUser != null
-                      ? NotificationService.unreadCountStream(
-                          FirebaseAuth.instance.currentUser!.uid,
-                        )
-                      : const Stream<int>.empty(),
+                  stream: _unreadCountStream,
                   initialData: _unreadNotifications,
                   builder: (context, snapshot) {
                     final unread = snapshot.data ?? _unreadNotifications;

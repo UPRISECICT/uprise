@@ -379,6 +379,51 @@ class _FilterDropdown extends StatelessWidget {
   }
 }
 
+// Shared circular avatar for the composer teaser and every post card —
+// shows the org's real logo when one is set, falling back to a tinted
+// initial otherwise. A rounded-square "app icon" badge is what this used
+// to be; a real circle with the org's actual photo is what makes the feed
+// read as a social profile instead of a dashboard widget.
+Widget _orgCircleAvatar({
+  required double size,
+  required String fallbackLabel,
+  String? logoUrl,
+}) {
+  final hasLogo = logoUrl != null && logoUrl.isNotEmpty;
+  return ClipOval(
+    child: Container(
+      width: size,
+      height: size,
+      color: _C.primaryDark.withAlpha(31),
+      child: hasLogo
+          ? Image.network(
+              logoUrl,
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => _avatarInitial(fallbackLabel, size),
+              loadingBuilder: (context, child, progress) => progress == null
+                  ? child
+                  : _avatarInitial(fallbackLabel, size),
+            )
+          : _avatarInitial(fallbackLabel, size),
+    ),
+  );
+}
+
+Widget _avatarInitial(String label, double size) {
+  return Center(
+    child: Text(
+      label.isNotEmpty ? label[0].toUpperCase() : '?',
+      style: GoogleFonts.beVietnamPro(
+        fontSize: size * 0.4,
+        fontWeight: FontWeight.w800,
+        color: _C.primaryDark,
+      ),
+    ),
+  );
+}
+
 Widget _audienceBadge(String audience) {
   final Map<String, _BadgeTheme> map = {
     'Public': _BadgeTheme(_C.successBg, _C.success, Icons.public_rounded),
@@ -639,6 +684,34 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
   final List<String> _customCategories = [];
   List<String> get _allCategories =>
       {...kDefaultAnnouncementCategories, ..._customCategories}.toList();
+
+  // The org's own logo, shown as the post/composer avatar instead of a
+  // flat initials badge — a plain letter-in-a-box reads as an app icon,
+  // not a social profile; the real logo (when the org has one) is what
+  // actually makes the feed feel like Facebook. Resolved once on load;
+  // stays null (falling back to initials) if the org has none set.
+  String? _orgLogoUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOrgLogo();
+  }
+
+  Future<void> _loadOrgLogo() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('organizations')
+          .doc(widget.orgId)
+          .get();
+      final url = (doc.data()?['logoUrl'] as String?)?.trim();
+      if (mounted && url != null && url.isNotEmpty) {
+        setState(() => _orgLogoUrl = url);
+      }
+    } catch (_) {
+      // Logo is a nice-to-have here — silently fall back to initials.
+    }
+  }
 
   @override
   void dispose() {
@@ -1457,6 +1530,7 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
             delegate: SliverChildBuilderDelegate(
               (ctx, i) => _PostCard(
                 announcement: items[i],
+                orgLogoUrl: _orgLogoUrl,
                 onEdit: () => _showAnnouncementDialog(existing: items[i]),
                 onArchive: () => _toggleArchive(items[i]),
                 onTogglePin: () => _togglePin(items[i], allAnnouncements),
@@ -1488,20 +1562,28 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // Org avatar
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: _C.primaryDark.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.campaign_rounded,
-                      size: 20,
-                      color: _C.primaryDark,
-                    ),
-                  ),
+                  // Org avatar — the org's real logo when it has one,
+                  // matching what every post below shows as its author
+                  // photo, instead of a generic campaign-icon badge.
+                  _orgLogoUrl != null
+                      ? _orgCircleAvatar(
+                          size: 38,
+                          fallbackLabel: 'O',
+                          logoUrl: _orgLogoUrl,
+                        )
+                      : Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: _C.primaryDark.withAlpha(31),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.campaign_rounded,
+                            size: 20,
+                            color: _C.primaryDark,
+                          ),
+                        ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Container(
@@ -1910,15 +1992,10 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                                 children: [
                                   Row(
                                     children: [
-                                      CircleAvatar(
-                                        radius: 19,
-                                        backgroundColor: _C.primaryDark
-                                            .withAlpha(26),
-                                        child: Icon(
-                                          Icons.groups_rounded,
-                                          color: _C.primaryDark,
-                                          size: 19,
-                                        ),
+                                      _orgCircleAvatar(
+                                        size: 38,
+                                        fallbackLabel: authorName,
+                                        logoUrl: _orgLogoUrl,
                                       ),
                                       const SizedBox(width: 10),
                                       Expanded(
@@ -3192,12 +3269,14 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
 // ─────────────────────────────────────────────────────────────────────────────
 class _PostCard extends StatefulWidget {
   final AnnouncementModel announcement;
+  final String? orgLogoUrl;
   final VoidCallback onEdit;
   final VoidCallback onArchive;
   final VoidCallback onTogglePin;
 
   const _PostCard({
     required this.announcement,
+    this.orgLogoUrl,
     required this.onEdit,
     required this.onArchive,
     required this.onTogglePin,
@@ -3352,26 +3431,12 @@ class _PostCardState extends State<_PostCard> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Author avatar
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: _C.primaryDark.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Center(
-                    child: Text(
-                      a.authorName.isNotEmpty
-                          ? a.authorName[0].toUpperCase()
-                          : '?',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: _C.primaryDark,
-                      ),
-                    ),
-                  ),
+                // Author avatar — the org's real logo when it has one,
+                // circular like every profile photo on a real feed.
+                _orgCircleAvatar(
+                  size: 42,
+                  fallbackLabel: a.authorName,
+                  logoUrl: widget.orgLogoUrl,
                 ),
                 const SizedBox(width: 12),
                 // Author info + timestamp

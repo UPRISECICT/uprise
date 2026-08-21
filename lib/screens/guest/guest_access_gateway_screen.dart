@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../services/activity_logger.dart' as activity_log;
 import '../../widgets/common/terms_and_conditions.dart';
+import '../../widgets/student/app_colors.dart';
 import 'guest_auth_service.dart'; // GuestAuthService.saveSession() + GuestMode enum
 import 'guest_home_screen.dart'
     hide
@@ -26,12 +27,40 @@ import 'guest_home_screen.dart'
 import 'guest_profile_screen.dart'; // exposes RegistrationScreen via re-export
 
 // ─────────────────────────────────────────────────────────────
-//  THEME
+//  THEME — matches the shared light AppColors palette used across
+//  the rest of mobile (see student_login.dart) instead of a
+//  standalone dark theme.
 // ─────────────────────────────────────────────────────────────
-const _kOrange = Color(0xFFBE4700);
-const _kOrangeLight = Color(0xFFF5E3D9);
-const _kDark = Color(0xFF1A1A2E);
-const _kBg = Color(0xFFF5F5F5);
+const _kOrange = AppColors.primaryDark;
+const _kBg = AppColors.background;
+final _kCardShadow = [
+  BoxShadow(
+    color: Colors.black.withAlpha(20),
+    blurRadius: 30,
+    offset: const Offset(0, 12),
+  ),
+  BoxShadow(
+    color: Colors.black.withAlpha(8),
+    blurRadius: 6,
+    offset: const Offset(0, 2),
+  ),
+];
+
+Widget _lightBackIcon(BuildContext context) {
+  return IconButton(
+    onPressed: () => Navigator.pop(context),
+    icon: Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade200,
+        shape: BoxShape.circle,
+      ),
+      child: Icon(Icons.arrow_back, color: Colors.grey.shade800, size: 18),
+    ),
+    padding: EdgeInsets.zero,
+    alignment: Alignment.centerLeft,
+  );
+}
 
 // ─────────────────────────────────────────────────────────────
 //  GATEWAY SCREEN
@@ -42,10 +71,11 @@ class GuestAccessGatewayScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _kDark,
+      backgroundColor: _kBg,
       body: Stack(
         children: [
-          // Decorative background circles
+          // Faint decorative accents — much lower alpha than the old
+          // dark-theme circles since they now sit on a light field.
           Positioned(
             right: -60,
             top: -60,
@@ -54,7 +84,7 @@ class GuestAccessGatewayScreen extends StatelessWidget {
               height: 220,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: _kOrange.withOpacity(0.10),
+                color: _kOrange.withAlpha(13),
               ),
             ),
           ),
@@ -66,19 +96,7 @@ class GuestAccessGatewayScreen extends StatelessWidget {
               height: 160,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: _kOrange.withOpacity(0.06),
-              ),
-            ),
-          ),
-          Positioned(
-            right: 40,
-            bottom: -30,
-            child: Container(
-              width: 100,
-              height: 100,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: _kOrange.withOpacity(0.08),
+                color: _kOrange.withAlpha(8),
               ),
             ),
           ),
@@ -90,23 +108,7 @@ class GuestAccessGatewayScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // ── Back arrow ──────────────────────────────
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.arrow_back,
-                        color: Colors.white,
-                        size: 18,
-                      ),
-                    ),
-                    padding: EdgeInsets.zero,
-                    alignment: Alignment.centerLeft,
-                  ),
+                  _lightBackIcon(context),
 
                   const SizedBox(height: 28),
 
@@ -146,7 +148,7 @@ class GuestAccessGatewayScreen extends StatelessWidget {
                     style: GoogleFonts.beVietnamPro(
                       fontSize: 28,
                       fontWeight: FontWeight.w900,
-                      color: Colors.white,
+                      color: Colors.grey.shade900,
                       height: 1.25,
                     ),
                   ),
@@ -157,7 +159,7 @@ class GuestAccessGatewayScreen extends StatelessWidget {
                     'Choose your access mode below.',
                     style: GoogleFonts.beVietnamPro(
                       fontSize: 14,
-                      color: Colors.white54,
+                      color: Colors.grey.shade600,
                       height: 1.5,
                     ),
                   ),
@@ -304,9 +306,10 @@ class _AccessCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.06),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.12)),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: _kCardShadow,
       ),
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -318,9 +321,9 @@ class _AccessCard extends StatelessWidget {
                 width: 46,
                 height: 46,
                 decoration: BoxDecoration(
-                  color: iconBg.withOpacity(0.15),
+                  color: iconBg.withAlpha(38),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: iconBg.withOpacity(0.3)),
+                  border: Border.all(color: iconBg.withAlpha(77)),
                 ),
                 child: Icon(icon, color: iconBg, size: 22),
               ),
@@ -335,9 +338,9 @@ class _AccessCard extends StatelessWidget {
                         vertical: 3,
                       ),
                       decoration: BoxDecoration(
-                        color: badgeColor.withOpacity(0.15),
+                        color: badgeColor.withAlpha(38),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: badgeColor.withOpacity(0.3)),
+                        border: Border.all(color: badgeColor.withAlpha(77)),
                       ),
                       child: Text(
                         badge,
@@ -355,7 +358,7 @@ class _AccessCard extends StatelessWidget {
                       style: GoogleFonts.beVietnamPro(
                         fontSize: 17,
                         fontWeight: FontWeight.w800,
-                        color: Colors.white,
+                        color: Colors.grey.shade900,
                       ),
                     ),
                   ],
@@ -370,7 +373,7 @@ class _AccessCard extends StatelessWidget {
             subtitle,
             style: GoogleFonts.beVietnamPro(
               fontSize: 12,
-              color: Colors.white60,
+              color: Colors.grey.shade600,
               height: 1.5,
             ),
           ),
@@ -389,7 +392,7 @@ class _AccessCard extends StatelessWidget {
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.08),
+                      color: badgeColor.withAlpha(20),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Row(
@@ -401,7 +404,7 @@ class _AccessCard extends StatelessWidget {
                           f,
                           style: GoogleFonts.beVietnamPro(
                             fontSize: 10,
-                            color: Colors.white70,
+                            color: Colors.grey.shade700,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -673,22 +676,11 @@ class _GuestLoginScreenState extends State<GuestLoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _kDark,
+      backgroundColor: _kBg,
       appBar: AppBar(
-        backgroundColor: _kDark,
+        backgroundColor: _kBg,
         elevation: 0,
-        foregroundColor: Colors.white,
-        leading: IconButton(
-          icon: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.arrow_back, color: Colors.white, size: 18),
-          ),
-          onPressed: () => Navigator.pop(context),
-        ),
+        leading: _lightBackIcon(context),
       ),
       body: Stack(
         children: [
@@ -700,7 +692,7 @@ class _GuestLoginScreenState extends State<GuestLoginScreen> {
               height: 180,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: _kOrange.withOpacity(0.08),
+                color: _kOrange.withAlpha(13),
               ),
             ),
           ),
@@ -737,14 +729,14 @@ class _GuestLoginScreenState extends State<GuestLoginScreen> {
                             style: GoogleFonts.beVietnamPro(
                               fontSize: 22,
                               fontWeight: FontWeight.w900,
-                              color: Colors.white,
+                              color: Colors.grey.shade900,
                             ),
                           ),
                           Text(
                             'Enter your guest credentials',
                             style: GoogleFonts.beVietnamPro(
                               fontSize: 12,
-                              color: Colors.white54,
+                              color: Colors.grey.shade600,
                             ),
                           ),
                         ],
@@ -758,9 +750,10 @@ class _GuestLoginScreenState extends State<GuestLoginScreen> {
                   Container(
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.07),
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.white.withOpacity(0.12)),
+                      border: Border.all(color: Colors.grey.shade200),
+                      boxShadow: _kCardShadow,
                     ),
                     child: Column(
                       children: [
@@ -782,7 +775,7 @@ class _GuestLoginScreenState extends State<GuestLoginScreen> {
                               style: GoogleFonts.beVietnamPro(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
-                                color: Colors.white70,
+                                color: Colors.grey.shade700,
                               ),
                             ),
                             const SizedBox(height: 8),
@@ -791,18 +784,18 @@ class _GuestLoginScreenState extends State<GuestLoginScreen> {
                               obscureText: _obscure,
                               style: GoogleFonts.beVietnamPro(
                                 fontSize: 14,
-                                color: Colors.white,
+                                color: Colors.black87,
                               ),
                               decoration: InputDecoration(
                                 hintText: 'Enter your password',
                                 hintStyle: GoogleFonts.beVietnamPro(
                                   fontSize: 13,
-                                  color: Colors.white38,
+                                  color: Colors.grey.shade400,
                                 ),
-                                prefixIcon: const Icon(
+                                prefixIcon: Icon(
                                   Icons.lock_outline,
                                   size: 18,
-                                  color: Colors.white38,
+                                  color: Colors.grey.shade500,
                                 ),
                                 suffixIcon: IconButton(
                                   icon: Icon(
@@ -810,13 +803,13 @@ class _GuestLoginScreenState extends State<GuestLoginScreen> {
                                         ? Icons.visibility_off_outlined
                                         : Icons.visibility_outlined,
                                     size: 18,
-                                    color: Colors.white38,
+                                    color: Colors.grey.shade500,
                                   ),
                                   onPressed: () =>
                                       setState(() => _obscure = !_obscure),
                                 ),
                                 filled: true,
-                                fillColor: Colors.white.withOpacity(0.07),
+                                fillColor: _kBg,
                                 contentPadding: const EdgeInsets.symmetric(
                                   horizontal: 14,
                                   vertical: 14,
@@ -824,18 +817,20 @@ class _GuestLoginScreenState extends State<GuestLoginScreen> {
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(10),
                                   borderSide: BorderSide(
-                                    color: Colors.white.withOpacity(0.15),
+                                    color: Colors.grey.shade300,
                                   ),
                                 ),
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(10),
                                   borderSide: BorderSide(
-                                    color: Colors.white.withOpacity(0.15),
+                                    color: Colors.grey.shade300,
                                   ),
                                 ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                  borderSide: const BorderSide(
+                                focusedBorder: const OutlineInputBorder(
+                                  borderRadius: BorderRadius.all(
+                                    Radius.circular(10),
+                                  ),
+                                  borderSide: BorderSide(
                                     color: _kOrange,
                                     width: 1.5,
                                   ),
@@ -906,9 +901,9 @@ class _GuestLoginScreenState extends State<GuestLoginScreen> {
                   Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: _kOrange.withOpacity(0.08),
+                      color: _kOrange.withAlpha(20),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: _kOrange.withOpacity(0.25)),
+                      border: Border.all(color: _kOrange.withAlpha(64)),
                     ),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -924,7 +919,7 @@ class _GuestLoginScreenState extends State<GuestLoginScreen> {
                             'Your login credentials were provided by the CICT admin after your guest application was approved.',
                             style: GoogleFonts.beVietnamPro(
                               fontSize: 12,
-                              color: Colors.white60,
+                              color: Colors.grey.shade700,
                               height: 1.5,
                             ),
                           ),
@@ -956,38 +951,38 @@ class _GuestLoginScreenState extends State<GuestLoginScreen> {
           style: GoogleFonts.beVietnamPro(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: Colors.white70,
+            color: Colors.grey.shade700,
           ),
         ),
         const SizedBox(height: 8),
         TextFormField(
           controller: controller,
           keyboardType: keyboardType,
-          style: GoogleFonts.beVietnamPro(fontSize: 14, color: Colors.white),
+          style: GoogleFonts.beVietnamPro(fontSize: 14, color: Colors.black87),
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: GoogleFonts.beVietnamPro(
               fontSize: 13,
-              color: Colors.white38,
+              color: Colors.grey.shade400,
             ),
-            prefixIcon: Icon(icon, size: 18, color: Colors.white38),
+            prefixIcon: Icon(icon, size: 18, color: Colors.grey.shade500),
             filled: true,
-            fillColor: Colors.white.withOpacity(0.07),
+            fillColor: _kBg,
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 14,
               vertical: 14,
             ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: Colors.white.withOpacity(0.15)),
+              borderSide: BorderSide(color: Colors.grey.shade300),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: Colors.white.withOpacity(0.15)),
+              borderSide: BorderSide(color: Colors.grey.shade300),
             ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: _kOrange, width: 1.5),
+            focusedBorder: const OutlineInputBorder(
+              borderRadius: BorderRadius.all(Radius.circular(10)),
+              borderSide: BorderSide(color: _kOrange, width: 1.5),
             ),
           ),
         ),
@@ -1109,10 +1104,11 @@ class _GuestChangePasswordScreenState extends State<GuestChangePasswordScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _kDark,
+      backgroundColor: _kBg,
       appBar: AppBar(
-        backgroundColor: _kDark,
+        backgroundColor: _kBg,
         elevation: 0,
+        foregroundColor: Colors.grey.shade800,
         automaticallyImplyLeading:
             !widget.forced, // forced step can't be skipped/backed out of
         title: Text(
@@ -1120,7 +1116,7 @@ class _GuestChangePasswordScreenState extends State<GuestChangePasswordScreen> {
           style: GoogleFonts.beVietnamPro(
             fontSize: 17,
             fontWeight: FontWeight.w700,
-            color: Colors.white,
+            color: Colors.grey.shade900,
           ),
         ),
       ),
@@ -1133,9 +1129,9 @@ class _GuestChangePasswordScreenState extends State<GuestChangePasswordScreen> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: _kOrange.withOpacity(0.10),
+                color: _kOrange.withAlpha(26),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: _kOrange.withOpacity(0.3)),
+                border: Border.all(color: _kOrange.withAlpha(77)),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1154,7 +1150,7 @@ class _GuestChangePasswordScreenState extends State<GuestChangePasswordScreen> {
                           : 'Choose a new password for your account.',
                       style: GoogleFonts.beVietnamPro(
                         fontSize: 13,
-                        color: Colors.white70,
+                        color: Colors.grey.shade700,
                         height: 1.5,
                       ),
                     ),
@@ -1192,7 +1188,7 @@ class _GuestChangePasswordScreenState extends State<GuestChangePasswordScreen> {
                 value: _agreedToTerms,
                 onChanged: (v) => setState(() => _agreedToTerms = v),
                 accent: _kOrange,
-                textColor: Colors.white70,
+                textColor: Colors.grey.shade700,
               ),
             ],
 
@@ -1254,24 +1250,24 @@ class _GuestChangePasswordScreenState extends State<GuestChangePasswordScreen> {
           style: GoogleFonts.beVietnamPro(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: Colors.white70,
+            color: Colors.grey.shade700,
           ),
         ),
         const SizedBox(height: 8),
         TextFormField(
           controller: controller,
           obscureText: obscure,
-          style: GoogleFonts.beVietnamPro(fontSize: 14, color: Colors.white),
+          style: GoogleFonts.beVietnamPro(fontSize: 14, color: Colors.black87),
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: GoogleFonts.beVietnamPro(
               fontSize: 13,
-              color: Colors.white38,
+              color: Colors.grey.shade400,
             ),
-            prefixIcon: const Icon(
+            prefixIcon: Icon(
               Icons.lock_outline,
               size: 18,
-              color: Colors.white38,
+              color: Colors.grey.shade500,
             ),
             suffixIcon: IconButton(
               icon: Icon(
@@ -1279,27 +1275,27 @@ class _GuestChangePasswordScreenState extends State<GuestChangePasswordScreen> {
                     ? Icons.visibility_off_outlined
                     : Icons.visibility_outlined,
                 size: 18,
-                color: Colors.white38,
+                color: Colors.grey.shade500,
               ),
               onPressed: onToggle,
             ),
             filled: true,
-            fillColor: Colors.white.withOpacity(0.07),
+            fillColor: _kBg,
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 14,
               vertical: 14,
             ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: Colors.white.withOpacity(0.15)),
+              borderSide: BorderSide(color: Colors.grey.shade300),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: Colors.white.withOpacity(0.15)),
+              borderSide: BorderSide(color: Colors.grey.shade300),
             ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: _kOrange, width: 1.5),
+            focusedBorder: const OutlineInputBorder(
+              borderRadius: BorderRadius.all(Radius.circular(10)),
+              borderSide: BorderSide(color: _kOrange, width: 1.5),
             ),
           ),
         ),

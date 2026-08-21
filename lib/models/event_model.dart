@@ -1,6 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
+import '../utils/helpers.dart' as helpers;
+
+/// Where an event sits relative to now, based on its date + start/end time.
+/// The one canonical classification — see [EventModel.timeStatus].
+enum EventTimeStatus { upcoming, ongoing, completed }
+
 class EventModel {
   final String id;
   final String title;
@@ -30,6 +36,11 @@ class EventModel {
   final String? logoUrl;
   final String? bannerUrl;
 
+  /// When the event doc was created — null for older records written
+  /// before this field existed. Used for feed-card "NEW" badge timing;
+  /// not the same as [date], which is when the event itself happens.
+  final DateTime? createdAt;
+
   /// Max registrants, org-set and optional — null (or omitted) means
   /// unlimited slots, matching the org proposal form's default.
   final int? capacity;
@@ -42,6 +53,12 @@ class EventModel {
   /// Only applies when [markLate] is true.
   /// Default: 15 minutes
   final int lateAfterMinutes;
+
+  /// Race-safe registration counter maintained transactionally alongside
+  /// the `registrations` writes (see EventDetailScreen._registerForEvent) —
+  /// used for "Most Popular" sorting. Not included in [toMap] since it's
+  /// server/transaction-owned, not something a client should overwrite.
+  final int registeredCount;
 
   EventModel({
     required this.id,
@@ -63,50 +80,31 @@ class EventModel {
     this.createdFromProposalId,
     this.logoUrl,
     this.bannerUrl,
+    this.createdAt,
     this.capacity,
     this.markLate = false,
     this.lateAfterMinutes = 15,
+    this.registeredCount = 0,
   });
 
   /// Combines the event date and start time
-  DateTime get fullDateTime {
-    try {
-      int hour = 0;
-      int minute = 0;
+  DateTime get fullDateTime => helpers.combineDateAndTime(date, startTime);
 
-      if (startTime.isNotEmpty) {
-        if (startTime.toLowerCase().contains('am') ||
-            startTime.toLowerCase().contains('pm')) {
-          // Example: 7:30 PM
-          final cleanTime = startTime
-              .replaceAll(RegExp(r'[AP]M', caseSensitive: false), '')
-              .trim();
+  /// Combines the event date and end time — defaults to 23:59 same day when
+  /// [endTime] is blank, so an event with no stated end time still counts
+  /// as "over" only after its whole day has passed.
+  DateTime get endDateTime => endTime.trim().isEmpty
+      ? DateTime(date.year, date.month, date.day, 23, 59)
+      : helpers.combineDateAndTime(date, endTime);
 
-          final parts = cleanTime.split(':');
-          hour = int.parse(parts[0]);
-          minute = int.parse(parts[1]);
-
-          if (startTime.toLowerCase().contains('pm') && hour < 12) {
-            hour += 12;
-          }
-
-          if (startTime.toLowerCase().contains('am') && hour == 12) {
-            hour = 0;
-          }
-        } else {
-          // Example: 19:30
-          final parts = startTime.split(':');
-          hour = int.parse(parts[0]);
-          minute = int.parse(
-            parts.length > 1 ? parts[1].replaceAll(RegExp(r'[^0-9]'), '') : '0',
-          );
-        }
-      }
-
-      return DateTime(date.year, date.month, date.day, hour, minute);
-    } catch (_) {
-      return date;
-    }
+  /// The one canonical upcoming/ongoing/completed classification, replacing
+  /// several hand-rolled copies of this same start/end comparison that used
+  /// to live in individual screens.
+  EventTimeStatus get timeStatus {
+    final now = DateTime.now();
+    if (now.isBefore(fullDateTime)) return EventTimeStatus.upcoming;
+    if (now.isAfter(endDateTime)) return EventTimeStatus.completed;
+    return EventTimeStatus.ongoing;
   }
 
   /// Getter para sa image URL na may fallback placeholder
@@ -192,6 +190,30 @@ class EventModel {
     return values.every(singleAllowed);
   }
 
+  /// Session-less variant of [audienceAllowsMember] for a viewer with no
+  /// account context at all (e.g. a visitor guest) — blocks anything
+  /// requiring membership/CICT/BulSUan verification, allows everything else.
+  static bool audienceAllowsPublic(String audience) {
+    final values = audience
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty);
+    if (values.isEmpty) return true;
+
+    bool singleAllowed(String v) {
+      switch (v) {
+        case 'CICT Only':
+        case 'Members Only':
+        case 'BulSUan':
+          return false;
+        default:
+          return true;
+      }
+    }
+
+    return values.any(singleAllowed);
+  }
+
   factory EventModel.fromFirestore(DocumentSnapshot doc) {
     final d = doc.data() as Map<String, dynamic>? ?? {};
 
@@ -221,9 +243,11 @@ class EventModel {
       createdFromProposalId: d['createdFromProposalId'] as String?,
       logoUrl: d['logoUrl'] as String?,
       bannerUrl: d['bannerUrl'] as String?,
+      createdAt: (d['createdAt'] as Timestamp?)?.toDate(),
       capacity: (d['capacity'] as num?)?.toInt(),
       markLate: d['markLate'] == true,
       lateAfterMinutes: (d['lateAfterMinutes'] as num?)?.toInt() ?? 15,
+      registeredCount: (d['registeredCount'] as num?)?.toInt() ?? 0,
     );
   }
 

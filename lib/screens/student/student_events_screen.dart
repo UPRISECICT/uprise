@@ -17,6 +17,8 @@ import 'package:open_file/open_file.dart';
 import 'package:uprise/models/event_model.dart';
 import '../../widgets/student/event_image.dart';
 import '../../widgets/student/app_colors.dart';
+import '../../widgets/common/feed_cards.dart' show feedCategoryColor, feedCategoryIcon;
+import '../../widgets/common/loading_widget.dart' show SkeletonLoader;
 import '../../widgets/student/student_app_bar.dart';
 import 'student_feedback_screen.dart';
 import 'student_certificates_screen.dart';
@@ -405,13 +407,77 @@ class _UpcomingTabState extends State<UpcomingTab>
 
   bool _compactView = false;
 
-  // ── Status filter (Upcoming / Ongoing / Past) ──
-  _RegStatus _selectedFilter = _RegStatus.upcoming;
-
-  // ── Search + organization filter ──
+  // ── Inline landing filters ──
+  // Status chip, search text and org all filter the landing page in place
+  // (AND-ed together); none of them navigate. null status = no chip active.
+  _RegStatus? _activeStatus;
   final TextEditingController _searchCtrl = TextEditingController();
   String _searchQuery = '';
   String? _selectedOrgId; // null = All Organizations
+
+  // Skeleton shown for a beat after each filter change so rapid typing
+  // doesn't thrash the list; the timer collapses repeated keystrokes.
+  Timer? _searchDebounce;
+  bool _showSkeleton = false;
+
+  // ── Category landing grid ──
+  // Tiles are the only thing that leaves this page. Must stay in sync with
+  // the org-facing category picker (org_event_proposals.dart's _categories)
+  // since that's what actually gets written to each event's `category` field.
+  static const _categories = [
+    'Workshop',
+    'Seminar',
+    'Competition',
+    'General Assembly',
+    'Social',
+    'Outreach',
+    'Sports',
+    'Academic',
+    'Technical',
+    'Cultural',
+    'Other',
+  ];
+
+  bool get _hasInlineFilter =>
+      _searchQuery.trim().isNotEmpty ||
+      _activeStatus != null ||
+      _selectedOrgId != null;
+
+  // Call inside setState after changing any inline filter.
+  void _beginResultsTransition() {
+    _searchDebounce?.cancel();
+    if (!_hasInlineFilter) {
+      _showSkeleton = false;
+      return;
+    }
+    _showSkeleton = true;
+    _searchDebounce = Timer(const Duration(milliseconds: 280), () {
+      if (mounted) setState(() => _showSkeleton = false);
+    });
+  }
+
+  void _toggleStatus(_RegStatus status) {
+    setState(() {
+      _activeStatus = _activeStatus == status ? null : status;
+      _beginResultsTransition();
+    });
+  }
+
+  void _openCategory(String category) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _CategoryEventsScreen(
+          category: category,
+          eventsStream: _approvedEventsStream,
+          registeredEventIdsStream: widget.registeredEventIdsStream,
+          initialCompactView: _compactView,
+          onCompactViewChanged: (v) => setState(() => _compactView = v),
+        ),
+      ),
+    );
+  }
+
   late final Future<List<QueryDocumentSnapshot>> _orgsFuture = FirebaseFirestore
       .instance
       .collection('organizations')
@@ -434,148 +500,174 @@ class _UpcomingTabState extends State<UpcomingTab>
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
 
-  DateTime? _combineDateAndTime(DateTime date, String? timeStr) {
-    if (timeStr == null || timeStr.trim().isEmpty) return null;
-    final cleaned = timeStr.trim().toUpperCase();
-    final match = RegExp(r'^(\d{1,2}):(\d{2})\s*(AM|PM)?$').firstMatch(cleaned);
-    if (match == null) return null;
-    int hour = int.parse(match.group(1)!);
-    final minute = int.parse(match.group(2)!);
-    final meridiem = match.group(3);
-    if (meridiem == 'PM' && hour != 12) hour += 12;
-    if (meridiem == 'AM' && hour == 12) hour = 0;
-    return DateTime(date.year, date.month, date.day, hour, minute);
-  }
-
   _RegStatus _statusFor(EventModel event) {
-    final now = DateTime.now();
-    final dynamic raw = event;
-    String? startTimeStr;
-    String? endTimeStr;
-    try {
-      startTimeStr = raw.startTime as String?;
-    } catch (_) {}
-    try {
-      endTimeStr = raw.endTime as String?;
-    } catch (_) {}
-
-    final start = _combineDateAndTime(event.date, startTimeStr) ?? event.date;
-    final end =
-        _combineDateAndTime(event.date, endTimeStr) ??
-        DateTime(event.date.year, event.date.month, event.date.day, 23, 59);
-
-    if (now.isBefore(start)) return _RegStatus.upcoming;
-    if (now.isAfter(end)) return _RegStatus.completed;
-    return _RegStatus.ongoing;
+    switch (event.timeStatus) {
+      case EventTimeStatus.upcoming:
+        return _RegStatus.upcoming;
+      case EventTimeStatus.ongoing:
+        return _RegStatus.ongoing;
+      case EventTimeStatus.completed:
+        return _RegStatus.completed;
+    }
   }
 
   String get _emptyStateMessage {
-    switch (_selectedFilter) {
+    final q = _searchQuery.trim();
+    if (q.isNotEmpty) return 'No events match "$q"';
+    switch (_activeStatus) {
       case _RegStatus.upcoming:
         return 'No upcoming events';
       case _RegStatus.ongoing:
         return 'No ongoing events';
       case _RegStatus.completed:
         return 'No past events';
+      case null:
+        return 'No events found';
     }
   }
 
   IconData get _emptyStateIcon {
-    switch (_selectedFilter) {
+    switch (_activeStatus) {
       case _RegStatus.upcoming:
         return Icons.event_available;
       case _RegStatus.ongoing:
         return Icons.event_repeat;
       case _RegStatus.completed:
+      case null:
         return Icons.event_busy;
     }
   }
 
-  // Always-visible 3-way pill selector — replaces the old dropdown so the
-  // three event categories read as distinct sections at a glance instead of
-  // being hidden behind a menu.
-  Widget _buildSegmentedControl() {
+  // Compact single-select filter chips — tapping one filters the landing
+  // page in place, tapping the active one clears it back to the tile grid.
+  Widget _buildStatusChips() {
     const options = [
       (_RegStatus.upcoming, 'Upcoming'),
       (_RegStatus.ongoing, 'Ongoing'),
       (_RegStatus.completed, 'Past'),
     ];
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: options.map((opt) {
-          final isActive = _selectedFilter == opt.$1;
-          final isOngoingPill = opt.$1 == _RegStatus.ongoing;
-          return Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() => _selectedFilter = opt.$1),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(vertical: 9),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final opt in options) ...[
+          _buildStatusChip(opt.$1, opt.$2),
+          if (opt != options.last) const SizedBox(width: 6),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildStatusChip(_RegStatus status, String label) {
+    final isOngoingChip = status == _RegStatus.ongoing;
+    final selected = _activeStatus == status;
+    return GestureDetector(
+      onTap: () => _toggleStatus(status),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primaryDark : Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(9),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isOngoingChip) ...[
+              Container(
+                width: 6,
+                height: 6,
                 decoration: BoxDecoration(
-                  color: isActive ? AppColors.primaryDark : Colors.transparent,
-                  borderRadius: BorderRadius.circular(9),
-                  boxShadow: isActive
-                      ? [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
-                            blurRadius: 6,
-                            offset: const Offset(0, 2),
-                          ),
-                        ]
-                      : null,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (isOngoingPill) ...[
-                      Container(
-                        width: 6,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: isActive ? Colors.white : Colors.green,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 5),
-                    ],
-                    Text(
-                      opt.$2,
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
-                        color: isActive ? Colors.white : Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
+                  color: selected ? Colors.white : Colors.green,
+                  shape: BoxShape.circle,
                 ),
               ),
+              const SizedBox(width: 5),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: selected ? Colors.white : Colors.grey.shade700,
+              ),
             ),
-          );
-        }).toList(),
+          ],
+        ),
       ),
     );
   }
 
-  void _openDetail(EventModel event) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => EventDetailScreen(
-          event: event,
-          onRegistered: () => setState(() {}),
-          isPastEvent: event.isPast,
-        ),
+  // Landing page for Discover — a grid of category tiles shown before any
+  // category is picked. Colors/icons come from feed_cards.dart's shared
+  // per-category map so this stays visually consistent with the category
+  // colors already used on Home's event feed.
+  Widget _buildCategoryGrid() {
+    return GridView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        childAspectRatio: 1.1,
       ),
+      itemCount: _categories.length,
+      itemBuilder: (context, index) {
+        final category = _categories[index];
+        final color = feedCategoryColor(category);
+        return GestureDetector(
+          onTap: () => _openCategory(category),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [color, Color.lerp(color, Colors.black, 0.35)!],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withAlpha(23),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Stack(
+              children: [
+                Positioned(
+                  right: -8,
+                  bottom: -8,
+                  child: Icon(
+                    feedCategoryIcon(category),
+                    size: 84,
+                    color: Colors.white.withAlpha(46),
+                  ),
+                ),
+                Positioned(
+                  left: 12,
+                  right: 12,
+                  bottom: 12,
+                  child: Text(
+                    category,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -595,137 +687,142 @@ class _UpcomingTabState extends State<UpcomingTab>
               );
             }
 
-            final allApprovedEvents = snap.data!.docs
-                .map((d) => EventModel.fromFirestore(d))
-                .toList();
+            final orgDropdownAndChips = Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: FutureBuilder<List<QueryDocumentSnapshot>>(
+                      future: _orgsFuture,
+                      builder: (context, orgSnap) {
+                        final orgs = orgSnap.data ?? const [];
+                        return _OrgFilterDropdown(
+                          orgs: orgs,
+                          selectedOrgId: _selectedOrgId,
+                          onChanged: (id) => setState(() {
+                            _selectedOrgId = id;
+                            _beginResultsTransition();
+                          }),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _buildStatusChips(),
+                ],
+              ),
+            );
 
-            final query = _searchQuery.trim().toLowerCase();
-            final allEvents = allApprovedEvents.where((e) {
-              if (_statusFor(e) != _selectedFilter) return false;
-              if (_selectedOrgId != null && e.orgId != _selectedOrgId) {
-                return false;
-              }
-              if (query.isNotEmpty &&
-                  !e.title.toLowerCase().contains(query) &&
-                  !e.orgName.toLowerCase().contains(query)) {
-                return false;
-              }
-              return true;
-            }).toList();
+            final searchField = TextField(
+              controller: _searchCtrl,
+              onChanged: (v) => setState(() {
+                _searchQuery = v;
+                _beginResultsTransition();
+              }),
+              style: const TextStyle(fontSize: 13.5),
+              decoration: InputDecoration(
+                hintText: 'Search events or organizations',
+                hintStyle: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+                prefixIcon: const Icon(Icons.search, size: 20),
+                suffixIcon: _searchQuery.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close, size: 18),
+                        onPressed: () => setState(() {
+                          _searchCtrl.clear();
+                          _searchQuery = '';
+                          _beginResultsTransition();
+                        }),
+                      ),
+                isDense: true,
+                filled: true,
+                fillColor: Colors.grey.shade100,
+                contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            );
+            final searchBar = Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: searchField,
+            );
 
-            // Past events read best most-recent-first; upcoming/ongoing stay
-            // in ascending date order (already sorted by the Firestore query).
-            if (_selectedFilter == _RegStatus.completed) {
-              allEvents.sort((a, b) => b.date.compareTo(a.date));
+            // Everything below the controls swaps in place: category tiles
+            // by default, the filtered results as soon as any of search /
+            // status chip / org is active. Only a tile leaves this page.
+            final Widget body;
+            if (!_hasInlineFilter) {
+              body = KeyedSubtree(
+                key: const ValueKey('categories'),
+                child: _buildCategoryGrid(),
+              );
+            } else if (_showSkeleton) {
+              // Scroll view only so the fixed-height placeholders clip
+              // instead of overflowing on short screens.
+              body = SingleChildScrollView(
+                key: const ValueKey('skeleton'),
+                physics: const NeverScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
+                child: SkeletonLoader(
+                  count: _compactView ? 5 : 4,
+                  height: _compactView ? 110 : 190,
+                  borderRadius: 16,
+                ),
+              );
+            } else {
+              final query = _searchQuery.trim().toLowerCase();
+              final events =
+                  snap.data!.docs.map((d) => EventModel.fromFirestore(d)).where(
+                    (e) {
+                      if (_activeStatus != null &&
+                          _statusFor(e) != _activeStatus) {
+                        return false;
+                      }
+                      if (_selectedOrgId != null && e.orgId != _selectedOrgId) {
+                        return false;
+                      }
+                      if (query.isNotEmpty &&
+                          !e.title.toLowerCase().contains(query) &&
+                          !e.orgName.toLowerCase().contains(query)) {
+                        return false;
+                      }
+                      return true;
+                    },
+                  ).toList()
+                    ..sort(_latestFirst);
+
+              body = Column(
+                key: const ValueKey('results'),
+                children: [
+                  _ViewToggleRow(
+                    compact: _compactView,
+                    onChanged: (v) => setState(() => _compactView = v),
+                  ),
+                  Expanded(
+                    child: _EventResultsList(
+                      events: events,
+                      registeredIds: regIds,
+                      compact: _compactView,
+                      emptyMessage: _emptyStateMessage,
+                      emptyIcon: _emptyStateIcon,
+                      onRegistered: () => setState(() {}),
+                    ),
+                  ),
+                ],
+              );
             }
-
-            final isOngoing = _selectedFilter == _RegStatus.ongoing;
 
             return Column(
               children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                  child: TextField(
-                    controller: _searchCtrl,
-                    onChanged: (v) => setState(() => _searchQuery = v),
-                    style: const TextStyle(fontSize: 13.5),
-                    decoration: InputDecoration(
-                      hintText: 'Search events or organizations',
-                      hintStyle: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey.shade500,
-                      ),
-                      prefixIcon: const Icon(Icons.search, size: 20),
-                      suffixIcon: _searchQuery.isEmpty
-                          ? null
-                          : IconButton(
-                              icon: const Icon(Icons.close, size: 18),
-                              onPressed: () => setState(() {
-                                _searchCtrl.clear();
-                                _searchQuery = '';
-                              }),
-                            ),
-                      isDense: true,
-                      filled: true,
-                      fillColor: Colors.grey.shade100,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: FutureBuilder<List<QueryDocumentSnapshot>>(
-                          future: _orgsFuture,
-                          builder: (context, orgSnap) {
-                            final orgs = orgSnap.data ?? const [];
-                            return _OrgFilterDropdown(
-                              orgs: orgs,
-                              selectedOrgId: _selectedOrgId,
-                              onChanged: (id) =>
-                                  setState(() => _selectedOrgId = id),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                  child: Row(
-                    children: [
-                      Expanded(child: _buildSegmentedControl()),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        icon: Icon(
-                          _compactView
-                              ? Icons.view_list_rounded
-                              : Icons.grid_view_rounded,
-                          color: AppColors.primaryDark,
-                        ),
-                        tooltip: _compactView
-                            ? 'Switch to list view'
-                            : 'Switch to grid view',
-                        onPressed: () {
-                          setState(() => _compactView = !_compactView);
-                        },
-                      ),
-                    ],
-                  ),
-                ),
+                searchBar,
+                orgDropdownAndChips,
                 Expanded(
-                  child: allEvents.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                _emptyStateIcon,
-                                size: 64,
-                                color: Colors.grey,
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                _emptyStateMessage,
-                                style: const TextStyle(
-                                  fontSize: 15,
-                                  color: Colors.grey,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      : (_compactView
-                            ? _buildCompactGrid(allEvents, regIds, isOngoing)
-                            : _buildDetailedList(allEvents, regIds, isOngoing)),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    child: body,
+                  ),
                 ),
               ],
             );
@@ -734,55 +831,537 @@ class _UpcomingTabState extends State<UpcomingTab>
       },
     );
   }
+}
 
-  Widget _buildDetailedList(
-    List<EventModel> events,
-    Set<String> regIds,
-    bool isOngoing,
-  ) {
+// Not-yet-completed events soonest-first, then completed events
+// most-recently-ended-first — generalizes the old "Past sorts descending,
+// everything else ascending" special case to a mixed (any-status) list.
+int _latestFirst(EventModel a, EventModel b) {
+  final aDone = a.timeStatus == EventTimeStatus.completed;
+  final bDone = b.timeStatus == EventTimeStatus.completed;
+  if (aDone != bDone) return aDone ? 1 : -1;
+  return aDone
+      ? b.date.compareTo(a.date)
+      : a.fullDateTime.compareTo(b.fullDateTime);
+}
+
+class _ViewToggleRow extends StatelessWidget {
+  final bool compact;
+  final ValueChanged<bool> onChanged;
+
+  const _ViewToggleRow({required this.compact, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          IconButton(
+            icon: Icon(
+              compact ? Icons.view_list_rounded : Icons.grid_view_rounded,
+              color: AppColors.primaryDark,
+            ),
+            tooltip: compact ? 'Switch to list view' : 'Switch to grid view',
+            onPressed: () => onChanged(!compact),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Shared results surface for the Discover landing page and the per-category
+// screen — same cards, same empty state, same detail navigation.
+class _EventResultsList extends StatelessWidget {
+  final List<EventModel> events;
+  final Set<String> registeredIds;
+  final bool compact;
+  final String emptyMessage;
+  final IconData emptyIcon;
+  final VoidCallback onRegistered;
+
+  const _EventResultsList({
+    required this.events,
+    required this.registeredIds,
+    required this.compact,
+    required this.emptyMessage,
+    required this.emptyIcon,
+    required this.onRegistered,
+  });
+
+  void _openDetail(BuildContext context, EventModel event) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EventDetailScreen(
+          event: event,
+          onRegistered: onRegistered,
+          isPastEvent: event.isPast,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (events.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(emptyIcon, size: 64, color: Colors.grey),
+            const SizedBox(height: 12),
+            Text(
+              emptyMessage,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 15,
+                color: Colors.grey,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (compact) {
+      return GridView.builder(
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+          childAspectRatio: 0.72,
+        ),
+        itemCount: events.length,
+        itemBuilder: (context, index) {
+          final event = events[index];
+          return _CompactUpcomingCard(
+            event: event,
+            isRegistered: registeredIds.contains(event.id),
+            showLiveBadge: event.timeStatus == EventTimeStatus.ongoing,
+            onTap: () => _openDetail(context, event),
+          );
+        },
+      );
+    }
+
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       itemCount: events.length,
       itemBuilder: (context, index) {
         final event = events[index];
-        final isRegistered = regIds.contains(event.id);
         return Padding(
           padding: const EdgeInsets.only(bottom: 16),
           child: _UpcomingEventCard(
             event: event,
-            isRegistered: isRegistered,
-            showLiveBadge: isOngoing,
-            onTap: () => _openDetail(event),
+            isRegistered: registeredIds.contains(event.id),
+            showLiveBadge: event.timeStatus == EventTimeStatus.ongoing,
+            onTap: () => _openDetail(context, event),
           ),
         );
       },
     );
   }
+}
 
-  Widget _buildCompactGrid(
-    List<EventModel> events,
-    Set<String> regIds,
-    bool isOngoing,
-  ) {
-    return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 0.72,
+// Per-category results, pushed from a Discover tile — the only thing on the
+// Discover landing page that navigates. Its search box and date/sort filters
+// are its own; nothing is inherited from the landing page's filters except
+// the grid/list preference, which is mirrored back out.
+class _CategoryEventsScreen extends StatefulWidget {
+  final String category;
+  final Stream<QuerySnapshot> eventsStream;
+  final Stream<Set<String>> registeredEventIdsStream;
+  final bool initialCompactView;
+  final ValueChanged<bool> onCompactViewChanged;
+
+  const _CategoryEventsScreen({
+    required this.category,
+    required this.eventsStream,
+    required this.registeredEventIdsStream,
+    required this.initialCompactView,
+    required this.onCompactViewChanged,
+  });
+
+  @override
+  State<_CategoryEventsScreen> createState() => _CategoryEventsScreenState();
+}
+
+class _CategoryEventsScreenState extends State<_CategoryEventsScreen> {
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _searchQuery = '';
+  late bool _compactView = widget.initialCompactView;
+
+  _DateBucket? _dateBucket;
+  DateTime? _customDate;
+  _SortBy _sortBy = _SortBy.latest;
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  void _setCompactView(bool v) {
+    setState(() => _compactView = v);
+    widget.onCompactViewChanged(v);
+  }
+
+  bool _matchesDateBucket(EventModel e) {
+    final bucket = _dateBucket;
+    if (bucket == null) return true;
+    final now = DateTime.now();
+    bool sameDay(DateTime a, DateTime b) =>
+        a.year == b.year && a.month == b.month && a.day == b.day;
+    switch (bucket) {
+      case _DateBucket.today:
+        return sameDay(e.date, now);
+      case _DateBucket.thisWeek:
+        final startOfWeek = DateTime(
+          now.year,
+          now.month,
+          now.day,
+        ).subtract(Duration(days: now.weekday - 1));
+        final endOfWeek = startOfWeek.add(const Duration(days: 7));
+        return !e.date.isBefore(startOfWeek) && e.date.isBefore(endOfWeek);
+      case _DateBucket.thisMonth:
+        return e.date.year == now.year && e.date.month == now.month;
+      case _DateBucket.custom:
+        return _customDate != null && sameDay(e.date, _customDate!);
+    }
+  }
+
+  void _sortEvents(List<EventModel> events) {
+    switch (_sortBy) {
+      case _SortBy.latest:
+        events.sort(_latestFirst);
+        break;
+      case _SortBy.mostPopular:
+        events.sort((a, b) {
+          final byCount = b.registeredCount.compareTo(a.registeredCount);
+          return byCount != 0 ? byCount : _latestFirst(a, b);
+        });
+        break;
+    }
+  }
+
+  // Selections stay pending inside the sheet — nothing reaches the results
+  // list until "Filter" is tapped, so dismissing the sheet discards them.
+  Future<void> _showFilterSheet() async {
+    var pendingBucket = _dateBucket;
+    var pendingCustom = _customDate;
+    var pendingSort = _sortBy;
+
+    final applied = await showModalBottomSheet<bool>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      itemCount: events.length,
-      itemBuilder: (context, index) {
-        final event = events[index];
-        final isRegistered = regIds.contains(event.id);
-        return _CompactUpcomingCard(
-          event: event,
-          isRegistered: isRegistered,
-          showLiveBadge: isOngoing,
-          onTap: () => _openDetail(event),
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            Widget optionRow({
+              required String label,
+              required bool selected,
+              required VoidCallback onTap,
+            }) {
+              return InkWell(
+                onTap: onTap,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        selected
+                            ? Icons.check_box_rounded
+                            : Icons.check_box_outline_blank_rounded,
+                        color: selected
+                            ? AppColors.primaryDark
+                            : Colors.grey.shade400,
+                        size: 22,
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: selected
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          color: selected ? Colors.black87 : Colors.black54,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            void pickBucket(_DateBucket bucket) {
+              setSheetState(() {
+                pendingBucket = pendingBucket == bucket ? null : bucket;
+                if (pendingBucket != _DateBucket.custom) pendingCustom = null;
+              });
+            }
+
+            return SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(20, 18, 20, 4),
+                    child: Text(
+                      'Date and Time',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  optionRow(
+                    label: 'Today',
+                    selected: pendingBucket == _DateBucket.today,
+                    onTap: () => pickBucket(_DateBucket.today),
+                  ),
+                  optionRow(
+                    label: 'This Week',
+                    selected: pendingBucket == _DateBucket.thisWeek,
+                    onTap: () => pickBucket(_DateBucket.thisWeek),
+                  ),
+                  optionRow(
+                    label: 'This Month',
+                    selected: pendingBucket == _DateBucket.thisMonth,
+                    onTap: () => pickBucket(_DateBucket.thisMonth),
+                  ),
+                  optionRow(
+                    label:
+                        pendingBucket == _DateBucket.custom &&
+                            pendingCustom != null
+                        ? 'Pick a Date — ${DateFormat('MMM d, yyyy').format(pendingCustom!)}'
+                        : 'Pick a Date (Custom)',
+                    selected: pendingBucket == _DateBucket.custom,
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: sheetContext,
+                        initialDate: pendingCustom ?? DateTime.now(),
+                        firstDate: DateTime.now().subtract(
+                          const Duration(days: 365),
+                        ),
+                        lastDate: DateTime.now().add(
+                          const Duration(days: 365 * 2),
+                        ),
+                      );
+                      if (picked == null) return;
+                      setSheetState(() {
+                        pendingBucket = _DateBucket.custom;
+                        pendingCustom = picked;
+                      });
+                    },
+                  ),
+                  const Divider(height: 24),
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(20, 0, 20, 4),
+                    child: Text(
+                      'Sort By',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  optionRow(
+                    label: 'Latest',
+                    selected: pendingSort == _SortBy.latest,
+                    onTap: () => setSheetState(() => pendingSort = _SortBy.latest),
+                  ),
+                  optionRow(
+                    label: 'Most Popular (Most registered event)',
+                    selected: pendingSort == _SortBy.mostPopular,
+                    onTap: () =>
+                        setSheetState(() => pendingSort = _SortBy.mostPopular),
+                  ),
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.pop(sheetContext, true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primaryDark,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text(
+                          'Filter',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         );
       },
+    );
+
+    if (applied != true || !mounted) return;
+    setState(() {
+      _dateBucket = pendingBucket;
+      _customDate = pendingCustom;
+      _sortBy = pendingSort;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final activeFilterCount =
+        (_dateBucket != null ? 1 : 0) + (_sortBy != _SortBy.latest ? 1 : 0);
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        foregroundColor: AppColors.textPrimary,
+        title: Text(
+          widget.category,
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+        ),
+      ),
+      body: StreamBuilder<Set<String>>(
+        stream: widget.registeredEventIdsStream,
+        builder: (context, regSnap) {
+          final regIds = regSnap.data ?? <String>{};
+          return StreamBuilder<QuerySnapshot>(
+            stream: widget.eventsStream,
+            builder: (context, snap) {
+              if (!snap.hasData) {
+                return const Center(
+                  child: CircularProgressIndicator(
+                    color: AppColors.primaryDark,
+                  ),
+                );
+              }
+
+              final query = _searchQuery.trim().toLowerCase();
+              final events = snap.data!.docs
+                  .map((d) => EventModel.fromFirestore(d))
+                  .where((e) {
+                    if (e.category != widget.category) return false;
+                    if (query.isNotEmpty &&
+                        !e.title.toLowerCase().contains(query) &&
+                        !e.orgName.toLowerCase().contains(query)) {
+                      return false;
+                    }
+                    return _matchesDateBucket(e);
+                  })
+                  .toList();
+              _sortEvents(events);
+
+              return Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _searchCtrl,
+                            onChanged: (v) => setState(() => _searchQuery = v),
+                            style: const TextStyle(fontSize: 13.5),
+                            decoration: InputDecoration(
+                              hintText: 'Search in ${widget.category}',
+                              hintStyle: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey.shade500,
+                              ),
+                              prefixIcon: const Icon(Icons.search, size: 20),
+                              suffixIcon: _searchQuery.isEmpty
+                                  ? null
+                                  : IconButton(
+                                      icon: const Icon(Icons.close, size: 18),
+                                      onPressed: () => setState(() {
+                                        _searchCtrl.clear();
+                                        _searchQuery = '';
+                                      }),
+                                    ),
+                              isDense: true,
+                              filled: true,
+                              fillColor: Colors.grey.shade100,
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 10,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide.none,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Badge(
+                          isLabelVisible: activeFilterCount > 0,
+                          label: Text('$activeFilterCount'),
+                          child: Material(
+                            color: AppColors.primaryDark,
+                            borderRadius: BorderRadius.circular(12),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: _showFilterSheet,
+                              child: const Padding(
+                                padding: EdgeInsets.all(11),
+                                child: Icon(
+                                  Icons.tune_rounded,
+                                  size: 18,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  _ViewToggleRow(
+                    compact: _compactView,
+                    onChanged: _setCompactView,
+                  ),
+                  Expanded(
+                    child: _EventResultsList(
+                      events: events,
+                      registeredIds: regIds,
+                      compact: _compactView,
+                      emptyMessage: query.isNotEmpty
+                          ? 'No events match "${_searchQuery.trim()}"'
+                          : 'No events in ${widget.category}',
+                      emptyIcon: Icons.event_busy,
+                      onRegistered: () => setState(() {}),
+                    ),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }
@@ -1004,6 +1583,8 @@ class MyEventsTab extends StatefulWidget {
 enum _ViewFilter { all, active, archived }
 
 enum _RegStatus { upcoming, ongoing, completed }
+enum _DateBucket { today, thisWeek, thisMonth, custom }
+enum _SortBy { latest, mostPopular }
 
 // Activity status for My Events — distinct from _RegStatus (which is a
 // pure time-based upcoming/ongoing/past used by the Discover tab).
@@ -1094,39 +1675,15 @@ class _MyEventsTabState extends State<MyEventsTab>
     }
   }
 
-  DateTime? _combineDateAndTime(DateTime date, String? timeStr) {
-    if (timeStr == null || timeStr.trim().isEmpty) return null;
-    final cleaned = timeStr.trim().toUpperCase();
-    final match = RegExp(r'^(\d{1,2}):(\d{2})\s*(AM|PM)?$').firstMatch(cleaned);
-    if (match == null) return null;
-    int hour = int.parse(match.group(1)!);
-    final minute = int.parse(match.group(2)!);
-    final meridiem = match.group(3);
-    if (meridiem == 'PM' && hour != 12) hour += 12;
-    if (meridiem == 'AM' && hour == 12) hour = 0;
-    return DateTime(date.year, date.month, date.day, hour, minute);
-  }
-
   _RegStatus _statusFor(EventModel event) {
-    final now = DateTime.now();
-    final dynamic raw = event;
-    String? startTimeStr;
-    String? endTimeStr;
-    try {
-      startTimeStr = raw.startTime as String?;
-    } catch (_) {}
-    try {
-      endTimeStr = raw.endTime as String?;
-    } catch (_) {}
-
-    final start = _combineDateAndTime(event.date, startTimeStr) ?? event.date;
-    final end =
-        _combineDateAndTime(event.date, endTimeStr) ??
-        DateTime(event.date.year, event.date.month, event.date.day, 23, 59);
-
-    if (now.isBefore(start)) return _RegStatus.upcoming;
-    if (now.isAfter(end)) return _RegStatus.completed;
-    return _RegStatus.ongoing;
+    switch (event.timeStatus) {
+      case EventTimeStatus.upcoming:
+        return _RegStatus.upcoming;
+      case EventTimeStatus.ongoing:
+        return _RegStatus.ongoing;
+      case EventTimeStatus.completed:
+        return _RegStatus.completed;
+    }
   }
 
   void _openDetail(EventModel event, bool isPast) {
@@ -2688,44 +3245,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   bool _checkingFeedback = true;
   bool _submittingFeedback = false;
 
-  bool get _isEventReallyOver {
-    try {
-      final event = widget.event;
-      final dynamic raw = event;
-      String? endTimeStr;
-      try {
-        endTimeStr = raw.endTime as String?;
-      } catch (_) {
-        endTimeStr = null;
-      }
-
-      if (endTimeStr == null || endTimeStr.trim().isEmpty) {
-        return widget.isPastEvent;
-      }
-
-      final parsedEnd = _combineDateAndTimeString(event.date, endTimeStr);
-      if (parsedEnd == null) return widget.isPastEvent;
-
-      return DateTime.now().isAfter(parsedEnd);
-    } catch (_) {
-      return widget.isPastEvent;
-    }
-  }
-
-  DateTime? _combineDateAndTimeString(DateTime date, String timeStr) {
-    final cleaned = timeStr.trim().toUpperCase();
-    final match = RegExp(r'^(\d{1,2}):(\d{2})\s*(AM|PM)?$').firstMatch(cleaned);
-    if (match == null) return null;
-
-    int hour = int.parse(match.group(1)!);
-    final minute = int.parse(match.group(2)!);
-    final meridiem = match.group(3);
-
-    if (meridiem == 'PM' && hour != 12) hour += 12;
-    if (meridiem == 'AM' && hour == 12) hour = 0;
-
-    return DateTime(date.year, date.month, date.day, hour, minute);
-  }
+  bool get _isEventReallyOver =>
+      widget.event.timeStatus == EventTimeStatus.completed;
 
   // Certificate status for the My Event section — same `certificates`
   // collection and `recipientUid` field the Certificates screen already
@@ -2781,12 +3302,20 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 
   Future<void> _loadRegisteredCount() async {
-    final countSnap = await FirebaseFirestore.instance
-        .collection('registrations')
-        .where('eventId', isEqualTo: widget.event.id)
-        .count()
+    // Reads the same `registeredCount` field the registration transaction
+    // maintains, instead of a separate `.count()` query — one doc read,
+    // and it can never disagree with the number the capacity gate itself
+    // is enforcing.
+    final evDoc = await FirebaseFirestore.instance
+        .collection('events')
+        .doc(widget.event.id)
         .get();
-    if (mounted) setState(() => _registeredCount = countSnap.count ?? 0);
+    if (mounted) {
+      setState(
+        () => _registeredCount =
+            (evDoc.data()?['registeredCount'] as num?)?.toInt() ?? 0,
+      );
+    }
   }
 
   @override
@@ -3583,19 +4112,22 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         if (!evDoc.exists) throw Exception('Event not found');
         final evData = evDoc.data() as Map<String, dynamic>;
 
-        // Optional, org-set — null means unlimited slots.
+        // Optional, org-set — null means unlimited slots. Read from the
+        // event doc itself (already fetched via tx.get() above) rather than
+        // a separate `.count()` query — a `.count()` aggregation can't be
+        // read transactionally, so two students registering for the last
+        // slot at the same instant could both pass that check and both
+        // commit. `registeredCount` is incremented in the same transaction
+        // as the registration write below, so Firestore's normal
+        // optimistic-concurrency retry (triggered by evDoc having been
+        // read via tx.get()) now actually protects this check. A missing
+        // field reads as 0 and self-initializes from here on.
         final capacity = (evData['capacity'] as num?)?.toInt();
-        if (capacity != null) {
-          final countSnap = await FirebaseFirestore.instance
-              .collection('registrations')
-              .where('eventId', isEqualTo: widget.event.id)
-              .count()
-              .get();
-          if ((countSnap.count ?? 0) >= capacity) {
-            throw Exception(
-              'This event has reached its maximum capacity of $capacity and is no longer accepting registrations.',
-            );
-          }
+        final registeredCount = (evData['registeredCount'] as num?)?.toInt() ?? 0;
+        if (capacity != null && registeredCount >= capacity) {
+          throw Exception(
+            'This event has reached its maximum capacity of $capacity and is no longer accepting registrations.',
+          );
         }
 
         final userDoc = await tx.get(
@@ -3626,6 +4158,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           'status': 'registered',
           if (formResponses.isNotEmpty) 'formResponses': formResponses,
         });
+        tx.update(evRef, {'registeredCount': FieldValue.increment(1)});
       });
       setState(() {
         _isRegistered = true;

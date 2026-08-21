@@ -41,4 +41,9 @@ class AppColors {
   static const Color divider = Color(0xFFE7E7E9);
   static const Color cardBg = Color(0xFFFFFFFF);
   static const Color surfaceTint = Color(0xFFFAF6F2);
+
+  // Soft brand tint used for badge/icon backgrounds on feed cards (guest's
+  // former local _kPrimaryBg) — distinct from surfaceTint, which is much
+  // lighter and used for large surface areas rather than small accents.
+  static const Color primarySoft = Color(0xFFF5E3D9);
 }

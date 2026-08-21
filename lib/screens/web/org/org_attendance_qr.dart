@@ -22,6 +22,7 @@ import 'export_pdf.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../services/notification_service.dart';
 import '../../../services/webinar_attendance_service.dart';
+import '../../../utils/helpers.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DESIGN TOKENS
@@ -286,40 +287,6 @@ class EventModel {
   }
 }
 
-// Handles both "7:30 PM" and 24-hour "19:30" startTime/endTime strings —
-// DateFormat.jm().parse() only understands the former and throws on the
-// latter, which org_event_proposals.dart's time picker can produce when the
-// organizer's device is set to 24-hour format (mirrors the same dual-format
-// logic as EventModel.fullDateTime in lib/models/event_model.dart).
-DateTime _timeOfDay(DateTime date, String timeStr) {
-  try {
-    int hour = 0;
-    int minute = 0;
-    if (timeStr.isNotEmpty) {
-      if (timeStr.toLowerCase().contains('am') ||
-          timeStr.toLowerCase().contains('pm')) {
-        final clean = timeStr
-            .replaceAll(RegExp(r'[AP]M', caseSensitive: false), '')
-            .trim();
-        final parts = clean.split(':');
-        hour = int.parse(parts[0].trim());
-        minute = int.parse(parts.length > 1 ? parts[1].trim() : '0');
-        if (timeStr.toLowerCase().contains('pm') && hour < 12) hour += 12;
-        if (timeStr.toLowerCase().contains('am') && hour == 12) hour = 0;
-      } else {
-        final parts = timeStr.split(':');
-        hour = int.parse(parts[0]);
-        minute = int.parse(
-          parts.length > 1 ? parts[1].replaceAll(RegExp(r'[^0-9]'), '') : '0',
-        );
-      }
-    }
-    return DateTime(date.year, date.month, date.day, hour, minute);
-  } catch (_) {
-    return date;
-  }
-}
-
 enum _EState { future, todayInactive, active, ended }
 
 _EState _eventState(EventModel e, {bool? activeOverride}) {
@@ -330,8 +297,8 @@ _EState _eventState(EventModel e, {bool? activeOverride}) {
   if (eDay.isAfter(today)) return _EState.future;
   if (eDay.isBefore(today)) return _EState.ended;
   try {
-    final startDt = _timeOfDay(e.date, e.startTime);
-    var endDt = _timeOfDay(e.date, e.endTime);
+    final startDt = combineDateAndTime(e.date, e.startTime);
+    var endDt = combineDateAndTime(e.date, e.endTime);
     if (endDt.isBefore(startDt)) endDt = endDt.add(const Duration(days: 1));
     if (now.isAfter(endDt.add(const Duration(minutes: 15))))
       return _EState.ended;
@@ -361,7 +328,7 @@ String _determineAttendanceStatus(
   }
 
   try {
-    final startDt = _timeOfDay(eventDate, eventStartTime);
+    final startDt = combineDateAndTime(eventDate, eventStartTime);
     final cutoffTime = startDt.add(Duration(minutes: lateAfterMinutes));
     if (DateTime.now().isAfter(cutoffTime)) {
       return 'late';

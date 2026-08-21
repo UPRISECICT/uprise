@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:intl/intl.dart';
 
 // Models
 import 'package:uprise/models/event_model.dart';
@@ -13,10 +12,11 @@ import '../../models/announcement_model.dart'; // for AnnouncementData
 // import 'package:provider/provider.dart'; // removed – not used
 
 // Widgets
-import '../../widgets/common/loading_widget.dart'; // for SkeletonLoader, UpriseErrorState, UpriseEmptyState
+import '../../widgets/common/loading_widget.dart'; // for SkeletonLoader
+import '../../widgets/common/countdown_section.dart';
+import '../../widgets/common/feed_cards.dart'; // for feedCategoryColor
 import '../../widgets/student/announcements_feed.dart';
 import '../../widgets/student/profile_summary.dart';
-import '../../widgets/student/countdown_widget.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../widgets/student/app_image.dart';
 
@@ -103,27 +103,13 @@ class _SectionHeader extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Row(
-          children: [
-            Container(
-              width: 3,
-              height: 16,
-              decoration: BoxDecoration(
-                color: AppColors.primaryDark,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: _UiTokens.headingText,
-                letterSpacing: 0.1,
-              ),
-            ),
-          ],
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
+            color: Colors.black87,
+          ),
         ),
         if (actionLabel != null)
           TextButton(
@@ -417,8 +403,22 @@ class _HomeContentState extends State<_HomeContent> {
   bool _isOffline = false;
   StreamSubscription<QuerySnapshot>? _cacheMonitor;
 
-  // Cached future for registered events – prevents duplicate queries.
-  Future<List<EventModel>>? _registeredEventsFuture;
+  // Bumped whenever refreshData() runs — used as a ValueKey on the
+  // countdown widget to force it to recreate its State (and therefore
+  // refetch), since PersonalOrNextEventCountdown otherwise only fetches
+  // once in its own initState.
+  int _countdownRefreshToken = 0;
+
+  // Cached future for upcoming events — replaces a live stream so
+  // status/audience filtering (see _fetchUpcomingEvents) can happen
+  // client-side without needing a new Firestore composite index.
+  Future<List<EventModel>>? _upcomingEventsFuture;
+
+  // The signed-in student's own students/{uid} doc — needed for both the
+  // My Organizations preview and the audience-eligibility check on
+  // Upcoming Events, fetched once and shared between them.
+  late final Future<Map<String, dynamic>?> _studentDataFuture =
+      _loadStudentData();
 
   // Membership is still a single orgId on students/{uid} today (not an
   // array) — wrapped as a 0-1 item "my organizations" list here so the UI
@@ -433,14 +433,19 @@ class _HomeContentState extends State<_HomeContent> {
   late final Future<List<QueryDocumentSnapshot>> _merchPreviewFuture =
       _loadMerchPreview();
 
-  // Both of these used to be created inline inside build() as
+  // "Organizations for you" — cached the same way as _merchPreviewFuture so
+  // scroll-triggered sliver rebuilds don't re-fire the query.
+  late final Future<List<QueryDocumentSnapshot>> _orgsPreviewFuture =
+      _loadOrgsPreview();
+
+  // Used to be created inline inside build() as
   // `stream: FirebaseFirestore.instance....snapshots()`. A new Stream
   // object has a different identity every time, so StreamBuilder treated
   // every rebuild as a brand-new subscription and reset to "waiting" —
-  // which is why the unread badge and Upcoming Events flashed their
-  // loading skeleton on every scroll frame and every time this tab was
-  // revisited. Caching the Stream once (same fix as the futures above)
-  // keeps the same live subscription across rebuilds.
+  // which is why the unread badge flashed its loading skeleton on every
+  // scroll frame and every time this tab was revisited. Caching the
+  // Stream once (same fix as the futures above) keeps the same live
+  // subscription across rebuilds.
   late final Stream<QuerySnapshot> _unreadNotifStream = FirebaseFirestore
       .instance
       .collection('notifications')
@@ -448,18 +453,10 @@ class _HomeContentState extends State<_HomeContent> {
       .where('isRead', isEqualTo: false)
       .snapshots();
 
-  late final Stream<QuerySnapshot> _upcomingEventsStream = FirebaseFirestore
-      .instance
-      .collection('events')
-      .where('date', isGreaterThanOrEqualTo: Timestamp.now())
-      .orderBy('date', descending: false)
-      .limit(5)
-      .snapshots();
-
   @override
   void initState() {
     super.initState();
-    _refreshRegisteredEvents();
+    _upcomingEventsFuture = _fetchUpcomingEvents();
 
     _cacheMonitor = FirebaseFirestore.instance
         .collection('events')
@@ -478,38 +475,43 @@ class _HomeContentState extends State<_HomeContent> {
     super.dispose();
   }
 
-  Future<_MyOrgPreview?> _loadMyOrgPreview() async {
+  Future<Map<String, dynamic>?> _loadStudentData() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return null;
     try {
-      final studentDoc = await FirebaseFirestore.instance
+      final doc = await FirebaseFirestore.instance
           .collection('students')
           .doc(user.uid)
           .get();
-      final data = studentDoc.data();
-      final orgId = (data?['orgId'] ?? '').toString();
-      if (orgId.isEmpty) return null;
-
-      String logoUrl = '';
-      try {
-        final orgDoc = await FirebaseFirestore.instance
-            .collection('organizations')
-            .doc(orgId)
-            .get();
-        logoUrl = (orgDoc.data()?['logoUrl'] ?? '').toString();
-      } catch (_) {
-        // Org preview still works without a logo.
-      }
-
-      return _MyOrgPreview(
-        orgId: orgId,
-        orgName: (data?['orgName'] ?? '').toString(),
-        isOfficer: data?['isOrgOfficer'] == true,
-        logoUrl: logoUrl,
-      );
+      return doc.data();
     } catch (_) {
       return null;
     }
+  }
+
+  Future<_MyOrgPreview?> _loadMyOrgPreview() async {
+    final data = await _studentDataFuture;
+    if (data == null) return null;
+    final orgId = (data['orgId'] ?? '').toString();
+    if (orgId.isEmpty) return null;
+
+    String logoUrl = '';
+    try {
+      final orgDoc = await FirebaseFirestore.instance
+          .collection('organizations')
+          .doc(orgId)
+          .get();
+      logoUrl = (orgDoc.data()?['logoUrl'] ?? '').toString();
+    } catch (_) {
+      // Org preview still works without a logo.
+    }
+
+    return _MyOrgPreview(
+      orgId: orgId,
+      orgName: (data['orgName'] ?? '').toString(),
+      isOfficer: data['isOrgOfficer'] == true,
+      logoUrl: logoUrl,
+    );
   }
 
   Future<List<QueryDocumentSnapshot>> _loadMerchPreview() async {
@@ -528,11 +530,51 @@ class _HomeContentState extends State<_HomeContent> {
     }
   }
 
-  // Refresh the cached future for registered events.
-  void _refreshRegisteredEvents() {
-    setState(() {
-      _registeredEventsFuture = _fetchRegisteredEvents();
-    });
+  Future<List<QueryDocumentSnapshot>> _loadOrgsPreview() async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('organizations')
+          .where('status', isEqualTo: 'active')
+          .get();
+      return snap.docs;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // Buffered (status/audience filtered client-side below) so this stays a
+  // single-field query — matches the Discover tab's own eligibility rules
+  // (EventModel.audienceAllowsMember) instead of the old unfiltered stream,
+  // which could leak pending or audience-restricted events onto Home.
+  Future<List<EventModel>> _fetchUpcomingEvents() async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('events')
+          .where('date', isGreaterThanOrEqualTo: Timestamp.now())
+          .orderBy('date', descending: false)
+          .limit(20)
+          .get();
+
+      final studentData = await _studentDataFuture;
+      final course = studentData?['course'] as String?;
+
+      return snap.docs
+          .map(EventModel.fromFirestore)
+          .where((e) => e.status == 'approved')
+          .where(
+            (e) => EventModel.audienceAllowsMember(
+              audience: e.audience,
+              eventOrgId: e.orgId,
+              userData: studentData,
+              course: course,
+            ),
+          )
+          .take(5)
+          .toList();
+    } catch (e) {
+      debugPrint('❌ Error fetching upcoming events: $e');
+      return [];
+    }
   }
 
   // Single method that fetches and returns the list of future registered events.
@@ -587,9 +629,10 @@ class _HomeContentState extends State<_HomeContent> {
   }
 
   void refreshData() {
-    _refreshRegisteredEvents();
-    // Also force rebuild of UI to reflect any other changes.
-    setState(() {});
+    setState(() {
+      _countdownRefreshToken++;
+      _upcomingEventsFuture = _fetchUpcomingEvents();
+    });
   }
 
   void _navigateToEventDetail(EventModel event) {
@@ -617,12 +660,6 @@ class _HomeContentState extends State<_HomeContent> {
     );
   }
 
-  String _formatDate(Timestamp? timestamp) {
-    if (timestamp == null) return 'TBA';
-    final date = timestamp.toDate();
-    return DateFormat('MMM dd, yyyy').format(date);
-  }
-
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -630,7 +667,19 @@ class _HomeContentState extends State<_HomeContent> {
         ? widget.userName
         : user?.displayName ?? user?.email?.split('@').first ?? 'Student';
 
-    return Container(
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      floatingActionButton: Padding(
+        // Bottom clearance so the FAB clears the outer Scaffold's
+        // BottomNavBar, which this nested Scaffold doesn't know about.
+        padding: const EdgeInsets.only(bottom: 40),
+        child: FloatingActionButton(
+          backgroundColor: AppColors.primaryDark,
+          onPressed: () => _showQuickActionsSheet(context),
+          child: const Icon(Icons.bolt_outlined, color: Colors.white),
+        ),
+      ),
+      body: Container(
       color: AppColors.background,
       child: CustomScrollView(
         slivers: [
@@ -825,98 +874,63 @@ class _HomeContentState extends State<_HomeContent> {
             ),
           ),
 
-          // Quick Actions — compact icon shortcuts, not full cards, to the
-          // student's most frequent destinations.
+          // ── Countdown — my registered events, refetched via
+          //     refreshData() (see _countdownRefreshToken above) ─────
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _QuickAction(
-                      icon: Icons.explore_outlined,
-                      label: 'Events',
-                      // Discover tab is index 0 within Events.
-                      onTap: () => widget.onNavigateToTab(1, eventsSubTab: 0),
-                    ),
-                  ),
-                  Expanded(
-                    child: _QuickAction(
-                      icon: Icons.event_available_outlined,
-                      label: 'My Events',
-                      onTap: () => widget.onNavigateToTab(1, eventsSubTab: 2),
-                    ),
-                  ),
-                  Expanded(
-                    child: _QuickAction(
-                      icon: Icons.badge_outlined,
-                      label: 'Digital ID',
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              PersonalIdentityScreen(profile: ProfileModel()),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: _QuickAction(
-                      icon: Icons.workspace_premium_outlined,
-                      label: 'Certificates',
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const StudentCertificatesScreen(),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+            child: PersonalOrNextEventCountdown(
+              key: ValueKey(_countdownRefreshToken),
+              fetchMyRegisteredEvents: FirebaseAuth.instance.currentUser != null
+                  ? _fetchRegisteredEvents
+                  : null,
             ),
           ),
 
-          // ⭐ COUNTDOWN SECTION – using the cached future
+          // Organizations for you — horizontal browse row, replaces the old
+          // Quick Actions row (those 4 shortcuts now live behind the FAB).
           SliverToBoxAdapter(
-            child: FutureBuilder<List<EventModel>>(
-              future: _registeredEventsFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  // Matches the loaded state's 240px height so this section
-                  // doesn't visibly jump/reflow once data arrives.
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                    child: SkeletonLoader(count: 1, height: 220),
-                  );
-                }
-
-                if (snapshot.hasError || !snapshot.hasData) {
-                  return const SizedBox.shrink();
-                }
-
-                final events = snapshot.data!;
-                if (events.isEmpty) {
-                  return const SizedBox.shrink();
-                }
-
-                return SizedBox(
-                  height: 240, // Increased from 150
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    itemCount: events.length,
-                    itemBuilder: (context, index) {
-                      final event = events[index];
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 12),
-                        child: SizedBox(
-                          width: 400,
-                          child: CountdownWidget(event: event),
-                        ),
-                      );
-                    },
-                  ),
+            child: FutureBuilder<List<QueryDocumentSnapshot>>(
+              future: _orgsPreviewFuture,
+              builder: (context, orgSnap) {
+                final docs = orgSnap.data ?? [];
+                if (docs.isEmpty) return const SizedBox.shrink();
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
+                      child: _SectionHeader(
+                        title: 'Organizations for you',
+                        actionLabel: 'View all',
+                        onAction: () => widget.onNavigateToTab(2),
+                      ),
+                    ),
+                    SizedBox(
+                      height: 108,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        itemCount: docs.length,
+                        itemBuilder: (context, index) {
+                          final org = docs[index].data() as Map<String, dynamic>;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 12),
+                            child: _OrgPreviewCard(
+                              name: (org['name'] ?? 'Organization').toString(),
+                              logoUrl: org['logoUrl'] as String?,
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => StudentOrganizationsDetailsScreen(
+                                    orgId: docs[index].id,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 );
               },
             ),
@@ -935,10 +949,10 @@ class _HomeContentState extends State<_HomeContent> {
             ),
           ),
 
-          // Upcoming Events - Horizontal Scroll Cards
+          // Upcoming Events — swipeable one-card carousel with arrow nav.
           SliverToBoxAdapter(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: _upcomingEventsStream,
+            child: FutureBuilder<List<EventModel>>(
+              future: _upcomingEventsFuture,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Padding(
@@ -947,160 +961,19 @@ class _HomeContentState extends State<_HomeContent> {
                   );
                 }
 
-                if (snapshot.hasError) {
-                  return const Padding(
-                    padding: EdgeInsets.all(20),
-                    child: UpriseErrorState(message: 'Could not load events.'),
-                  );
+                if (snapshot.hasError ||
+                    !snapshot.hasData ||
+                    snapshot.data!.isEmpty) {
+                  // Collapses to nothing rather than an empty-state card —
+                  // matches the My Organizations/Merchandise previews below.
+                  return const SizedBox.shrink();
                 }
 
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Padding(
-                    padding: EdgeInsets.all(20),
-                    child: UpriseEmptyState(
-                      icon: Icons.calendar_today_outlined,
-                      title: 'No upcoming events',
-                      subtitle:
-                          'Check back later for new events from your organizations.',
-                    ),
-                  );
-                }
-
-                final events = snapshot.data!.docs;
-
-                return SizedBox(
-                  height: 240,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    itemCount: events.length,
-                    itemBuilder: (context, index) {
-                      final doc = events[index];
-                      final eventData = EventModel.fromFirestore(doc);
-                      final data = doc.data() as Map<String, dynamic>;
-                      final bannerUrl = data['bannerUrl'] as String? ?? '';
-                      final eventDate = data['date'] as Timestamp?;
-                      final formattedDate = _formatDate(eventDate);
-
-                      return GestureDetector(
-                        onTap: () => _navigateToEventDetail(eventData),
-                        child: Container(
-                          width: 200,
-                          margin: const EdgeInsets.only(right: 12),
-                          decoration: _UiTokens.card(),
-                          clipBehavior: Clip.antiAlias,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              bannerUrl.isNotEmpty
-                                  ? Base64Image(
-                                      base64String: bannerUrl,
-                                      height: 100,
-                                      width: double.infinity,
-                                      fit: BoxFit.cover,
-                                    )
-                                  : Container(
-                                      height: 100,
-                                      width: double.infinity,
-                                      color: AppColors.primaryDark.withOpacity(
-                                        0.1,
-                                      ),
-                                      child: const Icon(
-                                        Icons.image_not_supported,
-                                        color: Colors.grey,
-                                        size: 40,
-                                      ),
-                                    ),
-                              Padding(
-                                padding: const EdgeInsets.all(11),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      data['title'] ?? 'Untitled Event',
-                                      style: const TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w700,
-                                        color: _UiTokens.headingText,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          Icons.calendar_today_outlined,
-                                          size: 11,
-                                          color: Colors.grey.shade500,
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Expanded(
-                                          child: Text(
-                                            formattedDate,
-                                            style: TextStyle(
-                                              fontSize: 10.5,
-                                              color: Colors.grey.shade600,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 3),
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          Icons.access_time,
-                                          size: 11,
-                                          color: Colors.grey.shade500,
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Expanded(
-                                          child: Text(
-                                            data['startTime'] ?? 'TBA',
-                                            style: TextStyle(
-                                              fontSize: 10.5,
-                                              color: Colors.grey.shade600,
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 3),
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          Icons.location_on_outlined,
-                                          size: 11,
-                                          color: Colors.grey.shade500,
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Expanded(
-                                          child: Text(
-                                            data['location'] ?? 'TBA',
-                                            style: TextStyle(
-                                              fontSize: 10.5,
-                                              color: Colors.grey.shade600,
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
+                  child: _UpcomingEventsCarousel(
+                    events: snapshot.data!,
+                    onTap: _navigateToEventDetail,
                   ),
                 );
               },
@@ -1241,6 +1114,394 @@ class _HomeContentState extends State<_HomeContent> {
           const SliverToBoxAdapter(child: SizedBox(height: 84)),
         ],
       ),
+      ),
+    );
+  }
+
+  void _showQuickActionsSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 20, 12, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Quick Actions',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: _UiTokens.headingText,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _QuickAction(
+                        icon: Icons.explore_outlined,
+                        label: 'Events',
+                        // Discover tab is index 0 within Events.
+                        onTap: () {
+                          Navigator.pop(sheetContext);
+                          widget.onNavigateToTab(1, eventsSubTab: 0);
+                        },
+                      ),
+                    ),
+                    Expanded(
+                      child: _QuickAction(
+                        icon: Icons.event_available_outlined,
+                        label: 'My Events',
+                        onTap: () {
+                          Navigator.pop(sheetContext);
+                          widget.onNavigateToTab(1, eventsSubTab: 2);
+                        },
+                      ),
+                    ),
+                    Expanded(
+                      child: _QuickAction(
+                        icon: Icons.badge_outlined,
+                        label: 'Digital ID',
+                        onTap: () {
+                          Navigator.pop(sheetContext);
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  PersonalIdentityScreen(profile: ProfileModel()),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    Expanded(
+                      child: _QuickAction(
+                        icon: Icons.workspace_premium_outlined,
+                        label: 'Certificates',
+                        onTap: () {
+                          Navigator.pop(sheetContext);
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const StudentCertificatesScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// One card in the Upcoming Events carousel — white rounded card with a
+// top-inset banner, then a date/time row, title, and location row below it.
+class _UpcomingEventCard extends StatelessWidget {
+  final EventModel event;
+  final VoidCallback onTap;
+
+  const _UpcomingEventCard({required this.event, required this.onTap});
+
+  String get _location => event.location.trim();
+
+  String get _orgName => event.orgName.trim();
+
+  // Matches the date/time format FeedEventCard used to show, e.g.
+  // "Fri, Jul 3 · 4:00 PM".
+  String _formatDateTime(DateTime dt) {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    const wdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final min = dt.minute.toString().padLeft(2, '0');
+    final ampm = dt.hour < 12 ? 'AM' : 'PM';
+    return '${wdays[dt.weekday - 1]}, ${months[dt.month - 1]} ${dt.day}'
+        ' · $h:$min $ampm';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bannerUrl = event.bannerUrl ?? '';
+    final catColor = feedCategoryColor(event.category);
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withAlpha(20),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: SizedBox(
+                height: 200,
+                width: double.infinity,
+                child: bannerUrl.isNotEmpty
+                    ? Base64Image(
+                        base64String: bannerUrl,
+                        height: 200,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                      )
+                    : Container(
+                        color: AppColors.primaryDark.withAlpha(31),
+                        child: const Center(
+                          child: Icon(
+                            Icons.image_outlined,
+                            color: AppColors.primaryDark,
+                            size: 32,
+                          ),
+                        ),
+                      ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            // ── Date + time ──────────────────────────────────
+            Row(
+              children: [
+                Icon(Icons.access_time_rounded, size: 13, color: catColor),
+                const SizedBox(width: 5),
+                Expanded(
+                  child: Text(
+                    _formatDateTime(event.fullDateTime),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: catColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(color: catColor, shape: BoxShape.circle),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              event.title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: _UiTokens.headingText,
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                height: 1.2,
+              ),
+            ),
+            if (_location.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.location_on_outlined,
+                    size: 13,
+                    color: Colors.grey,
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      _location,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: _UiTokens.mutedText,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            if (_orgName.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.groups_outlined,
+                    size: 13,
+                    color: Colors.grey,
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      _orgName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: _UiTokens.mutedText,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Swipeable one-card-at-a-time carousel over every upcoming event, with
+// arrow-button navigation and a page-dot indicator.
+class _UpcomingEventsCarousel extends StatefulWidget {
+  final List<EventModel> events;
+  final void Function(EventModel event) onTap;
+
+  const _UpcomingEventsCarousel({required this.events, required this.onTap});
+
+  @override
+  State<_UpcomingEventsCarousel> createState() => _UpcomingEventsCarouselState();
+}
+
+class _UpcomingEventsCarouselState extends State<_UpcomingEventsCarousel> {
+  final _controller = PageController();
+  int _page = 0;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _goToPage(int page) {
+    _controller.animateToPage(
+      page,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
+  }
+
+  Widget _navArrow({required IconData icon, required VoidCallback? onTap}) {
+    return Opacity(
+      opacity: onTap != null ? 1 : 0.35,
+      child: Material(
+        color: Colors.white,
+        shape: const CircleBorder(),
+        elevation: 3,
+        shadowColor: Colors.black26,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onTap,
+          child: SizedBox(
+            width: 34,
+            height: 34,
+            child: Icon(icon, size: 18, color: AppColors.primaryDark),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.events.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      children: [
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            SizedBox(
+              height: 350,
+              child: PageView.builder(
+                controller: _controller,
+                onPageChanged: (i) => setState(() => _page = i),
+                itemCount: widget.events.length,
+                itemBuilder: (context, index) {
+                  final event = widget.events[index];
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: _UpcomingEventCard(
+                      event: event,
+                      onTap: () => widget.onTap(event),
+                    ),
+                  );
+                },
+              ),
+            ),
+            if (widget.events.length > 1) ...[
+              Positioned(
+                left: 6,
+                child: _navArrow(
+                  icon: Icons.chevron_left,
+                  onTap: _page > 0 ? () => _goToPage(_page - 1) : null,
+                ),
+              ),
+              Positioned(
+                right: 6,
+                child: _navArrow(
+                  icon: Icons.chevron_right,
+                  onTap: _page < widget.events.length - 1
+                      ? () => _goToPage(_page + 1)
+                      : null,
+                ),
+              ),
+            ],
+          ],
+        ),
+        // A single upcoming event needs no page indicator.
+        if (widget.events.length > 1) ...[
+          const SizedBox(height: 8),
+          // Scrollable rather than a plain centered Row — the full
+          // upcoming-events list has no cap, so a long list of dots could
+          // otherwise overflow the screen width.
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(widget.events.length, (i) {
+                final active = i == _page;
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  width: active ? 18 : 6,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: active
+                        ? AppColors.primaryDark
+                        : AppColors.primaryDark.withAlpha(51),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                );
+              }),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -1376,6 +1637,71 @@ class _MyOrgPreviewTile extends StatelessWidget {
                   color: AppColors.primaryDark,
                 ),
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _OrgPreviewCard extends StatelessWidget {
+  final String name;
+  final String? logoUrl;
+  final VoidCallback onTap;
+
+  const _OrgPreviewCard({
+    required this.name,
+    required this.logoUrl,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final logoImage = AppImage.provider(logoUrl ?? '');
+    final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(_UiTokens.radius),
+      child: SizedBox(
+        width: 84,
+        child: Column(
+          children: [
+            Container(
+              width: 68,
+              height: 68,
+              decoration: BoxDecoration(
+                color: AppColors.primaryDark.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(18),
+                image: logoImage != null
+                    ? DecorationImage(image: logoImage, fit: BoxFit.cover)
+                    : null,
+              ),
+              child: logoImage == null
+                  ? Center(
+                      child: Text(
+                        initial,
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.primaryDark,
+                        ),
+                      ),
+                    )
+                  : null,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              name,
+              style: const TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                color: _UiTokens.headingText,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),

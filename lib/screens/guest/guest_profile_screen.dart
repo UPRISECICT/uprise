@@ -23,6 +23,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/activity_logger.dart' as activity_log;
+import '../../widgets/common/app_intro.dart';
 import '../../widgets/common/loading_widget.dart';
 import '../../widgets/common/terms_and_conditions.dart';
 import 'guest_auth_service.dart';
@@ -1275,6 +1276,11 @@ class RegistrationScreenState extends State<RegistrationScreen>
   bool _isLoading = false;
   bool _agreedToTerms = false;
   int _currentStep = 0;
+  // Shown once per visit to this screen, ahead of Personal Info — this
+  // screen can be reached repeatedly (withdraw-and-reapply is a supported
+  // guest flow), so a returning applicant sees the guide again each time
+  // rather than needing a persisted "seen" flag.
+  bool _showIntro = true;
   // Drives both which fields this signup collects (BulSUan needs
   // college/year/section; Outsider needs an affiliation instead) and which
   // event/announcement audiences the guest can see once approved
@@ -1522,6 +1528,13 @@ class RegistrationScreenState extends State<RegistrationScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (_showIntro) {
+      return AppIntroScreen(
+        slides: kGuestIntroSlides,
+        onDone: () => setState(() => _showIntro = false),
+      );
+    }
+
     return Scaffold(
       backgroundColor: _kBg,
       appBar: AppBar(

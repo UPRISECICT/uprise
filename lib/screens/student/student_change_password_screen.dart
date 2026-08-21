@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../services/activity_logger.dart' as activity_log;
+import '../../widgets/common/app_intro.dart';
 import '../../widgets/common/terms_and_conditions.dart';
 import '../../widgets/student/app_colors.dart';
 import 'student_login.dart';
@@ -21,6 +22,12 @@ class _StudentChangePasswordScreenState
       TextEditingController();
   bool _isLoading = false;
   bool _agreedToTerms = false;
+
+  // This screen is only ever reached once per account (mustChangePassword
+  // flips to false permanently after the first successful change), so a
+  // short "what is UPRISE" guide shown as the first step here naturally
+  // runs exactly once per student without needing a persisted flag.
+  bool _showIntro = true;
 
   // UI-only state — does not affect the change-password logic below.
   bool _obscureNew = true;
@@ -158,6 +165,13 @@ class _StudentChangePasswordScreenState
 
   @override
   Widget build(BuildContext context) {
+    if (_showIntro) {
+      return AppIntroScreen(
+        slides: kStudentIntroSlides,
+        onDone: () => setState(() => _showIntro = false),
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(

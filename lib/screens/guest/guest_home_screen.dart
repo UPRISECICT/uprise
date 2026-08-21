@@ -12,11 +12,14 @@
 //
 
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../models/event_model.dart';
+import '../../widgets/common/countdown_section.dart';
+import '../../widgets/common/feed_cards.dart';
+import '../../widgets/student/app_colors.dart';
 import '../student/student_login.dart';
 import 'guest_announcements_screen.dart';
 import 'guest_auth_service.dart'; // GuestMode enum
@@ -25,12 +28,6 @@ import 'guest_digital_id_notice.dart';
 import 'guest_events_screen.dart';
 import 'guest_merchandise_screen.dart';
 import 'guest_profile_screen.dart';
-
-// ─────────────────────────────────────────────────────────────
-//  THEME CONSTANTS
-// ─────────────────────────────────────────────────────────────
-const _kPrimary = Color(0xFFBE4700);
-const _kPrimaryBg = Color(0xFFF5E3D9);
 
 // ─────────────────────────────────────────────────────────────
 //  GUEST SHELL
@@ -115,7 +112,7 @@ class _GuestBottomNav extends StatelessWidget {
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withAlpha(20),
             blurRadius: 16,
             offset: const Offset(0, -2),
           ),
@@ -145,13 +142,15 @@ class _GuestBottomNav extends StatelessWidget {
                         ),
                         decoration: BoxDecoration(
                           color: isActive
-                              ? _kPrimary.withOpacity(0.12)
+                              ? AppColors.primaryDark.withAlpha(31)
                               : Colors.transparent,
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Icon(
                           isActive ? item.activeIcon : item.icon,
-                          color: isActive ? _kPrimary : Colors.black38,
+                          color: isActive
+                              ? AppColors.primaryDark
+                              : Colors.black38,
                           size: 22,
                         ),
                       ),
@@ -163,7 +162,7 @@ class _GuestBottomNav extends StatelessWidget {
                           fontWeight: isActive
                               ? FontWeight.w700
                               : FontWeight.w400,
-                          color: isActive ? _kPrimary : Colors.black38,
+                          color: isActive ? AppColors.primaryDark : Colors.black38,
                         ),
                       ),
                     ],
@@ -223,23 +222,6 @@ class _FeedItem {
     this.isSoon = false,
   });
 }
-
-// ─────────────────────────────────────────────────────────────
-//  CATEGORY COLOUR MAP
-// ─────────────────────────────────────────────────────────────
-const _catColors = <String, Color>{
-  'Workshop': Color(0xFF8B5CF6),
-  'Seminar': Color(0xFF3B82F6),
-  'Competition': Color(0xFFEF4444),
-  'General Assembly': Color(0xFFF97316),
-  'Social': Color(0xFFEC4899),
-  'Outreach': Color(0xFF10B981),
-  'Sports': Color(0xFF14B8A6),
-  'Academic': Color(0xFF6366F1),
-  'Technical': Color(0xFF06B6D4),
-  'Cultural': Color(0xFFD946EF),
-};
-Color _catColor(String cat) => _catColors[cat] ?? const Color(0xFF6B7280);
 
 // ─────────────────────────────────────────────────────────────
 //  HOME CONTENT  (social-media feed)
@@ -309,6 +291,46 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
         _guestClassification = 'BulSUan';
       }
     } catch (_) {}
+  }
+
+  // Countdown-for-events data source when authenticated — mirrors
+  // guest_registered_events_screen.dart's email+isGuest-keyed query (guest
+  // registrations aren't keyed by uid like student's are).
+  Future<List<EventModel>> _fetchMyRegisteredEvents() async {
+    final email = (GuestAuthService().email ?? '').toLowerCase();
+    if (email.isEmpty) return [];
+
+    try {
+      final regSnap = await FirebaseFirestore.instance
+          .collection('registrations')
+          .where('email', isEqualTo: email)
+          .where('isGuest', isEqualTo: true)
+          .get();
+
+      final eventIds = regSnap.docs
+          .map((d) => (d.data())['eventId'] as String? ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet();
+      if (eventIds.isEmpty) return [];
+
+      final eventDocs = await Future.wait(
+        eventIds.map(
+          (id) => FirebaseFirestore.instance.collection('events').doc(id).get(),
+        ),
+      );
+
+      final now = DateTime.now();
+      final events = eventDocs
+          .where((d) => d.exists)
+          .map(EventModel.fromFirestore)
+          .where((e) => e.fullDateTime.isAfter(now))
+          .toList()
+        ..sort((a, b) => a.fullDateTime.compareTo(b.fullDateTime));
+
+      return events;
+    } catch (_) {
+      return [];
+    }
   }
 
   @override
@@ -474,7 +496,7 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
     final announcements = _announcements;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F2F5),
+      backgroundColor: AppColors.background,
       body: CustomScrollView(
         slivers: [
           // ── App Bar ───────────────────────────────────────
@@ -490,7 +512,7 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
                   width: 32,
                   height: 32,
                   decoration: const BoxDecoration(
-                    color: _kPrimary,
+                    color: AppColors.primaryDark,
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
@@ -503,7 +525,7 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
                 const Text(
                   'UPRISE',
                   style: TextStyle(
-                    color: _kPrimary,
+                    color: AppColors.primaryDark,
                     fontWeight: FontWeight.w900,
                     fontSize: 22,
                     letterSpacing: 1.5,
@@ -515,7 +537,7 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
               IconButton(
                 icon: const Icon(
                   Icons.shopping_bag_outlined,
-                  color: _kPrimary,
+                  color: AppColors.primaryDark,
                   size: 22,
                 ),
                 onPressed: () {
@@ -539,7 +561,7 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
                       color: const Color(0xFFECFDF5),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: const Color(0xFF059669).withOpacity(0.4),
+                        color: const Color(0xFF059669).withAlpha(102),
                       ),
                     ),
                     child: const Row(
@@ -574,7 +596,7 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
                         vertical: 7,
                       ),
                       decoration: BoxDecoration(
-                        color: _kPrimary,
+                        color: AppColors.primaryDark,
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: const Text(
@@ -606,9 +628,20 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
             ),
           ),
 
+          // ── Countdown — registered events if signed in, else the
+          //     soonest public event overall ─────────────────
+          SliverToBoxAdapter(
+            child: PersonalOrNextEventCountdown(
+              fetchMyRegisteredEvents:
+                  _isAuthenticated ? _fetchMyRegisteredEvents : null,
+            ),
+          ),
+
           if (_loadingFeed) ...[
             const SliverFillRemaining(
-              child: Center(child: CircularProgressIndicator(color: _kPrimary)),
+              child: Center(
+                child: CircularProgressIndicator(color: AppColors.primaryDark),
+              ),
             ),
           ] else ...[
             // ════════════════════════════════════════════════
@@ -624,10 +657,7 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
 
             SliverToBoxAdapter(
               child: events.isEmpty
-                  ? const _EmptySection(
-                      icon: Icons.calendar_today_outlined,
-                      message: 'No upcoming events right now.',
-                    )
+                  ? const SizedBox.shrink()
                   : SizedBox(
                       // card height: 190 image + ~130 content = 320
                       height: 320,
@@ -639,10 +669,19 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
                           padding: const EdgeInsets.only(right: 14),
                           child: SizedBox(
                             width: 260,
-                            child: _EventCard(
-                              item: events[i],
-                              timeAgo: _timeAgo(events[i].timestamp),
+                            child: FeedEventCard(
+                              data: FeedEventCardData(
+                                title: events[i].title,
+                                orgName: events[i].orgName,
+                                imageBase64: events[i].imageBase64,
+                                category: events[i].category,
+                                location: events[i].location,
+                                audience: events[i].audience,
+                                eventDate: events[i].eventDate,
+                                createdAt: events[i].timestamp,
+                              ),
                               onTap: () => _switchTab(2),
+                              onShare: () {},
                             ),
                           ),
                         ),
@@ -663,7 +702,7 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
 
             if (announcements.isEmpty)
               const SliverToBoxAdapter(
-                child: _EmptySection(
+                child: EmptyFeedSection(
                   icon: Icons.campaign_outlined,
                   message: 'No announcements yet.',
                 ),
@@ -673,10 +712,19 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
                 delegate: SliverChildBuilderDelegate(
                   (_, i) => Padding(
                     padding: const EdgeInsets.only(bottom: 8),
-                    child: _AnnouncementCard(
-                      item: announcements[i],
+                    child: FeedAnnouncementCard(
+                      data: FeedAnnouncementCardData(
+                        title: announcements[i].title,
+                        body: announcements[i].body,
+                        orgName: announcements[i].orgName,
+                        imageBase64: announcements[i].imageBase64,
+                        audience: announcements[i].audience,
+                        isPinned: announcements[i].isPinned,
+                        timestamp: announcements[i].timestamp,
+                      ),
                       timeAgo: _timeAgo(announcements[i].timestamp),
-                      onOrgTap: () => _switchTab(1),
+                      onTap: () => _switchTab(1),
+                      onShare: () {},
                     ),
                   ),
                   childCount: announcements.length,
@@ -721,7 +769,7 @@ class _QuickNavRow extends StatelessWidget {
             _QuickNavChip(
               icon: Icons.calendar_today_rounded,
               label: 'Events',
-              color: _kPrimary,
+              color: AppColors.primaryDark,
               onTap: onEvents,
             ),
             const SizedBox(width: 8),
@@ -777,10 +825,10 @@ class _QuickNavChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: outlined ? Colors.transparent : color.withOpacity(0.10),
+          color: outlined ? Colors.transparent : color.withAlpha(26),
           borderRadius: BorderRadius.circular(22),
           border: Border.all(
-            color: outlined ? color.withOpacity(0.5) : color.withOpacity(0.2),
+            color: outlined ? color.withAlpha(128) : color.withAlpha(51),
           ),
         ),
         child: Row(
@@ -804,642 +852,6 @@ class _QuickNavChip extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  ANNOUNCEMENT FEED CARD  (Facebook-post style)
-// ─────────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────
-//  SHARED CARD IMAGE BANNER  (full-width, gradient placeholder)
-// ─────────────────────────────────────────────────────────────
-class _CardImageBanner extends StatelessWidget {
-  final String imageBase64; // may be empty — shows placeholder
-  final String orgName; // used to pick placeholder gradient
-  final String badgeLabel; // e.g. "NEW" / "POPULAR" / "UPCOMING"
-  final Color badgeColor;
-  final double height;
-
-  const _CardImageBanner({
-    required this.imageBase64,
-    required this.orgName,
-    required this.badgeLabel,
-    required this.badgeColor,
-    this.height = 190,
-  });
-
-  // Deterministic gradient from the org name hash
-  List<Color> get _gradientColors {
-    final hash = orgName.hashCode.abs();
-    const palettes = [
-      [Color(0xFF1A237E), Color(0xFF283593)],
-      [Color(0xFF4A148C), Color(0xFF6A1B9A)],
-      [Color(0xFF880E4F), Color(0xFFC2185B)],
-      [Color(0xFF1B5E20), Color(0xFF2E7D32)],
-      [Color(0xFF0D47A1), Color(0xFF1565C0)],
-      [Color(0xFF37474F), Color(0xFF546E7A)],
-      [Color(0xFFBF360C), Color(0xFFE64A19)],
-      [Color(0xFF006064), Color(0xFF00838F)],
-    ];
-    return palettes[hash % palettes.length];
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      height: height,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // ── Background: real image or gradient placeholder ──
-          if (imageBase64.isNotEmpty)
-            _tryDecodeImage(imageBase64, height)
-          else
-            _GradientPlaceholder(
-              colors: _gradientColors,
-              initial: orgName.isNotEmpty ? orgName[0].toUpperCase() : '?',
-            ),
-
-          // ── Subtle bottom scrim so text below stays readable ──
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: Container(
-              height: 60,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.bottomCenter,
-                  end: Alignment.topCenter,
-                  colors: [Colors.black.withOpacity(0.35), Colors.transparent],
-                ),
-              ),
-            ),
-          ),
-
-          // ── Status badge top-left ──────────────────────────
-          if (badgeLabel.isNotEmpty)
-            Positioned(
-              top: 12,
-              left: 12,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: badgeColor,
-                  borderRadius: BorderRadius.circular(6),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.25),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Text(
-                  badgeLabel,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.8,
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  static Widget _tryDecodeImage(String b64, double height) {
-    try {
-      final bytes = base64Decode(b64);
-      return Image.memory(
-        bytes,
-        width: double.infinity,
-        height: height,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-      );
-    } catch (_) {
-      return const SizedBox.shrink();
-    }
-  }
-}
-
-class _GradientPlaceholder extends StatelessWidget {
-  final List<Color> colors;
-  final String initial;
-  const _GradientPlaceholder({required this.colors, required this.initial});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: colors,
-        ),
-      ),
-      child: Center(
-        child: Text(
-          initial,
-          style: TextStyle(
-            fontSize: 72,
-            fontWeight: FontWeight.w900,
-            color: Colors.white.withOpacity(0.12),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────
-//  ANNOUNCEMENT FEED CARD
-// ─────────────────────────────────────────────────────────────
-class _AnnouncementCard extends StatefulWidget {
-  final _FeedItem item;
-  final String timeAgo;
-  final VoidCallback onOrgTap;
-
-  const _AnnouncementCard({
-    required this.item,
-    required this.timeAgo,
-    required this.onOrgTap,
-  });
-
-  @override
-  State<_AnnouncementCard> createState() => _AnnouncementCardState();
-}
-
-class _AnnouncementCardState extends State<_AnnouncementCard> {
-  bool _expanded = false;
-
-  String get _badgeLabel {
-    if (widget.item.isPinned) return 'PINNED';
-    final diff = DateTime.now().difference(widget.item.timestamp);
-    if (diff.inHours < 24) return 'NEW';
-    return '';
-  }
-
-  Color get _badgeColor {
-    if (widget.item.isPinned) return _kPrimary;
-    return const Color(0xFF059669);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final item = widget.item;
-
-    return Container(
-      color: Colors.white,
-      margin: const EdgeInsets.only(bottom: 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Full-width image / placeholder ────────────────
-          _CardImageBanner(
-            imageBase64: item.imageBase64,
-            orgName: item.orgName,
-            badgeLabel: _badgeLabel,
-            badgeColor: _badgeColor,
-            height: 200,
-          ),
-
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ── Org row ────────────────────────────────
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.campaign_outlined,
-                      size: 13,
-                      color: Colors.grey,
-                    ),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        '${item.orgName} · ${widget.timeAgo}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    if (item.audience
-                        .split(',')
-                        .map((s) => s.trim())
-                        .contains('CICT Only'))
-                      _MiniChip(label: 'CICT', color: const Color(0xFF1565C0)),
-                  ],
-                ),
-
-                const SizedBox(height: 8),
-
-                // ── Title ──────────────────────────────────
-                Text(
-                  item.title,
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.black87,
-                    height: 1.25,
-                  ),
-                ),
-
-                if (item.body.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    item.body,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: Color(0xFF666666),
-                      height: 1.5,
-                    ),
-                    maxLines: _expanded ? null : 3,
-                    overflow: _expanded
-                        ? TextOverflow.visible
-                        : TextOverflow.ellipsis,
-                  ),
-                  if (!_expanded && item.body.length > 140)
-                    GestureDetector(
-                      onTap: () => setState(() => _expanded = true),
-                      child: const Padding(
-                        padding: EdgeInsets.only(top: 3),
-                        child: Text(
-                          'See more',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Color(0xFF1565C0),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-
-                const SizedBox(height: 14),
-
-                // ── Action row ─────────────────────────────
-                Row(
-                  children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: widget.onOrgTap,
-                        child: Container(
-                          height: 42,
-                          decoration: BoxDecoration(
-                            color: _kPrimary,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          alignment: Alignment.center,
-                          child: const Text(
-                            'View Announcement',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: _kPrimaryBg,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: _kPrimary.withAlpha(64)),
-                      ),
-                      child: const Icon(
-                        Icons.share_outlined,
-                        size: 18,
-                        color: _kPrimary,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          const Divider(height: 1, color: Color(0xFFE4E6EA)),
-        ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────
-//  EVENT FEED CARD  (image-first, matches reference design)
-// ─────────────────────────────────────────────────────────────
-class _EventCard extends StatelessWidget {
-  final _FeedItem item;
-  final String timeAgo;
-  final VoidCallback onTap;
-
-  const _EventCard({
-    required this.item,
-    required this.timeAgo,
-    required this.onTap,
-  });
-
-  String get _badgeLabel {
-    if (item.isSoon) return 'UPCOMING';
-    final diff = DateTime.now().difference(item.timestamp);
-    if (diff.inHours < 48) return 'NEW';
-    // Rough "popular" signal: recently created events in high-traffic categories
-    if (['Competition', 'General Assembly', 'Sports'].contains(item.category))
-      return 'POPULAR';
-    return '';
-  }
-
-  Color get _badgeColor {
-    switch (_badgeLabel) {
-      case 'UPCOMING':
-        return const Color(0xFFF59E0B);
-      case 'NEW':
-        return const Color(0xFF059669);
-      case 'POPULAR':
-        return const Color(0xFF8B5CF6);
-      default:
-        return _kPrimary;
-    }
-  }
-
-  String _formatEventDate(DateTime dt) {
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    const wdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
-    final min = dt.minute.toString().padLeft(2, '0');
-    final ampm = dt.hour < 12 ? 'AM' : 'PM';
-    return '${wdays[dt.weekday - 1]}, ${months[dt.month - 1]} ${dt.day}'
-        ' · $h:$min $ampm';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final catColor = _catColor(item.category);
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.09),
-              blurRadius: 10,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Full-width image / gradient placeholder ────
-            _CardImageBanner(
-              imageBase64: item.imageBase64,
-              orgName: item.orgName,
-              badgeLabel: _badgeLabel,
-              badgeColor: _badgeColor,
-              height: 190,
-            ),
-
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ── Date + time ──────────────────────────
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.access_time_rounded,
-                        size: 13,
-                        color: catColor,
-                      ),
-                      const SizedBox(width: 5),
-                      Expanded(
-                        child: Text(
-                          item.eventDate != null
-                              ? _formatEventDate(item.eventDate!)
-                              : 'Date TBA',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: catColor,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      // Category dot
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: catColor,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  // ── Title ────────────────────────────────
-                  Text(
-                    item.title,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.black87,
-                      height: 1.2,
-                    ),
-                  ),
-
-                  const SizedBox(height: 6),
-
-                  // ── Location ─────────────────────────────
-                  if (item.location.isNotEmpty && item.location != 'TBA')
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.location_on_outlined,
-                          size: 13,
-                          color: Colors.grey,
-                        ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            item.location,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-
-                  // ── Description ───────────────────────────
-                  if (item.body.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      item.body,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF666666),
-                        height: 1.5,
-                      ),
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-
-                  const SizedBox(height: 14),
-
-                  // ── Action row (full-width button + share) ─
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Container(
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: _kPrimary,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          alignment: Alignment.center,
-                          child: const Text(
-                            'View Details',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: _kPrimaryBg,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: _kPrimary.withAlpha(64)),
-                        ),
-                        child: const Icon(
-                          Icons.share_outlined,
-                          size: 18,
-                          color: _kPrimary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DetailRow extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final String text;
-  final int maxLines;
-
-  const _DetailRow({
-    required this.icon,
-    required this.color,
-    required this.text,
-    this.maxLines = 1,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 13, color: color),
-        const SizedBox(width: 7),
-        Expanded(
-          child: Text(
-            text,
-            style: TextStyle(
-              fontSize: 12,
-              color: color == Colors.grey
-                  ? const Color(0xFF666666)
-                  : Colors.black87,
-              height: 1.4,
-            ),
-            maxLines: maxLines,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────
-//  MINI CHIP  (audience badge)
-// ─────────────────────────────────────────────────────────────
-class _MiniChip extends StatelessWidget {
-  final String label;
-  final Color color;
-  const _MiniChip({required this.label, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 9,
-          fontWeight: FontWeight.w800,
-          color: color,
-          letterSpacing: 0.4,
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────
 //  SECTION HEADER  (title + "View all" action)
 // ─────────────────────────────────────────────────────────────
 class _SectionHeader extends StatelessWidget {
@@ -1456,7 +868,7 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: const Color(0xFFF0F2F5),
+      color: AppColors.background,
       padding: const EdgeInsets.fromLTRB(16, 20, 12, 10),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1479,64 +891,16 @@ class _SectionHeader extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: _kPrimary,
+                    color: AppColors.primaryDark,
                   ),
                 ),
                 const SizedBox(width: 2),
                 const Icon(
                   Icons.arrow_forward_ios_rounded,
                   size: 11,
-                  color: _kPrimary,
+                  color: AppColors.primaryDark,
                 ),
               ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────
-//  EMPTY SECTION  (inline placeholder row)
-// ─────────────────────────────────────────────────────────────
-class _EmptySection extends StatelessWidget {
-  final IconData icon;
-  final String message;
-
-  const _EmptySection({required this.icon, required this.message});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFEDEDEF)),
-      ),
-      child: Column(
-        children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              color: _kPrimaryBg,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(icon, size: 24, color: _kPrimary),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: Colors.black54,
-              height: 1.4,
             ),
           ),
         ],
@@ -1576,10 +940,14 @@ class _SignInPromptSheet extends StatelessWidget {
             width: 68,
             height: 68,
             decoration: const BoxDecoration(
-              color: _kPrimaryBg,
+              color: AppColors.primarySoft,
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.school_rounded, size: 34, color: _kPrimary),
+            child: const Icon(
+              Icons.school_rounded,
+              size: 34,
+              color: AppColors.primaryDark,
+            ),
           ),
           const SizedBox(height: 16),
           const Text(
@@ -1623,7 +991,7 @@ class _SignInPromptSheet extends StatelessWidget {
                 );
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: _kPrimary,
+                backgroundColor: AppColors.primaryDark,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
@@ -1668,10 +1036,10 @@ class _SheetFeatureRow extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(7),
           decoration: BoxDecoration(
-            color: _kPrimaryBg,
+            color: AppColors.primarySoft,
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(icon, size: 16, color: _kPrimary),
+          child: Icon(icon, size: 16, color: AppColors.primaryDark),
         ),
         const SizedBox(width: 12),
         Text(

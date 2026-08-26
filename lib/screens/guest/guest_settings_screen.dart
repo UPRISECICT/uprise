@@ -10,12 +10,17 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'guest_access_gateway_screen.dart' show GuestChangePasswordScreen;
 import '../../widgets/shared/app_support.dart';
+import '../common/notification_settings_screen.dart';
+import '../../services/guest_data_export.dart';
+import '../../widgets/common/action_tile.dart';
+import '../../widgets/student/app_colors.dart';
+import '../../widgets/student/student_app_bar.dart';
 
-const _kOrange = Color(0xFFBE4700);
-const _kOrangeLight = Color(0xFFF5E3D9);
-const _kBg = Color(0xFFF5F5F5);
-const _kSuccess = Color(0xFF059669);
-const _kSuccessBg = Color(0xFFECFDF5);
+const _kOrange = AppColors.primaryDark;
+const _kOrangeLight = AppColors.primarySoft;
+const _kBg = AppColors.background;
+const _kSuccess = AppColors.success;
+const _kSuccessBg = AppColors.successBg;
 
 class GuestSettingsScreen extends StatelessWidget {
   final String fullName;
@@ -44,194 +49,211 @@ class GuestSettingsScreen extends StatelessWidget {
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
     return Scaffold(
       backgroundColor: _kBg,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text('Settings',
-            style: GoogleFonts.beVietnamPro(
-                fontSize: 18, fontWeight: FontWeight.w700, color: Colors.black87)),
-      ),
+      appBar: const StudentAppBar(title: 'Settings'),
+      // Same shape as the student Settings screen: a shadowed profile card,
+      // then uppercase section labels over runs of kActionTile rows. The old
+      // layout was full-bleed white blocks divided by hairlines, which is why
+      // the two screens read as different products.
       body: SingleChildScrollView(
+        padding: const EdgeInsets.only(bottom: 32),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // ── Profile card ────────────────────────────────
             Container(
-              width: double.infinity,
-              color: Colors.white,
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                children: [
-                  Container(
-                    width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: _kOrangeLight,
-                      border: Border.all(color: Colors.white, width: 3),
-                    ),
-                    child: Center(
-                      child: Text(_initials,
-                          style: GoogleFonts.beVietnamPro(
-                              fontSize: 26, fontWeight: FontWeight.w900, color: _kOrange)),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(fullName,
-                      style: GoogleFonts.beVietnamPro(fontSize: 18, fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 4),
-                  Text(email, style: GoogleFonts.beVietnamPro(fontSize: 13, color: Colors.grey)),
-                  const SizedBox(height: 4),
-                  Text(school, style: GoogleFonts.beVietnamPro(fontSize: 12, color: Colors.grey)),
-                  const SizedBox(height: 4),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(color: _kSuccessBg, borderRadius: BorderRadius.circular(20)),
-                    child: Text('VERIFIED GUEST',
-                        style: GoogleFonts.beVietnamPro(
-                            fontSize: 10, fontWeight: FontWeight.w800, color: _kSuccess, letterSpacing: 0.6)),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // ── Account ──────────────────────────────────────
-            Container(
-              color: Colors.white,
-              child: Column(
-                children: [
-                  _SettingsTile(
-                    icon: Icons.lock_outline_rounded,
-                    title: 'Change Password',
-                    subtitle: 'Update your account password',
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => GuestChangePasswordScreen(
-                          uid: uid,
-                          docId: docId,
-                          forced: false,
-                        ),
+              margin: const EdgeInsets.all(16),
+              decoration: kCardDecoration(),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 64,
+                      height: 64,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _kOrangeLight,
+                        border: Border.all(color: _kOrange.withAlpha(51), width: 2),
+                      ),
+                      child: Center(
+                        child: Text(_initials,
+                            style: GoogleFonts.beVietnamPro(
+                                fontSize: 22, fontWeight: FontWeight.w900, color: _kOrange)),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // ── General settings tiles ──────────────────────
-            Container(
-              color: Colors.white,
-              child: Column(
-                children: [
-                  _SettingsTile(
-                    icon: Icons.notifications_outlined,
-                    title: 'Notifications',
-                    subtitle: 'Manage event alerts',
-                    onTap: () => openNotificationSettings(context),
-                  ),
-                  Divider(height: 1, color: Colors.grey.shade200),
-                  _SettingsTile(
-                    icon: Icons.shield_outlined,
-                    title: 'Privacy',
-                    subtitle: 'Data and privacy settings',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const PrivacySecurityScreen(isGuest: true),
-                        ),
-                      );
-                    },
-                  ),
-                  Divider(height: 1, color: Colors.grey.shade200),
-                  _SettingsTile(
-                    icon: Icons.help_outline_rounded,
-                    title: 'Help & Support',
-                    subtitle: 'FAQs and contact info',
-                    onTap: () => launchSupportEmail(context, subject: 'UPRISE Support Request'),
-                  ),
-                  Divider(height: 1, color: Colors.grey.shade200),
-                  _SettingsTile(
-                    icon: Icons.info_outline_rounded,
-                    title: 'About UPRISE',
-                    subtitle: 'App version and information',
-                    onTap: () {},
-                    trailing: FutureBuilder<String>(
-                      future: getAppVersionLabel(),
-                      builder: (context, snap) => Text(
-                        snap.data ?? '...',
-                        style: GoogleFonts.beVietnamPro(
-                            fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(fullName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.beVietnamPro(
+                                  fontSize: 17, fontWeight: FontWeight.w700, color: Colors.black87)),
+                          const SizedBox(height: 2),
+                          Text(email,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.beVietnamPro(fontSize: 13, color: Colors.grey[600])),
+                          if (school.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(school,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.beVietnamPro(
+                                    fontSize: 12, color: Colors.grey[500], fontWeight: FontWeight.w500)),
+                          ],
+                          const SizedBox(height: 6),
+                          // Sits where the student card puts its edit button —
+                          // a guest has nothing to edit here, but does have a
+                          // verification state worth showing.
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                                color: _kSuccessBg, borderRadius: BorderRadius.circular(20)),
+                            child: Text('VERIFIED GUEST',
+                                style: GoogleFonts.beVietnamPro(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    color: _kSuccess,
+                                    letterSpacing: 0.6)),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
 
-            const SizedBox(height: 24),
+            // ── Account settings ─────────────────────────────
+            kSectionLabel('Account Settings'),
+            kActionTile(
+              icon: Icons.lock_outline_rounded,
+              title: 'Change Password',
+              subtitle: 'Update your account password',
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => GuestChangePasswordScreen(
+                    uid: uid,
+                    docId: docId,
+                    forced: false,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            kActionTile(
+              icon: Icons.notifications_none_rounded,
+              title: 'Notifications',
+              subtitle: 'Choose what reaches you',
+              // Was a straight jump to the OS settings, which could only
+              // turn the app off wholesale. Approved guests have a
+              // users/{uid} doc, so they get the same in-app switch
+              // students do — the OS shortcut lives inside it now.
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const NotificationSettingsScreen(),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            kActionTile(
+              icon: Icons.shield_outlined,
+              title: 'Privacy & Security',
+              subtitle: 'Manage your security preferences',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    // Reached only from the approved-guest profile, so
+                    // this guest does have records to export.
+                    builder: (_) => PrivacySecurityScreen(
+                      isGuest: true,
+                      onExportData: () => exportGuestData(context),
+                    ),
+                  ),
+                );
+              },
+            ),
+
+            // ── Support ──────────────────────────────────────
+            kSectionLabel('Support'),
+            kActionTile(
+              icon: Icons.help_outline,
+              title: 'Help & Support',
+              subtitle: 'Get assistance and FAQs',
+              onTap: () => launchSupportEmail(context, subject: 'UPRISE Support Request'),
+            ),
+            const SizedBox(height: 8),
+
+            kActionTile(
+              icon: Icons.feedback_outlined,
+              title: 'Send Feedback',
+              subtitle: 'Help us improve the app',
+              onTap: () => launchSupportEmail(context, subject: 'UPRISE Feedback'),
+              iconColor: Colors.purple,
+            ),
+            const SizedBox(height: 8),
+
+            kActionTile(
+              icon: Icons.info_outline,
+              title: 'About',
+              subtitle: 'App info & privacy policy',
+              // Was a no-op — the row looked tappable but did nothing.
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AboutScreen()),
+              ),
+              trailing: FutureBuilder<String>(
+                future: getAppVersionLabel(),
+                builder: (context, snap) => Text(
+                  snap.data ?? '...',
+                  style: GoogleFonts.beVietnamPro(
+                      fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
 
             // ── Logout ──────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: TextButton.icon(
+            // Student Settings owns its confirm dialog because its logout is
+            // direct. Guest's [onLogout] is the profile screen's
+            // _confirmLogout, which already asks — so this only adopts the
+            // red full-width button, not a second prompt.
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              width: double.infinity,
+              child: ElevatedButton.icon(
                 onPressed: () {
                   Navigator.pop(context); // close settings first
                   onLogout();
                 },
-                icon: const Icon(Icons.logout, color: _kOrange),
-                label: Text('Log Out',
-                    style: GoogleFonts.beVietnamPro(
-                        color: _kOrange, fontSize: 15, fontWeight: FontWeight.w600)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                  elevation: 2,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                icon: const Icon(Icons.logout, size: 20),
+                label: const Text(
+                  'Log Out',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                ),
               ),
             ),
-
             const SizedBox(height: 16),
           ],
         ),
       ),
-    );
-  }
-}
-
-class _SettingsTile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-  final Widget? trailing;
-  const _SettingsTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-    this.trailing,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      leading: Icon(icon, color: _kOrange),
-      title: Text(title, style: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w600, fontSize: 14)),
-      subtitle: Text(subtitle, style: GoogleFonts.beVietnamPro(fontSize: 12, color: Colors.grey)),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (trailing != null) ...[trailing!, const SizedBox(width: 6)],
-          const Icon(Icons.chevron_right, color: Colors.grey),
-        ],
-      ),
-      onTap: onTap,
     );
   }
 }

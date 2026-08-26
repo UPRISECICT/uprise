@@ -5,6 +5,7 @@
 //
 
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -89,6 +90,35 @@ class _StudentLoginState extends State<StudentLogin> {
     super.dispose();
   }
 
+  /// Whether [uid] may use the student app.
+  ///
+  /// Positive identification, not a deny-list. The recorded role decides it
+  /// whenever there is one — a guest, org or admin account is turned away
+  /// because it isn't a student, not because it happened to be on a list.
+  ///
+  /// A null role means there is no users/{uid} doc or the read failed, which
+  /// is not the same as "not a student": accounts predating the users-doc
+  /// write still have a students roster entry. Falling back to that keeps
+  /// them working without letting an unreadable role pass as 'student', which
+  /// is what AuthService.getUserRole would have done.
+  Future<bool> _isStudentAccount(String uid, String? role) async {
+    if (role == 'student') return true;
+    if (role != null) return false;
+
+    try {
+      // Queried by the `uid` field, the same way RoleRouter does it — the
+      // students doc id is the uid in practice, but not by contract.
+      final snap = await FirebaseFirestore.instance
+          .collection('students')
+          .where('uid', isEqualTo: uid)
+          .limit(1)
+          .get();
+      return snap.docs.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _login() async {
     final email = _emailCtrl.text.trim();
     final password = _passwordCtrl.text.trim();
@@ -108,26 +138,57 @@ class _StudentLoginState extends State<StudentLogin> {
     try {
       final user = await _auth.loginWithEmail(email, password);
 
-      if (user != null) {
+      if (user == null) {
+        if (!mounted) return;
+        _handleFailedAttempt(email, 'Invalid email or password');
+      } else {
+        // The credentials are valid — but valid for *some* account, not
+        // necessarily a student one. Guest, org and admin accounts all
+        // authenticate here, and the success path below is a
+        // pushAndRemoveUntil that skips RoleRouter for the rest of the
+        // session, so this is the only place that can stop them.
+        // Read while still signed in — a Firestore read after signOut() can
+        // be refused by the rules, which would log every rejection as
+        // 'unknown' and hide which role was actually turned away.
+        final recordedRole = await _auth.getRecordedRole(user.uid);
+        if (!await _isStudentAccount(user.uid, recordedRole)) {
+          await FirebaseAuth.instance.signOut();
+          await activity_log.ActivityLogger.log(
+            action: 'Blocked non-student login on student portal',
+            module: 'Authentication',
+            severity: 'security',
+            details: {
+              'uid': user.uid,
+              'email': email,
+              'role': recordedRole ?? 'unknown',
+            },
+          );
+          if (!mounted) return;
+          // Deliberately not _handleFailedAttempt: that counts toward the
+          // lockout and auto-opens Forgot Password after three tries, and a
+          // new password will never make this account a student one.
+          _showError(
+            'This isn\'t a student account. If you signed up as a guest, '
+            'use the guest option below.',
+          );
+          setState(() => _isLoading = false);
+          return;
+        }
+
         _failedAttempts = 0;
 
-        // ✅ Remember Me logic
+        // ✅ Remember Me logic — after the gate, so a rejected account's
+        // credentials never land in this screen's secure storage (and get
+        // auto-filled on the next visit).
         await _persistRememberedCredentials(email, password);
 
-        final role = await _auth.getUserRole(user.uid);
         await activity_log.ActivityLogger.log(
           action: 'Student login',
           module: 'Authentication',
           severity: 'security',
-          details: {'uid': user.uid, 'email': email, 'role': role},
+          details: {'uid': user.uid, 'email': email, 'role': 'student'},
         );
-      }
 
-      if (!mounted) return;
-
-      if (user == null) {
-        _handleFailedAttempt(email, 'Invalid email or password');
-      } else {
         final mustChange = await _auth.needsPasswordChange(user.uid);
         if (!mounted) return;
 

@@ -3,16 +3,61 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:app_settings/app_settings.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../../screens/student/student_change_password_screen.dart';
+import '../../services/student_data_export.dart';
 
 const String kSupportEmailPrimary = 'cictuprise@gmail.com';
 const String kSupportEmailSecondary = 'cictuprise@outlook.com';
 
+/// Opens the device mail app composing to support. Both this and
+/// [openNotificationSettings] previously had empty bodies, which silently made
+/// four settings rows do nothing: Help & Support and Send Feedback on the
+/// student settings screen, and Notification Settings and Help & Support on
+/// the guest one.
 Future<void> launchSupportEmail(
   BuildContext context, {
   required String subject,
-}) async { /* unchanged */ }
+}) async {
+  // Built by hand rather than with queryParameters: that encodes spaces as
+  // '+', which several mail clients render literally in the subject line.
+  final uri = Uri(
+    scheme: 'mailto',
+    path: kSupportEmailPrimary,
+    query: 'subject=${Uri.encodeComponent(subject)}',
+  );
 
-Future<void> openNotificationSettings(BuildContext context) async { /* unchanged */ }
+  try {
+    if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
+  } catch (_) {
+    // Fall through to the address fallback below.
+  }
+
+  // No mail app (common on emulators) — show the addresses rather than
+  // failing silently, which is what the empty body used to do.
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(
+        'No mail app found. Email us at $kSupportEmailPrimary '
+        'or $kSupportEmailSecondary',
+      ),
+      duration: const Duration(seconds: 8),
+    ),
+  );
+}
+
+/// Opens the OS notification settings for this app.
+Future<void> openNotificationSettings(BuildContext context) async {
+  try {
+    await AppSettings.openAppSettings(type: AppSettingsType.notification);
+  } catch (_) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Could not open the system notification settings'),
+      ),
+    );
+  }
+}
 
 Future<String> getAppVersionLabel() async {
   final info = await PackageInfo.fromPlatform();
@@ -176,7 +221,30 @@ class _AboutScreenState extends State<AboutScreen> {
 // ─────────────────────────────────────────────────────────────
 class PrivacySecurityScreen extends StatelessWidget {
   final bool isGuest;
-  const PrivacySecurityScreen({super.key, this.isGuest = false});
+
+  /// Supplied by roles that *do* have exportable records. Students get the
+  /// student export by default; an approved guest passes the guest one.
+  ///
+  /// This exists because "guest" used to imply "nothing to export", and that
+  /// is only true of a **visitor**. An approved guest has a permanent account
+  /// — a Firebase Auth uid, an external_requests record, registrations,
+  /// attendance and certificates — so the old blanket notice was wrong for
+  /// them. A null callback on a guest still means visitor, and still shows it.
+  final VoidCallback? onExportData;
+
+  const PrivacySecurityScreen({
+    super.key,
+    this.isGuest = false,
+    this.onExportData,
+  });
+
+  Widget _exportTile(BuildContext context) => _settingsTile(
+    icon: Icons.download_outlined,
+    title: 'Download My Data',
+    subtitle: 'Export your profile and event history',
+    trailing: const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
+    onTap: onExportData ?? () => exportMyData(context),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -208,62 +276,27 @@ class PrivacySecurityScreen extends StatelessWidget {
               },
             ),
             const SizedBox(height: 8),
-            _settingsTile(
-              icon: Icons.fingerprint,
-              title: 'Two-Factor Authentication',
-              subtitle: 'Coming soon',
-              trailing: const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('2FA will be available in a future update')),
-                );
-              },
-            ),
-            const SizedBox(height: 8),
-            _settingsTile(
-              icon: Icons.devices_outlined,
-              title: 'Active Sessions',
-              subtitle: 'Manage devices where you\'re signed in',
-              trailing: const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
-              onTap: () {
-                // TODO: navigate to session management
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Session management coming soon')),
-                );
-              },
-            ),
-            const SizedBox(height: 8),
-            _settingsTile(
-              icon: Icons.download_outlined,
-              title: 'Download My Data',
-              subtitle: 'Export your profile and event history',
-              trailing: const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
-              onTap: () {
-                // TODO: implement data export
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Data export coming soon')),
-                );
-              },
-            ),
-            const SizedBox(height: 8),
-            _settingsTile(
-              icon: Icons.delete_outline,
-              title: 'Delete Account',
-              subtitle: 'Permanently remove your data',
-              trailing: const Icon(Icons.chevron_right, color: Colors.red, size: 20),
-              onTap: () {
-                // TODO: show deletion confirmation flow
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Account deletion is not yet supported')),
-                );
-              },
-            ),
+            // No "Delete Account" row: student records are owned by the
+            // organization, so students have no authority to remove them.
+            //
+            // Two-Factor Authentication and Active Sessions used to sit here
+            // as "coming soon" rows. Neither is buildable from the client —
+            // Firebase MFA needs a paid Identity Platform upgrade, and the
+            // client SDK cannot enumerate or revoke other sessions — so an
+            // honest omission beats a row that only shows a snackbar.
+            _exportTile(context),
+            const SizedBox(height: 16),
+            const Divider(),
+          ] else if (onExportData != null) ...[
+            // Approved guest: password changes live on the guest settings
+            // screen already, so the export is the only row that belongs here.
+            _exportTile(context),
             const SizedBox(height: 16),
             const Divider(),
           ] else
             const SizedBox(height: 8),
-          // For guests we still show a minimal explanation
-          if (isGuest)
+          // Only a visitor genuinely has nothing on file.
+          if (isGuest && onExportData == null)
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -271,8 +304,9 @@ class PrivacySecurityScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
               ),
               child: const Text(
-                'As a guest, you do not have a permanent account. '
-                'No personal data is retained beyond your event participation.',
+                'You are browsing without an account, so there is nothing '
+                'stored to export. Registering for guest access creates a '
+                'record you can download here.',
                 style: TextStyle(fontSize: 13, color: Colors.black54),
               ),
             ),

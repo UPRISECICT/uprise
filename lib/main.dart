@@ -11,6 +11,17 @@ import 'providers/event_provider.dart'; // ⭐ IDAGDAG ITO
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // TEMPORARY DIAGNOSTIC — remove once the RenderFlex overflow is tracked
+  // down. Flutter prints the first exception in full and abbreviates every
+  // repeat to "Another exception was thrown: ...", which drops the widget
+  // and file:line. forceReport defeats that so each occurrence prints the
+  // full block, including "The relevant error-causing widget was:".
+  if (kDebugMode) {
+    FlutterError.onError = (FlutterErrorDetails details) {
+      FlutterError.dumpErrorToConsole(details, forceReport: true);
+    };
+  }
+
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,

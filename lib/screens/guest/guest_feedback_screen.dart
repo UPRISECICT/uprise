@@ -26,15 +26,17 @@ import 'package:intl/intl.dart';
 
 import 'guest_auth_service.dart';
 import '../../services/certificate_auto_issue_service.dart';
+import '../../widgets/student/app_colors.dart';
+import '../../widgets/student/student_app_bar.dart';
 
 // ─────────────────────────────────────────────────────────────
 //  THEME
 // ─────────────────────────────────────────────────────────────
-const _kOrange      = Color(0xFFBE4700);
-const _kOrangeLight = Color(0xFFF5E3D9);
-const _kBg          = Color(0xFFF5F5F5);
-const _kSuccess     = Color(0xFF059669);
-const _kSuccessBg   = Color(0xFFECFDF5);
+const _kOrange = AppColors.primaryDark;
+const _kOrangeLight = AppColors.primarySoft;
+const _kBg = AppColors.background;
+const _kSuccess = AppColors.success;
+const _kSuccessBg = AppColors.successBg;
 const _kGrey        = Color(0xFF9CA3AF);
 
 // ─────────────────────────────────────────────────────────────
@@ -183,20 +185,7 @@ class _GuestFeedbackScreenState extends State<GuestFeedbackScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _kBg,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: false,
-        title: Text('Event Feedback',
-            style: GoogleFonts.beVietnamPro(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                color: Colors.black87)),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: const Color(0xFFF0F0F0)),
-        ),
-      ),
+      appBar: const StudentAppBar(title: 'Event Feedback'),
       body: _loading
           ? const Center(
               child: CircularProgressIndicator(color: _kOrange))
@@ -239,7 +228,7 @@ class _InfoBanner extends StatelessWidget {
       decoration: BoxDecoration(
         color: _kOrangeLight,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _kOrange.withOpacity(0.25)),
+        border: Border.all(color: _kOrange.withAlpha(64)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -283,7 +272,7 @@ class _FeedbackEventCard extends StatelessWidget {
         border: Border.all(color: const Color(0xFFF0F0F0)),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.04),
+              color: Colors.black.withAlpha(10),
               blurRadius: 8,
               offset: const Offset(0, 2)),
         ],
@@ -416,9 +405,9 @@ class _StatusChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withAlpha(26),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.25)),
+        border: Border.all(color: color.withAlpha(64)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

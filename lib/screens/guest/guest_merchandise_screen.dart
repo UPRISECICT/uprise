@@ -10,12 +10,14 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../../widgets/product_photo_gallery.dart';
+import '../../widgets/student/app_colors.dart';
+import '../../widgets/student/student_app_bar.dart';
 
 // ─────────────────────────────────────────────────────────────
 // Theme (matches guest_events_screen.dart's palette)
 // ─────────────────────────────────────────────────────────────
-const _kPrimary = Color(0xFFBE4700);
-const _kBg = Color(0xFFF5F5F5);
+const _kPrimary = AppColors.primaryDark;
+const _kBg = AppColors.background;
 
 // ─────────────────────────────────────────────────────────────
 // Models (display-only)
@@ -122,7 +124,7 @@ class GuestMerchandiseScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _kBg,
-      appBar: AppBar(title: const Text('Merchandise')),
+      appBar: const StudentAppBar(title: 'Merchandise'),
       body: const _ProductsTab(),
     );
   }

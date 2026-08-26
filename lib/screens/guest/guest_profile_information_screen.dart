@@ -12,10 +12,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'guest_auth_service.dart';
+import '../../widgets/student/app_colors.dart';
+import '../../widgets/student/student_app_bar.dart';
 
-const _kOrange = Color(0xFFBE4700);
-const _kOrangeLight = Color(0xFFF5E3D9);
-const _kBg = Color(0xFFF5F5F5);
+const _kOrange = AppColors.primaryDark;
+const _kOrangeLight = AppColors.primarySoft;
+const _kBg = AppColors.background;
 
 class GuestProfileInformationScreen extends StatefulWidget {
   const GuestProfileInformationScreen({super.key});
@@ -156,12 +158,7 @@ class _GuestProfileInformationScreenState extends State<GuestProfileInformationS
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _kBg,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text('Profile Information', style: GoogleFonts.beVietnamPro(
-            fontSize: 17, fontWeight: FontWeight.w700, color: Colors.black87)),
-      ),
+      appBar: const StudentAppBar(title: 'Profile Information'),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: _kOrange))
           : _error != null

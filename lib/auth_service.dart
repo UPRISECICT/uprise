@@ -72,6 +72,27 @@ class AuthService {
     }
   }
 
+  /// The role exactly as recorded on `users/{uid}` — `null` when there is no
+  /// such doc, no `role` field, or the read failed.
+  ///
+  /// [getUserRole] answers "what should I show this person" and guesses
+  /// 'student' when it can't tell, which is the right default for routing. A
+  /// login gate needs the opposite: it has to distinguish "this is a student"
+  /// from "I could not find out", because treating the second as the first is
+  /// how a guest ends up signed in on the student screen.
+  Future<String?> getRecordedRole(String uid) async {
+    try {
+      final doc = await _firestore.collection('users').doc(uid).get();
+      if (!doc.exists) return null;
+      final role = (doc.data()?['role'] as String?)?.toLowerCase();
+      if (role == null || role.isEmpty) return null;
+      cacheRole(uid, role);
+      return role;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<Map<String, dynamic>?> getCurrentUserData() async {
     final user = _auth.currentUser;
     if (user == null) return null;

@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../widgets/student/app_colors.dart';
+import '../../widgets/student/student_app_bar.dart';
 
 class GuestAnnouncementsScreen extends StatelessWidget {
   const GuestAnnouncementsScreen({super.key});
@@ -20,9 +22,9 @@ class GuestAnnouncementsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FB),
+      backgroundColor: AppColors.background,
 
-      appBar: AppBar(title: const Text('Announcements')),
+      appBar: const StudentAppBar(title: 'Announcements'),
 
       body: StreamBuilder<QuerySnapshot>(
         stream: _stream,
@@ -82,7 +84,7 @@ class GuestAnnouncementsScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(18),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
+                      color: Colors.black.withAlpha(13),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -133,7 +135,7 @@ class GuestAnnouncementsScreen extends StatelessWidget {
                               ),
 
                               decoration: BoxDecoration(
-                                color: Colors.orange,
+                                color: AppColors.primaryDark,
                                 borderRadius: BorderRadius.circular(20),
                               ),
 
@@ -177,9 +179,8 @@ class GuestAnnouncementsScreen extends StatelessWidget {
                             children: [
                               CircleAvatar(
                                 radius: 16,
-                                backgroundColor: Colors.orange.withOpacity(
-                                  0.15,
-                                ),
+                                backgroundColor: AppColors.primaryDark
+                                    .withAlpha(38),
 
                                 child: Text(
                                   authorName.isNotEmpty
@@ -187,7 +188,7 @@ class GuestAnnouncementsScreen extends StatelessWidget {
                                       : '?',
 
                                   style: GoogleFonts.beVietnamPro(
-                                    color: Colors.orange.shade800,
+                                    color: AppColors.primaryDark.shade800,
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
@@ -213,7 +214,7 @@ class GuestAnnouncementsScreen extends StatelessWidget {
                                 ),
 
                                 decoration: BoxDecoration(
-                                  color: Colors.orange.withOpacity(0.1),
+                                  color: AppColors.primaryDark.withAlpha(26),
                                   borderRadius: BorderRadius.circular(20),
                                 ),
 
@@ -222,7 +223,7 @@ class GuestAnnouncementsScreen extends StatelessWidget {
 
                                   style: GoogleFonts.beVietnamPro(
                                     fontSize: 11,
-                                    color: Colors.orange.shade900,
+                                    color: AppColors.primaryDark.shade900,
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),

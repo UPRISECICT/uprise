@@ -35,19 +35,22 @@ import 'guest_profile_information_screen.dart';
 import 'guest_registered_events_screen.dart';
 import 'guest_settings_screen.dart';
 import '../student/student_login.dart';
+import '../../widgets/common/action_tile.dart';
+import '../../widgets/student/app_colors.dart';
+import '../../widgets/student/student_app_bar.dart';
 
 // ─────────────────────────────────────────────────────────────
 //  THEME
 // ─────────────────────────────────────────────────────────────
-const _kOrange = Color(0xFFBE4700);
-const _kOrangeLight = Color(0xFFF5E3D9);
-const _kBg = Color(0xFFF5F5F5);
-const _kSuccess = Color(0xFF059669);
-const _kSuccessBg = Color(0xFFECFDF5);
-const _kWarning = Color(0xFFD97706);
-const _kWarningBg = Color(0xFFFFFBEB);
-const _kError = Color(0xFFDC2626);
-const _kErrorBg = Color(0xFFFEF2F2);
+const _kOrange = AppColors.primaryDark;
+const _kOrangeLight = AppColors.primarySoft;
+const _kBg = AppColors.background;
+const _kSuccess = AppColors.success;
+const _kSuccessBg = AppColors.successBg;
+const _kWarning = AppColors.warning;
+const _kWarningBg = AppColors.warningBg;
+const _kError = AppColors.error;
+const _kErrorBg = AppColors.errorBg;
 
 // SharedPreferences key
 const _kPrefKey = 'external_request_doc_id';
@@ -250,20 +253,7 @@ class _NotRegisteredScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _kBg,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        title: Text(
-          'Profile',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: Colors.black87,
-          ),
-        ),
-        bottom: const _AppBarLine(),
-      ),
+      appBar: const StudentAppBar(title: 'Profile'),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 24, 16, 40),
         child: Column(
@@ -283,7 +273,7 @@ class _NotRegisteredScreen extends StatelessWidget {
                       border: Border.all(color: Colors.white, width: 3),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.08),
+                          color: Colors.black.withAlpha(20),
                           blurRadius: 12,
                           offset: const Offset(0, 4),
                         ),
@@ -323,7 +313,7 @@ class _NotRegisteredScreen extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: _kWarningBg,
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: _kWarning.withOpacity(0.3)),
+                        border: Border.all(color: _kWarning.withAlpha(77)),
                       ),
                       child: Row(
                         children: [
@@ -504,20 +494,7 @@ class _PendingRejectedScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: _kBg,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        title: Text(
-          'Profile',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: Colors.black87,
-          ),
-        ),
-        bottom: const _AppBarLine(),
-      ),
+      appBar: const StudentAppBar(title: 'Profile'),
       body: SingleChildScrollView(
         child: Column(
           children: [
@@ -537,7 +514,7 @@ class _PendingRejectedScreen extends StatelessWidget {
                       border: Border.all(color: Colors.white, width: 3),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.08),
+                          color: Colors.black.withAlpha(20),
                           blurRadius: 12,
                           offset: const Offset(0, 4),
                         ),
@@ -590,7 +567,7 @@ class _PendingRejectedScreen extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: statusBg,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: statusColor.withOpacity(0.3)),
+                      border: Border.all(color: statusColor.withAlpha(77)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -636,7 +613,7 @@ class _PendingRejectedScreen extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: statusBg,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: statusColor.withOpacity(0.25)),
+                      border: Border.all(color: statusColor.withAlpha(64)),
                     ),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -832,39 +809,19 @@ class _ApprovedProfileScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _kBg,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        title: Text(
-          'Profile',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: Colors.black87,
-          ),
-        ),
-        bottom: const _AppBarLine(),
-      ),
+      appBar: const StudentAppBar(title: 'Profile'),
+      // Vertical padding only: kActionTile supplies its own horizontal 16
+      // margin, so padding the scroll view too would double-inset every row.
       body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
+        padding: const EdgeInsets.only(top: 20, bottom: 32),
         child: Column(
           children: [
-            // ── Header card — Messenger/Facebook-style ───────
+            // ── Header card — same card treatment as student Profile ──
             Container(
               width: double.infinity,
+              margin: const EdgeInsets.symmetric(horizontal: 16),
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 14,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
+              decoration: kCardDecoration(radius: 18),
               child: Column(
                 children: [
                   Container(
@@ -882,7 +839,7 @@ class _ApprovedProfileScreen extends StatelessWidget {
                           : null,
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.08),
+                          color: Colors.black.withAlpha(20),
                           blurRadius: 12,
                           offset: const Offset(0, 4),
                         ),
@@ -927,7 +884,7 @@ class _ApprovedProfileScreen extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: _kSuccessBg,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: _kSuccess.withOpacity(0.3)),
+                      border: Border.all(color: _kSuccess.withAlpha(77)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -986,95 +943,111 @@ class _ApprovedProfileScreen extends StatelessWidget {
             const SizedBox(height: 16),
 
             // ── Menu list ─────────────────────────────────────
-            _MenuSection(
-              items: [
-                _MenuItemData(
-                  icon: Icons.person_outline_rounded,
-                  label: 'Profile Information',
-                  subtitle: 'Edit your details',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const GuestProfileInformationScreen(),
-                    ),
+            // Stacked kActionTiles, the same rows the student profile page
+            // and both Settings screens use — this was a _MenuSection of
+            // hairline-divided ListTiles, which is the one place guest chrome
+            // still looked like a different app.
+            const SizedBox(height: 6),
+            kActionTile(
+              icon: Icons.person_outline_rounded,
+              title: 'Profile Information',
+              subtitle: 'Edit your details',
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const GuestProfileInformationScreen(),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            kActionTile(
+              icon: Icons.workspace_premium_outlined,
+              title: 'Certificate Repository',
+              subtitle: 'View and download certificates',
+              iconColor: const Color(0xFF16A34A),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const GuestCertificateRepositoryScreen(),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            kActionTile(
+              icon: Icons.event_note_outlined,
+              title: 'Registered Events',
+              subtitle: 'Upcoming and past registrations',
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const GuestRegisteredEventsScreen(),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            kActionTile(
+              icon: Icons.event_available_outlined,
+              title: 'Participated Events',
+              subtitle: 'Your attendance history',
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const GuestParticipatedEventsScreen(),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            kActionTile(
+              icon: Icons.rate_review_outlined,
+              title: 'Submitted Feedback',
+              subtitle: 'Feedback you\'ve given for events',
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const GuestFeedbackScreen()),
+              ),
+            ),
+            const SizedBox(height: 10),
+            kActionTile(
+              icon: Icons.settings_outlined,
+              title: 'Settings',
+              subtitle: 'Password, notifications, privacy',
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => GuestSettingsScreen(
+                    fullName: _fullName,
+                    email: _email,
+                    school: _school,
+                    docId: docId,
+                    onLogout: () => _confirmLogout(context),
                   ),
                 ),
-                _MenuItemData(
-                  icon: Icons.workspace_premium_outlined,
-                  label: 'Certificate Repository',
-                  subtitle: 'View and download certificates',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const GuestCertificateRepositoryScreen(),
-                    ),
-                  ),
-                ),
-                _MenuItemData(
-                  icon: Icons.event_note_outlined,
-                  label: 'Registered Events',
-                  subtitle: 'Upcoming and past registrations',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const GuestRegisteredEventsScreen(),
-                    ),
-                  ),
-                ),
-                _MenuItemData(
-                  icon: Icons.event_available_outlined,
-                  label: 'Participated Events',
-                  subtitle: 'Your attendance history',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const GuestParticipatedEventsScreen(),
-                    ),
-                  ),
-                ),
-                _MenuItemData(
-                  icon: Icons.rate_review_outlined,
-                  label: 'Submitted Feedback',
-                  subtitle: 'Feedback you\'ve given for events',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const GuestFeedbackScreen(),
-                    ),
-                  ),
-                ),
-                _MenuItemData(
-                  icon: Icons.settings_outlined,
-                  label: 'Settings',
-                  subtitle: 'Password, notifications, privacy',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => GuestSettingsScreen(
-                        fullName: _fullName,
-                        email: _email,
-                        school: _school,
-                        docId: docId,
-                        onLogout: () => _confirmLogout(context),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
 
             // ── Logout ──────────────────────────────────────
-            TextButton.icon(
-              onPressed: () => _confirmLogout(context),
-              icon: const Icon(Icons.logout, color: _kOrange),
-              label: Text(
-                'Log Out',
-                style: GoogleFonts.beVietnamPro(
-                  color: _kOrange,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
+            // Full-width red button, matching student Settings. Still routes
+            // through _confirmLogout, which already asks before signing out.
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => _confirmLogout(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                  elevation: 2,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                icon: const Icon(Icons.logout, size: 20),
+                label: const Text(
+                  'Log Out',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
                 ),
               ),
             ),
@@ -1129,115 +1102,6 @@ class _ApprovedProfileScreen extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-//  MENU SECTION (Messenger/Facebook-style icon-led rows)
-// ─────────────────────────────────────────────────────────────
-class _MenuItemData {
-  final IconData icon;
-  final String label;
-  final String subtitle;
-  final VoidCallback onTap;
-  _MenuItemData({
-    required this.icon,
-    required this.label,
-    required this.subtitle,
-    required this.onTap,
-  });
-}
-
-class _MenuSection extends StatelessWidget {
-  final List<_MenuItemData> items;
-  const _MenuSection({required this.items});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 14,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        children: List.generate(items.length, (i) {
-          final item = items[i];
-          return Column(
-            children: [
-              InkWell(
-                onTap: item.onTap,
-                borderRadius: BorderRadius.vertical(
-                  top: i == 0 ? const Radius.circular(20) : Radius.zero,
-                  bottom: i == items.length - 1
-                      ? const Radius.circular(20)
-                      : Radius.zero,
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 38,
-                        height: 38,
-                        decoration: BoxDecoration(
-                          color: _kOrangeLight,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(item.icon, size: 19, color: _kOrange),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              item.label,
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.black87,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              item.subtitle,
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 11.5,
-                                color: Colors.grey,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Icon(
-                        Icons.chevron_right_rounded,
-                        color: Colors.grey,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              if (i != items.length - 1)
-                Divider(
-                  height: 1,
-                  indent: 16,
-                  endIndent: 16,
-                  color: Colors.grey.shade200,
-                ),
-            ],
-          );
-        }),
-      ),
-    );
-  }
-}
 
 // ─────────────────────────────────────────────────────────────
 //  REGISTRATION SCREEN (3-step form — unchanged logic)
@@ -1537,24 +1401,7 @@ class RegistrationScreenState extends State<RegistrationScreen>
 
     return Scaffold(
       backgroundColor: _kBg,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Guest Registration',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 17,
-            fontWeight: FontWeight.w700,
-            color: Colors.black87,
-          ),
-        ),
-        bottom: const _AppBarLine(),
-      ),
+      appBar: const StudentAppBar(title: 'Guest Registration'),
       body: CustomScrollView(
         controller: _scrollCtrl,
         slivers: [
@@ -1996,7 +1843,7 @@ class _ReviewStep extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withAlpha(13),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
@@ -2011,7 +1858,7 @@ class _ReviewStep extends StatelessWidget {
                   color: _kOrangeLight,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                    color: _kOrange.withOpacity(0.3),
+                    color: _kOrange.withAlpha(77),
                     width: 1.5,
                   ),
                 ),
@@ -2056,7 +1903,7 @@ class _ReviewStep extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: _kOrangeLight,
                         borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: _kOrange.withOpacity(0.3)),
+                        border: Border.all(color: _kOrange.withAlpha(77)),
                       ),
                       child: Text(
                         'EXTERNAL APPLICANT',
@@ -2102,7 +1949,7 @@ class _ReviewStep extends StatelessWidget {
           decoration: BoxDecoration(
             color: _kWarningBg,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: _kWarning.withOpacity(0.25)),
+            border: Border.all(color: _kWarning.withAlpha(64)),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2161,16 +2008,8 @@ class _ReviewStep extends StatelessWidget {
 //  SHARED SMALL WIDGETS
 // ─────────────────────────────────────────────────────────────
 
-class _AppBarLine extends StatelessWidget implements PreferredSizeWidget {
-  const _AppBarLine();
-
-  @override
-  Size get preferredSize => const Size.fromHeight(1);
-
-  @override
-  Widget build(BuildContext context) =>
-      Container(height: 1, color: const Color(0xFFF0F0F0));
-}
+// _AppBarLine removed — StudentAppBar draws the same hairline itself, in
+// AppColors.divider rather than this file's slightly lighter 0xFFF0F0F0.
 
 class _ContactRow extends StatelessWidget {
   final IconData icon;
@@ -2350,7 +2189,7 @@ class _FormCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withAlpha(10),
             blurRadius: 10,
             offset: const Offset(0, 3),
           ),

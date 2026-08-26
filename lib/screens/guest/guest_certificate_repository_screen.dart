@@ -17,10 +17,12 @@ import 'package:http/http.dart' as http;
 
 import '../../utils/platform_file_utils.dart' as platform_file_utils;
 import 'guest_auth_service.dart';
+import '../../widgets/student/app_colors.dart';
+import '../../widgets/student/student_app_bar.dart';
 
-const _kOrange = Color(0xFFBE4700);
-const _kOrangeLight = Color(0xFFF5E3D9);
-const _kBg = Color(0xFFF5F5F5);
+const _kOrange = AppColors.primaryDark;
+const _kOrangeLight = AppColors.primarySoft;
+const _kBg = AppColors.background;
 
 class GuestCertificateRepositoryScreen extends StatefulWidget {
   const GuestCertificateRepositoryScreen({super.key});
@@ -222,12 +224,7 @@ class _GuestCertificateRepositoryScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _kBg,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text('Certificate Repository', style: GoogleFonts.beVietnamPro(
-            fontSize: 17, fontWeight: FontWeight.w700, color: Colors.black87)),
-      ),
+      appBar: const StudentAppBar(title: 'Certificate Repository'),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: _kOrange))
           : _error != null

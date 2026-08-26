@@ -624,40 +624,6 @@ Widget _categoryBadge(String category) {
   );
 }
 
-// Section label — same as StudentAccounts
-// Colored accent bar instead of a generic icon, same reasoning as the
-// identical helper elsewhere in the org portal — [icon] kept for existing
-// call sites but intentionally unused now.
-Widget _sectionLabel(String text, {IconData? icon}) {
-  return Padding(
-    padding: const EdgeInsets.only(bottom: 12),
-    child: Row(
-      children: [
-        Container(
-          width: 3,
-          height: 15,
-          decoration: BoxDecoration(
-            color: _C.primaryDark,
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Text(
-          text,
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: _C.primaryDark,
-            letterSpacing: 0.3,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(child: _DS.fadeDivider()),
-      ],
-    ),
-  );
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Screen
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1623,6 +1589,51 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
           const SizedBox(height: 12),
           _DS.fadeDivider(),
           const SizedBox(height: 10),
+          // Mirrors the composer's own "Add to your post" bar, so the
+          // shortcuts you see here are the same ones you land on. The
+          // divider above used to end the card with nothing after it.
+          Row(
+            children: [
+              for (final s in const [
+                ('photo', Icons.image_outlined, 'Banner image'),
+                ('files', Icons.attach_file_rounded, 'Attachments'),
+                ('event', Icons.event_outlined, 'Link to event'),
+                ('schedule', Icons.schedule_rounded, 'Schedule for later'),
+              ])
+                Expanded(
+                  child: Tooltip(
+                    message: s.$3,
+                    waitDuration: const Duration(milliseconds: 400),
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: GestureDetector(
+                        onTap: () =>
+                            _showAnnouncementDialog(focusSection: s.$1),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(s.$2, size: 17, color: _C.darkGray),
+                              const SizedBox(width: 8),
+                              Text(
+                                s.$3,
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: _C.darkGray,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ],
       ),
     );
@@ -1833,9 +1844,13 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
     final formKey = GlobalKey<FormState>();
     final titleCtrl = TextEditingController(text: existing?.title ?? '');
     final contentCtrl = TextEditingController(text: existing?.content ?? '');
-    final imageSectionKey = GlobalKey();
-
-    final eventSectionKey = GlobalKey();
+    // Which "Add to your post" panel is expanded, if any — one at a time,
+    // Facebook-style, so the composer stays a single box you're writing a
+    // post in instead of an eight-section form you scroll through.
+    // [focusSection] still deep-links a caller straight into one panel; it
+    // used to scroll a section into view, which no longer applies now that
+    // the sections aren't laid out down the page.
+    String? openPanel = focusSection;
     bool isPinned = existing?.isPinned ?? false;
     String? imageBase64 = existing?.imageBase64;
     List<AttachmentBase64> attachments = List.from(
@@ -1863,7 +1878,6 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
       scheduledTime = TimeOfDay.fromDateTime(scheduledDate);
     }
 
-    bool hasScrolledToFocus = false;
     // Same author name the published post will actually show — reused for
     // the compose box's header row so that header reads as "this is who
     // you're posting as," not a placeholder.
@@ -1877,26 +1891,246 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDlg) {
-          if (!hasScrolledToFocus && focusSection != null) {
-            hasScrolledToFocus = true;
-            final targetKey = switch (focusSection) {
-              'photo' => imageSectionKey,
-              'event' => eventSectionKey,
-              _ => null,
-            };
-            if (targetKey != null) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                final targetContext = targetKey.currentContext;
-                if (targetContext != null) {
-                  Scrollable.ensureVisible(
-                    targetContext,
-                    duration: const Duration(milliseconds: 300),
-                    alignment: 0.1,
-                  );
-                }
-              });
-            }
+          // ── "Add to your post" bar plumbing ──────────────────────────
+          void togglePanel(String name) =>
+              setDlg(() => openPanel = openPanel == name ? null : name);
+
+          // The bare icon tile. Tinted when its field already carries a
+          // value or its panel is open, so the bar doubles as a summary of
+          // what's attached without a row of badges saying the same thing.
+          Widget iconVisual(IconData icon, bool active, {bool enabled = true}) {
+            return Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: active
+                    ? _C.primaryDark.withAlpha(20)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                icon,
+                size: 19,
+                color: !enabled
+                    ? _C.textFaint
+                    : (active ? _C.primaryDark : _C.darkGray),
+              ),
+            );
           }
+
+          Widget iconButton(
+            IconData icon,
+            String tooltip,
+            bool active,
+            VoidCallback onTap,
+          ) {
+            return Tooltip(
+              message: tooltip,
+              waitDuration: const Duration(milliseconds: 400),
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  onTap: onTap,
+                  child: iconVisual(icon, active),
+                ),
+              ),
+            );
+          }
+
+          // Category and Audience are the only two fields that moved into
+          // real overlay menus. Neither holds a TextFormField, so neither
+          // can be skipped by formKey.validate() the way a text field
+          // living on an overlay route silently would be.
+          Widget categoryMenu(Widget child) {
+            return PopupMenuButton<String>(
+              tooltip: 'Category',
+              offset: const Offset(0, -8),
+              elevation: 4,
+              color: _C.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              itemBuilder: (_) => [
+                ..._allCategories.map(
+                  (c) => PopupMenuItem<String>(
+                    value: c,
+                    height: 42,
+                    child: Row(
+                      children: [
+                        Icon(
+                          _categoryTheme(c).icon,
+                          size: 15,
+                          color: category == c ? _C.primaryDark : _C.darkGray,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          c,
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 13,
+                            fontWeight: category == c
+                                ? FontWeight.w600
+                                : FontWeight.w400,
+                            color: category == c
+                                ? _C.primaryDark
+                                : _C.charcoal,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                if (_allCategories.isNotEmpty) const PopupMenuDivider(),
+                PopupMenuItem<String>(
+                  value: '__add_new__',
+                  height: 42,
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.add_rounded,
+                        size: 15,
+                        color: _C.primaryDark,
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Add new',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: _C.primaryDark,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              onSelected: (v) async {
+                if (v == '__add_new__') {
+                  final added = await _promptAddCategory();
+                  if (added != null) setDlg(() => category = added);
+                } else {
+                  setDlg(() => category = v);
+                }
+              },
+              child: child,
+            );
+          }
+
+          // Locked while a proposal is linked — the linked event decides the
+          // audience, exactly the rule the old dropdown enforced.
+          final audienceLocked = linkedProposalId != null;
+
+          Widget audienceMenu(Widget child) {
+            return PopupMenuButton<String>(
+              enabled: !audienceLocked,
+              tooltip: audienceLocked
+                  ? 'Audience is set by the linked event'
+                  : 'Target audience',
+              offset: const Offset(0, -8),
+              elevation: 4,
+              color: _C.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              itemBuilder: (_) =>
+                  ['Public', 'BulSUan', 'CICT Only', 'Members Only']
+                      .map(
+                        (o) => PopupMenuItem<String>(
+                          value: o,
+                          height: 42,
+                          child: Row(
+                            children: [
+                              Icon(
+                                _audienceIcon(o),
+                                size: 15,
+                                color: targetAudience == o
+                                    ? _C.primaryDark
+                                    : _C.darkGray,
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                o,
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 13,
+                                  fontWeight: targetAudience == o
+                                      ? FontWeight.w600
+                                      : FontWeight.w400,
+                                  color: targetAudience == o
+                                      ? _C.primaryDark
+                                      : _C.charcoal,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                      .toList(),
+              onSelected: (v) => setDlg(() => targetAudience = v),
+              child: child,
+            );
+          }
+
+          // Frame for whichever panel is open, with its own close control.
+          Widget panel(String title, Widget child) {
+            return Container(
+              width: double.infinity,
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: _C.surface,
+                borderRadius: BorderRadius.circular(_DS.radiusSm),
+                border: Border.all(color: _C.borderSoft),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          title.toUpperCase(),
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700,
+                            color: _C.darkGray,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                      MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          onTap: () => setDlg(() => openPanel = null),
+                          child: const Icon(
+                            Icons.close_rounded,
+                            size: 15,
+                            color: _C.textFaint,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  child,
+                ],
+              ),
+            );
+          }
+
+          // A quiet one-line recap of what's attached — plain text, because
+          // a row of colored chips reading "Pinned" and "2 attachments" is
+          // exactly the badge clutter this redesign removes.
+          final attachedBits = <String>[
+            if (category.trim().isNotEmpty) category,
+            if ((imageBase64 ?? '').isNotEmpty) 'Banner image',
+            if (attachments.isNotEmpty)
+              '${attachments.length} attachment'
+                  '${attachments.length == 1 ? '' : 's'}',
+            if (linkedEventTitle != null) 'Linked to ${linkedEventTitle!}',
+            if (isScheduled && scheduledDate != null)
+              'Scheduled ${DateFormat('MMM d').format(scheduledDate!)}',
+            if (isPinned) 'Pinned',
+          ];
+
           return Dialog(
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(18),
@@ -1961,788 +2195,798 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                   ),
 
                   // ── Body ────────────────────────────────────────────────────
+                  // One card, not a form. Everything that used to be a
+                  // labelled section stacked below the compose box now lives
+                  // behind an icon in the "Add to your post" bar, so this
+                  // reads as a single post being written rather than an
+                  // eight-section settings page you scroll through.
                   Expanded(
                     child: SingleChildScrollView(
                       padding: const EdgeInsets.all(24),
                       child: Form(
                         key: formKey,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // ── FB-style compose box — this box is what
-                            // will actually post, so there's no separate
-                            // "Preview" further down duplicating it. A plain
-                            // border (not the colored left accent rule this
-                            // had before, which just read as a stray line)
-                            // plus an avatar/name/audience header on top is
-                            // what makes this read as a real Facebook post
-                            // composer instead of a generic form field.
-                            Container(
-                              decoration: BoxDecoration(
-                                color: _C.white,
-                                borderRadius: BorderRadius.circular(
-                                  _DS.radiusLg,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: _C.white,
+                            borderRadius: BorderRadius.circular(_DS.radiusLg),
+                            border: Border.all(color: _C.borderSoft),
+                            boxShadow: _DS.cardShadow,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // ── Author row ──
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  16,
+                                  16,
+                                  0,
                                 ),
-                                border: Border.all(color: _C.borderSoft),
-                                boxShadow: _DS.cardShadow,
-                              ),
-                              padding: const EdgeInsets.all(16),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      _orgCircleAvatar(
-                                        size: 38,
-                                        fallbackLabel: authorName,
-                                        logoUrl: _orgLogoUrl,
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              authorName,
-                                              style: GoogleFonts.beVietnamPro(
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w700,
-                                                color: _C.charcoal,
-                                              ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
+                                child: Row(
+                                  children: [
+                                    _orgCircleAvatar(
+                                      size: 38,
+                                      fallbackLabel: authorName,
+                                      logoUrl: _orgLogoUrl,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            authorName,
+                                            style: GoogleFonts.beVietnamPro(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w700,
+                                              color: _C.charcoal,
                                             ),
-                                            const SizedBox(height: 2),
-                                            Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 8,
-                                                    vertical: 2,
-                                                  ),
-                                              decoration: BoxDecoration(
-                                                color: _C.surface,
-                                                borderRadius:
-                                                    BorderRadius.circular(
-                                                      _DS.radiusPill,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          const SizedBox(height: 2),
+                                          // The audience pill was already
+                                          // here showing the current value —
+                                          // it just wasn't clickable. Making
+                                          // it the audience control puts the
+                                          // setting where it's displayed,
+                                          // the way Facebook does it.
+                                          audienceMenu(
+                                            MouseRegion(
+                                              cursor: audienceLocked
+                                                  ? SystemMouseCursors.basic
+                                                  : SystemMouseCursors.click,
+                                              child: Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 3,
                                                     ),
-                                              ),
-                                              child: Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  Icon(
-                                                    _audienceIcon(
+                                                decoration: BoxDecoration(
+                                                  color: _C.surface,
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                        _DS.radiusPill,
+                                                      ),
+                                                ),
+                                                child: Row(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  children: [
+                                                    Icon(
+                                                      _audienceIcon(
+                                                        targetAudience,
+                                                      ),
+                                                      size: 11,
+                                                      color: _C.darkGray,
+                                                    ),
+                                                    const SizedBox(width: 4),
+                                                    Text(
                                                       targetAudience,
+                                                      style:
+                                                          GoogleFonts.beVietnamPro(
+                                                            fontSize: 11,
+                                                            fontWeight:
+                                                                FontWeight.w600,
+                                                            color: _C.darkGray,
+                                                          ),
                                                     ),
-                                                    size: 11,
-                                                    color: _C.darkGray,
-                                                  ),
-                                                  const SizedBox(width: 4),
-                                                  Text(
-                                                    targetAudience,
-                                                    style:
-                                                        GoogleFonts.beVietnamPro(
-                                                          fontSize: 11,
-                                                          fontWeight:
-                                                              FontWeight.w600,
-                                                          color: _C.darkGray,
-                                                        ),
-                                                  ),
-                                                ],
+                                                    if (!audienceLocked) ...[
+                                                      const SizedBox(width: 1),
+                                                      const Icon(
+                                                        Icons
+                                                            .arrow_drop_down_rounded,
+                                                        size: 15,
+                                                        color: _C.darkGray,
+                                                      ),
+                                                    ],
+                                                  ],
+                                                ),
                                               ),
                                             ),
-                                          ],
-                                        ),
+                                          ),
+                                        ],
                                       ),
-                                    ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              // ── Title, shown as the headline it will
+                              // actually become once set ──
+                              if (titleCtrl.text.trim().isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    16,
+                                    14,
+                                    16,
+                                    0,
                                   ),
-                                  const SizedBox(height: 12),
+                                  child: Text(
+                                    titleCtrl.text.trim(),
+                                    style: GoogleFonts.beVietnamPro(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                      color: _C.charcoal,
+                                      height: 1.3,
+                                    ),
+                                  ),
+                                ),
+
+                              // ── Content ──
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  12,
+                                  16,
+                                  14,
+                                ),
+                                child: TextFormField(
+                                  controller: contentCtrl,
+                                  maxLines: 10,
+                                  minLines: 5,
+                                  autofocus: !isEdit,
+                                  decoration: InputDecoration(
+                                    hintText: "What's on your mind?",
+                                    hintStyle: GoogleFonts.beVietnamPro(
+                                      fontSize: 17,
+                                      color: _C.textFaint,
+                                    ),
+                                    errorStyle: GoogleFonts.beVietnamPro(
+                                      fontSize: 11.5,
+                                      color: _C.error,
+                                    ),
+                                    border: InputBorder.none,
+                                    enabledBorder: InputBorder.none,
+                                    focusedBorder: InputBorder.none,
+                                    isDense: true,
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 17,
+                                    color: _C.charcoal,
+                                    height: 1.5,
+                                  ),
+                                  onChanged: (_) => setDlg(() {}),
+                                  validator: (v) => v?.trim().isEmpty == true
+                                      ? 'Content is required'
+                                      : null,
+                                ),
+                              ),
+
+                              // ── What's attached so far ──
+                              if (attachedBits.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    16,
+                                    0,
+                                    16,
+                                    14,
+                                  ),
+                                  child: Text(
+                                    attachedBits.join('  ·  '),
+                                    style: GoogleFonts.beVietnamPro(
+                                      fontSize: 11.5,
+                                      color: _C.darkGray,
+                                      height: 1.5,
+                                    ),
+                                  ),
+                                ),
+
+                              // ── "Add to your post" bar ──
+                              Container(
+                                margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                                padding: const EdgeInsets.only(
+                                  top: 12,
+                                  bottom: 8,
+                                ),
+                                decoration: const BoxDecoration(
+                                  border: Border(
+                                    top: BorderSide(color: _C.borderSoft),
+                                  ),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Add to your post',
+                                      style: GoogleFonts.beVietnamPro(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: _C.darkGray,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    // Wrap, not Row: eight tiles fit on one
+                                    // line at this width but shouldn't
+                                    // overflow if the dialog is ever
+                                    // narrowed.
+                                    Wrap(
+                                      spacing: 2,
+                                      runSpacing: 2,
+                                      children: [
+                                        iconButton(
+                                          Icons.title_rounded,
+                                          'Title',
+                                          titleCtrl.text.trim().isNotEmpty ||
+                                              openPanel == 'title',
+                                          () => togglePanel('title'),
+                                        ),
+                                        categoryMenu(
+                                          MouseRegion(
+                                            cursor: SystemMouseCursors.click,
+                                            child: iconVisual(
+                                              category.trim().isNotEmpty
+                                                  ? _categoryTheme(
+                                                      category,
+                                                    ).icon
+                                                  : Icons.label_outline_rounded,
+                                              category.trim().isNotEmpty,
+                                            ),
+                                          ),
+                                        ),
+                                        iconButton(
+                                          Icons.image_outlined,
+                                          'Banner image',
+                                          (imageBase64 ?? '').isNotEmpty ||
+                                              openPanel == 'photo',
+                                          () => togglePanel('photo'),
+                                        ),
+                                        iconButton(
+                                          Icons.attach_file_rounded,
+                                          'Attachments',
+                                          attachments.isNotEmpty ||
+                                              openPanel == 'files',
+                                          () => togglePanel('files'),
+                                        ),
+                                        iconButton(
+                                          Icons.event_outlined,
+                                          'Link to event',
+                                          linkedProposalId != null ||
+                                              openPanel == 'event',
+                                          () => togglePanel('event'),
+                                        ),
+                                        audienceMenu(
+                                          MouseRegion(
+                                            cursor: audienceLocked
+                                                ? SystemMouseCursors.basic
+                                                : SystemMouseCursors.click,
+                                            child: iconVisual(
+                                              _audienceIcon(targetAudience),
+                                              false,
+                                              enabled: !audienceLocked,
+                                            ),
+                                          ),
+                                        ),
+                                        iconButton(
+                                          Icons.schedule_rounded,
+                                          'Schedule for later',
+                                          isScheduled ||
+                                              openPanel == 'schedule',
+                                          () => togglePanel('schedule'),
+                                        ),
+                                        iconButton(
+                                          Icons.push_pin_outlined,
+                                          isPinned
+                                              ? 'Unpin this announcement'
+                                              : 'Pin this announcement',
+                                          isPinned,
+                                          () => setDlg(
+                                            () => isPinned = !isPinned,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    // Title and Category now live behind the
+                                    // icons above, so their own fields aren't
+                                    // always mounted — and validate() only
+                                    // visits mounted fields, which would let
+                                    // an empty title post silently. This
+                                    // field is always mounted and checks them
+                                    // from the closure vars instead (the same
+                                    // trick the Category dropdown already
+                                    // used), reporting inline: a SnackBar
+                                    // would render behind the dialog barrier.
+                                    FormField<String>(
+                                      validator: (_) {
+                                        if (titleCtrl.text.trim().isEmpty) {
+                                          return 'Title is required — add one below.';
+                                        }
+                                        if (category.trim().isEmpty) {
+                                          return 'Pick a category from the tag icon above.';
+                                        }
+                                        return null;
+                                      },
+                                      builder: (state) => state.hasError
+                                          ? Padding(
+                                              padding: const EdgeInsets.only(
+                                                top: 6,
+                                              ),
+                                              child: Text(
+                                                state.errorText!,
+                                                style:
+                                                    GoogleFonts.beVietnamPro(
+                                                      fontSize: 11.5,
+                                                      color: _C.error,
+                                                    ),
+                                              ),
+                                            )
+                                          : const SizedBox.shrink(),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              // ── The one open panel ──
+                              if (openPanel == 'title')
+                                panel(
+                                  'Title',
                                   TextFormField(
-                                    controller: contentCtrl,
-                                    maxLines: 6,
-                                    minLines: 3,
-                                    autofocus: !isEdit,
+                                    controller: titleCtrl,
+                                    autofocus: true,
                                     decoration: InputDecoration(
-                                      hintText: "What's on your mind?",
+                                      hintText: 'A short, catchy headline',
                                       hintStyle: GoogleFonts.beVietnamPro(
-                                        fontSize: 17,
+                                        fontSize: 13,
                                         color: _C.textFaint,
                                       ),
                                       errorStyle: GoogleFonts.beVietnamPro(
                                         fontSize: 11.5,
                                         color: _C.error,
                                       ),
-                                      border: InputBorder.none,
-                                      contentPadding: EdgeInsets.zero,
+                                      filled: true,
+                                      fillColor: _C.white,
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(
+                                          _DS.radiusSm,
+                                        ),
+                                        borderSide: const BorderSide(
+                                          color: _C.borderSoft,
+                                        ),
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(
+                                          _DS.radiusSm,
+                                        ),
+                                        borderSide: const BorderSide(
+                                          color: _C.borderSoft,
+                                        ),
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(
+                                          _DS.radiusSm,
+                                        ),
+                                        borderSide: const BorderSide(
+                                          color: _C.primaryDark,
+                                        ),
+                                      ),
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 14,
+                                            vertical: 12,
+                                          ),
                                     ),
                                     style: GoogleFonts.beVietnamPro(
-                                      fontSize: 17,
+                                      fontSize: 13,
                                       color: _C.charcoal,
                                     ),
                                     onChanged: (_) => setDlg(() {}),
                                     validator: (v) => v?.trim().isEmpty == true
-                                        ? 'Content is required'
+                                        ? 'Title is required'
                                         : null,
                                   ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 22),
-                            _sectionLabel(
-                              'Post Details',
-                              icon: Icons.article_outlined,
-                            ),
-                            // Side-by-side instead of stacked: Category's
-                            // dropdown label floats the moment a value is
-                            // selected while Title's only floats once typed
-                            // into, so stacking them with just a divider let
-                            // Category's floated label collide with Title's
-                            // bottom edge. Placing them as separate columns
-                            // sidesteps that entirely — each field owns its
-                            // own vertical space to float into.
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  flex: 3,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: _C.white,
-                                      borderRadius: BorderRadius.circular(
-                                        _DS.radiusLg,
-                                      ),
-                                      boxShadow: _DS.cardShadow,
-                                    ),
-                                    child: TextFormField(
-                                      controller: titleCtrl,
-                                      decoration: _DS
-                                          .inputDecoration(
-                                            'Title *',
-                                            hint: 'A short, catchy headline',
-                                            icon: Icons.title_rounded,
-                                          )
-                                          .copyWith(
-                                            fillColor: _C.white,
-                                            border: OutlineInputBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(
-                                                    _DS.radiusLg,
-                                                  ),
-                                              borderSide: BorderSide.none,
-                                            ),
-                                            enabledBorder: OutlineInputBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(
-                                                    _DS.radiusLg,
-                                                  ),
-                                              borderSide: BorderSide.none,
-                                            ),
-                                          ),
-                                      style: GoogleFonts.beVietnamPro(
-                                        fontSize: 13,
-                                      ),
-                                      onChanged: (_) => setDlg(() {}),
-                                      validator: (v) =>
-                                          v?.trim().isEmpty == true
-                                          ? 'Title is required'
-                                          : null,
-                                    ),
+                                ),
+
+                              if (openPanel == 'photo')
+                                panel(
+                                  'Banner image',
+                                  _buildImagePicker(
+                                    imageBase64,
+                                    (v) => setDlg(() => imageBase64 = v),
+                                    () => setDlg(() => imageBase64 = null),
                                   ),
                                 ),
-                                const SizedBox(width: 14),
-                                Expanded(
-                                  flex: 2,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: _C.white,
-                                      borderRadius: BorderRadius.circular(
-                                        _DS.radiusLg,
-                                      ),
-                                      boxShadow: _DS.cardShadow,
-                                    ),
-                                    child: DropdownButtonFormField<String>(
-                                      value: _allCategories.contains(category)
-                                          ? category
-                                          : null,
-                                      isExpanded: true,
-                                      decoration: InputDecoration(
-                                        label: requiredLabel('Category'),
-                                        hintText: _allCategories.isEmpty
-                                            ? 'No categories yet'
-                                            : 'Select one',
-                                        hintStyle: GoogleFonts.beVietnamPro(
-                                          fontSize: 13,
-                                          color: _C.textFaint,
-                                        ),
-                                        prefixIcon: Icon(
-                                          category.isNotEmpty
-                                              ? _categoryTheme(category).icon
-                                              : Icons.label_outline_rounded,
-                                          size: 18,
-                                          color: _C.textFaint,
-                                        ),
-                                        filled: true,
-                                        fillColor: _C.white,
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            _DS.radiusLg,
-                                          ),
-                                          borderSide: BorderSide.none,
-                                        ),
-                                        enabledBorder: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            _DS.radiusLg,
-                                          ),
-                                          borderSide: BorderSide.none,
-                                        ),
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
-                                              horizontal: 16,
-                                              vertical: 14,
-                                            ),
-                                      ),
-                                      items: [
-                                        ..._allCategories.map(
-                                          (c) => DropdownMenuItem(
-                                            value: c,
-                                            child: Text(
-                                              c,
-                                              overflow: TextOverflow.ellipsis,
+
+                              if (openPanel == 'files')
+                                panel(
+                                  'Attachments',
+                                  _buildAttachmentsPicker(
+                                    attachments,
+                                    (v) => setDlg(() => attachments = v),
+                                  ),
+                                ),
+
+                              if (openPanel == 'event')
+                                panel(
+                                  'Link to event',
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      FutureBuilder<List<_LinkableEvent>>(
+                                        future: linkableEventsFuture,
+                                        builder: (ctx2, snap) {
+                                          final events =
+                                              snap.data ??
+                                              const <_LinkableEvent>[];
+                                          if (snap.connectionState !=
+                                              ConnectionState.done) {
+                                            return const Padding(
+                                              padding: EdgeInsets.symmetric(
+                                                vertical: 8,
+                                              ),
+                                              child: SizedBox(
+                                                height: 18,
+                                                width: 18,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                    ),
+                                              ),
+                                            );
+                                          }
+                                          if (events.isEmpty) {
+                                            return Text(
+                                              'No approved events with a published registration form yet.',
                                               style: GoogleFonts.beVietnamPro(
-                                                fontSize: 13,
+                                                fontSize: 11.5,
+                                                color: _C.textFaint,
+                                              ),
+                                            );
+                                          }
+                                          return Container(
+                                            decoration: BoxDecoration(
+                                              color: _C.white,
+                                              borderRadius:
+                                                  BorderRadius.circular(
+                                                    _DS.radiusSm,
+                                                  ),
+                                              border: Border.all(
+                                                color: _C.borderSoft,
                                               ),
                                             ),
+                                            child:
+                                                DropdownButtonFormField<String>(
+                                                  value: linkedProposalId,
+                                                  isExpanded: true,
+                                                  decoration: InputDecoration(
+                                                    labelText:
+                                                        'Registration form (optional)',
+                                                    labelStyle:
+                                                        GoogleFonts.beVietnamPro(
+                                                          fontSize: 13,
+                                                          color: _C.darkGray,
+                                                        ),
+                                                    border: InputBorder.none,
+                                                    contentPadding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 16,
+                                                          vertical: 14,
+                                                        ),
+                                                  ),
+                                                  items: [
+                                                    DropdownMenuItem(
+                                                      value: null,
+                                                      child: Text(
+                                                        'None',
+                                                        style:
+                                                            GoogleFonts.beVietnamPro(
+                                                              fontSize: 13,
+                                                            ),
+                                                      ),
+                                                    ),
+                                                    ...events.map(
+                                                      (e) => DropdownMenuItem(
+                                                        value: e.proposalId,
+                                                        child: Text(
+                                                          e.title,
+                                                          style:
+                                                              GoogleFonts.beVietnamPro(
+                                                                fontSize: 13,
+                                                              ),
+                                                          overflow:
+                                                              TextOverflow
+                                                                  .ellipsis,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                  onChanged: (v) => setDlg(() {
+                                                    if (v == null) {
+                                                      linkedEventId = null;
+                                                      linkedProposalId = null;
+                                                      linkedEventTitle = null;
+                                                    } else {
+                                                      final ev = events
+                                                          .firstWhere(
+                                                            (e) =>
+                                                                e.proposalId ==
+                                                                v,
+                                                          );
+                                                      linkedEventId = ev.eventId;
+                                                      linkedProposalId =
+                                                          ev.proposalId;
+                                                      linkedEventTitle =
+                                                          ev.title;
+                                                      // Audience is auto-determined from the linked event.
+                                                      targetAudience =
+                                                          ev.audience;
+                                                    }
+                                                  }),
+                                                ),
+                                          );
+                                        },
+                                      ),
+                                      // The audience note lives here now
+                                      // rather than in a Settings section,
+                                      // next to the choice that causes it.
+                                      if (audienceLocked) ...[
+                                        const SizedBox(height: 10),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 10,
                                           ),
-                                        ),
-                                        DropdownMenuItem(
-                                          value: '__add_new__',
+                                          decoration: BoxDecoration(
+                                            color: _C.infoBg,
+                                            borderRadius:
+                                                BorderRadius.circular(
+                                                  _DS.radiusSm,
+                                                ),
+                                            border: Border.all(
+                                              color: _C.info.withAlpha(64),
+                                            ),
+                                          ),
                                           child: Row(
-                                            mainAxisSize: MainAxisSize.min,
                                             children: [
-                                              const Icon(
-                                                Icons.add_rounded,
-                                                size: 16,
-                                                color: _C.primaryDark,
-                                              ),
-                                              const SizedBox(width: 6),
-                                              Text(
-                                                'Add new',
-                                                style: GoogleFonts.beVietnamPro(
-                                                  fontSize: 13,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: _C.primaryDark,
+                                              _audienceBadge(targetAudience),
+                                              const SizedBox(width: 10),
+                                              Expanded(
+                                                child: Text(
+                                                  'Audience is set automatically by the linked event',
+                                                  style:
+                                                      GoogleFonts.beVietnamPro(
+                                                        fontSize: 11.5,
+                                                        color: _C.info,
+                                                      ),
                                                 ),
                                               ),
                                             ],
                                           ),
                                         ),
                                       ],
-                                      onChanged: (v) async {
-                                        if (v == '__add_new__') {
-                                          final added =
-                                              await _promptAddCategory();
-                                          if (added != null) {
-                                            setDlg(() => category = added);
-                                          }
-                                        } else if (v != null) {
-                                          setDlg(() => category = v);
-                                        }
-                                      },
-                                      validator: (_) => category.trim().isEmpty
-                                          ? 'Please select or add a category'
-                                          : null,
-                                    ),
+                                    ],
                                   ),
                                 ),
-                              ],
-                            ),
-                            const SizedBox(height: 22),
 
-                            // The compose box above IS the preview — a
-                            // separate "Preview" section here used to
-                            // re-render the same content a second time,
-                            // which is exactly the redundancy a real
-                            // Facebook composer doesn't have.
-                            KeyedSubtree(
-                              key: imageSectionKey,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _sectionLabel(
-                                    'Banner Image',
-                                    icon: Icons.image_outlined,
-                                  ),
-                                  _buildImagePicker(
-                                    imageBase64,
-                                    (v) => setDlg(() => imageBase64 = v),
-                                    () => setDlg(() => imageBase64 = null),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 20),
-
-                            _sectionLabel(
-                              'Attachments',
-                              icon: Icons.attach_file_rounded,
-                            ),
-                            _buildAttachmentsPicker(
-                              attachments,
-                              (v) => setDlg(() => attachments = v),
-                            ),
-                            const SizedBox(height: 20),
-
-                            KeyedSubtree(
-                              key: eventSectionKey,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _sectionLabel(
-                                    'Link to Event',
-                                    icon: Icons.event_available_rounded,
-                                  ),
-                                  FutureBuilder<List<_LinkableEvent>>(
-                                    future: linkableEventsFuture,
-                                    builder: (ctx2, snap) {
-                                      final events =
-                                          snap.data ?? const <_LinkableEvent>[];
-                                      if (snap.connectionState !=
-                                          ConnectionState.done) {
-                                        return const Padding(
-                                          padding: EdgeInsets.symmetric(
-                                            vertical: 8,
+                              if (openPanel == 'schedule')
+                                panel(
+                                  'Schedule',
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Switch(
+                                            value: isScheduled,
+                                            onChanged: (val) => setDlg(() {
+                                              isScheduled = val;
+                                              if (!isScheduled) {
+                                                scheduledDate = null;
+                                                scheduledTime = null;
+                                              }
+                                            }),
+                                            activeColor: _C.primaryDark,
                                           ),
-                                          child: SizedBox(
-                                            height: 18,
-                                            width: 18,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'Publish later instead of now',
+                                            style: GoogleFonts.beVietnamPro(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                              color: _C.charcoal,
                                             ),
                                           ),
-                                        );
-                                      }
-                                      if (events.isEmpty) {
-                                        return Text(
-                                          'No approved events with a published registration form yet.',
-                                          style: GoogleFonts.beVietnamPro(
-                                            fontSize: 11.5,
-                                            color: _C.textFaint,
-                                          ),
-                                        );
-                                      }
-                                      return Container(
-                                        decoration: BoxDecoration(
-                                          color: _C.surface,
-                                          borderRadius: BorderRadius.circular(
-                                            _DS.radiusSm,
-                                          ),
-                                          border: Border.all(
-                                            color: _C.borderSoft,
-                                          ),
-                                        ),
-                                        child: DropdownButtonFormField<String>(
-                                          value: linkedProposalId,
-                                          decoration: InputDecoration(
-                                            labelText:
-                                                'Registration form (optional)',
-                                            labelStyle:
-                                                GoogleFonts.beVietnamPro(
-                                                  fontSize: 13,
-                                                  color: _C.darkGray,
-                                                ),
-                                            border: InputBorder.none,
-                                            contentPadding:
-                                                const EdgeInsets.symmetric(
-                                                  horizontal: 16,
-                                                  vertical: 14,
-                                                ),
-                                          ),
-                                          items: [
-                                            DropdownMenuItem(
-                                              value: null,
-                                              child: Text(
-                                                'None',
-                                                style: GoogleFonts.beVietnamPro(
-                                                  fontSize: 13,
+                                        ],
+                                      ),
+                                      if (isScheduled) ...[
+                                        const SizedBox(height: 12),
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: InkWell(
+                                                onTap: () async {
+                                                  final p =
+                                                      await showDatePicker(
+                                                        context: ctx,
+                                                        initialDate:
+                                                            DateTime.now(),
+                                                        firstDate:
+                                                            DateTime.now(),
+                                                        lastDate:
+                                                            DateTime.now().add(
+                                                              const Duration(
+                                                                days: 365,
+                                                              ),
+                                                            ),
+                                                        // Material 3's default seed skews
+                                                        // purple/indigo unless the scheme is
+                                                        // seeded from the brand color instead.
+                                                        builder: (context, child) {
+                                                          final baseTheme =
+                                                              Theme.of(context);
+                                                          final scheme =
+                                                              ColorScheme.fromSeed(
+                                                                seedColor: _C
+                                                                    .primaryDark,
+                                                                brightness:
+                                                                    Brightness
+                                                                        .light,
+                                                              ).copyWith(
+                                                                primary: _C
+                                                                    .primaryDark,
+                                                                onPrimary:
+                                                                    Colors.white,
+                                                                surface:
+                                                                    Colors.white,
+                                                                surfaceTint: Colors
+                                                                    .transparent,
+                                                              );
+                                                          return Theme(
+                                                            data: baseTheme.copyWith(
+                                                              colorScheme: scheme,
+                                                              textButtonTheme:
+                                                                  TextButtonThemeData(
+                                                                    style: TextButton.styleFrom(
+                                                                      foregroundColor:
+                                                                          _C.primaryDark,
+                                                                    ),
+                                                                  ),
+                                                            ),
+                                                            child: child!,
+                                                          );
+                                                        },
+                                                      );
+                                                  if (p != null) {
+                                                    setDlg(
+                                                      () => scheduledDate = p,
+                                                    );
+                                                  }
+                                                },
+                                                child: Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 14,
+                                                        vertical: 12,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.white,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          _DS.radiusSm,
+                                                        ),
+                                                    border: Border.all(
+                                                      color: _C.borderSoft,
+                                                    ),
+                                                  ),
+                                                  child: Row(
+                                                    children: [
+                                                      const Icon(
+                                                        Icons
+                                                            .calendar_today_rounded,
+                                                        size: 15,
+                                                        color: _C.primaryDark,
+                                                      ),
+                                                      const SizedBox(width: 10),
+                                                      Text(
+                                                        scheduledDate != null
+                                                            ? DateFormat(
+                                                                'MMM dd, yyyy',
+                                                              ).format(
+                                                                scheduledDate!,
+                                                              )
+                                                            : 'Select date',
+                                                        style:
+                                                            GoogleFonts.beVietnamPro(
+                                                              fontSize: 13,
+                                                            ),
+                                                      ),
+                                                    ],
+                                                  ),
                                                 ),
                                               ),
                                             ),
-                                            ...events.map(
-                                              (e) => DropdownMenuItem(
-                                                value: e.proposalId,
-                                                child: Text(
-                                                  e.title,
-                                                  style:
-                                                      GoogleFonts.beVietnamPro(
-                                                        fontSize: 13,
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: InkWell(
+                                                onTap: () async {
+                                                  final p =
+                                                      await showTimePicker(
+                                                        context: ctx,
+                                                        initialTime:
+                                                            TimeOfDay.now(),
+                                                      );
+                                                  if (p != null) {
+                                                    setDlg(
+                                                      () => scheduledTime = p,
+                                                    );
+                                                  }
+                                                },
+                                                child: Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 14,
+                                                        vertical: 12,
                                                       ),
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.white,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          _DS.radiusSm,
+                                                        ),
+                                                    border: Border.all(
+                                                      color: _C.borderSoft,
+                                                    ),
+                                                  ),
+                                                  child: Row(
+                                                    children: [
+                                                      const Icon(
+                                                        Icons
+                                                            .access_time_rounded,
+                                                        size: 15,
+                                                        color: _C.primaryDark,
+                                                      ),
+                                                      const SizedBox(width: 10),
+                                                      Text(
+                                                        scheduledTime != null
+                                                            ? scheduledTime!
+                                                                  .format(ctx)
+                                                            : 'Select time',
+                                                        style:
+                                                            GoogleFonts.beVietnamPro(
+                                                              fontSize: 13,
+                                                            ),
+                                                      ),
+                                                    ],
+                                                  ),
                                                 ),
                                               ),
                                             ),
                                           ],
-                                          onChanged: (v) => setDlg(() {
-                                            if (v == null) {
-                                              linkedEventId = null;
-                                              linkedProposalId = null;
-                                              linkedEventTitle = null;
-                                            } else {
-                                              final ev = events.firstWhere(
-                                                (e) => e.proposalId == v,
-                                              );
-                                              linkedEventId = ev.eventId;
-                                              linkedProposalId = ev.proposalId;
-                                              linkedEventTitle = ev.title;
-                                              // Audience is auto-determined from the linked event.
-                                              targetAudience = ev.audience;
-                                            }
-                                          }),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 20),
-
-                            _sectionLabel('Settings', icon: Icons.tune_rounded),
-                            // Audience — auto-determined when linked to an event,
-                            // otherwise the org picks it manually.
-                            if (linkedProposalId != null)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 14,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: _C.infoBg,
-                                  borderRadius: BorderRadius.circular(
-                                    _DS.radiusSm,
-                                  ),
-                                  border: Border.all(
-                                    color: _C.info.withAlpha(64),
-                                  ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    _audienceBadge(targetAudience),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Text(
-                                        'Automatically determined by the linked event',
-                                        style: GoogleFonts.beVietnamPro(
-                                          fontSize: 11.5,
-                                          color: _C.info,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              )
-                            else
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: _C.surface,
-                                  borderRadius: BorderRadius.circular(
-                                    _DS.radiusSm,
-                                  ),
-                                  border: Border.all(color: _C.borderSoft),
-                                ),
-                                child: DropdownButtonFormField<String>(
-                                  value: targetAudience,
-                                  decoration: InputDecoration(
-                                    labelText: 'Target Audience',
-                                    labelStyle: GoogleFonts.beVietnamPro(
-                                      fontSize: 13,
-                                      color: _C.darkGray,
-                                    ),
-                                    border: InputBorder.none,
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 14,
-                                    ),
-                                  ),
-                                  items:
-                                      [
-                                            'Public',
-                                            'BulSUan',
-                                            'CICT Only',
-                                            'Members Only',
-                                          ]
-                                          .map(
-                                            (o) => DropdownMenuItem(
-                                              value: o,
-                                              child: Row(
-                                                children: [
-                                                  Icon(
-                                                    _audienceIcon(o),
-                                                    size: 15,
-                                                    color: _C.primaryDark,
-                                                  ),
-                                                  const SizedBox(width: 8),
-                                                  Text(
-                                                    o,
-                                                    style:
-                                                        GoogleFonts.beVietnamPro(
-                                                          fontSize: 13,
-                                                        ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          )
-                                          .toList(),
-                                  onChanged: (v) =>
-                                      setDlg(() => targetAudience = v!),
-                                ),
-                              ),
-                            const SizedBox(height: 14),
-
-                            // Schedule
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: _C.surface,
-                                borderRadius: BorderRadius.circular(
-                                  _DS.radiusSm,
-                                ),
-                                border: Border.all(color: _C.borderSoft),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Switch(
-                                        value: isScheduled,
-                                        onChanged: (val) => setDlg(() {
-                                          isScheduled = val;
-                                          if (!isScheduled) {
-                                            scheduledDate = null;
-                                            scheduledTime = null;
-                                          }
-                                        }),
-                                        activeColor: _C.primaryDark,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'Schedule for later',
-                                        style: GoogleFonts.beVietnamPro(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: _C.charcoal,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  if (isScheduled) ...[
-                                    const SizedBox(height: 12),
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: InkWell(
-                                            onTap: () async {
-                                              final p = await showDatePicker(
-                                                context: ctx,
-                                                initialDate: DateTime.now(),
-                                                firstDate: DateTime.now(),
-                                                lastDate: DateTime.now().add(
-                                                  const Duration(days: 365),
-                                                ),
-                                                // Material 3's default seed skews
-                                                // purple/indigo unless the scheme is
-                                                // seeded from the brand color instead.
-                                                builder: (context, child) {
-                                                  final baseTheme = Theme.of(
-                                                    context,
-                                                  );
-                                                  final scheme =
-                                                      ColorScheme.fromSeed(
-                                                        seedColor:
-                                                            _C.primaryDark,
-                                                        brightness:
-                                                            Brightness.light,
-                                                      ).copyWith(
-                                                        primary: _C.primaryDark,
-                                                        onPrimary: Colors.white,
-                                                        surface: Colors.white,
-                                                        surfaceTint:
-                                                            Colors.transparent,
-                                                      );
-                                                  return Theme(
-                                                    data: baseTheme.copyWith(
-                                                      colorScheme: scheme,
-                                                      textButtonTheme:
-                                                          TextButtonThemeData(
-                                                            style: TextButton.styleFrom(
-                                                              foregroundColor:
-                                                                  _C.primaryDark,
-                                                            ),
-                                                          ),
-                                                    ),
-                                                    child: child!,
-                                                  );
-                                                },
-                                              );
-                                              if (p != null)
-                                                setDlg(() => scheduledDate = p);
-                                            },
-                                            child: Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 14,
-                                                    vertical: 12,
-                                                  ),
-                                              decoration: BoxDecoration(
-                                                color: Colors.white,
-                                                borderRadius:
-                                                    BorderRadius.circular(
-                                                      _DS.radiusSm,
-                                                    ),
-                                                border: Border.all(
-                                                  color: _C.borderSoft,
-                                                ),
-                                              ),
-                                              child: Row(
-                                                children: [
-                                                  const Icon(
-                                                    Icons
-                                                        .calendar_today_rounded,
-                                                    size: 15,
-                                                    color: _C.primaryDark,
-                                                  ),
-                                                  const SizedBox(width: 10),
-                                                  Text(
-                                                    scheduledDate != null
-                                                        ? DateFormat(
-                                                            'MMM dd, yyyy',
-                                                          ).format(
-                                                            scheduledDate!,
-                                                          )
-                                                        : 'Select date',
-                                                    style:
-                                                        GoogleFonts.beVietnamPro(
-                                                          fontSize: 13,
-                                                        ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: InkWell(
-                                            onTap: () async {
-                                              final p = await showTimePicker(
-                                                context: ctx,
-                                                initialTime: TimeOfDay.now(),
-                                              );
-                                              if (p != null)
-                                                setDlg(() => scheduledTime = p);
-                                            },
-                                            child: Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 14,
-                                                    vertical: 12,
-                                                  ),
-                                              decoration: BoxDecoration(
-                                                color: Colors.white,
-                                                borderRadius:
-                                                    BorderRadius.circular(
-                                                      _DS.radiusSm,
-                                                    ),
-                                                border: Border.all(
-                                                  color: _C.borderSoft,
-                                                ),
-                                              ),
-                                              child: Row(
-                                                children: [
-                                                  const Icon(
-                                                    Icons.access_time_rounded,
-                                                    size: 15,
-                                                    color: _C.primaryDark,
-                                                  ),
-                                                  const SizedBox(width: 10),
-                                                  Text(
-                                                    scheduledTime != null
-                                                        ? scheduledTime!.format(
-                                                            ctx,
-                                                          )
-                                                        : 'Select time',
-                                                    style:
-                                                        GoogleFonts.beVietnamPro(
-                                                          fontSize: 13,
-                                                        ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
                                         ),
                                       ],
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 14),
+                                    ],
+                                  ),
+                                ),
 
-                            // Pin toggle
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 10,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isPinned ? _C.warningBg : _C.surface,
-                                borderRadius: BorderRadius.circular(
-                                  _DS.radiusSm,
-                                ),
-                                border: Border.all(
-                                  color: isPinned
-                                      ? _C.warning.withOpacity(0.4)
-                                      : _C.borderSoft,
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  Switch(
-                                    value: isPinned,
-                                    onChanged: (v) =>
-                                        setDlg(() => isPinned = v),
-                                    activeColor: _C.warning,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  const Icon(
-                                    Icons.push_pin_rounded,
-                                    size: 15,
-                                    color: _C.warning,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    'Pin this announcement',
-                                    style: GoogleFonts.beVietnamPro(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      color: _C.charcoal,
-                                    ),
-                                  ),
-                                  const Spacer(),
-                                  Text(
-                                    'Pinned posts appear at the top of the feed',
-                                    style: GoogleFonts.beVietnamPro(
-                                      fontSize: 11,
-                                      color: _C.darkGray,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                              if (openPanel == null)
+                                const SizedBox(height: 8),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -2786,6 +3030,16 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                           onPressed: isSubmitting
                               ? null
                               : () async {
+                                  // Title's own field is only mounted while
+                                  // its panel is open, so open it first —
+                                  // otherwise the always-mounted validator
+                                  // below reports the problem but the field
+                                  // to fix it isn't on screen. Category is a
+                                  // menu, so its message points at the icon.
+                                  if (titleCtrl.text.trim().isEmpty &&
+                                      openPanel != 'title') {
+                                    setDlg(() => openPanel = 'title');
+                                  }
                                   if (!formKey.currentState!.validate()) return;
 
                                   // Firestore caps a single document at
@@ -3289,16 +3543,6 @@ class _PostCard extends StatefulWidget {
 class _PostCardState extends State<_PostCard> {
   bool _expanded = false;
 
-  String _timeAgo(Timestamp ts) {
-    final diff = DateTime.now().difference(ts.toDate());
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    if (diff.inDays < 7) return '${diff.inDays}d ago';
-    if (diff.inDays < 30) return '${(diff.inDays / 7).floor()}w ago';
-    return DateFormat('MMM dd, yyyy').format(ts.toDate());
-  }
-
   Future<void> _openVideoLink(String url) async {
     final uri = Uri.tryParse(url);
     final opened = uri != null && await canLaunchUrl(uri)
@@ -3384,50 +3628,20 @@ class _PostCardState extends State<_PostCard> {
     }
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 20),
       decoration: BoxDecoration(
         color: _C.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: a.isPinned ? _C.warning.withAlpha(102) : _C.border,
-          width: a.isPinned ? 1.5 : 1,
-        ),
+        border: Border.all(color: _C.border, width: 1),
         boxShadow: _DS.postShadow,
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Pinned indicator strip ──────────────────────────────────────────
-          if (a.isPinned)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              color: _C.warningBg,
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.push_pin_rounded,
-                    size: 13,
-                    color: _C.warning,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Pinned Announcement',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: _C.warning,
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
           // ── Post header ─────────────────────────────────────────────────────
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 12, 0),
+            padding: const EdgeInsets.fromLTRB(20, 16, 16, 0),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -3458,24 +3672,35 @@ class _PostCardState extends State<_PostCard> {
                         spacing: 8,
                         runSpacing: 4,
                         children: [
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                Icons.access_time_rounded,
-                                size: 12,
-                                color: _C.textFaint,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                _timeAgo(a.timestamp),
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 11,
+                          Text(
+                            DateFormat(
+                              'MMMM dd, yyyy • h:mm a',
+                            ).format(a.timestamp.toDate()),
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 11,
+                              color: _C.textFaint,
+                            ),
+                          ),
+                          if (a.isPinned)
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.push_pin_rounded,
+                                  size: 11,
                                   color: _C.textFaint,
                                 ),
-                              ),
-                            ],
-                          ),
+                                const SizedBox(width: 3),
+                                Text(
+                                  'Pinned',
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: _C.textFaint,
+                                  ),
+                                ),
+                              ],
+                            ),
                           _categoryBadge(a.category),
                           _audienceBadge(a.targetAudience),
                           if (a.isScheduled && !a.isPublished)
@@ -3520,18 +3745,10 @@ class _PostCardState extends State<_PostCard> {
                     if (v == 'archive') widget.onArchive();
                     if (v == 'pin') widget.onTogglePin();
                   },
-                  icon: Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: _C.surface,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.more_horiz_rounded,
-                      size: 18,
-                      color: _C.darkGray,
-                    ),
+                  icon: const Icon(
+                    Icons.more_horiz_rounded,
+                    size: 18,
+                    color: _C.textFaint,
                   ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
@@ -3604,7 +3821,7 @@ class _PostCardState extends State<_PostCard> {
 
           // ── Title ───────────────────────────────────────────────────────────
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
             child: Text(
               a.title,
               style: GoogleFonts.beVietnamPro(
@@ -3618,7 +3835,7 @@ class _PostCardState extends State<_PostCard> {
 
           // ── Content (with hyperlink support) ────────────────────────────────
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -3651,35 +3868,15 @@ class _PostCardState extends State<_PostCard> {
           // ── Linked event badge ─────────────────────────────────────────────
           if (a.linkedProposalId.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: _C.infoBg,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: _C.info.withOpacity(0.25)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.event_available_rounded,
-                      size: 14,
-                      color: _C.info,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Registration linked: ${a.linkedEventTitle}',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w600,
-                        color: _C.info,
-                      ),
-                    ),
-                  ],
+              padding: const EdgeInsets.fromLTRB(20, 10, 16, 0),
+              child: Text(
+                'Registration linked: ${a.linkedEventTitle}',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: _C.darkGray,
+                  decoration: TextDecoration.underline,
+                  decorationColor: _C.border,
                 ),
               ),
             ),
@@ -3712,7 +3909,7 @@ class _PostCardState extends State<_PostCard> {
           // ── Linked video ───────────────────────────────────────────────────────
           if (a.videoUrl.isNotEmpty) ...[
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
               child: InkWell(
                 onTap: () => _openVideoLink(a.videoUrl),
                 borderRadius: BorderRadius.circular(_DS.radiusSm),
@@ -3767,7 +3964,7 @@ class _PostCardState extends State<_PostCard> {
           // ── Attachments ──────────────────────────────────────────────────────
           if (a.attachmentsBase64.isNotEmpty) ...[
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -3837,29 +4034,7 @@ class _PostCardState extends State<_PostCard> {
             ),
           ],
 
-          // ── Footer divider + meta ─────────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.calendar_today_rounded,
-                  size: 12,
-                  color: _C.textFaint,
-                ),
-                const SizedBox(width: 5),
-                Text(
-                  DateFormat(
-                    'MMMM dd, yyyy • h:mm a',
-                  ).format(a.timestamp.toDate()),
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 11,
-                    color: _C.textFaint,
-                  ),
-                ),
-              ],
-            ),
-          ),
+          const SizedBox(height: 18),
         ],
       ),
     );

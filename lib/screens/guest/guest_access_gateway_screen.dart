@@ -17,6 +17,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../auth_service.dart';
 import '../../services/activity_logger.dart' as activity_log;
 import '../../widgets/common/terms_and_conditions.dart';
 import '../../widgets/student/app_colors.dart';
@@ -512,6 +513,31 @@ class _GuestLoginScreenState extends State<GuestLoginScreen> {
 
       final uid = cred.user!.uid;
 
+      // ── Step 1b: Reject accounts that belong to another role ─────
+      // A student, org or admin credential authenticates here perfectly
+      // well. Without this they fall through to the lookup below, find no
+      // approved request, and get told to "wait for admin review" — an
+      // approval that is never coming, because theirs is not a guest
+      // account. A null role means no users/{uid} doc at all, which the
+      // approved-request check below is itself a positive test for.
+      final role = await AuthService().getRecordedRole(uid);
+      if (role != null && role != 'guest') {
+        await FirebaseAuth.instance.signOut();
+        await activity_log.ActivityLogger.log(
+          action: 'Blocked non-guest login on guest portal',
+          module: 'Authentication',
+          severity: 'security',
+          details: {'uid': uid, 'email': email, 'role': role},
+        );
+        if (!mounted) return;
+        _snack(
+          'This is a ${_roleLabel(role)} account. '
+          'Please sign in on the student login screen.',
+        );
+        setState(() => _isLoading = false);
+        return;
+      }
+
       // ── Step 2: Look up the matching external_requests doc by uid ─
       // The admin batch-write stored uid in both external_requests and
       // the guests collection when approving.
@@ -613,6 +639,14 @@ class _GuestLoginScreenState extends State<GuestLoginScreen> {
       }
     }
   }
+
+  /// How a rejected role reads in a message to the person holding it.
+  String _roleLabel(String role) => switch (role) {
+    'student' => 'student',
+    'org' => 'organization',
+    'admin' => 'admin',
+    _ => role,
+  };
 
   void _snack(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(

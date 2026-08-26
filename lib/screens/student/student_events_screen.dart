@@ -17,8 +17,12 @@ import 'package:open_file/open_file.dart';
 import 'package:uprise/models/event_model.dart';
 import '../../widgets/student/event_image.dart';
 import '../../widgets/student/app_colors.dart';
-import '../../widgets/common/feed_cards.dart' show feedCategoryColor, feedCategoryIcon;
 import '../../widgets/common/loading_widget.dart' show SkeletonLoader;
+import '../../widgets/common/calendar_month.dart';
+import '../../widgets/common/event_badges.dart';
+import '../../widgets/common/event_browsing.dart';
+import '../../widgets/common/event_card.dart';
+import '../../widgets/common/info_tile.dart';
 import '../../widgets/student/student_app_bar.dart';
 import 'student_feedback_screen.dart';
 import 'student_certificates_screen.dart';
@@ -29,6 +33,38 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import '../../services/webinar_attendance_service.dart';
 import '../../services/certificate_auto_issue_service.dart';
+
+/// Maps this screen's domain model onto the shared card's data struct.
+///
+/// [EventCardData] deliberately knows nothing about [EventModel] — see
+/// widgets/common/event_card.dart — so the mapping lives here instead.
+/// `displayCategory` rather than `category`, so an event filed under "Other"
+/// shows its custom label; `feedCategoryColor` then falls through to its
+/// default grey for that label, which is the right colour for "Other" anyway.
+EventCardData eventCardData(EventModel e) => EventCardData(
+  title: e.title,
+  category: e.displayCategory,
+  imageUrl: e.imageUrl,
+  dateLabel: e.formattedDate,
+  timeLabel: e.formattedTime,
+  location: e.location,
+);
+
+/// Maps `organizations` docs onto the shared dropdown's option struct.
+///
+/// `orgName` is the field the org portal writes; `name` is what the older
+/// records carry, and both org pickers in the app already fall back that way.
+List<OrgOption> orgOptions(List<QueryDocumentSnapshot> docs) => [
+  for (final doc in docs)
+    OrgOption(
+      id: doc.id,
+      name:
+          ((doc.data() as Map<String, dynamic>)['orgName'] ??
+                  (doc.data() as Map<String, dynamic>)['name'] ??
+                  'Organization')
+              .toString(),
+    ),
+];
 
 // ─── MAIN SCREEN ──────────────────────────────────────────────
 class StudentEventsScreen extends StatefulWidget {
@@ -348,15 +384,16 @@ class _CalendarTabState extends State<CalendarTab>
         }
 
         final upcomingEvents = snap.hasData
-            ? snap.data!.docs
+            ? (snap.data!.docs
                 .map((d) => EventModel.fromFirestore(d))
-                .where((e) =>
-                    e.date.isAfter(DateTime.now().subtract(
-                      const Duration(days: 1),
-                    )))
+                .where(
+                  (e) => e.date.isAfter(
+                    DateTime.now().subtract(const Duration(days: 1)),
+                  ),
+                )
                 .toList()
-              ..sort((a, b) => a.date.compareTo(b.date))
-            : [];
+              ..sort((a, b) => a.date.compareTo(b.date)))
+            : <EventModel>[];
 
         return SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
@@ -364,7 +401,7 @@ class _CalendarTabState extends State<CalendarTab>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Month nav
-              _MonthNav(
+              MonthNav(
                 currentMonth: _currentMonth,
                 onPrev: _previousMonth,
                 onNext: _nextMonth,
@@ -384,12 +421,14 @@ class _CalendarTabState extends State<CalendarTab>
                     child: child,
                   ),
                 ),
-                child: _CalendarGrid(
+                child: MonthCalendarGrid<EventModel>(
                   key: ValueKey(
                     '${_currentMonth.year}-${_currentMonth.month}',
                   ),
                   currentMonth: _currentMonth,
                   byDay: byDay,
+                  titleOf: (e) => e.title,
+                  categoryOf: (e) => e.category,
                   onDayTap: (day, events) => _showDaySheet(day, events),
                 ),
               ),
@@ -437,24 +476,6 @@ class _UpcomingTabState extends State<UpcomingTab>
   // doesn't thrash the list; the timer collapses repeated keystrokes.
   Timer? _searchDebounce;
   bool _showSkeleton = false;
-
-  // ── Category landing grid ──
-  // Tiles are the only thing that leaves this page. Must stay in sync with
-  // the org-facing category picker (org_event_proposals.dart's _categories)
-  // since that's what actually gets written to each event's `category` field.
-  static const _categories = [
-    'Workshop',
-    'Seminar',
-    'Competition',
-    'General Assembly',
-    'Social',
-    'Outreach',
-    'Sports',
-    'Academic',
-    'Technical',
-    'Cultural',
-    'Other',
-  ];
 
   bool get _hasInlineFilter =>
       _searchQuery.trim().isNotEmpty ||
@@ -564,128 +585,15 @@ class _UpcomingTabState extends State<UpcomingTab>
   // Compact single-select filter chips — tapping one filters the landing
   // page in place, tapping the active one clears it back to the tile grid.
   Widget _buildStatusChips() {
-    const options = [
-      (_RegStatus.upcoming, 'Upcoming'),
-      (_RegStatus.ongoing, 'Ongoing'),
-      (_RegStatus.completed, 'Past'),
-    ];
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (final opt in options) ...[
-          _buildStatusChip(opt.$1, opt.$2),
-          if (opt != options.last) const SizedBox(width: 6),
-        ],
+    return FilterChips<_RegStatus>(
+      options: const [
+        (_RegStatus.upcoming, 'Upcoming'),
+        (_RegStatus.ongoing, 'Ongoing'),
+        (_RegStatus.completed, 'Past'),
       ],
-    );
-  }
-
-  Widget _buildStatusChip(_RegStatus status, String label) {
-    final isOngoingChip = status == _RegStatus.ongoing;
-    final selected = _activeStatus == status;
-    return GestureDetector(
-      onTap: () => _toggleStatus(status),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.primaryDark : Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(9),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (isOngoingChip) ...[
-              Container(
-                width: 6,
-                height: 6,
-                decoration: BoxDecoration(
-                  color: selected ? Colors.white : Colors.green,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 5),
-            ],
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: selected ? Colors.white : Colors.grey.shade700,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // Landing page for Discover — a grid of category tiles shown before any
-  // category is picked. Colors/icons come from feed_cards.dart's shared
-  // per-category map so this stays visually consistent with the category
-  // colors already used on Home's event feed.
-  Widget _buildCategoryGrid() {
-    return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 1.1,
-      ),
-      itemCount: _categories.length,
-      itemBuilder: (context, index) {
-        final category = _categories[index];
-        final color = feedCategoryColor(category);
-        return GestureDetector(
-          onTap: () => _openCategory(category),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [color, Color.lerp(color, Colors.black, 0.35)!],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withAlpha(23),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Stack(
-              children: [
-                Positioned(
-                  right: -8,
-                  bottom: -8,
-                  child: Icon(
-                    feedCategoryIcon(category),
-                    size: 84,
-                    color: Colors.white.withAlpha(46),
-                  ),
-                ),
-                Positioned(
-                  left: 12,
-                  right: 12,
-                  bottom: 12,
-                  child: Text(
-                    category,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+      selected: _activeStatus,
+      onTap: _toggleStatus,
+      dotValue: _RegStatus.ongoing,
     );
   }
 
@@ -714,8 +622,8 @@ class _UpcomingTabState extends State<UpcomingTab>
                       future: _orgsFuture,
                       builder: (context, orgSnap) {
                         final orgs = orgSnap.data ?? const [];
-                        return _OrgFilterDropdown(
-                          orgs: orgs,
+                        return OrgFilterDropdown(
+                          orgs: orgOptions(orgs),
                           selectedOrgId: _selectedOrgId,
                           onChanged: (id) => setState(() {
                             _selectedOrgId = id;
@@ -731,40 +639,22 @@ class _UpcomingTabState extends State<UpcomingTab>
               ),
             );
 
-            final searchField = TextField(
-              controller: _searchCtrl,
-              onChanged: (v) => setState(() {
-                _searchQuery = v;
-                _beginResultsTransition();
-              }),
-              style: const TextStyle(fontSize: 13.5),
-              decoration: InputDecoration(
-                hintText: 'Search events or organizations',
-                hintStyle: TextStyle(fontSize: 13, color: Colors.grey.shade500),
-                prefixIcon: const Icon(Icons.search, size: 20),
-                suffixIcon: _searchQuery.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.close, size: 18),
-                        onPressed: () => setState(() {
-                          _searchCtrl.clear();
-                          _searchQuery = '';
-                          _beginResultsTransition();
-                        }),
-                      ),
-                isDense: true,
-                filled: true,
-                fillColor: Colors.grey.shade100,
-                contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            );
             final searchBar = Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-              child: searchField,
+              child: EventSearchField(
+                controller: _searchCtrl,
+                query: _searchQuery,
+                hintText: 'Search events or organizations',
+                onChanged: (v) => setState(() {
+                  _searchQuery = v;
+                  _beginResultsTransition();
+                }),
+                onClear: () => setState(() {
+                  _searchCtrl.clear();
+                  _searchQuery = '';
+                  _beginResultsTransition();
+                }),
+              ),
             );
 
             // Everything below the controls swaps in place: category tiles
@@ -774,7 +664,7 @@ class _UpcomingTabState extends State<UpcomingTab>
             if (!_hasInlineFilter) {
               body = KeyedSubtree(
                 key: const ValueKey('categories'),
-                child: _buildCategoryGrid(),
+                child: CategoryTileGrid(onTap: _openCategory),
               );
             } else if (_showSkeleton) {
               // Scroll view only so the fixed-height placeholders clip
@@ -814,18 +704,24 @@ class _UpcomingTabState extends State<UpcomingTab>
               body = Column(
                 key: const ValueKey('results'),
                 children: [
-                  _ViewToggleRow(
+                  ViewToggleRow(
                     compact: _compactView,
                     onChanged: (v) => setState(() => _compactView = v),
                   ),
                   Expanded(
-                    child: _EventResultsList(
-                      events: events,
-                      registeredIds: regIds,
+                    child: EventResultsList(
+                      items: [
+                        for (final event in events)
+                          studentEventListItem(
+                            context,
+                            event,
+                            isRegistered: regIds.contains(event.id),
+                            onRegistered: () => setState(() {}),
+                          ),
+                      ],
                       compact: _compactView,
-                      emptyMessage: _emptyStateMessage,
+                      emptyTitle: _emptyStateMessage,
                       emptyIcon: _emptyStateIcon,
-                      onRegistered: () => setState(() {}),
                     ),
                   ),
                 ],
@@ -863,54 +759,27 @@ int _latestFirst(EventModel a, EventModel b) {
       : a.fullDateTime.compareTo(b.fullDateTime);
 }
 
-class _ViewToggleRow extends StatelessWidget {
-  final bool compact;
-  final ValueChanged<bool> onChanged;
-
-  const _ViewToggleRow({required this.compact, required this.onChanged});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          IconButton(
-            icon: Icon(
-              compact ? Icons.view_list_rounded : Icons.grid_view_rounded,
-              color: AppColors.primaryDark,
-            ),
-            tooltip: compact ? 'Switch to list view' : 'Switch to grid view',
-            onPressed: () => onChanged(!compact),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// Shared results surface for the Discover landing page and the per-category
-// screen — same cards, same empty state, same detail navigation.
-class _EventResultsList extends StatelessWidget {
-  final List<EventModel> events;
-  final Set<String> registeredIds;
-  final bool compact;
-  final String emptyMessage;
-  final IconData emptyIcon;
-  final VoidCallback onRegistered;
-
-  const _EventResultsList({
-    required this.events,
-    required this.registeredIds,
-    required this.compact,
-    required this.emptyMessage,
-    required this.emptyIcon,
-    required this.onRegistered,
-  });
-
-  void _openDetail(BuildContext context, EventModel event) {
-    Navigator.push(
+/// One row of the shared [EventResultsList], as the student sees it: opens the
+/// student detail screen, and hangs the rotating webinar code off the banner
+/// for a live event this student holds a registration for.
+///
+/// Used by both the Discover landing page and the per-category screen, so the
+/// two keep showing the same card with the same affordances.
+EventListItem studentEventListItem(
+  BuildContext context,
+  EventModel event, {
+  required bool isRegistered,
+  required VoidCallback onRegistered,
+}) {
+  final isLive = event.timeStatus == EventTimeStatus.ongoing;
+  return EventListItem(
+    data: eventCardData(event),
+    isRegistered: isRegistered,
+    showLiveBadge: isLive,
+    bannerOverlay: isLive && isRegistered
+        ? _WebinarCodeBanner(eventId: event.id)
+        : null,
+    onTap: () => Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => EventDetailScreen(
@@ -919,71 +788,8 @@ class _EventResultsList extends StatelessWidget {
           isPastEvent: event.isPast,
         ),
       ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (events.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(emptyIcon, size: 64, color: Colors.grey),
-            const SizedBox(height: 12),
-            Text(
-              emptyMessage,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 15,
-                color: Colors.grey,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (compact) {
-      return GridView.builder(
-        padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          mainAxisSpacing: 12,
-          crossAxisSpacing: 12,
-          childAspectRatio: 0.72,
-        ),
-        itemCount: events.length,
-        itemBuilder: (context, index) {
-          final event = events[index];
-          return _CompactUpcomingCard(
-            event: event,
-            isRegistered: registeredIds.contains(event.id),
-            showLiveBadge: event.timeStatus == EventTimeStatus.ongoing,
-            onTap: () => _openDetail(context, event),
-          );
-        },
-      );
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      itemCount: events.length,
-      itemBuilder: (context, index) {
-        final event = events[index];
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 16),
-          child: _UpcomingEventCard(
-            event: event,
-            isRegistered: registeredIds.contains(event.id),
-            showLiveBadge: event.timeStatus == EventTimeStatus.ongoing,
-            onTap: () => _openDetail(context, event),
-          ),
-        );
-      },
-    );
-  }
+    ),
+  );
 }
 
 // Per-category results, pushed from a Discover tile — the only thing on the
@@ -1301,37 +1107,15 @@ class _CategoryEventsScreenState extends State<_CategoryEventsScreen> {
                     child: Row(
                       children: [
                         Expanded(
-                          child: TextField(
+                          child: EventSearchField(
                             controller: _searchCtrl,
+                            query: _searchQuery,
+                            hintText: 'Search in ${widget.category}',
                             onChanged: (v) => setState(() => _searchQuery = v),
-                            style: const TextStyle(fontSize: 13.5),
-                            decoration: InputDecoration(
-                              hintText: 'Search in ${widget.category}',
-                              hintStyle: TextStyle(
-                                fontSize: 13,
-                                color: Colors.grey.shade500,
-                              ),
-                              prefixIcon: const Icon(Icons.search, size: 20),
-                              suffixIcon: _searchQuery.isEmpty
-                                  ? null
-                                  : IconButton(
-                                      icon: const Icon(Icons.close, size: 18),
-                                      onPressed: () => setState(() {
-                                        _searchCtrl.clear();
-                                        _searchQuery = '';
-                                      }),
-                                    ),
-                              isDense: true,
-                              filled: true,
-                              fillColor: Colors.grey.shade100,
-                              contentPadding: const EdgeInsets.symmetric(
-                                vertical: 10,
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: BorderSide.none,
-                              ),
-                            ),
+                            onClear: () => setState(() {
+                              _searchCtrl.clear();
+                              _searchQuery = '';
+                            }),
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -1358,20 +1142,25 @@ class _CategoryEventsScreenState extends State<_CategoryEventsScreen> {
                       ],
                     ),
                   ),
-                  _ViewToggleRow(
+                  ViewToggleRow(
                     compact: _compactView,
                     onChanged: _setCompactView,
                   ),
                   Expanded(
-                    child: _EventResultsList(
-                      events: events,
-                      registeredIds: regIds,
+                    child: EventResultsList(
+                      items: [
+                        for (final event in events)
+                          studentEventListItem(
+                            context,
+                            event,
+                            isRegistered: regIds.contains(event.id),
+                            onRegistered: () => setState(() {}),
+                          ),
+                      ],
                       compact: _compactView,
-                      emptyMessage: query.isNotEmpty
+                      emptyTitle: query.isNotEmpty
                           ? 'No events match "${_searchQuery.trim()}"'
                           : 'No events in ${widget.category}',
-                      emptyIcon: Icons.event_busy,
-                      onRegistered: () => setState(() {}),
                     ),
                   ),
                 ],
@@ -1379,202 +1168,6 @@ class _CategoryEventsScreenState extends State<_CategoryEventsScreen> {
             },
           );
         },
-      ),
-    );
-  }
-}
-
-// Organization filter for Discover — same `organizations` collection and
-// `status == 'active'` filter every other org picker in the app uses.
-class _OrgFilterDropdown extends StatelessWidget {
-  final List<QueryDocumentSnapshot> orgs;
-  final String? selectedOrgId;
-  final ValueChanged<String?> onChanged;
-
-  const _OrgFilterDropdown({
-    required this.orgs,
-    required this.selectedOrgId,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String?>(
-          value: selectedOrgId,
-          isExpanded: true,
-          icon: const Icon(Icons.expand_more, size: 20),
-          style: const TextStyle(fontSize: 13, color: Colors.black87),
-          hint: Text(
-            'All Organizations',
-            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-          ),
-          items: [
-            const DropdownMenuItem<String?>(
-              value: null,
-              child: Text('All Organizations'),
-            ),
-            for (final doc in orgs)
-              DropdownMenuItem<String?>(
-                value: doc.id,
-                child: Text(
-                  ((doc.data() as Map<String, dynamic>)['orgName'] ??
-                          (doc.data() as Map<String, dynamic>)['name'] ??
-                          'Organization')
-                      .toString(),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-          ],
-          onChanged: onChanged,
-        ),
-      ),
-    );
-  }
-}
-
-// ── Compact grid card ──
-class _CompactUpcomingCard extends StatelessWidget {
-  final EventModel event;
-  final bool isRegistered;
-  final bool showLiveBadge;
-  final VoidCallback onTap;
-
-  const _CompactUpcomingCard({
-    required this.event,
-    required this.isRegistered,
-    this.showLiveBadge = false,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.08),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Stack(
-              children: [
-                EventImage(
-                  imageUrl: event.imageUrl,
-                  height: 90,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  showLoadingIndicator: true,
-                ),
-                if (showLiveBadge)
-                  const Positioned(top: 6, left: 6, child: _LiveBadge()),
-              ],
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      event.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.calendar_today_outlined,
-                          size: 11,
-                          color: Colors.grey,
-                        ),
-                        const SizedBox(width: 3),
-                        Expanded(
-                          child: Text(
-                            event.formattedDate,
-                            style: const TextStyle(
-                              fontSize: 10,
-                              color: Colors.grey,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.access_time,
-                          size: 11,
-                          color: Colors.grey,
-                        ),
-                        const SizedBox(width: 3),
-                        Expanded(
-                          child: Text(
-                            event.formattedTime,
-                            style: const TextStyle(
-                              fontSize: 10,
-                              color: Colors.grey,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Spacer(),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: onTap,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: isRegistered
-                              ? Colors.green
-                              : AppColors.primaryDark,
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: Text(
-                          isRegistered ? 'Registered' : 'View',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -1598,7 +1191,7 @@ class MyEventsTab extends StatefulWidget {
   State<MyEventsTab> createState() => _MyEventsTabState();
 }
 
-enum _ViewFilter { all, active, archived }
+enum _ViewFilter { all, active, attended }
 
 enum _RegStatus { upcoming, ongoing, completed }
 enum _DateBucket { today, thisWeek, thisMonth, custom }
@@ -1616,11 +1209,29 @@ class _MyEventsTabState extends State<MyEventsTab>
   Stream<QuerySnapshot>? _registrationsStream;
   _ViewFilter _viewFilter = _ViewFilter.all;
 
+  // Inline filters ported from Discover — search box and org picker.
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _searchQuery = '';
+  String? _selectedOrgId;
+
+  late final Future<List<QueryDocumentSnapshot>> _orgsFuture = FirebaseFirestore
+      .instance
+      .collection('organizations')
+      .where('status', isEqualTo: 'active')
+      .get()
+      .then((s) => s.docs);
+
   // Attendance + feedback-submitted event IDs — same two queries the old
   // Evaluations tab used (collectionGroup('attendances') for attendance,
   // both event_feedback and feedback for "already submitted", since the
   // app never finished migrating off the legacy `feedback` collection).
   Future<({Set<String> attended, Set<String> evaluated})>? _statusDataFuture;
+
+  // The events fetch is memoised on the registered event IDs so typing in the
+  // search box filters the already-loaded list instead of re-running the
+  // Firestore gets (and flashing the spinner) on every keystroke.
+  Set<String>? _cachedEventIds;
+  Future<List<QuerySnapshot>>? _eventsFuture;
 
   @override
   void initState() {
@@ -1634,6 +1245,15 @@ class _MyEventsTabState extends State<MyEventsTab>
       _statusDataFuture = _loadStatusData(user.uid);
     }
   }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  bool get _hasInlineFilter =>
+      _searchQuery.trim().isNotEmpty || _selectedOrgId != null;
 
   Future<({Set<String> attended, Set<String> evaluated})> _loadStatusData(
     String uid,
@@ -1717,127 +1337,6 @@ class _MyEventsTabState extends State<MyEventsTab>
     );
   }
 
-  Future<void> _archiveEvent(EventModel event) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Archive Event'),
-        content: Text(
-          'Are you sure you want to archive "${event.title}"?',
-          style: const TextStyle(fontSize: 15),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primaryDark,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Archive'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm != true) return;
-
-    try {
-      final docId = '${user.uid}_${event.id}';
-      await FirebaseFirestore.instance
-          .collection('registrations')
-          .doc(docId)
-          .update({
-            'isArchived': true,
-            'archivedAt': FieldValue.serverTimestamp(),
-          });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('"${event.title}" archived'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to archive: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _unarchiveEvent(EventModel event) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Restore Event'),
-        content: Text(
-          'Restore "${event.title}" to your registered events?',
-          style: const TextStyle(fontSize: 15),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Restore'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm != true) return;
-
-    try {
-      final docId = '${user.uid}_${event.id}';
-      await FirebaseFirestore.instance
-          .collection('registrations')
-          .doc(docId)
-          .update({'isArchived': false, 'archivedAt': FieldValue.delete()});
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('"${event.title}" restored'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to restore: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -1871,21 +1370,7 @@ class _MyEventsTabState extends State<MyEventsTab>
         // Get all event IDs from registrations
         final allRegistrationData = regSnap.data?.docs ?? [];
 
-        // Filter based on view filter
-        final filteredRegistrations = allRegistrationData.where((doc) {
-          final data = doc.data() as Map<String, dynamic>;
-          final isArchived = data['isArchived'] == true;
-          switch (_viewFilter) {
-            case _ViewFilter.active:
-              return !isArchived;
-            case _ViewFilter.archived:
-              return isArchived;
-            case _ViewFilter.all:
-              return true;
-          }
-        }).toList();
-
-        final eventIds = filteredRegistrations
+        final eventIds = allRegistrationData
             .map(
               (d) => (d.data() as Map<String, dynamic>)['eventId'] as String?,
             )
@@ -1896,45 +1381,73 @@ class _MyEventsTabState extends State<MyEventsTab>
         // ⭐ FIX: Build the UI with filter buttons ALWAYS visible
         return Column(
           children: [
-            // ─── Filter Segmented Buttons (ALWAYS VISIBLE) ───
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              color: Colors.white,
-              child: SegmentedButton<_ViewFilter>(
-                segments: const [
-                  ButtonSegment(
-                    value: _ViewFilter.all,
-                    label: Text('All'),
-                    icon: Icon(Icons.view_list_rounded, size: 16),
+            // ─── Search ───
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: TextField(
+                controller: _searchCtrl,
+                onChanged: (v) => setState(() => _searchQuery = v),
+                style: const TextStyle(fontSize: 13.5),
+                decoration: InputDecoration(
+                  hintText: 'Search events or organizations',
+                  hintStyle: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey.shade500,
                   ),
-                  ButtonSegment(
-                    value: _ViewFilter.active,
-                    label: Text('Active'),
-                    icon: Icon(Icons.event_note_rounded, size: 16),
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  suffixIcon: _searchQuery.isEmpty
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.close, size: 18),
+                          onPressed: () => setState(() {
+                            _searchCtrl.clear();
+                            _searchQuery = '';
+                          }),
+                        ),
+                  isDense: true,
+                  filled: true,
+                  fillColor: Colors.grey.shade100,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide.none,
                   ),
-                  ButtonSegment(
-                    value: _ViewFilter.archived,
-                    label: Text('Archived'),
-                    icon: Icon(Icons.archive_rounded, size: 16),
+                ),
+              ),
+            ),
+
+            // ─── Organization filter + view chips ───
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: FutureBuilder<List<QueryDocumentSnapshot>>(
+                      future: _orgsFuture,
+                      builder: (context, orgSnap) {
+                        final orgs = orgSnap.data ?? const [];
+                        return OrgFilterDropdown(
+                          orgs: orgOptions(orgs),
+                          selectedOrgId: _selectedOrgId,
+                          onChanged: (id) =>
+                              setState(() => _selectedOrgId = id),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilterChips<_ViewFilter>(
+                    options: const [
+                      (_ViewFilter.all, 'All'),
+                      (_ViewFilter.active, 'Active'),
+                      (_ViewFilter.attended, 'Attended'),
+                    ],
+                    selected: _viewFilter,
+                    // Single-select: tapping the active chip keeps it, since
+                    // `all` is already the cleared state.
+                    onTap: (v) => setState(() => _viewFilter = v),
                   ),
                 ],
-                selected: {_viewFilter},
-                onSelectionChanged: (Set<_ViewFilter> newSelection) {
-                  setState(() {
-                    _viewFilter = newSelection.first;
-                  });
-                },
-                style: SegmentedButton.styleFrom(
-                  selectedBackgroundColor: AppColors.primaryDark,
-                  selectedForegroundColor: Colors.white,
-                  foregroundColor: Colors.grey.shade600,
-                  backgroundColor: Colors.grey.shade100,
-                  side: BorderSide.none,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                ),
               ),
             ),
             const Divider(height: 1, color: Color(0xFFF0F0F0)),
@@ -1949,12 +1462,7 @@ class _MyEventsTabState extends State<MyEventsTab>
                     builder: (context, statusSnap) {
                       final attended = statusSnap.data?.attended ?? const {};
                       final evaluated = statusSnap.data?.evaluated ?? const {};
-                      return _buildContent(
-                        eventIds,
-                        regSnap,
-                        attended,
-                        evaluated,
-                      );
+                      return _buildContent(eventIds, attended, evaluated);
                     },
                   ),
             ),
@@ -1964,69 +1472,65 @@ class _MyEventsTabState extends State<MyEventsTab>
     );
   }
 
+  Widget _emptyState(String message, IconData icon) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 64, color: Colors.grey),
+          const SizedBox(height: 12),
+          Text(
+            message,
+            style: TextStyle(
+              fontSize: 15,
+              color: Colors.grey,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildContent(
     List<String> eventIds,
-    AsyncSnapshot<QuerySnapshot> regSnap,
     Set<String> attended,
     Set<String> evaluated,
   ) {
     if (eventIds.isEmpty) {
-      // ⭐ Show empty state with appropriate message based on filter
-      String message;
-      IconData icon;
-      switch (_viewFilter) {
-        case _ViewFilter.all:
-          message = 'No registered events';
-          icon = Icons.event_note_outlined;
-          break;
-        case _ViewFilter.active:
-          message = 'No active events';
-          icon = Icons.event_busy_outlined;
-          break;
-        case _ViewFilter.archived:
-          message = 'No archived events';
-          icon = Icons.archive_outlined;
-          break;
+      return _emptyState('No registered events', Icons.event_note_outlined);
+    }
+
+    // Only re-fetch when the set of registered events actually changes —
+    // otherwise every keystroke in the search box would re-run these gets.
+    final idSet = eventIds.toSet();
+    final cached = _cachedEventIds;
+    if (_eventsFuture == null ||
+        cached == null ||
+        cached.length != idSet.length ||
+        !cached.containsAll(idSet)) {
+      final chunks = <List<String>>[];
+      for (var i = 0; i < eventIds.length; i += 30) {
+        chunks.add(
+          eventIds.sublist(
+            i,
+            i + 30 > eventIds.length ? eventIds.length : i + 30,
+          ),
+        );
       }
-
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 64, color: Colors.grey),
-            const SizedBox(height: 12),
-            Text(
-              message,
-              style: TextStyle(
-                fontSize: 15,
-                color: Colors.grey,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    final chunks = <List<String>>[];
-    for (var i = 0; i < eventIds.length; i += 30) {
-      chunks.add(
-        eventIds.sublist(
-          i,
-          i + 30 > eventIds.length ? eventIds.length : i + 30,
-        ),
-      );
-    }
-
-    return FutureBuilder<List<QuerySnapshot>>(
-      future: Future.wait(
+      _cachedEventIds = idSet;
+      _eventsFuture = Future.wait(
         chunks.map(
           (chunk) => FirebaseFirestore.instance
               .collection('events')
               .where(FieldPath.documentId, whereIn: chunk)
               .get(),
         ),
-      ),
+      );
+    }
+
+    return FutureBuilder<List<QuerySnapshot>>(
+      future: _eventsFuture,
       builder: (context, evSnap) {
         if (evSnap.connectionState == ConnectionState.waiting) {
           return const Center(
@@ -2042,10 +1546,66 @@ class _MyEventsTabState extends State<MyEventsTab>
           );
         }
 
-        final events = evSnap.data!
+        var events = evSnap.data!
             .expand((snap) => snap.docs)
             .map((d) => EventModel.fromFirestore(d))
             .toList();
+
+        switch (_viewFilter) {
+          case _ViewFilter.active:
+            events = events
+                .where((e) => _statusFor(e) != _RegStatus.completed)
+                .toList();
+            break;
+          case _ViewFilter.attended:
+            events = events.where((e) => attended.contains(e.id)).toList();
+            break;
+          case _ViewFilter.all:
+            break;
+        }
+
+        // Inline filters (search / org) narrow within the selected chip —
+        // same predicate shape the Discover tab uses.
+        final query = _searchQuery.trim().toLowerCase();
+        events = events.where((e) {
+          if (_selectedOrgId != null && e.orgId != _selectedOrgId) {
+            return false;
+          }
+          if (query.isNotEmpty &&
+              !e.title.toLowerCase().contains(query) &&
+              !e.orgName.toLowerCase().contains(query)) {
+            return false;
+          }
+          return true;
+        }).toList();
+
+        if (events.isEmpty) {
+          if (_hasInlineFilter) {
+            return _emptyState(
+              query.isNotEmpty
+                  ? 'No events match "${_searchQuery.trim()}"'
+                  : 'No events match your filters',
+              Icons.search_off,
+            );
+          }
+          switch (_viewFilter) {
+            case _ViewFilter.active:
+              return _emptyState(
+                'No active events',
+                Icons.event_busy_outlined,
+              );
+            case _ViewFilter.attended:
+              return _emptyState(
+                'No attended events yet',
+                Icons.task_alt_outlined,
+              );
+            case _ViewFilter.all:
+              return _emptyState(
+                'No registered events',
+                Icons.event_note_outlined,
+              );
+          }
+        }
 
         // Needs Feedback first (most actionable), then Registered (soonest
         // first), then Completed (most recently finished first).
@@ -2083,17 +1643,6 @@ class _MyEventsTabState extends State<MyEventsTab>
             );
             final style = _myStatusStyle(myStatus);
 
-            bool isArchived = false;
-            if (_viewFilter == _ViewFilter.all) {
-              isArchived = (regSnap.data?.docs ?? []).any((doc) {
-                final data = doc.data() as Map<String, dynamic>;
-                return data['eventId'] == event.id &&
-                    data['isArchived'] == true;
-              });
-            } else if (_viewFilter == _ViewFilter.archived) {
-              isArchived = true;
-            }
-
             return Container(
               margin: const EdgeInsets.only(bottom: 12),
               decoration: BoxDecoration(
@@ -2129,11 +1678,11 @@ class _MyEventsTabState extends State<MyEventsTab>
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: isArchived ? Colors.grey : style.color,
+                            color: style.color,
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
-                            isArchived ? 'ARCHIVED' : style.label,
+                            style.label,
                             style: const TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
@@ -2236,12 +1785,10 @@ class _MyEventsTabState extends State<MyEventsTab>
                                   _statusFor(event) == _RegStatus.completed,
                                 ),
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: isArchived
-                                      ? Colors.grey
-                                      : (myStatus ==
-                                                _MyEventStatus.needsFeedback
-                                            ? style.color
-                                            : AppColors.primaryDark),
+                                  backgroundColor:
+                                      myStatus == _MyEventStatus.needsFeedback
+                                      ? style.color
+                                      : AppColors.primaryDark,
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 8,
                                   ),
@@ -2261,39 +1808,6 @@ class _MyEventsTabState extends State<MyEventsTab>
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 8),
-                            if (!isArchived)
-                              IconButton(
-                                onPressed: () => _archiveEvent(event),
-                                icon: Icon(
-                                  Icons.archive_outlined,
-                                  size: 20,
-                                  color: Colors.grey.shade600,
-                                ),
-                                tooltip: 'Archive',
-                                style: IconButton.styleFrom(
-                                  backgroundColor: Colors.grey.shade100,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                ),
-                              )
-                            else
-                              IconButton(
-                                onPressed: () => _unarchiveEvent(event),
-                                icon: Icon(
-                                  Icons.restore_from_trash,
-                                  size: 20,
-                                  color: Colors.green.shade700,
-                                ),
-                                tooltip: 'Restore',
-                                style: IconButton.styleFrom(
-                                  backgroundColor: Colors.green.shade50,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                ),
-                              ),
                           ],
                         ),
                       ],
@@ -2313,386 +1827,6 @@ class _MyEventsTabState extends State<MyEventsTab>
 // merged into MyEventsTab below, which now computes the same
 // attended-but-not-evaluated status per event instead of keeping a
 // separate queue screen.
-
-// ─── CATEGORY COLORS (calendar) ────────────────────────────────
-const Map<String, Color> _catColors = {
-  'Workshop': Color(0xFF8B5CF6),
-  'Seminar': Color(0xFF3B82F6),
-  'Competition': Color(0xFFEF4444),
-  'General Assembly': Color(0xFFF97316),
-  'Social': Color(0xFFEC4899),
-  'Outreach': Color(0xFF10B981),
-  'Sports': Color(0xFF14B8A6),
-  'Academic': Color(0xFF6366F1),
-  'Technical': Color(0xFF06B6D4),
-  'Cultural': Color(0xFFD946EF),
-  'Other': Color(0xFF6B7280),
-};
-Color _catColor(String cat) => _catColors[cat] ?? const Color(0xFF6B7280);
-
-// ─── MONTH NAV BAR ────────────────────────────────────────────
-class _MonthNav extends StatelessWidget {
-  final DateTime currentMonth;
-  final VoidCallback onPrev;
-  final VoidCallback onNext;
-  final VoidCallback onToday;
-
-  const _MonthNav({
-    required this.currentMonth,
-    required this.onPrev,
-    required this.onNext,
-    required this.onToday,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        GestureDetector(
-          onTap: onToday,
-          child: Container(
-            height: 40,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              color: AppColors.primaryDark,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.today_rounded, size: 15, color: Colors.white),
-                const SizedBox(width: 6),
-                const Text(
-                  'Today',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Container(
-            height: 40,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFFE2E6EA)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                InkWell(
-                  onTap: onPrev,
-                  borderRadius: BorderRadius.circular(10),
-                  child: const SizedBox(
-                    width: 36,
-                    height: 40,
-                    child: Icon(Icons.chevron_left_rounded, size: 20, color: Colors.black45),
-                  ),
-                ),
-                Expanded(
-                  child: Text(
-                    DateFormat('MMMM yyyy').format(currentMonth),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.black87,
-                    ),
-                  ),
-                ),
-                InkWell(
-                  onTap: onNext,
-                  borderRadius: BorderRadius.circular(10),
-                  child: const SizedBox(
-                    width: 36,
-                    height: 40,
-                    child: Icon(Icons.chevron_right_rounded, size: 20, color: Colors.black45),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ─── CALENDAR GRID ────────────────────────────────────────────
-class _CalendarGrid extends StatelessWidget {
-  final DateTime currentMonth;
-  final Map<int, List<EventModel>> byDay;
-  final void Function(int, List<EventModel>) onDayTap;
-
-  const _CalendarGrid({
-    super.key,
-    required this.currentMonth,
-    required this.byDay,
-    required this.onDayTap,
-  });
-
-  int get _daysInMonth =>
-      DateTime(currentMonth.year, currentMonth.month + 1, 0).day;
-  int get _startWeekday => DateTime(currentMonth.year, currentMonth.month, 1).weekday % 7;
-  int get _totalRows => ((_startWeekday + _daysInMonth) / 7).ceil();
-
-  @override
-  Widget build(BuildContext context) {
-    const weekdays = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE8ECF0)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          // Weekday header
-          Container(
-            decoration: const BoxDecoration(
-              color: Color(0xFFFFF7ED),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-              border: Border(bottom: BorderSide(color: Color(0xFFF5E3D9))),
-            ),
-            child: Row(
-              children: weekdays
-                  .map(
-                    (d) => Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        child: Text(
-                          d,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF64748B),
-                            letterSpacing: 0.7,
-                          ),
-                        ),
-                      ),
-                    ),
-                  )
-                  .toList(),
-            ),
-          ),
-          // Day cells
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 7,
-              mainAxisExtent: 100,
-            ),
-            itemCount: _totalRows * 7,
-            itemBuilder: (_, index) {
-              final dayNum = index - _startWeekday + 1;
-              if (dayNum < 1 || dayNum > _daysInMonth) {
-                return _emptyCell(index);
-              }
-              final events = byDay[dayNum] ?? [];
-              return _DayCell(
-                day: dayNum,
-                events: events,
-                currentMonth: currentMonth,
-                totalRows: _totalRows,
-                startWeekday: _startWeekday,
-                daysInMonth: _daysInMonth,
-                onTap: events.isEmpty ? null : () => onDayTap(dayNum, events),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _emptyCell(int index) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFFFBFCFE),
-        border: Border(
-          right: (index % 7) < 6
-              ? const BorderSide(color: Color(0xFFF1F5F9))
-              : BorderSide.none,
-          bottom: index < (_totalRows - 1) * 7
-              ? const BorderSide(color: Color(0xFFF1F5F9))
-              : BorderSide.none,
-        ),
-      ),
-    );
-  }
-}
-
-// ─── DAY CELL ──────────────────────────────────────────────────
-class _DayCell extends StatelessWidget {
-  final int day;
-  final List<EventModel> events;
-  final DateTime currentMonth;
-  final int totalRows;
-  final int startWeekday;
-  final int daysInMonth;
-  final VoidCallback? onTap;
-
-  const _DayCell({
-    required this.day,
-    required this.events,
-    required this.currentMonth,
-    required this.totalRows,
-    required this.startWeekday,
-    required this.daysInMonth,
-    required this.onTap,
-  });
-
-  bool get isToday =>
-      day == DateTime.now().day &&
-      currentMonth.year == DateTime.now().year &&
-      currentMonth.month == DateTime.now().month;
-
-  int get cellIndex => startWeekday + day - 1;
-  int get colIndex => cellIndex % 7;
-  bool get isLastRow => cellIndex >= (totalRows - 1) * 7;
-
-  @override
-  Widget build(BuildContext context) {
-    final display = events.take(3).toList();
-    final extra = events.length - display.length;
-
-    return InkWell(
-      onTap: onTap,
-      hoverColor: AppColors.primaryDark.withOpacity(0.04),
-      child: Container(
-        decoration: BoxDecoration(
-          color: isToday ? AppColors.primaryDark.withOpacity(0.07) : null,
-          border: Border(
-            right: colIndex < 6
-                ? const BorderSide(color: Color(0xFFF1F5F9))
-                : BorderSide.none,
-            bottom: !isLastRow
-                ? const BorderSide(color: Color(0xFFF1F5F9))
-                : BorderSide.none,
-          ),
-        ),
-        padding: const EdgeInsets.fromLTRB(7, 6, 7, 5),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(
-                  width: 22,
-                  height: 22,
-                  decoration: isToday
-                      ? BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppColors.primaryDark,
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.primaryDark.withOpacity(0.35),
-                              blurRadius: 6,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        )
-                      : null,
-                  alignment: Alignment.center,
-                  child: Text(
-                    '$day',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: isToday ? FontWeight.w700 : FontWeight.w600,
-                      color: isToday ? Colors.white : Colors.black87,
-                    ),
-                  ),
-                ),
-                if (events.length > 1)
-                  Text(
-                    '${events.length}',
-                    style: const TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey,
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 3),
-            ...display.map(
-              (e) => Padding(
-                padding: const EdgeInsets.only(bottom: 2),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _catColor(e.category).withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 4,
-                        height: 4,
-                        margin: const EdgeInsets.only(right: 4),
-                        decoration: BoxDecoration(
-                          color: _catColor(e.category),
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      Expanded(
-                        child: Text(
-                          e.title,
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w600,
-                            color: _catColor(e.category),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            if (extra > 0)
-              Text(
-                '+$extra more',
-                style: const TextStyle(
-                  fontSize: 9,
-                  color: Colors.grey,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 // ─── UPCOMING EVENTS SECTION ───────────────────────────────────
 class _UpcomingSection extends StatelessWidget {
@@ -2921,247 +2055,6 @@ class _CompactEventCard extends StatelessWidget {
   }
 }
 
-// ─── UPCOMING EVENT CARD ──────────────────────────────────────
-class _UpcomingEventCard extends StatelessWidget {
-  final EventModel event;
-  final bool isRegistered;
-  final bool showLiveBadge;
-  final VoidCallback onTap;
-
-  const _UpcomingEventCard({
-    required this.event,
-    required this.isRegistered,
-    this.showLiveBadge = false,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.08),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Stack(
-              children: [
-                EventImage(
-                  imageUrl: event.imageUrl,
-                  height: 160,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  showLoadingIndicator: true,
-                ),
-                if (showLiveBadge)
-                  const Positioned(top: 10, left: 10, child: _LiveBadge()),
-                if (showLiveBadge && isRegistered)
-                  Positioned(
-                    right: 10,
-                    bottom: 10,
-                    left: 10,
-                    child: _WebinarCodeBanner(eventId: event.id),
-                  ),
-              ],
-            ),
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      _CategoryBadge(category: event.displayCategory),
-                      const Spacer(),
-                      if (isRegistered)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.green.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.check_circle,
-                                size: 12,
-                                color: Colors.green,
-                              ),
-                              SizedBox(width: 4),
-                              Text(
-                                'Registered',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.green,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    event.title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.black87,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.calendar_today_outlined,
-                        size: 12,
-                        color: Colors.grey,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        event.formattedDate,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      const Icon(
-                        Icons.access_time,
-                        size: 12,
-                        color: Colors.grey,
-                      ),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          event.formattedTime,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.location_on_outlined,
-                        size: 12,
-                        color: Colors.grey,
-                      ),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          event.location,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: onTap,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: isRegistered
-                            ? Colors.green
-                            : AppColors.primaryDark,
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(25),
-                        ),
-                      ),
-                      child: Text(
-                        isRegistered ? 'Registered ✓' : 'View Details',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─── LIVE STATUS BADGE ──────────────────────────────────────────
-class _LiveBadge extends StatelessWidget {
-  const _LiveBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.red.shade600,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 5),
-          const Text(
-            'LIVE',
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
-              letterSpacing: 0.6,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 // ─── LIVE WEBINAR CODE BANNER (registered students, ongoing events) ────────
 // Streams the org-side rotating code (webinar_attendance_service.dart) so a
@@ -3380,114 +2273,6 @@ class _WebinarCodeCardState extends State<_WebinarCodeCard> {
 }
 
 // ─── CATEGORY BADGE ────────────────────────────────────────────
-class _CategoryBadge extends StatelessWidget {
-  final String category;
-  const _CategoryBadge({required this.category});
-
-  Color get _color {
-    switch (category.toLowerCase()) {
-      case 'competition':
-        return AppColors.primaryDark;
-      case 'workshop':
-        return const Color(0xFF1565C0);
-      case 'seminar':
-        return const Color(0xFF6A1B9A);
-      default:
-        return Colors.grey.shade700;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: _color,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        category.toUpperCase(),
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.8,
-        ),
-      ),
-    );
-  }
-}
-
-// ─── EVENT DETAIL SCREEN ──────────────────────────────────────
-// Audience/eligibility — always visible regardless of registration state,
-// parsed the same comma-separated way EventModel.audienceAllowsMember
-// already does, so the labels shown here always match what's actually
-// being enforced.
-class _AudienceBadgeRow extends StatelessWidget {
-  final String audience;
-  const _AudienceBadgeRow({required this.audience});
-
-  @override
-  Widget build(BuildContext context) {
-    final values = audience
-        .split(',')
-        .map((s) => s.trim())
-        .where((s) => s.isNotEmpty)
-        .toList();
-    final labels = values.isEmpty || values.contains('Public')
-        ? const ['Public']
-        : values;
-
-    return Wrap(
-      spacing: 8,
-      runSpacing: 6,
-      children: [
-        for (final label in labels)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: label == 'Public'
-                  ? Colors.green.withOpacity(0.1)
-                  : AppColors.primaryDark.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(100),
-              border: Border.all(
-                color: label == 'Public'
-                    ? Colors.green.withOpacity(0.3)
-                    : AppColors.primaryDark.withOpacity(0.25),
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  label == 'Public'
-                      ? Icons.public
-                      : Icons.verified_user_outlined,
-                  size: 12,
-                  color: label == 'Public'
-                      ? Colors.green.shade700
-                      : AppColors.primaryDark,
-                ),
-                const SizedBox(width: 5),
-                Text(
-                  label.toUpperCase(),
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.4,
-                    color: label == 'Public'
-                        ? Colors.green.shade700
-                        : AppColors.primaryDark,
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
-}
-
 class EventDetailScreen extends StatefulWidget {
   final EventModel event;
   final VoidCallback onRegistered;
@@ -4922,7 +3707,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _CategoryBadge(category: widget.event.displayCategory),
+                  CategoryBadge(category: widget.event.displayCategory),
                   const SizedBox(height: 12),
                   Text(
                     widget.event.title,
@@ -4963,25 +3748,25 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     ),
                   ),
                   const SizedBox(height: 20),
-                  _InfoRow(
+                  InfoRow(
                     icon: Icons.calendar_today_outlined,
                     text: widget.event.formattedDate,
                   ),
                   const SizedBox(height: 12),
-                  _InfoRow(
+                  InfoRow(
                     icon: Icons.access_time,
                     text: widget.event.formattedTime,
                   ),
                   const SizedBox(height: 12),
-                  _InfoRow(
+                  InfoRow(
                     icon: Icons.location_on_outlined,
                     text: widget.event.location,
                   ),
                   const SizedBox(height: 12),
-                  _AudienceBadgeRow(audience: widget.event.audience),
+                  AudienceBadgeRow(audience: widget.event.audience),
                   if (widget.event.capacity != null) ...[
                     const SizedBox(height: 12),
-                    _InfoRow(
+                    InfoRow(
                       icon: Icons.groups_outlined,
                       text: _registeredCount == null
                           ? '${widget.event.capacity} slots'
@@ -5171,30 +3956,3 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 }
 
 // ─── INFO ROW ──────────────────────────────────────────────────
-class _InfoRow extends StatelessWidget {
-  final IconData icon;
-  final String text;
-  final Color? color;
-
-  const _InfoRow({required this.icon, required this.text, this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, size: 18, color: color ?? Colors.grey.shade600),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            text,
-            style: TextStyle(
-              fontSize: 14,
-              color: color ?? Colors.black87,
-              fontWeight: color != null ? FontWeight.w700 : FontWeight.normal,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}

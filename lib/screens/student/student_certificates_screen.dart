@@ -1015,155 +1015,25 @@ class _CertificatesContentState extends State<CertificatesContent> {
     );
   }
 
-  // 👇 THIS IS THE NEW PART - For uploaded templates with signatories
-  return FutureBuilder<Map<String, dynamic>>(
-    future: _fetchSignatories(),
-    builder: (context, snapshot) {
-      if (!snapshot.hasData) {
-        // Show loading indicator while fetching signatories
-        return Container(
-          height: 180,
-          width: double.infinity,
-          color: const Color(0xFFF7F8FA),
-          padding: const EdgeInsets.all(8),
-          child: const Center(child: CircularProgressIndicator()),
-        );
-      }
-
-      // Get the signatories data
-      final signatoryData = snapshot.data!;
-      
-      // Get the placements (where each signatory should go)
-      final placements = cert['signatoryPlacements'] as Map<String, dynamic>? ?? {};
-      
-      // Build the certificate with signatories
-      return Container(
-        height: 180,
-        width: double.infinity,
-        color: const Color(0xFFF7F8FA),
-        padding: const EdgeInsets.all(8),
-        child: FittedBox(
-          fit: BoxFit.contain,
-          child: SizedBox(
-            width: 500,
-            height: 354,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                // 1. The certificate background with the student's name
-                CertificateImageWithName(
-                  background: AppImage(
-                    source: templateImageUrl,
-                    fit: BoxFit.cover,
-                    placeholder: Container(
-                      color: Colors.grey.shade200,
-                      child: const Icon(
-                        Icons.broken_image,
-                        size: 50,
-                        color: Colors.grey,
-                      ),
-                    ),
-                  ),
-                  recipientName: cert['recipientName'] as String? ?? 'Recipient',
-                  placement: CertNamePlacement.fromMap(
-                    cert['namePlacement'] as Map<String, dynamic>?,
-                  ),
-                ),
-                
-                // 2. The signatories on top (if any)
-                ...placements.entries.map((entry) {
-                  // Get the signatory ID (this is the key)
-                  final signatoryId = entry.key;
-                  
-                  // Get the signatory data from our fetched map
-                  final signatory = signatoryData[signatoryId];
-                  if (signatory == null) return const SizedBox.shrink();
-                  
-                  // Get the position where this signatory should go
-                  final placement = CertNamePlacement.fromMap(
-                    Map<String, dynamic>.from(entry.value as Map),
-                  );
-                  
-                  // Calculate the position on the certificate
-                  final left = ((placement.xPct * 500 - 65).clamp(0.0, 500 - 130) as num).toDouble();
-                  final top = ((placement.yPct * 354 - 30).clamp(0.0, 354 - 60) as num).toDouble();
-                  
-                  return Positioned(
-                    left: left,
-                    top: top,
-                    width: 130,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Show the signature image if available
-                        if (signatory['signatureBase64'] != null && signatory['signatureBase64'].isNotEmpty)
-                          SizedBox(
-                            height: 35,
-                            child: Image.memory(
-                              base64Decode(signatory['signatureBase64']),
-                              fit: BoxFit.contain,
-                            ),
-                          ),
-                        // Show the signatory name
-                        Text(
-                          signatory['fullName'] ?? '',
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: placement.light ? Colors.white : const Color(0xFF1A202C),
-                          ),
-                        ),
-                        // Show the signatory title
-                        if (signatory['title'] != null && signatory['title'].isNotEmpty)
-                          Text(
-                            signatory['title'],
-                            textAlign: TextAlign.center,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 9,
-                              color: placement.light ? Colors.white70 : Colors.black54,
-                            ),
-                          ),
-                      ],
-                    ),
-                  );
-                }).toList(),
-              ],
-            ),
-          ),
-        ),
-      );
-    },
+  // For an uploaded template the signatures are not baked into the image —
+  // they're overlaid at render time from the `signatories` roster, positioned
+  // by the certificate's own `signatoryPlacements`.
+  return Container(
+    height: 180,
+    width: double.infinity,
+    color: const Color(0xFFF7F8FA),
+    padding: const EdgeInsets.all(8),
+    child: FittedBox(
+      fit: BoxFit.contain,
+      child: SizedBox(
+        width: 500,
+        height: 354,
+        child: CertificateTemplateWithSignatories(cert: cert),
+      ),
+    ),
   );
 }
 
-// This function fetches all signatories from the database
-Future<Map<String, dynamic>> _fetchSignatories() async {
-  try {
-    final snap = await FirebaseFirestore.instance
-        .collection('signatories')
-        .get();
-    
-    // Convert the documents to a Map: ID -> signatory data
-    final Map<String, dynamic> result = {};
-    for (final doc in snap.docs) {
-      final data = doc.data();
-      result[doc.id] = {
-        'fullName': data['fullName'] ?? '',
-        'title': data['title'] ?? '',
-        'signatureBase64': data['signatureBase64'] ?? '',
-      };
-    }
-    return result;
-  } catch (e) {
-    print('Error fetching signatories: $e');
-    return {};
-  }
-}
 
   Widget _placeholderBanner(
     bool isDraft,
@@ -1463,6 +1333,180 @@ Future<Map<String, dynamic>> _fetchSignatories() async {
   }
 }
 
+/// An uploaded certificate template with the recipient name *and* the
+/// signatories drawn on top of it.
+///
+/// This exists as one widget because the three places a student sees their
+/// certificate — the list card, the full-screen detail, and the PDF download
+/// preview — each used to build this overlay themselves, and only the list
+/// card ever did. The other two rendered a bare [CertificateImageWithName],
+/// so the e-signature that showed on the card vanished the moment the
+/// certificate was opened or downloaded.
+///
+/// Sizes itself from its own constraints and scales the signature block
+/// proportionally off a 500x354 reference, so the same widget is correct in a
+/// 180px card, a full-screen viewer, and a 3x RepaintBoundary capture.
+class CertificateTemplateWithSignatories extends StatefulWidget {
+  final Map<String, dynamic> cert;
+
+  const CertificateTemplateWithSignatories({super.key, required this.cert});
+
+  @override
+  State<CertificateTemplateWithSignatories> createState() =>
+      _CertificateTemplateWithSignatoriesState();
+}
+
+class _CertificateTemplateWithSignatoriesState
+    extends State<CertificateTemplateWithSignatories> {
+  // Created once, not in build(): a fresh Future on every rebuild makes
+  // FutureBuilder re-fetch and flash on each layout pass — and this widget
+  // rebuilds on every scroll frame inside the list.
+  late final Future<Map<String, dynamic>> _signatoriesFuture =
+      fetchCertificateSignatories();
+
+  @override
+  Widget build(BuildContext context) {
+    final cert = widget.cert;
+    final templateImageUrl = cert['imageUrl'] as String? ?? '';
+
+    final background = CertificateImageWithName(
+      background: AppImage(
+        source: templateImageUrl,
+        fit: BoxFit.cover,
+        placeholder: Container(
+          color: Colors.grey.shade200,
+          child: const Icon(Icons.broken_image, size: 50, color: Colors.grey),
+        ),
+      ),
+      recipientName: cert['recipientName'] as String? ?? 'Recipient',
+      placement: CertNamePlacement.fromMap(
+        cert['namePlacement'] as Map<String, dynamic>?,
+      ),
+    );
+
+    final placements =
+        cert['signatoryPlacements'] as Map<String, dynamic>? ?? {};
+    if (placements.isEmpty) return background;
+
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _signatoriesFuture,
+      builder: (context, snapshot) {
+        // Render the template while the roster loads rather than a spinner:
+        // this widget is captured straight to PNG for the PDF download, and a
+        // spinner in that capture would be worse than a late signature.
+        final signatoryData = snapshot.data;
+        if (signatoryData == null) return background;
+
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final w = constraints.maxWidth;
+            final h = constraints.maxHeight;
+            // Everything below is authored against the 500x354 card preview
+            // and scaled from there, so the overlay keeps its proportions at
+            // every size this widget is used at.
+            final scale = w / 500.0;
+            final blockW = 130.0 * scale;
+            final blockH = 60.0 * scale;
+
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                background,
+                ...placements.entries.map((entry) {
+                  final signatory = signatoryData[entry.key];
+                  if (signatory == null) return const SizedBox.shrink();
+
+                  final placement = CertNamePlacement.fromMap(
+                    Map<String, dynamic>.from(entry.value as Map),
+                  );
+                  final signature = (signatory['signatureBase64'] ?? '')
+                      .toString();
+                  final title = (signatory['title'] ?? '').toString();
+
+                  return Positioned(
+                    left: (placement.xPct * w - blockW / 2).clamp(
+                      0.0,
+                      w - blockW,
+                    ),
+                    top: (placement.yPct * h - blockH / 2).clamp(
+                      0.0,
+                      h - blockH,
+                    ),
+                    width: blockW,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (signature.isNotEmpty)
+                          SizedBox(
+                            height: 35 * scale,
+                            child: Image.memory(
+                              base64Decode(signature),
+                              fit: BoxFit.contain,
+                            ),
+                          ),
+                        Text(
+                          (signatory['fullName'] ?? '').toString(),
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 11 * scale,
+                            fontWeight: FontWeight.w700,
+                            color: placement.light
+                                ? Colors.white
+                                : const Color(0xFF1A202C),
+                          ),
+                        ),
+                        if (title.isNotEmpty)
+                          Text(
+                            title,
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 9 * scale,
+                              color: placement.light
+                                  ? Colors.white70
+                                  : Colors.black54,
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                }),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+/// The whole `signatories` roster, keyed by document id — which is what
+/// `signatoryPlacements` keys against.
+Future<Map<String, dynamic>> fetchCertificateSignatories() async {
+  try {
+    final snap = await FirebaseFirestore.instance
+        .collection('signatories')
+        .get();
+
+    final Map<String, dynamic> result = {};
+    for (final doc in snap.docs) {
+      final data = doc.data();
+      result[doc.id] = {
+        'fullName': data['fullName'] ?? '',
+        'title': data['title'] ?? '',
+        'signatureBase64': data['signatureBase64'] ?? '',
+      };
+    }
+    return result;
+  } catch (e) {
+    debugPrint('Error fetching signatories: $e');
+    return {};
+  }
+}
+
 // ════════════════════════════════════════════════════════════════
 //  CERTIFICATE DETAIL SCREEN - IMPROVED
 // ════════════════════════════════════════════════════════════════
@@ -1485,24 +1529,10 @@ class CertificateDetailScreen extends StatelessWidget {
           child: SizedBox(
             width: 700,
             height: 495,
-            child: CertificateImageWithName(
-              background: AppImage(
-                source: templateImageUrl,
-                fit: BoxFit.cover,
-                placeholder: Container(
-                  color: Colors.grey.shade200,
-                  child: const Icon(
-                    Icons.broken_image,
-                    size: 50,
-                    color: Colors.grey,
-                  ),
-                ),
-              ),
-              recipientName: cert['recipientName'] as String? ?? 'Recipient',
-              placement: CertNamePlacement.fromMap(
-                cert['namePlacement'] as Map<String, dynamic>?,
-              ),
-            ),
+            // Signatures are overlaid, not baked into the template — this
+            // used to render the bare CertificateImageWithName, which is why
+            // opening a certificate lost the e-signature the card showed.
+            child: CertificateTemplateWithSignatories(cert: cert),
           ),
         ),
       );
@@ -1938,20 +1968,10 @@ class _CertificateDownloadPreviewSheetState
     final templateImageUrl = cert['imageUrl'] as String? ?? '';
 
     if (templateImageUrl.isNotEmpty) {
-      return CertificateImageWithName(
-        background: AppImage(
-          source: templateImageUrl,
-          fit: BoxFit.cover,
-          placeholder: Container(
-            color: Colors.grey.shade200,
-            child: const Icon(Icons.broken_image, size: 50, color: Colors.grey),
-          ),
-        ),
-        recipientName: cert['recipientName'] as String? ?? 'Recipient',
-        placement: CertNamePlacement.fromMap(
-          cert['namePlacement'] as Map<String, dynamic>?,
-        ),
-      );
+      // Same overlay the card and the detail view use. This is the widget
+      // that gets captured to PNG for the PDF, so a bare template here meant
+      // every downloaded certificate was missing its e-signature.
+      return CertificateTemplateWithSignatories(cert: cert);
     }
 
     // Fallback using CertificatePreview widget

@@ -739,13 +739,11 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
             key: _ratingKey,
             child: _RatingByEventChart(data: data),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 20),
           KeyedSubtree(
             key: _regAttendanceKey,
-            child: _RegistrationAttendanceChart(data: data),
+            child: _PerformanceOverviewChart(data: data),
           ),
-          const SizedBox(height: 14),
-          _FinanceByEventChart(data: data),
         ],
       ),
     );
@@ -1132,69 +1130,45 @@ class _RatingByEventChart extends StatelessWidget {
   }
 }
 
-// Grouped bar chart (registered vs. attended per event), same fl_chart
-// pattern as _FinanceByEventChart below — registrations/attendance docs
-// are keyed by event id, so the x-axis labels resolve through
-// data.eventDisplayTitle() the same way _RatingByEventChart does.
-class _RegistrationAttendanceChart extends StatelessWidget {
+// Single "Performance Overview" card with a tab per metric instead of three
+// full-size stacked bar charts (Registrations/Attendance were previously one
+// grouped chart, Income/Expense another) — switching tabs keeps the same
+// data on screen at a fraction of the vertical space.
+class _PerformanceOverviewChart extends StatelessWidget {
   final _AnalyticsData data;
-  const _RegistrationAttendanceChart({required this.data});
-
-  static const int _maxBars = 8;
-
-  Widget _legendDot(Color color, String label) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 5),
-        Text(
-          label,
-          style: GoogleFonts.beVietnamPro(fontSize: 11, color: _C.muted),
-        ),
-      ],
-    );
-  }
+  const _PerformanceOverviewChart({required this.data});
 
   @override
   Widget build(BuildContext context) {
     final byEvent = data.registrationVsAttendanceByEvent;
-
-    if (byEvent.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.all(18),
-        child: Row(
-          children: [
-            Icon(Icons.how_to_reg_outlined, size: 18, color: _C.muted),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'No registration or attendance records yet — they will '
-                'show up here once students register or check in to an '
-                'event.',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 12.5,
-                  color: _C.muted,
-                ),
+    final regEntries =
+        byEvent.entries
+            .map(
+              (e) => MapEntry(
+                data.eventDisplayTitle(e.key),
+                e.value.registered.toDouble(),
               ),
-            ),
-          ],
-        ),
-      );
-    }
+            )
+            .toList()
+          ..sort((a, b) => b.value.compareTo(a.value));
+    final attEntries =
+        byEvent.entries
+            .map(
+              (e) => MapEntry(
+                data.eventDisplayTitle(e.key),
+                e.value.attended.toDouble(),
+              ),
+            )
+            .toList()
+          ..sort((a, b) => b.value.compareTo(a.value));
 
-    final entries = byEvent.entries.toList()
-      ..sort((a, b) => b.value.registered.compareTo(a.value.registered));
-    final shown = entries.take(_maxBars).toList();
-    final maxValue = shown.fold<int>(
-      0,
-      (m, e) => math.max(m, math.max(e.value.registered, e.value.attended)),
-    );
-    final chartMaxY = maxValue <= 0 ? 1.0 : maxValue * 1.15;
+    final finance = data.financeByEventTitle;
+    final incomeEntries =
+        finance.entries.map((e) => MapEntry(e.key, e.value.income)).toList()
+          ..sort((a, b) => b.value.compareTo(a.value));
+    final expenseEntries =
+        finance.entries.map((e) => MapEntry(e.key, e.value.expense)).toList()
+          ..sort((a, b) => b.value.compareTo(a.value));
 
     return Container(
       decoration: BoxDecoration(
@@ -1204,233 +1178,130 @@ class _RegistrationAttendanceChart extends StatelessWidget {
         boxShadow: _DS.cardShadow,
       ),
       clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEFF6FF),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.how_to_reg_outlined,
-                    size: 16,
-                    color: _C.blue,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Registration vs. attendance by event',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: _C.charcoal,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          _legendDot(_C.blue, 'Registered'),
-                          const SizedBox(width: 14),
-                          _legendDot(_C.green, 'Attended'),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                if (entries.length > shown.length)
-                  Text(
-                    'Top ${shown.length} of ${entries.length}',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11,
-                      color: _C.muted,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          _DS.fadeDivider(),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 20, 20, 8),
-            child: SizedBox(
-              height: 220,
-              child: BarChart(
-                BarChartData(
-                  maxY: chartMaxY,
-                  alignment: BarChartAlignment.spaceAround,
-                  gridData: FlGridData(
-                    show: true,
-                    drawVerticalLine: false,
-                    horizontalInterval: chartMaxY / 4,
-                    getDrawingHorizontalLine: (_) =>
-                        const FlLine(color: Color(0xFFF1F5F9), strokeWidth: 1),
-                  ),
-                  borderData: FlBorderData(show: false),
-                  titlesData: FlTitlesData(
-                    topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    leftTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: 30,
-                        interval: chartMaxY / 4,
-                        getTitlesWidget: (v, _) => Text(
-                          NumberFormat.compact().format(v),
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 9,
-                            color: _C.muted,
-                          ),
-                        ),
-                      ),
-                    ),
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: 34,
-                        getTitlesWidget: (v, _) {
-                          final i = v.toInt();
-                          if (i < 0 || i >= shown.length) {
-                            return const SizedBox.shrink();
-                          }
-                          final title = data.eventDisplayTitle(shown[i].key);
-                          final short = title.length > 10
-                              ? '${title.substring(0, 9)}…'
-                              : title;
-                          return Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: Text(
-                              short,
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 10,
-                                color: _C.muted,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                  barTouchData: BarTouchData(
-                    touchTooltipData: BarTouchTooltipData(
-                      getTooltipColor: (_) => _C.charcoal,
-                      getTooltipItem: (group, _, rod, rodIndex) {
-                        final title = data.eventDisplayTitle(
-                          shown[group.x].key,
-                        );
-                        final label = rodIndex == 0 ? 'Registered' : 'Attended';
-                        return BarTooltipItem(
-                          '$title\n',
-                          GoogleFonts.beVietnamPro(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 11,
-                          ),
-                          children: [
-                            TextSpan(
-                              text: '$label: ${rod.toY.toInt()}',
-                              style: GoogleFonts.beVietnamPro(
-                                color: Colors.white70,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                  ),
-                  barGroups: List.generate(shown.length, (i) {
-                    final v = shown[i].value;
-                    return BarChartGroupData(
-                      x: i,
-                      barsSpace: 4,
-                      barRods: [
-                        BarChartRodData(
-                          toY: v.registered.toDouble(),
-                          color: _C.blue,
-                          width: 10,
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                        BarChartRodData(
-                          toY: v.attended.toDouble(),
-                          color: _C.green,
-                          width: 10,
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                      ],
-                    );
-                  }),
+      child: DefaultTabController(
+        length: 4,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
+              child: Text(
+                'Performance Overview',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: _C.charcoal,
                 ),
               ),
             ),
-          ),
-        ],
+            Container(
+              decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: Color(0xFFE8ECF0))),
+              ),
+              child: TabBar(
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                labelPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 4,
+                ),
+                labelColor: UpriseColors.primaryDark,
+                unselectedLabelColor: _C.muted,
+                indicatorColor: UpriseColors.primaryDark,
+                labelStyle: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+                unselectedLabelStyle: GoogleFonts.beVietnamPro(fontSize: 13),
+                tabs: const [
+                  Tab(text: 'Registrations'),
+                  Tab(text: 'Attendance'),
+                  Tab(text: 'Income'),
+                  Tab(text: 'Expenses'),
+                ],
+              ),
+            ),
+            SizedBox(
+              height: 272,
+              child: TabBarView(
+                children: [
+                  _SingleSeriesBarChart(
+                    entries: regEntries,
+                    color: _C.blue,
+                    moneyFormat: false,
+                    emptyMessage:
+                        'No registration records yet — they will show up '
+                        'here once students register for an event.',
+                  ),
+                  _SingleSeriesBarChart(
+                    entries: attEntries,
+                    color: _C.green,
+                    moneyFormat: false,
+                    emptyMessage:
+                        'No attendance records yet — they will show up '
+                        'here once students check in to an event.',
+                  ),
+                  _SingleSeriesBarChart(
+                    entries: incomeEntries,
+                    color: _C.amber,
+                    moneyFormat: true,
+                    emptyMessage:
+                        'No income records tied to an event yet — '
+                        'transactions in Finance whose event name matches '
+                        'an event here will show up as a chart.',
+                  ),
+                  _SingleSeriesBarChart(
+                    entries: expenseEntries,
+                    color: _C.red,
+                    moneyFormat: true,
+                    emptyMessage:
+                        'No expense records tied to an event yet — '
+                        'transactions in Finance whose event name matches '
+                        'an event here will show up as a chart.',
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
   }
 }
 
-// Grouped bar chart (income vs. expense per event) via fl_chart, replacing
-// a stacked list of two progress bars per row — comparing bar heights at a
-// glance is easier to read than scanning fraction-filled bars line by line.
-// Exact peso amounts move to the tooltip instead of a persistent label, same
-// tradeoff as _RatingByEventChart.
-class _FinanceByEventChart extends StatelessWidget {
-  final _AnalyticsData data;
-  const _FinanceByEventChart({required this.data});
+// Shared single-series bar chart body for each Performance Overview tab —
+// same fl_chart scaffolding (grid, axes, tooltip, truncated event labels)
+// the old grouped charts used, just one color/series per tab instead of two.
+class _SingleSeriesBarChart extends StatelessWidget {
+  final List<MapEntry<String, double>> entries;
+  final Color color;
+  final bool moneyFormat;
+  final String emptyMessage;
 
-  static const int _maxBars = 6;
+  const _SingleSeriesBarChart({
+    required this.entries,
+    required this.color,
+    required this.moneyFormat,
+    required this.emptyMessage,
+  });
 
-  Widget _legendDot(Color color, String label) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 5),
-        Text(
-          label,
-          style: GoogleFonts.beVietnamPro(fontSize: 11, color: _C.muted),
-        ),
-      ],
-    );
-  }
+  static const int _maxBars = 8;
 
   @override
   Widget build(BuildContext context) {
-    final finance = data.financeByEventTitle;
-    final money = NumberFormat('#,###.00');
-
-    if (finance.isEmpty) {
+    if (entries.isEmpty) {
       return Padding(
         padding: const EdgeInsets.all(18),
         child: Row(
           children: [
-            Icon(Icons.payments_outlined, size: 18, color: _C.muted),
+            Icon(Icons.bar_chart_rounded, size: 18, color: _C.muted),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'No financial records tied to an event yet — transactions '
-                'in Finance whose event name matches an event here will show '
-                'up as a chart.',
+                emptyMessage,
                 style: GoogleFonts.beVietnamPro(
                   fontSize: 12.5,
                   color: _C.muted,
@@ -1442,197 +1313,132 @@ class _FinanceByEventChart extends StatelessWidget {
       );
     }
 
-    final entries = finance.entries.toList()
-      ..sort(
-        (a, b) => (b.value.income - b.value.expense).abs().compareTo(
-          (a.value.income - a.value.expense).abs(),
-        ),
-      );
     final shown = entries.take(_maxBars).toList();
-    final maxValue = shown.fold<double>(
-      0,
-      (m, e) => math.max(m, math.max(e.value.income, e.value.expense)),
-    );
+    final maxValue = shown.fold<double>(0, (m, e) => math.max(m, e.value));
     final chartMaxY = maxValue <= 0 ? 1.0 : maxValue * 1.15;
+    final money = NumberFormat('#,###.00');
 
-    return Container(
-      decoration: BoxDecoration(
-        color: _C.white,
-        borderRadius: BorderRadius.circular(_DS.radiusMd),
-        border: Border.all(color: _C.border.withOpacity(0.5)),
-        boxShadow: _DS.cardShadow,
-      ),
-      clipBehavior: Clip.antiAlias,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 20, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFECFDF5),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.payments_outlined,
-                    size: 16,
-                    color: _C.green,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Income vs. expense by event',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: _C.charcoal,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          _legendDot(_C.green, 'Income'),
-                          const SizedBox(width: 14),
-                          _legendDot(_C.red, 'Expense'),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                if (entries.length > shown.length)
-                  Text(
-                    'Top ${shown.length} of ${entries.length}',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11,
-                      color: _C.muted,
-                    ),
-                  ),
-              ],
+          if (entries.length > shown.length)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                'Top ${shown.length} of ${entries.length}',
+                style: GoogleFonts.beVietnamPro(fontSize: 11, color: _C.muted),
+              ),
             ),
-          ),
-          _DS.fadeDivider(),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 20, 20, 8),
-            child: SizedBox(
-              height: 220,
-              child: BarChart(
-                BarChartData(
-                  maxY: chartMaxY,
-                  alignment: BarChartAlignment.spaceAround,
-                  gridData: FlGridData(
-                    show: true,
-                    drawVerticalLine: false,
-                    horizontalInterval: chartMaxY / 4,
-                    getDrawingHorizontalLine: (_) =>
-                        const FlLine(color: Color(0xFFF1F5F9), strokeWidth: 1),
+          SizedBox(
+            height: 220,
+            child: BarChart(
+              BarChartData(
+                maxY: chartMaxY,
+                alignment: BarChartAlignment.spaceAround,
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  horizontalInterval: chartMaxY / 4,
+                  getDrawingHorizontalLine: (_) =>
+                      const FlLine(color: Color(0xFFF1F5F9), strokeWidth: 1),
+                ),
+                borderData: FlBorderData(show: false),
+                titlesData: FlTitlesData(
+                  topTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
                   ),
-                  borderData: FlBorderData(show: false),
-                  titlesData: FlTitlesData(
-                    topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    leftTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: 44,
-                        interval: chartMaxY / 4,
-                        getTitlesWidget: (v, _) => Text(
-                          '₱${NumberFormat.compact().format(v)}',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 9,
-                            color: _C.muted,
-                          ),
+                  rightTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: moneyFormat ? 44 : 30,
+                      interval: chartMaxY / 4,
+                      getTitlesWidget: (v, _) => Text(
+                        moneyFormat
+                            ? '₱${NumberFormat.compact().format(v)}'
+                            : NumberFormat.compact().format(v),
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 9,
+                          color: _C.muted,
                         ),
                       ),
                     ),
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: 34,
-                        getTitlesWidget: (v, _) {
-                          final i = v.toInt();
-                          if (i < 0 || i >= shown.length) {
-                            return const SizedBox.shrink();
-                          }
-                          final title = shown[i].key;
-                          final short = title.length > 10
-                              ? '${title.substring(0, 9)}…'
-                              : title;
-                          return Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: Text(
-                              short,
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 10,
-                                color: _C.muted,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          );
-                        },
-                      ),
-                    ),
                   ),
-                  barTouchData: BarTouchData(
-                    touchTooltipData: BarTouchTooltipData(
-                      getTooltipColor: (_) => _C.charcoal,
-                      getTooltipItem: (group, _, rod, rodIndex) {
-                        final title = shown[group.x].key;
-                        final label = rodIndex == 0 ? 'Income' : 'Expense';
-                        return BarTooltipItem(
-                          '$title\n',
-                          GoogleFonts.beVietnamPro(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 11,
-                          ),
-                          children: [
-                            TextSpan(
-                              text: '$label: ₱${money.format(rod.toY)}',
-                              style: GoogleFonts.beVietnamPro(
-                                color: Colors.white70,
-                                fontSize: 11,
-                              ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 34,
+                      getTitlesWidget: (v, _) {
+                        final i = v.toInt();
+                        if (i < 0 || i >= shown.length) {
+                          return const SizedBox.shrink();
+                        }
+                        final title = shown[i].key;
+                        final short = title.length > 10
+                            ? '${title.substring(0, 9)}…'
+                            : title;
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(
+                            short,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 10,
+                              color: _C.muted,
                             ),
-                          ],
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         );
                       },
                     ),
                   ),
-                  barGroups: List.generate(shown.length, (i) {
-                    final f = shown[i].value;
-                    return BarChartGroupData(
-                      x: i,
-                      barsSpace: 4,
-                      barRods: [
-                        BarChartRodData(
-                          toY: f.income,
-                          color: _C.green,
-                          width: 10,
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                        BarChartRodData(
-                          toY: f.expense,
-                          color: _C.red,
-                          width: 10,
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                      ],
-                    );
-                  }),
                 ),
+                barTouchData: BarTouchData(
+                  touchTooltipData: BarTouchTooltipData(
+                    getTooltipColor: (_) => _C.charcoal,
+                    getTooltipItem: (group, _, rod, __) {
+                      final title = shown[group.x].key;
+                      final value = moneyFormat
+                          ? '₱${money.format(rod.toY)}'
+                          : rod.toY.toInt().toString();
+                      return BarTooltipItem(
+                        '$title\n',
+                        GoogleFonts.beVietnamPro(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 11,
+                        ),
+                        children: [
+                          TextSpan(
+                            text: value,
+                            style: GoogleFonts.beVietnamPro(
+                              color: Colors.white70,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+                barGroups: List.generate(shown.length, (i) {
+                  return BarChartGroupData(
+                    x: i,
+                    barRods: [
+                      BarChartRodData(
+                        toY: shown[i].value,
+                        color: color,
+                        width: 22,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ],
+                  );
+                }),
               ),
             ),
           ),

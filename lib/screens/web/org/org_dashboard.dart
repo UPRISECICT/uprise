@@ -2893,64 +2893,14 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
   }
 
   // ── Detail row with colored BADGE ──
+  // Thin alias over [_detailRow] — the two used to be byte-identical copies
+  // that drifted apart whenever only one of them got restyled.
   Widget _detailRowWithBadge({
     required String label,
     required String value,
     required Color color,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: OrgColors.surface,
-        borderRadius: BorderRadius.circular(_DS.radiusSm),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            _fieldIcons[label] ?? Icons.info_outline_rounded,
-            size: 16,
-            color: OrgColors.darkGray,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label.toUpperCase(),
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w700,
-                    color: OrgColors.textFaint,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                _cellBadge(value, color),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  }) => _detailRow(label, value, badgeColor: color);
 
-  // ── Icon map ──
-  static const Map<String, IconData> _fieldIcons = {
-    'Category': Icons.label_outline_rounded,
-    'Status': Icons.assignment_turned_in_rounded,
-    'Date': Icons.calendar_today_rounded,
-    'Event Date': Icons.calendar_today_rounded,
-    'Time': Icons.schedule_rounded,
-    'Location': Icons.location_on_outlined,
-    'Audience': Icons.groups_outlined,
-    'Description': Icons.notes_rounded,
-    'Submitted': Icons.upload_file_outlined,
-    'Price': Icons.sell_outlined,
-    'In Stock': Icons.inventory_2_outlined,
-  };
   // ── Chart card ────────────────────────────────────────────────────
   Widget _buildChartCard() {
     return Container(
@@ -3296,10 +3246,9 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                   isEven: i.isEven,
                   onTap: () => _showDetailDialog(
                     title: rows[i]['title'] as String,
-                    icon: Icons.event_available_rounded,
                     accentColor: OrgColors.primaryDark,
                     categoryColorOf: (c) => CategoryColors.getFg(c),
-                    actionLabel: 'Open in Events & Schedules →',
+                    actionLabel: 'Open in Events & Schedules',
                     navigateToTabIndex: 2, // OrgEventsScheduleScreen
                     fields: [
                       MapEntry('Category', rows[i]['category'] as String),
@@ -3408,10 +3357,9 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                   isEven: i.isEven,
                   onTap: () => _showDetailDialog(
                     title: rows[i]['title'] as String,
-                    icon: Icons.pending_actions_rounded,
                     accentColor: OrgColors.warning,
                     categoryColorOf: (c) => CategoryColors.getFg(c),
-                    actionLabel: 'Open in Event Proposals →',
+                    actionLabel: 'Open in Event Proposals',
                     navigateToTabIndex: 1, // OrgEventProposalsScreen
                     fields: [
                       MapEntry('Category', rows[i]['category'] as String),
@@ -3528,7 +3476,6 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                   isEven: i.isEven,
                   onTap: () => _showDetailDialog(
                     title: rows[i]['title'] as String,
-                    icon: Icons.upcoming_rounded,
                     accentColor: OrgColors.accent,
                     fields: [
                       MapEntry('Date', _fmtDate(rows[i]['date'] as DateTime?)),
@@ -3632,10 +3579,9 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                   isEven: i.isEven,
                   onTap: () => _showDetailDialog(
                     title: rows[i]['name'] as String,
-                    icon: Icons.shopping_bag_rounded,
                     accentColor: const Color(0xFF6366F1),
                     categoryColorOf: (c) => _merchCategoryBadgeColor(c),
-                    actionLabel: 'Open in Merchandise Catalog →',
+                    actionLabel: 'Open in Merchandise Catalog',
                     navigateToTabIndex: 12, // OrgMerchandiseScreen
                     fields: [
                       MapEntry('Category', rows[i]['category'] as String),
@@ -3888,63 +3834,99 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
   // the detail view, which read as a missing/broken color.
   Widget _detailRow(String label, String value, {Color? badgeColor}) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: OrgColors.surface,
         borderRadius: BorderRadius.circular(_DS.radiusSm),
+        border: Border.all(color: OrgColors.border),
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            _fieldIcons[label] ?? Icons.info_outline_rounded,
-            size: 16,
-            color: OrgColors.darkGray,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label.toUpperCase(),
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w700,
-                    color: OrgColors.textFaint,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                if (badgeColor != null)
-                  _cellBadge(value, badgeColor)
-                else
-                  Text(
-                    value,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 13.5,
-                      color: OrgColors.charcoal,
-                      height: 1.4,
-                    ),
-                  ),
-              ],
+          Text(
+            label.toUpperCase(),
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w700,
+              color: OrgColors.textFaint,
+              letterSpacing: 0.6,
             ),
           ),
+          const SizedBox(height: 6),
+          if (badgeColor != null)
+            _cellBadge(value, badgeColor)
+          else
+            Text(
+              value,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13.5,
+                color: OrgColors.charcoal,
+                height: 1.45,
+              ),
+            ),
         ],
       ),
     );
   }
 
+  // Fields that carry prose rather than a short value — these get a row to
+  // themselves so a description isn't forced to wrap inside a half-width
+  // column while the cell beside it sits mostly empty.
+  static const _fullWidthDetailKeys = {'Description', 'Remarks', 'Notes'};
+
+  // Groups the flat field list into display rows: a long/prose field takes a
+  // whole row, everything else pairs up two-per-row.
+  List<List<MapEntry<String, String>>> _pairDetailFields(
+    List<MapEntry<String, String>> fields,
+  ) {
+    final rows = <List<MapEntry<String, String>>>[];
+    List<MapEntry<String, String>>? pending;
+
+    for (final f in fields) {
+      final isWide =
+          _fullWidthDetailKeys.contains(f.key) || f.value.length > 90;
+      if (isWide) {
+        // Flush a half-filled pair first so field order is never reshuffled.
+        if (pending != null) {
+          rows.add(pending);
+          pending = null;
+        }
+        rows.add([f]);
+      } else if (pending == null) {
+        pending = [f];
+      } else {
+        pending.add(f);
+        rows.add(pending);
+        pending = null;
+      }
+    }
+    if (pending != null) rows.add(pending);
+    return rows;
+  }
+
   void _showDetailDialog({
     required String title,
     required List<MapEntry<String, String>> fields,
-    IconData icon = Icons.info_outline_rounded,
     Color accentColor = OrgColors.primaryDark,
     Color Function(String category)? categoryColorOf,
     String? actionLabel,
     int? navigateToTabIndex,
   }) {
+    // Two-per-row instead of one long vertical stack — at 720px a date, a
+    // time range and a venue each fit comfortably in half the width, so
+    // stacking them was spending a full row on values a few characters long.
+    final rows = _pairDetailFields(fields);
+
+    Widget cellFor(MapEntry<String, String> f) =>
+        f.key == 'Category' && categoryColorOf != null
+        ? _detailRowWithBadge(
+            label: f.key,
+            value: f.value,
+            color: categoryColorOf(f.value),
+          )
+        : _detailRow(f.key, f.value);
+
     showDialog(
       context: context,
       barrierColor: Colors.black54,
@@ -3955,7 +3937,7 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
         ),
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxWidth: 460,
+            maxWidth: 720,
             maxHeight: MediaQuery.of(ctx).size.height * 0.85,
           ),
           child: Container(
@@ -3963,35 +3945,33 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(_DS.radiusLg),
+              boxShadow: _DS.cardShadow,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ── HEADER (colored strip - gaya ng admin) ──
+                // ── HEADER ──
+                // Plain white with a hairline rule rather than a tinted color
+                // strip: at this width the tint read as a colored banner
+                // competing with the content instead of framing it.
                 Container(
-                  padding: const EdgeInsets.fromLTRB(22, 20, 16, 18),
-                  decoration: BoxDecoration(color: accentColor.withAlpha(16)),
+                  padding: const EdgeInsets.fromLTRB(28, 22, 20, 20),
+                  decoration: const BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: Color(0xFFF1F5F9)),
+                    ),
+                  ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: accentColor.withAlpha(28),
-                          borderRadius: BorderRadius.circular(11),
-                        ),
-                        child: Icon(icon, color: accentColor, size: 19),
-                      ),
-                      const SizedBox(width: 13),
                       Expanded(
                         child: Padding(
-                          padding: const EdgeInsets.only(top: 5),
+                          padding: const EdgeInsets.only(top: 3),
                           child: Text(
                             title,
                             style: GoogleFonts.beVietnamPro(
-                              fontSize: 16,
+                              fontSize: 17,
                               fontWeight: FontWeight.w700,
                               color: OrgColors.charcoal,
                             ),
@@ -4009,7 +3989,7 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                               width: 28,
                               height: 28,
                               decoration: BoxDecoration(
-                                color: Colors.white,
+                                color: OrgColors.lightGray,
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: const Icon(
@@ -4027,19 +4007,31 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                 // ── BODY ──
                 Flexible(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        for (final f in fields) ...[
-                          if (f.key == 'Category' && categoryColorOf != null)
-                            _detailRowWithBadge(
-                              label: f.key,
-                              value: f.value,
-                              color: categoryColorOf(f.value),
-                            )
-                          else
-                            _detailRow(f.key, f.value),
+                        for (var i = 0; i < rows.length; i++) ...[
+                          if (i > 0) const SizedBox(height: 12),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(child: cellFor(rows[i].first)),
+                              // A lone short field keeps its half-width cell
+                              // and an empty gutter, so the left column stays
+                              // aligned all the way down.
+                              if (rows[i].length > 1) ...[
+                                const SizedBox(width: 14),
+                                Expanded(child: cellFor(rows[i][1])),
+                              ] else if (!_fullWidthDetailKeys.contains(
+                                    rows[i].first.key,
+                                  ) &&
+                                  rows[i].first.value.length <= 90) ...[
+                                const SizedBox(width: 14),
+                                const Expanded(child: SizedBox.shrink()),
+                              ],
+                            ],
+                          ),
                         ],
                       ],
                     ),
@@ -4047,35 +4039,37 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                 ),
                 // ── FOOTER ──
                 Container(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
+                  padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
                   decoration: const BoxDecoration(
                     border: Border(top: BorderSide(color: Color(0xFFF1F5F9))),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      if (actionLabel != null && navigateToTabIndex != null)
-                        TextButton.icon(
+                      if (actionLabel != null && navigateToTabIndex != null) ...[
+                        TextButton(
                           onPressed: () {
                             Navigator.pop(ctx);
                             widget.onNavigateToTab?.call(navigateToTabIndex);
                           },
-                          icon: const Icon(
-                            Icons.arrow_forward_rounded,
-                            size: 15,
+                          style: TextButton.styleFrom(
+                            foregroundColor: accentColor,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
                           ),
-                          label: Text(
+                          child: Text(
                             actionLabel,
                             style: GoogleFonts.beVietnamPro(
+                              fontSize: 13,
                               fontWeight: FontWeight.w600,
                               color: accentColor,
                             ),
                           ),
-                          style: TextButton.styleFrom(
-                            foregroundColor: accentColor,
-                          ),
                         ),
-                      const SizedBox(width: 8),
+                        const SizedBox(width: 8),
+                      ],
                       ElevatedButton(
                         onPressed: () => Navigator.pop(ctx),
                         style: ElevatedButton.styleFrom(

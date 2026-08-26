@@ -28,7 +28,9 @@ import 'export_util.dart' show OrgExportUtil;
 // ─────────────────────────────────────────────────────────────────────────────
 class _DS {
   static const double radiusSm = 8;
+  static const double radiusMd = 14;
   static const double radiusPill = 100;
+  static const Color borderSoft = Color(0xFFE2E6EA);
 
   static final cardShadow = [
     BoxShadow(
@@ -161,33 +163,6 @@ const List<String> _merchandiseCategories = [
   'Notebooks / Planners',
   'Others',
 ];
-
-// A fixed color per known category (falls back to a hash-based pick from
-// the same palette for custom "Others" text) so the catalog reads more
-// like a tagged shop than a flat list — each category is recognizable by
-// color at a glance, not just by its label.
-const Map<String, Color> _categoryColors = {
-  'T-Shirts / Uniforms': Color(0xFF2563EB),
-  'Lanyards / IDs': Color(0xFF7C3AED),
-  'Stickers / Pins': Color(0xFFDB2777),
-  'Tumblers / Water Bottles': Color(0xFF0D9488),
-  'Notebooks / Planners': Color(0xFFB45309),
-};
-const List<Color> _fallbackCategoryColors = [
-  Color(0xFF2563EB),
-  Color(0xFF7C3AED),
-  Color(0xFFDB2777),
-  Color(0xFF0D9488),
-  Color(0xFFB45309),
-  Color(0xFF059669),
-];
-
-Color _categoryColor(String category) {
-  final known = _categoryColors[category];
-  if (known != null) return known;
-  return _fallbackCategoryColors[category.hashCode.abs() %
-      _fallbackCategoryColors.length];
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Screen
@@ -1340,7 +1315,6 @@ class _ProductCardState extends State<_ProductCard> {
   @override
   Widget build(BuildContext context) {
     final product = widget.product;
-    final categoryColor = _categoryColor(product.category);
     final totalStock = product.variants.isNotEmpty
         ? product.variants.fold<int>(0, (sum, v) => sum + v.stock)
         : product.stock;
@@ -1354,180 +1328,174 @@ class _ProductCardState extends State<_ProductCard> {
         : isLowStock
         ? 'Low Stock'
         : null;
-    final statusColor = (isOutOfStock || isDiscontinued)
-        ? const Color(0xFFDC2626)
-        : UpriseColors.primaryDark;
-
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
       child: GestureDetector(
         onTap: widget.onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            AspectRatio(
-              aspectRatio: 1,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: _hovering
-                      ? [
-                          BoxShadow(
-                            color: Colors.black.withAlpha(28),
-                            blurRadius: 20,
-                            offset: const Offset(0, 10),
-                          ),
-                        ]
-                      : _DS.cardShadow,
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      AnimatedScale(
-                        duration: const Duration(milliseconds: 200),
-                        scale: _hovering ? 1.05 : 1.0,
-                        child: _buildProductImage(),
-                      ),
-                      if (statusLabel != null)
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(_DS.radiusMd),
+            border: Border.all(color: _DS.borderSoft),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AspectRatio(
+                aspectRatio: 1,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: _hovering
+                        ? [
+                            BoxShadow(
+                              color: Colors.black.withAlpha(28),
+                              blurRadius: 20,
+                              offset: const Offset(0, 10),
+                            ),
+                          ]
+                        : _DS.cardShadow,
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        AnimatedScale(
+                          duration: const Duration(milliseconds: 200),
+                          scale: _hovering ? 1.05 : 1.0,
+                          child: _buildProductImage(),
+                        ),
+                        // Quick-action affordance, like a storefront's
+                        // wishlist/quick-view icons — invisible until hovered
+                        // instead of permanent chrome over the product photo.
                         Positioned(
-                          left: 10,
-                          top: 10,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 9,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withAlpha(235),
-                              borderRadius: BorderRadius.circular(
-                                _DS.radiusPill,
-                              ),
-                            ),
-                            child: Text(
-                              statusLabel.toUpperCase(),
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w700,
-                                color: statusColor,
-                                letterSpacing: 0.6,
+                          right: 8,
+                          top: 8,
+                          child: AnimatedOpacity(
+                            duration: const Duration(milliseconds: 150),
+                            opacity: (_hovering || widget.alwaysShowActions)
+                                ? 1
+                                : 0,
+                            child: IgnorePointer(
+                              ignoring:
+                                  !(_hovering || widget.alwaysShowActions),
+                              child: Column(
+                                children: [
+                                  _CardActionButton(
+                                    icon: Icons.edit_outlined,
+                                    tooltip: 'Edit',
+                                    onTap: widget.onEdit,
+                                  ),
+                                  const SizedBox(height: 6),
+                                  _CardActionButton(
+                                    icon: widget.product.isArchived
+                                        ? Icons.unarchive_outlined
+                                        : Icons.archive_outlined,
+                                    tooltip: widget.product.isArchived
+                                        ? 'Unarchive'
+                                        : 'Archive',
+                                    onTap: widget.onArchive,
+                                    color: UpriseColors.warning,
+                                  ),
+                                ],
                               ),
                             ),
                           ),
                         ),
-                      // Quick-action affordance, like a storefront's
-                      // wishlist/quick-view icons — invisible until hovered
-                      // instead of permanent chrome over the product photo.
-                      Positioned(
-                        right: 8,
-                        top: 8,
-                        child: AnimatedOpacity(
-                          duration: const Duration(milliseconds: 150),
-                          opacity: (_hovering || widget.alwaysShowActions)
-                              ? 1
-                              : 0,
-                          child: IgnorePointer(
-                            ignoring: !(_hovering || widget.alwaysShowActions),
-                            child: Column(
-                              children: [
-                                _CardActionButton(
-                                  icon: Icons.edit_outlined,
-                                  tooltip: 'Edit',
-                                  onTap: widget.onEdit,
-                                ),
-                                const SizedBox(height: 6),
-                                _CardActionButton(
-                                  icon: widget.product.isArchived
-                                      ? Icons.unarchive_outlined
-                                      : Icons.archive_outlined,
-                                  tooltip: widget.product.isArchived
-                                      ? 'Unarchive'
-                                      : 'Archive',
-                                  onTap: widget.onArchive,
-                                  color: UpriseColors.warning,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: categoryColor.withAlpha(24),
-                borderRadius: BorderRadius.circular(_DS.radiusPill),
-              ),
-              child: Text(
+              const SizedBox(height: 12),
+              Text(
                 product.category,
                 style: GoogleFonts.beVietnamPro(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  color: categoryColor,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w600,
+                  color: UpriseColors.darkGray,
                   letterSpacing: 0.3,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              product.name,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: const Color(0xFF1A202C),
-                height: 1.25,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                Text(
-                  '₱${NumberFormat('#,###').format(product.price)}',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: UpriseColors.primaryDark,
-                  ),
+              const SizedBox(height: 6),
+              Text(
+                product.name,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF1A202C),
+                  height: 1.25,
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '$totalStock in stock',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Text(
+                    '₱${NumberFormat('#,###').format(product.price)}',
                     style: GoogleFonts.beVietnamPro(
-                      fontSize: 11,
-                      color: const Color(0xFF9AA5B4),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF1A202C),
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '$totalStock in stock',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 11,
+                        color: const Color(0xFF9AA5B4),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              if (statusLabel != null) ...[
+                const SizedBox(height: 3),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.warning_amber_rounded,
+                      size: 12,
+                      color: Color(0xFFDC2626),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      statusLabel,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFFDC2626),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              if (product.sold > 0) ...[
+                const SizedBox(height: 3),
+                Text(
+                  '${product.sold} sold',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF059669),
                   ),
                 ),
               ],
-            ),
-            if (product.sold > 0) ...[
-              const SizedBox(height: 3),
-              Text(
-                '${product.sold} sold',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF059669),
-                ),
-              ),
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -1599,7 +1567,7 @@ class _NoPhotoPlaceholder extends StatelessWidget {
           Icon(
             Icons.add_photo_alternate_outlined,
             size: 30,
-            color: UpriseColors.primaryDark.withAlpha(130),
+            color: UpriseColors.darkGray.withAlpha(150),
           ),
           const SizedBox(height: 6),
           Text(
@@ -1607,7 +1575,7 @@ class _NoPhotoPlaceholder extends StatelessWidget {
             style: GoogleFonts.beVietnamPro(
               fontSize: 10.5,
               fontWeight: FontWeight.w600,
-              color: UpriseColors.primaryDark.withAlpha(150),
+              color: UpriseColors.darkGray.withAlpha(180),
             ),
           ),
         ],

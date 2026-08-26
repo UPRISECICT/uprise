@@ -12,11 +12,13 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import 'guest_auth_service.dart';
+import '../../widgets/student/app_colors.dart';
+import '../../widgets/student/student_app_bar.dart';
 
-const _kOrange = Color(0xFFBE4700);
-const _kSuccess = Color(0xFF059669);
-const _kSuccessBg = Color(0xFFECFDF5);
-const _kBg = Color(0xFFF5F5F5);
+const _kOrange = AppColors.primaryDark;
+const _kSuccess = AppColors.success;
+const _kSuccessBg = AppColors.successBg;
+const _kBg = AppColors.background;
 
 class _ParticipatedEvent {
   final String eventId;
@@ -90,12 +92,7 @@ class _GuestParticipatedEventsScreenState extends State<GuestParticipatedEventsS
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _kBg,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text('Participated Events', style: GoogleFonts.beVietnamPro(
-            fontSize: 17, fontWeight: FontWeight.w700, color: Colors.black87)),
-      ),
+      appBar: const StudentAppBar(title: 'Participated Events'),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: _kOrange))
           : _error != null

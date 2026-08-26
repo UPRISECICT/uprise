@@ -19,6 +19,13 @@ class StudentAppBar extends StatelessWidget implements PreferredSizeWidget {
   // call site's behavior exactly.
   final PreferredSizeWidget? bottom;
 
+  // False when the screen is hosted as a sub-tab and the parent already shows
+  // a title — the title row collapses to nothing but [bottom] (a TabBar) is
+  // still rendered. Without this the embedded screen stacks a second, empty
+  // toolbar under the host's, which is what the guest Calendar and My Events
+  // sub-tabs used to open-code as `toolbarHeight: 0`.
+  final bool showTitleBar;
+
   const StudentAppBar({
     super.key,
     required this.title,
@@ -27,11 +34,13 @@ class StudentAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.leading,
     this.showDivider = true,
     this.bottom,
+    this.showTitleBar = true,
   });
 
   @override
-  Size get preferredSize =>
-      Size.fromHeight(kToolbarHeight + (bottom?.preferredSize.height ?? 1));
+  Size get preferredSize => Size.fromHeight(
+    (showTitleBar ? kToolbarHeight : 0) + (bottom?.preferredSize.height ?? 1),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -39,27 +48,37 @@ class StudentAppBar extends StatelessWidget implements PreferredSizeWidget {
       backgroundColor: Colors.white,
       foregroundColor: AppColors.textPrimary,
       elevation: 0,
+      // Material 3 tints the bar with the primary color once content scrolls
+      // under it, which turned every one of these bars pink mid-scroll. The
+      // home SliverAppBar already opts out; this makes the shared bar agree
+      // with it, so the chrome stays white on every screen.
+      scrolledUnderElevation: 0,
       centerTitle: centerTitle,
-      leading:
-          leading ??
-          (Navigator.of(context).canPop()
-              ? IconButton(
-                  icon: const Icon(
-                    Icons.arrow_back,
-                    color: AppColors.textPrimary,
-                  ),
-                  onPressed: () => Navigator.of(context).pop(),
-                )
-              : null),
-      title: Text(
-        title,
-        style: GoogleFonts.beVietnamPro(
-          fontSize: 18,
-          fontWeight: FontWeight.w700,
-          color: AppColors.textPrimary,
-        ),
-      ),
-      actions: actions,
+      toolbarHeight: showTitleBar ? kToolbarHeight : 0,
+      automaticallyImplyLeading: showTitleBar,
+      leading: !showTitleBar
+          ? null
+          : leading ??
+                (Navigator.of(context).canPop()
+                    ? IconButton(
+                        icon: const Icon(
+                          Icons.arrow_back,
+                          color: AppColors.textPrimary,
+                        ),
+                        onPressed: () => Navigator.of(context).pop(),
+                      )
+                    : null),
+      title: showTitleBar
+          ? Text(
+              title,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            )
+          : null,
+      actions: showTitleBar ? actions : null,
       bottom:
           bottom ??
           (showDivider

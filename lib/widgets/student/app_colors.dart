@@ -46,4 +46,19 @@ class AppColors {
   // former local _kPrimaryBg) — distinct from surfaceTint, which is much
   // lighter and used for large surface areas rather than small accents.
   static const Color primarySoft = Color(0xFFF5E3D9);
+
+  // Status scale. These exact literals were already hardcoded on both sides
+  // — guest as file-local _kSuccess/_kWarning/_kError constants, student
+  // inline (student_announcements_screen, student_events_screen's My Events
+  // status chips). Naming them here is what lets the guest files alias
+  // across; the remaining student literals are identical values, so they can
+  // be swept onto these later with no visual change.
+  //
+  // Each pairs a foreground with the tinted background it sits on.
+  static const Color success = Color(0xFF059669);
+  static const Color successBg = Color(0xFFECFDF5);
+  static const Color warning = Color(0xFFD97706);
+  static const Color warningBg = Color(0xFFFFFBEB);
+  static const Color error = Color(0xFFDC2626);
+  static const Color errorBg = Color(0xFFFEF2F2);
 }

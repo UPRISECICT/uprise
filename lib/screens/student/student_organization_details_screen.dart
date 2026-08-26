@@ -1,26 +1,267 @@
 // lib/screens/student/student_organization_details_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../utils/social_link_util.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../widgets/student/student_app_bar.dart';
 import '../../widgets/student/app_image.dart';
+import '../../widgets/common/feed_cards.dart';
 import '../../widgets/common/loading_widget.dart';
+import '../../widgets/common/org_browsing_config.dart';
 import 'package:uprise/models/event_model.dart';
 import 'student_broadcast_screen.dart';
 import 'student_events_screen.dart';
 import 'student_announcements_screen.dart';
 import 'student_merchandise_screen.dart';
 
+// Shared design tokens for this screen — mirrors the private _UiTokens in
+// student_organizations_screen.dart so both org screens read as one system
+// instead of each repeating literal white/grey.shade200 card decorations.
+class _UiTokens {
+  static const Color cardBorder = AppColors.divider;
+  static const Color mutedText = AppColors.textSecondary;
+  static const Color headingText = AppColors.textPrimary;
+  static const Color faintText = AppColors.textMuted;
+
+  static const double radius = 14;
+
+  static List<BoxShadow> get subtleShadow => const [
+    BoxShadow(
+      color: Color(0x0D000000), // black @ 5%
+      blurRadius: 12,
+      offset: Offset(0, 4),
+    ),
+  ];
+
+  /// The one card surface used across both org screens (mirrors the same
+  /// helper in student_organizations_screen.dart).
+  static BoxDecoration card({double radiusOverride = radius}) =>
+      BoxDecoration(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(radiusOverride),
+        border: Border.all(color: cardBorder),
+        boxShadow: subtleShadow,
+      );
+}
+
+// ─────────────────────────────────────────────────────────────
+//  SHARED NAVIGATION HELPERS
+//
+//  Top-level (not State methods) so the org feed in
+//  student_organizations_screen.dart can reuse them — it already imports
+//  this file. They only ever needed a BuildContext.
+// ─────────────────────────────────────────────────────────────
+Future<void> openEventById(BuildContext context, String eventId) async {
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) =>
+        const Center(child: CircularProgressIndicator(color: Colors.white)),
+  );
+
+  try {
+    final doc = await FirebaseFirestore.instance
+        .collection('events')
+        .doc(eventId)
+        .get();
+
+    if (!context.mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+
+    if (!doc.exists) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This event is no longer available.')),
+      );
+      return;
+    }
+
+    final event = EventModel.fromFirestore(doc);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EventDetailScreen(
+          event: event,
+          onRegistered: () {},
+          isPastEvent: event.isPast,
+        ),
+      ),
+    );
+  } catch (e) {
+    if (!context.mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Could not open event: $e')));
+  }
+}
+
+Future<void> openAnnouncementById(
+  BuildContext context,
+  String announcementId,
+) async {
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) =>
+        const Center(child: CircularProgressIndicator(color: Colors.white)),
+  );
+
+  try {
+    final doc = await FirebaseFirestore.instance
+        .collection('announcements')
+        .doc(announcementId)
+        .get();
+
+    if (!context.mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+
+    if (!doc.exists) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This announcement is no longer available.'),
+        ),
+      );
+      return;
+    }
+
+    final announcement = AnnouncementData.fromFirestore(doc);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AnnouncementDetailScreen(announcement: announcement),
+      ),
+    );
+  } catch (e) {
+    if (!context.mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Could not open announcement: $e')));
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  MEMBERSHIP PILL
+//
+//  Following is gone — every org's profile is open to every viewer, so there
+//  is nothing to opt into here. What the header still needs to say is whether
+//  *this* is the viewer's own org, which is the same Member/Officer pill the
+//  All Organizations cards render.
+//
+//  Self-contained StatefulWidget on purpose: its setState must not rebuild
+//  the parent, which would resubscribe the cached _orgStream and flash the
+//  whole screen (see the caching note on _orgStream).
+// ─────────────────────────────────────────────────────────────
+class _MembershipPill extends StatefulWidget {
+  final String orgId;
+  final OrgBrowsingConfig config;
+  const _MembershipPill({required this.orgId, required this.config});
+
+  @override
+  State<_MembershipPill> createState() => _MembershipPillState();
+}
+
+class _MembershipPillState extends State<_MembershipPill> {
+  // Null until loaded, and for every org that isn't the viewer's own.
+  String? _label;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (!widget.config.showMembership) return;
+    try {
+      final info = await widget.config.membershipStore.load();
+      if (!mounted) return;
+      if (info.orgId != widget.orgId) return;
+      setState(() => _label = info.membershipLabel);
+    } catch (_) {
+      // No pill is the right fallback — it claims nothing.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final label = _label;
+    if (label == null) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+      decoration: BoxDecoration(
+        color: AppColors.primaryDark,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        label.toUpperCase(),
+        style: const TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.4,
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  PINNED TAB BAR
+//
+//  Standard SliverPersistentHeaderDelegate wrapper so the tab bar can pin
+//  under the AppBar once the cover header scrolls past.
+// ─────────────────────────────────────────────────────────────
+class _OrgTabBarDelegate extends SliverPersistentHeaderDelegate {
+  final TabBar tabBar;
+  const _OrgTabBarDelegate(this.tabBar);
+
+  // +1 for the hairline below, which is laid out rather than drawn as a
+  // border so the TabBar itself still gets its full preferred height.
+  double get _height => tabBar.preferredSize.height + 1;
+
+  @override
+  double get minExtent => _height;
+
+  @override
+  double get maxExtent => _height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlaps) {
+    return Container(
+      color: AppColors.cardBg,
+      child: Column(
+        children: [
+          Expanded(child: tabBar),
+          Container(height: 1, color: AppColors.divider),
+        ],
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(_OrgTabBarDelegate oldDelegate) =>
+      oldDelegate.tabBar != tabBar;
+}
+
 // ─────────────────────────────────────────────────────────────
 //  ORGANIZATION DETAILS SCREEN
 // ─────────────────────────────────────────────────────────────
 class StudentOrganizationsDetailsScreen extends StatefulWidget {
   final String orgId;
-  const StudentOrganizationsDetailsScreen({super.key, required this.orgId});
+
+  /// How this role browses orgs — where membership is read from, visibility
+  /// gates, and which detail screens open. Defaults to full student access.
+  final OrgBrowsingConfig config;
+
+  const StudentOrganizationsDetailsScreen({
+    super.key,
+    required this.orgId,
+    this.config = OrgBrowsingConfig.student,
+  });
 
   @override
   State<StudentOrganizationsDetailsScreen> createState() =>
@@ -70,8 +311,8 @@ class _StudentOrganizationsDetailsScreenState
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            AppColors.primaryDark.withOpacity(0.3),
-            AppColors.primaryDark.withOpacity(0.1),
+            AppColors.primaryDark.withAlpha(77),
+            AppColors.primaryDark.withAlpha(26),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -84,14 +325,14 @@ class _StudentOrganizationsDetailsScreenState
             Icon(
               Icons.image_outlined,
               size: 48,
-              color: AppColors.primaryDark.withOpacity(0.2),
+              color: AppColors.primaryDark.withAlpha(51),
             ),
             const SizedBox(height: 8),
             Text(
               'No Cover Image',
               style: TextStyle(
                 fontSize: 14,
-                color: AppColors.primaryDark.withOpacity(0.3),
+                color: AppColors.primaryDark.withAlpha(77),
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -101,91 +342,17 @@ class _StudentOrganizationsDetailsScreenState
     );
   }
 
-  Future<void> _navigateToEventDetail(String eventId) async {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) =>
-          const Center(child: CircularProgressIndicator(color: Colors.white)),
-    );
+  // Routed through the config so a guest opening an event or announcement
+  // from this org lands on their own screen, never the student one — which
+  // would offer student-only actions.
+  void _navigateToEventDetail(String eventId) =>
+      (widget.config.onOpenEvent ?? openEventById)(context, eventId);
 
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('events')
-          .doc(eventId)
-          .get();
-
-      if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop();
-
-      if (!doc.exists) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('This event is no longer available.')),
-        );
-        return;
-      }
-
-      final event = EventModel.fromFirestore(doc);
-      Navigator.push(
+  void _navigateToAnnouncementDetail(String announcementId) =>
+      (widget.config.onOpenAnnouncement ?? openAnnouncementById)(
         context,
-        MaterialPageRoute(
-          builder: (_) => EventDetailScreen(
-            event: event,
-            onRegistered: () {},
-            isPastEvent: event.isPast,
-          ),
-        ),
+        announcementId,
       );
-    } catch (e) {
-      if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop();
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Could not open event: $e')));
-    }
-  }
-
-  Future<void> _navigateToAnnouncementDetail(String announcementId) async {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) =>
-          const Center(child: CircularProgressIndicator(color: Colors.white)),
-    );
-
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('announcements')
-          .doc(announcementId)
-          .get();
-
-      if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop();
-
-      if (!doc.exists) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('This announcement is no longer available.'),
-          ),
-        );
-        return;
-      }
-
-      final announcement = AnnouncementData.fromFirestore(doc);
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => AnnouncementDetailScreen(announcement: announcement),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not open announcement: $e')),
-      );
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -206,7 +373,7 @@ class _StudentOrganizationsDetailsScreenState
                   Icon(
                     Icons.business_center_outlined,
                     size: 64,
-                    color: Colors.grey.shade400,
+                    color: _UiTokens.faintText,
                   ),
                   const SizedBox(height: 16),
                   const Text(
@@ -214,7 +381,7 @@ class _StudentOrganizationsDetailsScreenState
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
-                      color: Colors.black87,
+                      color: _UiTokens.headingText,
                     ),
                   ),
                 ],
@@ -242,37 +409,137 @@ class _StudentOrganizationsDetailsScreenState
                 );
               });
 
+          // The feed-style cards carry an org header row, so every tab needs
+          // the org's identity. Both come off the snapshot already loaded —
+          // no per-card lookup.
+          final orgName = (org['name'] ?? 'Organization').toString();
+          final orgLogoUrl = (org['logoUrl'] ?? '').toString();
+
           return Scaffold(
             backgroundColor: AppColors.background,
             appBar: StudentAppBar(
               title: 'Organization',
               actions: [
-                IconButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => StudentBroadcastScreen(
-                          orgId: widget.orgId,
-                          orgName: org['name'] ?? 'Organization',
+                // Membership shows in the header as a pill; the broadcast
+                // shortcut stays here — but broadcasts are a member-only
+                // channel, so guests don't get the entry point at all.
+                if (widget.config.enableBroadcast) ...[
+                  IconButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => StudentBroadcastScreen(
+                            orgId: widget.orgId,
+                            orgName: org['name'] ?? 'Organization',
+                          ),
                         ),
-                      ),
-                    );
-                  },
-                  icon: Icon(
-                    Icons.chat_bubble_outline_rounded,
-                    color: AppColors.primaryDark,
+                      );
+                    },
+                    icon: Icon(
+                      Icons.chat_bubble_outline_rounded,
+                      color: AppColors.primaryDark,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
+                  const SizedBox(width: 8),
+                ],
               ],
             ),
-            body: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ── COVER IMAGE WITH LOGO OVERLAY ──
-                  Stack(
+            body: DefaultTabController(
+              length: 4,
+              child: NestedScrollView(
+                headerSliverBuilder: (context, _) => [
+                  SliverToBoxAdapter(child: _buildHeader(org)),
+                  // The absorber/injector pair is what keeps the first row of
+                  // each tab from hiding behind the pinned tab bar once the
+                  // header scrolls away.
+                  SliverOverlapAbsorber(
+                    handle: NestedScrollView.sliverOverlapAbsorberHandleFor(
+                      context,
+                    ),
+                    sliver: SliverPersistentHeader(
+                      pinned: true,
+                      delegate: _OrgTabBarDelegate(
+                        TabBar(
+                          // Scrollable + start-aligned so "Announcements"
+                          // can't be squeezed into an overflowing quarter of
+                          // the width on a narrow phone.
+                          isScrollable: true,
+                          tabAlignment: TabAlignment.start,
+                          labelPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                          ),
+                          indicatorColor: AppColors.primaryDark,
+                          labelColor: AppColors.primaryDark,
+                          unselectedLabelColor: AppColors.textSecondary,
+                          indicatorWeight: 3,
+                          dividerColor: Colors.transparent,
+                          labelStyle: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          unselectedLabelStyle: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          tabs: const [
+                            Tab(text: 'About'),
+                            Tab(text: 'Events'),
+                            Tab(text: 'Announcements'),
+                            Tab(text: 'Shop'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+                body: TabBarView(
+                  children: [
+                    _AboutTab(
+                      org: org,
+                      officers: officers,
+                      orgId: widget.orgId,
+                      orgName: orgName,
+                      orgLogoUrl: orgLogoUrl,
+                      onAnnouncementTap: _navigateToAnnouncementDetail,
+                      config: widget.config,
+                    ),
+                    _EventsTab(
+                      orgId: widget.orgId,
+                      orgName: orgName,
+                      orgLogoUrl: orgLogoUrl,
+                      onEventTap: _navigateToEventDetail,
+                      config: widget.config,
+                    ),
+                    _AnnouncementsTab(
+                      orgId: widget.orgId,
+                      orgName: orgName,
+                      orgLogoUrl: orgLogoUrl,
+                      onAnnouncementTap: _navigateToAnnouncementDetail,
+                      config: widget.config,
+                    ),
+                    _OrgShopTab(
+                      orgId: widget.orgId,
+                      config: widget.config,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// Cover, logo, name/category, ACCREDITED badge and the membership pill —
+  /// everything that scrolls away above the tab bar.
+  Widget _buildHeader(Map<String, dynamic> org) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── COVER IMAGE WITH LOGO OVERLAY ──
+        Stack(
                     clipBehavior: Clip.none,
                     children: [
                       ClipRRect(
@@ -291,7 +558,7 @@ class _StudentOrganizationsDetailsScreenState
                                     !_coverImageFailed)
                                 ? _buildCoverImage(org['coverPhotoUrl'])
                                 : null,
-                            color: AppColors.primaryDark.withOpacity(0.08),
+                            color: AppColors.primaryDark.withAlpha(20),
                           ),
                           child:
                               (org['coverPhotoUrl'] == null ||
@@ -311,7 +578,7 @@ class _StudentOrganizationsDetailsScreenState
                               end: Alignment.bottomCenter,
                               colors: [
                                 Colors.transparent,
-                                Colors.black.withOpacity(0.2),
+                                Colors.black.withAlpha(51),
                               ],
                             ),
                           ),
@@ -327,7 +594,7 @@ class _StudentOrganizationsDetailsScreenState
                             border: Border.all(color: Colors.white, width: 4),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.15),
+                                color: Colors.black.withAlpha(38),
                                 blurRadius: 10,
                                 offset: const Offset(0, 4),
                               ),
@@ -354,11 +621,18 @@ class _StudentOrganizationsDetailsScreenState
                       ),
                     ],
                   ),
-                  const SizedBox(height: 50),
+        const SizedBox(height: 50),
 
-                  // ── Organization Info ──
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+        // ── Organization Info ──
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -367,7 +641,7 @@ class _StudentOrganizationsDetailsScreenState
                           style: const TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.bold,
-                            color: Colors.black87,
+                            color: _UiTokens.headingText,
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -375,49 +649,103 @@ class _StudentOrganizationsDetailsScreenState
                           org['category'] ?? 'Student Organization',
                           style: TextStyle(
                             fontSize: 14,
-                            color: Colors.grey.shade600,
+                            color: _UiTokens.mutedText,
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.green.shade50,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: Colors.green.shade200),
-                          ),
-                          child: Text(
-                            'ACCREDITED',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green.shade700,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 20),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: _MembershipPill(
+                      orgId: widget.orgId,
+                      config: widget.config,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.green.shade200),
+                ),
+                child: Text(
+                  'ACCREDITED',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green.shade700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
 
-                        const Text(
-                          'About',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          org['description'] ?? 'No description available',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey.shade700,
-                            height: 1.6,
-                          ),
-                        ),
-                        const SizedBox(height: 24),
+// ─────────────────────────────────────────────────────────────
+//  TAB 1 — ABOUT
+//
+//  Everything here comes off the org map already loaded by the parent's
+//  StreamBuilder, plus the pre-sorted officers list — no reads of its own.
+// ─────────────────────────────────────────────────────────────
+class _AboutTab extends StatelessWidget {
+  final Map<String, dynamic> org;
+  final List<Map<String, dynamic>> officers;
+  final String orgId;
+  final String orgName;
+  final String orgLogoUrl;
+  final Function(String) onAnnouncementTap;
+
+  final OrgBrowsingConfig config;
+
+  const _AboutTab({
+    required this.org,
+    required this.officers,
+    required this.orgId,
+    required this.orgName,
+    required this.orgLogoUrl,
+    required this.onAnnouncementTap,
+    required this.config,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final description = (org['description'] ?? '').toString().trim();
+
+    return CustomScrollView(
+      key: const PageStorageKey('org-about'),
+      slivers: [
+        SliverOverlapInjector(
+          handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
+          sliver: SliverList(
+            delegate: SliverChildListDelegate([
+              // ── Description — nothing at all when the field is blank,
+              // rather than a "No description available" placeholder. ──
+              if (description.isNotEmpty) ...[
+                Text(
+                  description,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade700,
+                    height: 1.6,
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
 
                         // ── Organization Adviser(s) ──
                         Builder(
@@ -432,7 +760,7 @@ class _StudentOrganizationsDetailsScreenState
                               photoUrl ?? '',
                             );
                             final advisersToShow = hasMultiple
-                                ? adviserList!
+                                ? adviserList
                                 : [
                                     {
                                       'name':
@@ -443,11 +771,7 @@ class _StudentOrganizationsDetailsScreenState
                                   ];
                             return Container(
                               padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: Colors.grey.shade200),
-                              ),
+                              decoration: _UiTokens.card(radiusOverride: 12),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -468,7 +792,7 @@ class _StudentOrganizationsDetailsScreenState
                                                   ),
                                                   decoration: BoxDecoration(
                                                     color: AppColors.primaryDark
-                                                        .withOpacity(0.08),
+                                                        .withAlpha(20),
                                                     borderRadius:
                                                         BorderRadius.circular(
                                                           10,
@@ -502,7 +826,7 @@ class _StudentOrganizationsDetailsScreenState
                                                   style: const TextStyle(
                                                     fontSize: 14,
                                                     fontWeight: FontWeight.w600,
-                                                    color: Colors.black87,
+                                                    color: _UiTokens.headingText,
                                                   ),
                                                 ),
                                                 if ((adv['title'] ?? '')
@@ -513,7 +837,7 @@ class _StudentOrganizationsDetailsScreenState
                                                     style: TextStyle(
                                                       fontSize: 12,
                                                       color:
-                                                          Colors.grey.shade600,
+                                                          _UiTokens.mutedText,
                                                     ),
                                                   ),
                                               ],
@@ -544,7 +868,7 @@ class _StudentOrganizationsDetailsScreenState
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
-                              color: Colors.black87,
+                              color: _UiTokens.headingText,
                             ),
                           ),
                           const SizedBox(height: 10),
@@ -623,22 +947,18 @@ class _StudentOrganizationsDetailsScreenState
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
-                            color: Colors.black87,
+                            color: _UiTokens.headingText,
                           ),
                         ),
                         const SizedBox(height: 12),
                         if (officers.isEmpty)
                           Container(
                             padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.grey.shade200),
-                            ),
+                            decoration: _UiTokens.card(radiusOverride: 12),
                             child: Center(
                               child: Text(
                                 'No officers listed',
-                                style: TextStyle(color: Colors.grey.shade500),
+                                style: TextStyle(color: _UiTokens.mutedText),
                               ),
                             ),
                           )
@@ -660,9 +980,9 @@ class _StudentOrganizationsDetailsScreenState
                                     CircleAvatar(
                                       radius: 24,
                                       backgroundColor: AppColors.primaryDark
-                                          .withOpacity(0.08),
-                                      backgroundImage: _buildLogoImage(
-                                        officer['photoUrl'],
+                                          .withAlpha(20),
+                                      backgroundImage: AppImage.provider(
+                                        (officer['photoUrl'] ?? '').toString(),
                                       ),
                                       child:
                                           (officer['photoUrl'] == null ||
@@ -670,8 +990,16 @@ class _StudentOrganizationsDetailsScreenState
                                                       ?.isEmpty ==
                                                   true)
                                           ? Text(
-                                              (officer['name'] ?? '')[0]
-                                                  .toUpperCase(),
+                                              // Guard the empty string — a
+                                              // blank name used to throw
+                                              // RangeError on [0].
+                                              (officer['name'] ?? '')
+                                                      .toString()
+                                                      .isEmpty
+                                                  ? '?'
+                                                  : officer['name']
+                                                        .toString()[0]
+                                                        .toUpperCase(),
                                               style: TextStyle(
                                                 color: AppColors.primaryDark,
                                                 fontWeight: FontWeight.bold,
@@ -691,14 +1019,14 @@ class _StudentOrganizationsDetailsScreenState
                                             style: const TextStyle(
                                               fontWeight: FontWeight.w600,
                                               fontSize: 14,
-                                              color: Colors.black87,
+                                              color: _UiTokens.headingText,
                                             ),
                                           ),
                                           Text(
                                             officer['position'] ?? '',
                                             style: TextStyle(
                                               fontSize: 12,
-                                              color: Colors.grey.shade600,
+                                              color: _UiTokens.mutedText,
                                             ),
                                           ),
                                         ],
@@ -709,51 +1037,319 @@ class _StudentOrganizationsDetailsScreenState
                               );
                             },
                           ),
-                        const SizedBox(height: 24),
 
-                        // ── Upcoming Events (CLICKABLE) ──
-                        const Text(
-                          'Upcoming Events',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        _UpcomingEventsList(
-                          orgId: widget.orgId,
-                          onEventTap: _navigateToEventDetail,
-                        ),
-                        const SizedBox(height: 24),
-
-                        // ── Recent Announcements (CLICKABLE) ──
-                        const Text(
-                          'Recent Announcements',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        _RecentAnnouncementsList(
-                          orgId: widget.orgId,
-                          onAnnouncementTap: _navigateToAnnouncementDetail,
-                        ),
-
-                        // ── Merchandise (hidden entirely if this org has
-                        // none — display-only catalog, no ordering here) ──
-                        _OrgMerchandiseSection(orgId: widget.orgId),
-                        const SizedBox(height: 32),
-                      ],
-                    ),
-                  ),
-                ],
+              // ── Pinned announcements (hides itself when there are none) ──
+              _PinnedAnnouncements(
+                orgId: orgId,
+                orgName: orgName,
+                orgLogoUrl: orgLogoUrl,
+                onAnnouncementTap: onAnnouncementTap,
+                config: config,
               ),
+            ]),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  TAB 2 — EVENTS
+// ─────────────────────────────────────────────────────────────
+class _EventsTab extends StatelessWidget {
+  final String orgId;
+  final String orgName;
+  final String orgLogoUrl;
+  final Function(String) onEventTap;
+  final OrgBrowsingConfig config;
+
+  const _EventsTab({
+    required this.orgId,
+    required this.orgName,
+    required this.orgLogoUrl,
+    required this.onEventTap,
+    required this.config,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomScrollView(
+      key: const PageStorageKey('org-events'),
+      slivers: [
+        SliverOverlapInjector(
+          handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+          sliver: _UpcomingEventsList(
+            orgId: orgId,
+            orgName: orgName,
+            orgLogoUrl: orgLogoUrl,
+            onEventTap: onEventTap,
+            config: config,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  TAB 3 — ANNOUNCEMENTS
+// ─────────────────────────────────────────────────────────────
+
+/// Which slice of the org's announcements is showing. "General" is simply
+/// everything [_isUrgentAnnouncement] rejects.
+enum _AnnouncementFilter { all, urgent, general }
+
+/// The one definition of "urgent" — shared by the filter pills and the red
+/// card styling so the two can't disagree about a given announcement.
+bool _isUrgentAnnouncement(Map<String, dynamic> data) =>
+    (data['category'] ?? '').toString().toLowerCase() == 'urgent' ||
+    (data['title'] ?? '').toString().toLowerCase().contains('urgent');
+
+/// One announcement in the Organizations-feed card style. Shared by the
+/// Announcements tab and the pinned section on About so the two can't drift.
+Widget _announcementCard({
+  required Map<String, dynamic> data,
+  required DateTime date,
+  required VoidCallback onTap,
+  required String orgName,
+  required String orgLogoUrl,
+  bool pinned = false,
+}) {
+  // Urgent outranks pinned on the badge: the pinned section already carries a
+  // "Pinned" heading, so URGENT is the more useful thing to surface there.
+  final urgent = _isUrgentAnnouncement(data);
+  return CompactFeedCard(
+    imageSource: (data['imageBase64'] ?? data['imageUrl'] ?? '').toString(),
+    orgName: orgName,
+    orgLogoUrl: orgLogoUrl,
+    badgeLabel: urgent
+        ? 'URGENT'
+        : pinned
+        ? 'PINNED'
+        : 'ANNOUNCEMENT',
+    badgeColor: urgent
+        ? const Color(0xFFDC2626)
+        : pinned
+        ? AppColors.primaryDark
+        : AppColors.accent,
+    title: (data['title'] ?? 'Untitled').toString(),
+    snippet: (data['content'] ?? '').toString(),
+    timeAgo: DateFormat('MMM dd, yyyy').format(date),
+    onTap: onTap,
+  );
+}
+
+/// Pinned announcements, shown on About below Executive Officers. Renders
+/// nothing at all when the org has none — it's a secondary section, so an
+/// empty state would be noise.
+class _PinnedAnnouncements extends StatefulWidget {
+  final String orgId;
+  final String orgName;
+  final String orgLogoUrl;
+  final Function(String) onAnnouncementTap;
+
+  final OrgBrowsingConfig config;
+
+  const _PinnedAnnouncements({
+    required this.orgId,
+    required this.orgName,
+    required this.orgLogoUrl,
+    required this.onAnnouncementTap,
+    required this.config,
+  });
+
+  @override
+  State<_PinnedAnnouncements> createState() => _PinnedAnnouncementsState();
+}
+
+class _PinnedAnnouncementsState extends State<_PinnedAnnouncements> {
+  // Three equality filters and no orderBy — Firestore serves that by merging
+  // single-field indexes, so this needs no composite index, same discipline
+  // as the announcements query above. Sorted client-side.
+  //
+  // The Firestore field is `pinned`, NOT `isPinned` — AnnouncementData maps
+  // `d['pinned']` onto its `isPinned` property, and querying the Dart-side
+  // name would silently match nothing.
+  late final Stream<QuerySnapshot> _pinnedStream = FirebaseFirestore.instance
+      .collection('announcements')
+      .where('orgId', isEqualTo: widget.orgId)
+      .where('isPublished', isEqualTo: true)
+      .where('pinned', isEqualTo: true)
+      .snapshots();
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _pinnedStream,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const SizedBox.shrink();
+
+        final docs =
+            snapshot.data!.docs
+                .where(
+                  (d) => widget.config.allowsAnnouncement(
+                    d.data() as Map<String, dynamic>,
+                  ),
+                )
+                .toList()
+              ..sort((a, b) {
+            final ta =
+                (a.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
+            final tb =
+                (b.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
+            if (ta == null && tb == null) return 0;
+            if (ta == null) return 1;
+            if (tb == null) return -1;
+            return tb.compareTo(ta);
+          });
+        if (docs.isEmpty) return const SizedBox.shrink();
+
+        final items = docs.map((d) {
+          final data = d.data() as Map<String, dynamic>;
+          final ts = data['timestamp'] as Timestamp?;
+          return (id: d.id, data: data, date: ts?.toDate() ?? DateTime.now());
+        }).toList();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Icon(
+                  Icons.push_pin_rounded,
+                  size: 15,
+                  color: AppColors.primaryDark,
+                ),
+                const SizedBox(width: 6),
+                const Text(
+                  'Pinned Announcements',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: _UiTokens.headingText,
+                  ),
+                ),
+              ],
             ),
-          );
-        },
+            const SizedBox(height: 12),
+            for (var i = 0; i < items.length; i++) ...[
+              if (i > 0) const SizedBox(height: 14),
+              _announcementCard(
+                data: items[i].data,
+                date: items[i].date,
+                onTap: () => widget.onAnnouncementTap(items[i].id),
+                orgName: widget.orgName,
+                orgLogoUrl: widget.orgLogoUrl,
+                pinned: true,
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _AnnouncementsTab extends StatefulWidget {
+  final String orgId;
+  final String orgName;
+  final String orgLogoUrl;
+  final Function(String) onAnnouncementTap;
+
+  final OrgBrowsingConfig config;
+
+  const _AnnouncementsTab({
+    required this.orgId,
+    required this.orgName,
+    required this.orgLogoUrl,
+    required this.onAnnouncementTap,
+    required this.config,
+  });
+
+  @override
+  State<_AnnouncementsTab> createState() => _AnnouncementsTabState();
+}
+
+class _AnnouncementsTabState extends State<_AnnouncementsTab> {
+  _AnnouncementFilter _filter = _AnnouncementFilter.all;
+
+  static const _options = [
+    (_AnnouncementFilter.all, 'All'),
+    (_AnnouncementFilter.urgent, 'Urgent'),
+    (_AnnouncementFilter.general, 'General'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomScrollView(
+      key: const PageStorageKey('org-announcements'),
+      slivers: [
+        SliverOverlapInjector(
+          handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+        ),
+        SliverToBoxAdapter(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+            child: Row(
+              children: [
+                for (final opt in _options) ...[
+                  _pill(opt.$1, opt.$2),
+                  if (opt != _options.last) const SizedBox(width: 8),
+                ],
+              ],
+            ),
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+          // Only the config changes on a pill tap, so the list's State — and
+          // its cached stream — survives; no resubscribe, no spinner.
+          sliver: _RecentAnnouncementsList(
+            orgId: widget.orgId,
+            orgName: widget.orgName,
+            orgLogoUrl: widget.orgLogoUrl,
+            onAnnouncementTap: widget.onAnnouncementTap,
+            filter: _filter,
+            config: widget.config,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Same recipe as _FeedFilterPills on the Organizations tab.
+  Widget _pill(_AnnouncementFilter value, String label) {
+    final isSelected = _filter == value;
+    return GestureDetector(
+      onTap: () => setState(() => _filter = value),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppColors.primaryDark
+              : AppColors.primaryDark.withAlpha(20),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected
+                ? AppColors.primaryDark
+                : AppColors.primaryDark.withAlpha(41),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.2,
+            color: isSelected ? Colors.white : AppColors.primaryDark,
+          ),
+        ),
       ),
     );
   }
@@ -764,9 +1360,18 @@ class _StudentOrganizationsDetailsScreenState
 // ─────────────────────────────────────────────────────────────
 class _UpcomingEventsList extends StatefulWidget {
   final String orgId;
+  final String orgName;
+  final String orgLogoUrl;
   final Function(String) onEventTap;
+  final OrgBrowsingConfig config;
 
-  const _UpcomingEventsList({required this.orgId, required this.onEventTap});
+  const _UpcomingEventsList({
+    required this.orgId,
+    required this.orgName,
+    required this.orgLogoUrl,
+    required this.onEventTap,
+    required this.config,
+  });
 
   @override
   State<_UpcomingEventsList> createState() => _UpcomingEventsListState();
@@ -788,34 +1393,44 @@ class _UpcomingEventsListState extends State<_UpcomingEventsList> {
       stream: _eventsStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return Container(
-            height: 80,
-            alignment: Alignment.center,
-            child: const CircularProgressIndicator(
-              strokeWidth: 2,
-              color: AppColors.primaryDark,
-            ),
-          );
-        }
-
-        if (snapshot.hasError) {
-          return Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade200),
-            ),
-            child: Center(
-              child: Text(
-                'Failed to load events',
-                style: TextStyle(color: Colors.grey.shade500),
+          return SliverToBoxAdapter(
+            child: Container(
+              height: 80,
+              alignment: Alignment.center,
+              child: const CircularProgressIndicator(
+                strokeWidth: 2,
+                color: AppColors.primaryDark,
               ),
             ),
           );
         }
 
-        var docs = snapshot.data?.docs ?? [];
+        if (snapshot.hasError) {
+          return SliverToBoxAdapter(
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: _UiTokens.card(radiusOverride: 12),
+              child: Center(
+                child: Text(
+                  'Failed to load events',
+                  style: TextStyle(color: _UiTokens.mutedText),
+                ),
+              ),
+            ),
+          );
+        }
+
+        // No 5-item cap any more — this is a full tab, not a preview strip.
+        // Audience-gated first: a guest browsing any org must not see that
+        // org's CICT-Only or Members-Only events.
+        final docs = (snapshot.data?.docs ?? [])
+            .where(
+              (d) => widget.config.allowsEventAudience(
+                ((d.data() as Map<String, dynamic>)['audience'] ?? 'Public')
+                    .toString(),
+              ),
+            )
+            .toList();
 
         docs.sort((a, b) {
           final dateA = (a.data() as Map<String, dynamic>)['date'] as Timestamp;
@@ -823,154 +1438,45 @@ class _UpcomingEventsListState extends State<_UpcomingEventsList> {
           return dateA.compareTo(dateB);
         });
 
-        if (docs.length > 5) docs = docs.sublist(0, 5);
-
         if (docs.isEmpty) {
-          return Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade200),
-            ),
-            child: Center(
-              child: Text(
-                'No upcoming events',
-                style: TextStyle(color: Colors.grey.shade500),
-              ),
+          return const SliverToBoxAdapter(
+            child: UpriseEmptyState(
+              icon: Icons.event_busy_outlined,
+              title: 'No upcoming events',
+              subtitle: 'Check back when this org schedules something new.',
             ),
           );
         }
 
-        return ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
+        return SliverList.separated(
           itemCount: docs.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 10),
+          separatorBuilder: (_, __) => const SizedBox(height: 14),
           itemBuilder: (context, index) {
             final doc = docs[index];
             final data = doc.data() as Map<String, dynamic>;
             final date = (data['date'] as Timestamp).toDate();
-            final month = DateFormat('MMM').format(date);
-            final day = DateFormat('dd').format(date);
 
-            return GestureDetector(
+            // The old card's date block, start time and location all have to
+            // land somewhere on the feed card: the date takes the time slot,
+            // and time + location become the snippet.
+            final startTime = (data['startTime'] ?? '').toString().trim();
+            final location = (data['location'] ?? '').toString().trim();
+
+            return CompactFeedCard(
+              imageSource: (data['bannerUrl'] ?? '').toString(),
+              orgName: widget.orgName,
+              orgLogoUrl: widget.orgLogoUrl,
+              badgeLabel: 'EVENT',
+              badgeColor: AppColors.primaryDark,
+              title: (data['title'] ?? 'Untitled Event').toString(),
+              snippet: [
+                if (startTime.isNotEmpty) startTime,
+                if (location.isNotEmpty) location,
+              ].join(' · '),
+              // These are all upcoming, so a relative "x ago" would read
+              // "Just now" for every one of them.
+              timeAgo: DateFormat('MMM dd').format(date),
               onTap: () => widget.onEventTap(doc.id),
-              child: Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.shade200),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.02),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 56,
-                      height: 56,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            AppColors.primaryDark,
-                            AppColors.primaryDark.withOpacity(0.7),
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            month,
-                            style: const TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                          ),
-                          Text(
-                            day,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            data['title'] ?? 'Untitled Event',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black87,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.access_time,
-                                size: 12,
-                                color: Colors.grey.shade500,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                data['startTime'] ?? 'TBA',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.grey.shade600,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Icon(
-                                Icons.location_on,
-                                size: 12,
-                                color: Colors.grey.shade500,
-                              ),
-                              const SizedBox(width: 4),
-                              Expanded(
-                                child: Text(
-                                  data['location'] ?? 'TBA',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.grey.shade600,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    Icon(
-                      Icons.arrow_forward_ios_rounded,
-                      size: 14,
-                      color: Colors.grey.shade400,
-                    ),
-                  ],
-                ),
-              ),
             );
           },
         );
@@ -986,9 +1492,21 @@ class _RecentAnnouncementsList extends StatefulWidget {
   final String orgId;
   final Function(String) onAnnouncementTap;
 
+  /// Which slice to show. Only the config changes when the tab's pills are
+  /// tapped, so [_announcementsStream] is not resubscribed.
+  final _AnnouncementFilter filter;
+
+  final String orgName;
+  final String orgLogoUrl;
+  final OrgBrowsingConfig config;
+
   const _RecentAnnouncementsList({
     required this.orgId,
+    required this.orgName,
+    required this.orgLogoUrl,
     required this.onAnnouncementTap,
+    required this.config,
+    this.filter = _AnnouncementFilter.all,
   });
 
   @override
@@ -1011,34 +1529,42 @@ class _RecentAnnouncementsListState extends State<_RecentAnnouncementsList> {
       stream: _announcementsStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return Container(
-            height: 80,
-            alignment: Alignment.center,
-            child: const CircularProgressIndicator(
-              strokeWidth: 2,
-              color: AppColors.primaryDark,
-            ),
-          );
-        }
-
-        if (snapshot.hasError) {
-          return Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade200),
-            ),
-            child: Center(
-              child: Text(
-                'Failed to load announcements',
-                style: TextStyle(color: Colors.grey.shade500),
+          return SliverToBoxAdapter(
+            child: Container(
+              height: 80,
+              alignment: Alignment.center,
+              child: const CircularProgressIndicator(
+                strokeWidth: 2,
+                color: AppColors.primaryDark,
               ),
             ),
           );
         }
 
-        var docs = snapshot.data?.docs ?? [];
+        if (snapshot.hasError) {
+          return SliverToBoxAdapter(
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: _UiTokens.card(radiusOverride: 12),
+              child: Center(
+                child: Text(
+                  'Failed to load announcements',
+                  style: TextStyle(color: _UiTokens.mutedText),
+                ),
+              ),
+            ),
+          );
+        }
+
+        // Audience-gated first: guests only ever see Public announcements,
+        // the same rule the standalone guest announcements screen applies.
+        var docs = (snapshot.data?.docs ?? [])
+            .where(
+              (d) => widget.config.allowsAnnouncement(
+                d.data() as Map<String, dynamic>,
+              ),
+            )
+            .toList();
 
         docs.sort((a, b) {
           final dateA =
@@ -1053,30 +1579,35 @@ class _RecentAnnouncementsListState extends State<_RecentAnnouncementsList> {
           return dateB.compareTo(dateA);
         });
 
-        if (docs.length > 5) docs = docs.sublist(0, 5);
+        // Filter after the sort, client-side — no second query. The 5-item
+        // cap is gone: this is a full tab now, not a preview.
+        if (widget.filter != _AnnouncementFilter.all) {
+          final wantUrgent = widget.filter == _AnnouncementFilter.urgent;
+          docs = docs
+              .where(
+                (d) =>
+                    _isUrgentAnnouncement(d.data() as Map<String, dynamic>) ==
+                    wantUrgent,
+              )
+              .toList();
+        }
 
         if (docs.isEmpty) {
-          return Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade200),
-            ),
-            child: Center(
-              child: Text(
-                'No announcements available',
-                style: TextStyle(color: Colors.grey.shade500),
-              ),
+          return SliverToBoxAdapter(
+            child: UpriseEmptyState(
+              icon: Icons.campaign_outlined,
+              title: switch (widget.filter) {
+                _AnnouncementFilter.urgent => 'No urgent announcements',
+                _AnnouncementFilter.general => 'No general announcements',
+                _AnnouncementFilter.all => 'No announcements yet',
+              },
             ),
           );
         }
 
-        return ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
+        return SliverList.separated(
           itemCount: docs.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 10),
+          separatorBuilder: (_, __) => const SizedBox(height: 14),
           itemBuilder: (context, index) {
             final doc = docs[index];
             final data = doc.data() as Map<String, dynamic>;
@@ -1084,90 +1615,13 @@ class _RecentAnnouncementsListState extends State<_RecentAnnouncementsList> {
             final date = timestamp != null
                 ? timestamp.toDate()
                 : DateTime.now();
-            final timeAgo = DateFormat('MMM dd, yyyy').format(date);
 
-            final isUrgent =
-                (data['category'] ?? '').toString().toLowerCase() == 'urgent' ||
-                (data['title'] ?? '').toString().toLowerCase().contains(
-                  'urgent',
-                );
-
-            return GestureDetector(
+            return _announcementCard(
+              data: data,
+              date: date,
               onTap: () => widget.onAnnouncementTap(doc.id),
-              child: Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: isUrgent ? Colors.red.shade50 : Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: isUrgent
-                        ? Colors.red.shade200
-                        : Colors.grey.shade200,
-                  ),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: isUrgent
-                            ? Colors.red.shade100
-                            : AppColors.primaryDark.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(
-                        isUrgent ? Icons.priority_high : Icons.campaign,
-                        size: 18,
-                        color: isUrgent ? Colors.red : AppColors.primaryDark,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            data['title'] ?? 'Untitled',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: isUrgent
-                                  ? Colors.red.shade800
-                                  : Colors.black87,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            data['content'] ?? '',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade600,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            timeAgo,
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: Colors.grey.shade400,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Icon(
-                      Icons.arrow_forward_ios_rounded,
-                      size: 14,
-                      color: Colors.grey.shade400,
-                    ),
-                  ],
-                ),
-              ),
+              orgName: widget.orgName,
+              orgLogoUrl: widget.orgLogoUrl,
             );
           },
         );
@@ -1177,99 +1631,115 @@ class _RecentAnnouncementsListState extends State<_RecentAnnouncementsList> {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  ORGANIZATION MERCHANDISE PREVIEW
+//  TAB 4 — SHOP
+//
+//  The full-grid replacement for what used to be a 6-item horizontal
+//  preview strip with a "View all" button. The tab label says Shop, so
+//  there's no section heading here.
 // ─────────────────────────────────────────────────────────────
-class _OrgMerchandiseSection extends StatefulWidget {
+class _OrgShopTab extends StatefulWidget {
   final String orgId;
+  final OrgBrowsingConfig config;
 
-  const _OrgMerchandiseSection({required this.orgId});
+  const _OrgShopTab({required this.orgId, required this.config});
 
   @override
-  State<_OrgMerchandiseSection> createState() => _OrgMerchandiseSectionState();
+  State<_OrgShopTab> createState() => _OrgShopTabState();
 }
 
-class _OrgMerchandiseSectionState extends State<_OrgMerchandiseSection> {
-  // The org profile's own StreamBuilder (above, in the parent screen)
-  // rebuilds this section on every snapshot event, including metadata-only
-  // ones — as a plain StatelessWidget with an inline `.get()` in build(),
-  // that meant a fresh Firestore query (and a brief loading flash) every
-  // single time. Caching it once in State fixes that without changing what
-  // data is fetched.
+class _OrgShopTabState extends State<_OrgShopTab> {
+  // Cached once in State rather than an inline `.get()` in build(): the org
+  // profile's StreamBuilder rebuilds this on every snapshot event, including
+  // metadata-only ones, which would otherwise re-run the query and flash the
+  // loader each time. Same query as the old preview strip, minus .limit(6).
   late final Future<QuerySnapshot> _productsFuture = FirebaseFirestore.instance
       .collection('products')
       .where('orgId', isEqualTo: widget.orgId)
       .where('isArchived', isEqualTo: false)
-      .limit(6)
       .get();
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<QuerySnapshot>(
-      future: _productsFuture,
-      builder: (context, snapshot) {
-        final docs = snapshot.data?.docs ?? [];
-        if (docs.isEmpty) return const SizedBox.shrink();
+    return CustomScrollView(
+      key: const PageStorageKey('org-shop'),
+      slivers: [
+        SliverOverlapInjector(
+          handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+        ),
+        FutureBuilder<QuerySnapshot>(
+          future: _productsFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return SliverToBoxAdapter(
+                child: Container(
+                  height: 120,
+                  alignment: Alignment.center,
+                  child: const CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.primaryDark,
+                  ),
+                ),
+              );
+            }
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Merchandise',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black87,
-                  ),
+            final docs = snapshot.data?.docs ?? [];
+
+            // A tab can't collapse to nothing the way the embedded preview
+            // did — say so instead.
+            if (docs.isEmpty) {
+              return const SliverToBoxAdapter(
+                child: UpriseEmptyState(
+                  icon: Icons.shopping_bag_outlined,
+                  title: 'No merchandise yet',
+                  subtitle: 'This org hasn\'t listed anything for sale.',
                 ),
-                TextButton(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const StudentMerchandiseScreen(),
+              );
+            }
+
+            return SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+              sliver: SliverGrid(
+                gridDelegate:
+                    const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                      childAspectRatio: 0.8,
                     ),
-                  ),
-                  child: const Text('View all'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            SizedBox(
-              height: 168,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: docs.length,
-                itemBuilder: (context, index) {
+                delegate: SliverChildBuilderDelegate((context, index) {
                   final data = docs[index].data() as Map<String, dynamic>;
                   final name = (data['name'] ?? '').toString();
                   final price = ((data['price'] ?? 0) as num).toDouble();
                   final imageSource = (data['imageBase64'] ?? '').toString();
 
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 12),
-                    child: GestureDetector(
-                      onTap: () => Navigator.push(
+                  return GestureDetector(
+                    // The catalog browses app-wide and can't yet open to a
+                    // specific product. Guests route to their own view-only
+                    // catalog rather than the student one.
+                    onTap: () {
+                      final open = widget.config.onOpenMerch;
+                      if (open != null) {
+                        open(context);
+                        return;
+                      }
+                      Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (_) => const StudentMerchandiseScreen(),
                         ),
-                      ),
-                      child: Container(
-                        width: 128,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.grey.shade200),
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SizedBox(
-                              height: 96,
+                      );
+                    },
+                    child: Container(
+                      decoration: _UiTokens.card(radiusOverride: 12),
+                      clipBehavior: Clip.antiAlias,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Expanded, not a fixed height: the tile's height
+                          // comes from the grid, so the image has to absorb
+                          // whatever is left after the text.
+                          Expanded(
+                            child: SizedBox(
                               width: double.infinity,
                               child: AppImage(
                                 source: imageSource,
@@ -1278,44 +1748,44 @@ class _OrgMerchandiseSectionState extends State<_OrgMerchandiseSection> {
                                 placeholderIcon: Icons.shopping_bag_outlined,
                               ),
                             ),
-                            Padding(
-                              padding: const EdgeInsets.all(8),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    name.isNotEmpty ? name : 'Item',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.black87,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(8),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  name.isNotEmpty ? name : 'Item',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: _UiTokens.headingText,
                                   ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    '₱${price.toStringAsFixed(2)}',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.primaryDark,
-                                    ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '₱${price.toStringAsFixed(2)}',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.primaryDark,
                                   ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
                   );
-                },
+                }, childCount: docs.length),
               ),
-            ),
-          ],
-        );
-      },
+            );
+          },
+        ),
+      ],
     );
   }
 }
@@ -1354,9 +1824,9 @@ class _SocialChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: AppColors.primaryDark.withOpacity(0.08),
+          color: AppColors.primaryDark.withAlpha(20),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.primaryDark.withOpacity(0.2)),
+          border: Border.all(color: AppColors.primaryDark.withAlpha(51)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1368,7 +1838,7 @@ class _SocialChip extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: Colors.black87,
+                color: _UiTokens.headingText,
               ),
             ),
           ],

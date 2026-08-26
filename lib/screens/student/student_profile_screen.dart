@@ -12,68 +12,33 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../auth/role_router.dart';
 import '../student/student_login.dart';
 import '../student/student_events_screen.dart';
 import '../student/student_feedback_screen.dart';
 import '../student/student_certificates_screen.dart';
+import '../student/student_notification_settings_screen.dart';
 import '../student/student_organization_details_screen.dart';
-import '../../models/profile_model.dart';
 import '../../widgets/shared/app_support.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../widgets/student/student_app_bar.dart';
 import '../../widgets/student/app_image.dart';
+import '../../widgets/common/action_tile.dart';
+
+// kCardDecoration / kSectionLabel / kIconBadge / kActionTile moved to
+// widgets/common/action_tile.dart so the guest screens can share them.
+// Re-exported here so this file's existing call sites — and anything
+// importing them *from* here — keep resolving.
+export '../../widgets/common/action_tile.dart';
 
 // ─────────────────────────────────────────────────────────────
 // Shared constants - brand palette
 // ─────────────────────────────────────────────────────────────
+// Aliases onto AppColors rather than repeated literals: kOrangeLight and kBg
+// are byte-identical to primarySoft and background, and were duplicated here
+// only because this file predates those tokens.
 const kOrange = AppColors.primaryDark;
-const kOrangeLight = Color(0xFFF5E3D9);
-const kBg = Color(0xFFF5F5F5);
-
-// ─────────────────────────────────────────────────────────────
-// Shared style helpers — keeps the Profile tab visually aligned
-// with the Settings screen (cards, shadows, section labels).
-// ─────────────────────────────────────────────────────────────
-BoxDecoration kCardDecoration({double radius = 16}) {
-  return BoxDecoration(
-    color: Colors.white,
-    borderRadius: BorderRadius.circular(radius),
-    boxShadow: [
-      BoxShadow(
-        color: Colors.grey.withOpacity(0.06),
-        blurRadius: 10,
-        offset: const Offset(0, 3),
-      ),
-    ],
-  );
-}
-
-Widget kSectionLabel(String title) {
-  return Padding(
-    padding: const EdgeInsets.fromLTRB(20, 22, 20, 10),
-    child: Text(
-      title.toUpperCase(),
-      style: TextStyle(
-        fontSize: 12,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 1.2,
-        color: Colors.grey[500],
-      ),
-    ),
-  );
-}
-
-Widget kIconBadge(IconData icon, {Color color = kOrange, double size = 20}) {
-  return Container(
-    padding: const EdgeInsets.all(8),
-    decoration: BoxDecoration(
-      color: color.withOpacity(0.12),
-      borderRadius: BorderRadius.circular(8),
-    ),
-    child: Icon(icon, color: color, size: size),
-  );
-}
+const kOrangeLight = AppColors.primarySoft;
+const kBg = AppColors.background;
 
 // ─────────────────────────────────────────────────────────────
 // ProfileModel — single source of truth
@@ -458,79 +423,58 @@ class _ProfileImage extends StatelessWidget {
   }
 }
 
-class _QuickActionCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _QuickActionCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-    this.color = kOrange,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Material(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: onTap,
-          child: Container(
-            decoration: kCardDecoration(),
-            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: color.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(icon, color: color, size: 19),
-                    ),
-                    Icon(
-                      Icons.arrow_forward_ios_rounded,
-                      size: 11,
-                      color: Colors.grey[300],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                    color: Colors.black87,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11, color: Colors.grey[500]),
-                ),
-              ],
-            ),
-          ),
+/// The one settings-style row used by both SettingsScreen and the profile
+/// page's Edit Profile / Digital ID / Certificates actions. Lifted out of
+/// _SettingsScreenState so the two can't drift apart.
+Widget kActionTile({
+  required IconData icon,
+  required String title,
+  required String subtitle,
+  required VoidCallback onTap,
+  Color? iconColor,
+  Widget? trailing,
+}) {
+  return Container(
+    margin: const EdgeInsets.symmetric(horizontal: 16),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.grey.withAlpha(10),
+          blurRadius: 4,
+          offset: const Offset(0, 1),
+        ),
+      ],
+    ),
+    child: ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: (iconColor ?? kOrange).withAlpha(31),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(icon, color: iconColor ?? kOrange, size: 20),
+      ),
+      title: Text(
+        title,
+        style: const TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: 14,
+          color: Colors.black87,
         ),
       ),
-    );
-  }
+      subtitle: Text(
+        subtitle,
+        style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+      ),
+      trailing:
+          trailing ??
+          const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
+      onTap: onTap,
+    ),
+  );
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -718,57 +662,47 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                   ),
                 ),
 
-                // ── Quick actions: Edit Profile / Digital ID / Certificates ──
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-                  child: Row(
-                    children: [
-                      _QuickActionCard(
-                        icon: Icons.edit_outlined,
-                        title: 'Edit Profile',
-                        subtitle: 'Update info',
-                        color: kOrange,
-                        onTap: () async {
-                          final result = await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  EditProfileScreen(profile: _profile),
-                            ),
-                          );
-                          if (result != null && result is String) {
-                            _profile._loadUserData();
-                          }
-                        },
-                      ),
-                      const SizedBox(width: 10),
-                      _QuickActionCard(
-                        icon: Icons.credit_card,
-                        title: 'Digital ID',
-                        subtitle: 'View & download',
-                        color: const Color(0xFF2196F3),
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                PersonalIdentityScreen(profile: _profile),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      _QuickActionCard(
-                        icon: Icons.workspace_premium_outlined,
-                        title: 'Certificates',
-                        subtitle: 'Your awards',
-                        color: const Color(0xFF16A34A),
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const StudentCertificatesScreen(),
-                          ),
-                        ),
-                      ),
-                    ],
+                // ── Quick actions: Personal Information / Digital ID /
+                // Certificates. Stacked settings-style rows, sharing
+                // kActionTile with the Settings screen. ──
+                const SizedBox(height: 14),
+                kActionTile(
+                  icon: Icons.person_outline,
+                  title: 'Personal Information',
+                  // Read-only now, so no "Update info" promise.
+                  subtitle: 'Your details on record',
+                  iconColor: kOrange,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => EditProfileScreen(profile: _profile),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                kActionTile(
+                  icon: Icons.credit_card,
+                  title: 'Digital ID',
+                  subtitle: 'View & download',
+                  iconColor: const Color(0xFF2196F3),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => PersonalIdentityScreen(profile: _profile),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                kActionTile(
+                  icon: Icons.workspace_premium_outlined,
+                  title: 'Certificates',
+                  subtitle: 'Your awards',
+                  iconColor: const Color(0xFF16A34A),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const StudentCertificatesScreen(),
+                    ),
                   ),
                 ),
 
@@ -863,91 +797,6 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                     ),
                   ),
                 ],
-
-                // ── Account Information ──
-                kSectionLabel('Account Information'),
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 16),
-                  padding: const EdgeInsets.all(16),
-                  decoration: kCardDecoration(),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Your details',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
-                              color: Colors.black87,
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    EditProfileScreen(profile: _profile),
-                              ),
-                            ),
-                            child: Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: kOrange.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Icon(
-                                Icons.edit_outlined,
-                                size: 16,
-                                color: kOrange,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      _ContactRow(
-                        icon: Icons.school_outlined,
-                        label: 'COURSE / PROGRAM',
-                        value: _profile.course,
-                      ),
-                      const SizedBox(height: 8),
-                      Divider(height: 1, color: Colors.grey.shade100),
-                      const SizedBox(height: 14),
-                      _ContactRow(
-                        icon: Icons.workspace_premium_outlined,
-                        label: 'MAJOR',
-                        value: _profile.major,
-                      ),
-                      const SizedBox(height: 8),
-                      Divider(height: 1, color: Colors.grey.shade100),
-                      const SizedBox(height: 14),
-                      _ContactRow(
-                        icon: Icons.stairs_outlined,
-                        label: 'YEAR LEVEL',
-                        value: _profile.yearLevel,
-                      ),
-                      const SizedBox(height: 8),
-                      Divider(height: 1, color: Colors.grey.shade100),
-                      const SizedBox(height: 14),
-                      _ContactRow(
-                        icon: Icons.account_balance_outlined,
-                        label: 'COLLEGE / DEPARTMENT',
-                        value: _profile.department,
-                      ),
-                      const SizedBox(height: 8),
-                      Divider(height: 1, color: Colors.grey.shade100),
-                      const SizedBox(height: 14),
-                      _ContactRow(
-                        icon: Icons.location_city_outlined,
-                        label: 'CAMPUS',
-                        value: _profile.campus,
-                      ),
-                    ],
-                  ),
-                ),
 
                 // ── Events Registered ──
                 kSectionLabel('Events Registered'),
@@ -1163,6 +1012,23 @@ class PersonalIdentityScreen extends StatelessWidget {
     );
   }
 
+  /// A page, not a dialog — same as the guest Digital ID, so the QR gets the
+  /// whole screen and event staff can scan it from a distance.
+  void _openFullscreen(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _FullscreenQrScreen(
+          fullName: profile.fullName.trim().isNotEmpty
+              ? profile.fullName.trim()
+              : (profile.rawFullName.trim().isNotEmpty
+                    ? profile.rawFullName.trim()
+                    : 'Student'),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -1175,14 +1041,55 @@ class PersonalIdentityScreen extends StatelessWidget {
             padding: const EdgeInsets.all(20),
             child: Column(
               children: [
-                _IdCardLabel(text: 'FRONT'),
-                const SizedBox(height: 8),
-                _IdCard1(profile: profile),
-                const SizedBox(height: 20),
-                _IdCardLabel(text: 'BACK'),
-                const SizedBox(height: 8),
-                _IdCard2(profile: profile),
-                const SizedBox(height: 28),
+                _StudentIdCard(
+                  profile: profile,
+                  onFullscreen: () => _openFullscreen(context),
+                ),
+                const SizedBox(height: 14),
+
+                // Second, more discoverable route to the same screen — the
+                // 100px QR on the card is a small tap target to find on its
+                // own. Mirrors the guest Digital ID's hint row.
+                GestureDetector(
+                  onTap: () => _openFullscreen(context),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFEEEEEE)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.open_in_full_rounded,
+                          size: 18,
+                          color: kOrange,
+                        ),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Text(
+                            'Tap to show full-screen QR for easy scanning',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF374151),
+                            ),
+                          ),
+                        ),
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          size: 20,
+                          color: Colors.grey[400],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
@@ -1215,30 +1122,6 @@ class PersonalIdentityScreen extends StatelessWidget {
   }
 }
 
-class _IdCardLabel extends StatelessWidget {
-  final String text;
-  const _IdCardLabel({required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Padding(
-        padding: const EdgeInsets.only(left: 4),
-        child: Text(
-          text,
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 1.6,
-            color: Colors.grey[400],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 // ── Download Preview Bottom Sheet ──
 class _IdDownloadPreviewSheet extends StatefulWidget {
   final ProfileModel profile;
@@ -1250,8 +1133,7 @@ class _IdDownloadPreviewSheet extends StatefulWidget {
 }
 
 class _IdDownloadPreviewSheetState extends State<_IdDownloadPreviewSheet> {
-  final GlobalKey _frontKey = GlobalKey();
-  final GlobalKey _backKey = GlobalKey();
+  final GlobalKey _cardKey = GlobalKey();
   bool _isGenerating = false;
 
   Future<Uint8List?> _captureCard(GlobalKey key) async {
@@ -1270,15 +1152,14 @@ class _IdDownloadPreviewSheetState extends State<_IdDownloadPreviewSheet> {
     setState(() => _isGenerating = true);
 
     try {
-      final frontBytes = await _captureCard(_frontKey);
-      final backBytes = await _captureCard(_backKey);
+      // One card now, so one capture and one page.
+      final cardBytes = await _captureCard(_cardKey);
 
-      if (frontBytes == null || backBytes == null) {
+      if (cardBytes == null) {
         throw Exception('Could not capture the ID card.');
       }
 
-      final frontImage = pw.MemoryImage(frontBytes);
-      final backImage = pw.MemoryImage(backBytes);
+      final cardImage = pw.MemoryImage(cardBytes);
 
       final doc = pw.Document();
 
@@ -1286,33 +1167,8 @@ class _IdDownloadPreviewSheetState extends State<_IdDownloadPreviewSheet> {
         pw.Page(
           pageFormat: PdfPageFormat.a4,
           margin: const pw.EdgeInsets.all(24),
-          build: (context) => pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.center,
-            children: [
-              pw.Text(
-                'FRONT',
-                style: pw.TextStyle(
-                  fontSize: 9,
-                  letterSpacing: 1.4,
-                  color: PdfColors.grey500,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-              ),
-              pw.SizedBox(height: 8),
-              pw.Expanded(child: pw.Image(frontImage, fit: pw.BoxFit.contain)),
-              pw.SizedBox(height: 20),
-              pw.Text(
-                'BACK',
-                style: pw.TextStyle(
-                  fontSize: 9,
-                  letterSpacing: 1.4,
-                  color: PdfColors.grey500,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-              ),
-              pw.SizedBox(height: 8),
-              pw.Expanded(child: pw.Image(backImage, fit: pw.BoxFit.contain)),
-            ],
+          build: (context) => pw.Center(
+            child: pw.Image(cardImage, fit: pw.BoxFit.contain),
           ),
         ),
       );
@@ -1359,18 +1215,9 @@ class _IdDownloadPreviewSheetState extends State<_IdDownloadPreviewSheet> {
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-            _IdCardLabel(text: 'FRONT'),
-            const SizedBox(height: 8),
             RepaintBoundary(
-              key: _frontKey,
-              child: _IdCard1(profile: widget.profile),
-            ),
-            const SizedBox(height: 20),
-            _IdCardLabel(text: 'BACK'),
-            const SizedBox(height: 8),
-            RepaintBoundary(
-              key: _backKey,
-              child: _IdCard2(profile: widget.profile),
+              key: _cardKey,
+              child: _StudentIdCard(profile: widget.profile),
             ),
             const SizedBox(height: 24),
             SizedBox(
@@ -1412,379 +1259,39 @@ class _IdDownloadPreviewSheetState extends State<_IdDownloadPreviewSheet> {
 }
 
 // ─────────────────────────────────────────────────────────────
-// _HeaderBadge
+// STUDENT DIGITAL ID
+//
+// One card, built on the guest Digital ID's design
+// (lib/screens/guest/guest_digital_id_screen.dart, _DigitalIdCard):
+// gradient header band, UPRISE branding, name + status chip, avatar,
+// dashed divider, detail rows beside the QR, gradient footer.
+//
+// The information is the student's: photo, full name, student number,
+// program, year level, the UID QR and the A.Y. validity line. Major and
+// College/Department are deliberately not shown.
+//
+// The guest file's _DetailRow/_DashedDivider are private to it, so the
+// equivalents below are local rather than editing the guest screen.
 // ─────────────────────────────────────────────────────────────
-class _HeaderBadge extends StatelessWidget {
-  final String assetPath;
-  final IconData icon;
-  final double size;
-  final double imageSize;
-
-  const _HeaderBadge({
-    required this.assetPath,
-    required this.icon,
-    this.size = 36,
-    this.imageSize = 36,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: const BoxDecoration(
-        color: Color(0xFFF5F5F5),
-        shape: BoxShape.circle,
-      ),
-      child: ClipOval(
-        child: Image.asset(
-          assetPath,
-          width: imageSize,
-          height: imageSize,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) =>
-              Icon(icon, color: kOrange, size: size * 0.5),
-        ),
-      ),
-    );
-  }
-}
-
-// ── FRONT of ID ──
-class _IdCard1 extends StatelessWidget {
+class _StudentIdCard extends StatelessWidget {
   final ProfileModel profile;
-  const _IdCard1({required this.profile});
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFEAEAEA), width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
-            child: Row(
-              children: [
-                _HeaderBadge(
-                  assetPath: 'assets/images/bsu_logo.png',
-                  icon: Icons.school,
-                  size: 36,
-                  imageSize: 36,
-                ),
-                const SizedBox(width: 10),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Text(
-                        'BULACAN STATE UNIVERSITY',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.black87,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 11,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                      SizedBox(height: 2),
-                      Text(
-                        'OFFICIAL STUDENT IDENTIFICATION',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.grey,
-                          fontWeight: FontWeight.w500,
-                          fontSize: 8,
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 10),
-                _HeaderBadge(
-                  assetPath: 'assets/images/logo.png',
-                  icon: Icons.local_fire_department,
-                  size: 36,
-                  imageSize: 52,
-                ),
-              ],
-            ),
-          ),
+  /// Opens the full-screen QR. Null when the card is being rendered for the
+  /// PDF capture, where there is nothing to tap and the "Tap to enlarge"
+  /// caption would be baked into the downloaded ID.
+  final VoidCallback? onFullscreen;
 
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18),
-            child: Divider(height: 1, color: Colors.grey.shade200),
-          ),
+  const _StudentIdCard({required this.profile, this.onFullscreen});
 
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: profile.photoUrl.isNotEmpty
-                      ? _ProfileImage(
-                          photoUrl: profile.photoUrl,
-                          width: 86,
-                          height: 108,
-                          errorBuilder: (_, __, ___) => _PhotoPlaceholder(),
-                        )
-                      : _PhotoPlaceholder(),
-                ),
-                const SizedBox(width: 18),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: _IdFieldWidget(
-                              label: 'LAST NAME',
-                              value: profile.lastName.isNotEmpty
-                                  ? profile.lastName.toUpperCase()
-                                  : '—',
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: _IdFieldWidget(
-                              label: 'STUDENT NO.',
-                              value: profile.studentId.isNotEmpty
-                                  ? profile.studentId
-                                  : '—',
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Divider(height: 1, color: Colors.grey.shade100),
-                      const SizedBox(height: 12),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: _IdFieldWidget(
-                              label: 'FIRST NAME',
-                              value: profile.firstName.isNotEmpty
-                                  ? profile.firstName.toUpperCase()
-                                  : '—',
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: _IdFieldWidget(
-                              label: 'PROGRAM',
-                              value: profile.course.isNotEmpty
-                                  ? profile.course.toUpperCase()
-                                  : '—',
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Divider(height: 1, color: Colors.grey.shade100),
-                      const SizedBox(height: 12),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: _IdFieldWidget(
-                              label: 'MIDDLE NAME',
-                              value: profile.middleName.isNotEmpty
-                                  ? profile.middleName.toUpperCase()
-                                  : '—',
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: _IdFieldWidget(
-                              label: 'MAJOR',
-                              value: profile.major.isNotEmpty
-                                  ? profile.major.toUpperCase()
-                                  : '—',
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── BACK of ID ──
-class _IdCard2 extends StatelessWidget {
-  final ProfileModel profile;
-  const _IdCard2({required this.profile});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFEAEAEA), width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'ACADEMIC INFORMATION',
-                style: TextStyle(
-                  color: Colors.grey[500],
-                  fontWeight: FontWeight.w700,
-                  fontSize: 10,
-                  letterSpacing: 1.2,
-                ),
-              ),
-            ),
-          ),
-
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _IdFieldWidget(
-                        label: 'YEAR LEVEL',
-                        value: profile.yearLevel.isNotEmpty
-                            ? profile.yearLevel.toUpperCase()
-                            : '—',
-                      ),
-                      const SizedBox(height: 14),
-                      Divider(height: 1, color: Colors.grey.shade100),
-                      const SizedBox(height: 14),
-                      _IdFieldWidget(
-                        label: 'COLLEGE / DEPARTMENT',
-                        value: profile.department.isNotEmpty
-                            ? profile.department.toUpperCase()
-                            : '—',
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 18),
-                Container(
-                  width: 140,
-                  height: 140,
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade200),
-                  ),
-                  child: QrImageView(
-                    data: FirebaseAuth.instance.currentUser?.uid ?? '',
-                    version: QrVersions.auto,
-                    backgroundColor: Colors.white,
-                    size: 120,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18),
-            child: Divider(height: 1, color: Colors.grey.shade200),
-          ),
-
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.verified_outlined,
-                        size: 13,
-                        color: Colors.grey[400],
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          'VALID FOR A.Y. ${_currentAcademicYear()} · NON-TRANSFERABLE',
-                          style: TextStyle(
-                            fontSize: 9,
-                            letterSpacing: 0.3,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.grey[400],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Image.asset(
-                  'assets/images/bsu_logo.png',
-                  width: 22,
-                  height: 22,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) =>
-                      Icon(Icons.school, size: 18, color: Colors.grey[400]),
-                ),
-                const SizedBox(width: 4),
-                Image.asset(
-                  'assets/images/logo.png',
-                  width: 32,
-                  height: 32,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => Icon(
-                    Icons.local_fire_department,
-                    size: 18,
-                    color: Colors.grey[400],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+  String get _initials {
+    final f = profile.firstName.trim();
+    final l = profile.lastName.trim();
+    if (f.isEmpty && l.isEmpty) {
+      final raw = profile.rawFullName.trim();
+      return raw.isEmpty ? '?' : raw[0].toUpperCase();
+    }
+    return '${f.isNotEmpty ? f[0] : ''}${l.isNotEmpty ? l[0] : ''}'
+        .toUpperCase();
   }
 
   String _currentAcademicYear() {
@@ -1792,26 +1299,531 @@ class _IdCard2 extends StatelessWidget {
     final startYear = now.month >= 6 ? now.year : now.year - 1;
     return '$startYear-${startYear + 1}';
   }
+
+  @override
+  Widget build(BuildContext context) {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final name = profile.fullName.trim().isNotEmpty
+        ? profile.fullName.trim()
+        : (profile.rawFullName.trim().isNotEmpty
+              ? profile.rawFullName.trim()
+              : 'Student');
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(26),
+            blurRadius: 20,
+            offset: const Offset(0, 6),
+          ),
+          BoxShadow(
+            color: kOrange.withAlpha(15),
+            blurRadius: 32,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          // ── Header band ──
+          Container(
+            height: 8,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(colors: [kOrange, Color(0xFFD47A00)]),
+            ),
+          ),
+
+          // ── Branding + name + avatar ──
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 22,
+                            height: 22,
+                            decoration: const BoxDecoration(
+                              color: kOrange,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.local_fire_department,
+                              color: Colors.white,
+                              size: 13,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          const Text(
+                            'UPRISE',
+                            style: TextStyle(
+                              color: kOrange,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 14,
+                              letterSpacing: 1.4,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'BULACAN STATE UNIVERSITY',
+                        style: TextStyle(
+                          fontSize: 9,
+                          color: Colors.grey[500],
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        name.toUpperCase(),
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.black87,
+                          letterSpacing: 0.3,
+                          height: 1.15,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFECFDF5),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: const Color(0xFF059669).withAlpha(77),
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.verified_rounded,
+                              size: 10,
+                              color: Color(0xFF059669),
+                            ),
+                            SizedBox(width: 4),
+                            Text(
+                              'VERIFIED STUDENT',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF059669),
+                                letterSpacing: 0.6,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (profile.email.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          profile.email,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Color(0xFFAAAAAA),
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Container(
+                  width: 70,
+                  height: 70,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF5E3D9),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: kOrange.withAlpha(64), width: 1.5),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: profile.photoUrl.isNotEmpty
+                      ? _ProfileImage(
+                          photoUrl: profile.photoUrl,
+                          width: 70,
+                          height: 70,
+                          errorBuilder: (_, __, ___) => _IdInitials(_initials),
+                        )
+                      : _IdInitials(_initials),
+                ),
+              ],
+            ),
+          ),
+
+          const _IdDashedDivider(),
+
+          // ── Details + QR ──
+          Padding(
+            padding: const EdgeInsets.all(18),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _IdDetailRow(
+                        label: 'STUDENT NO.',
+                        value: profile.studentId,
+                      ),
+                      const SizedBox(height: 6),
+                      _IdDetailRow(label: 'PROGRAM', value: profile.course),
+                      const SizedBox(height: 6),
+                      _IdDetailRow(
+                        label: 'YEAR LEVEL',
+                        value: profile.yearLevel,
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.verified_outlined,
+                            size: 12,
+                            color: Colors.grey[400],
+                          ),
+                          const SizedBox(width: 5),
+                          Expanded(
+                            child: Text(
+                              'A.Y. ${_currentAcademicYear()} · NON-TRANSFERABLE',
+                              style: TextStyle(
+                                fontSize: 9,
+                                letterSpacing: 0.3,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey[400],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 14),
+                GestureDetector(
+                  onTap: onFullscreen,
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFEEEEEE)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withAlpha(15),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: QrImageView(
+                          data: uid,
+                          version: QrVersions.auto,
+                          size: 100,
+                          backgroundColor: Colors.white,
+                          eyeStyle: const QrEyeStyle(
+                            eyeShape: QrEyeShape.square,
+                            color: Color(0xFF1A1A2E),
+                          ),
+                          dataModuleStyle: const QrDataModuleStyle(
+                            dataModuleShape: QrDataModuleShape.square,
+                            color: Color(0xFF1A1A2E),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      if (onFullscreen == null)
+                        Text(
+                          'Scan to verify',
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: Colors.grey[500],
+                            fontWeight: FontWeight.w600,
+                          ),
+                        )
+                      else
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.open_in_full_rounded,
+                              size: 9,
+                              color: Colors.grey[500],
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              'Tap to enlarge',
+                              style: TextStyle(
+                                fontSize: 9,
+                                color: Colors.grey[500],
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // ── Bottom strip ──
+          Container(
+            height: 6,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(colors: [kOrange, Color(0xFFD47A00)]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _IdInitials extends StatelessWidget {
+  final String initials;
+  const _IdInitials(this.initials);
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Text(
+        initials,
+        style: const TextStyle(
+          fontSize: 26,
+          fontWeight: FontWeight.w900,
+          color: kOrange,
+        ),
+      ),
+    );
+  }
+}
+
+/// Label-over-value row on the ID card.
+class _IdDetailRow extends StatelessWidget {
+  final String label;
+  final String value;
+  const _IdDetailRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 8,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFFAAAAAA),
+            letterSpacing: 0.8,
+          ),
+        ),
+        const SizedBox(height: 1),
+        Text(
+          value.trim().isNotEmpty ? value.toUpperCase() : '—',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w700,
+            color: Colors.black87,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _IdDashedDivider extends StatelessWidget {
+  const _IdDashedDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 1,
+      child: CustomPaint(
+        size: const Size(double.infinity, 1),
+        painter: _IdDashedLinePainter(),
+      ),
+    );
+  }
+}
+
+class _IdDashedLinePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFFEEEEEE)
+      ..strokeWidth = 1;
+    const dash = 5.0;
+    const gap = 4.0;
+    double x = 0;
+    while (x < size.width) {
+      canvas.drawLine(Offset(x, 0), Offset(x + dash, 0), paint);
+      x += dash + gap;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// ─────────────────────────────────────────────────────────────
+// FULL-SCREEN QR
+//
+// Ported from the guest Digital ID's _FullscreenQrScreen so both roles get
+// the same scanning experience. The card's 100px code is fine to look at but
+// not to scan across a registration table; this gives it the whole screen on
+// a dark ground for maximum contrast.
+//
+// The payload stays the bare Firebase uid — org_attendance_qr.dart routes
+// anything that isn't prefixed `UPRISE|GUEST|` to the student lookup, so
+// wrapping or prefixing it here would break check-in.
+//
+// Styled with plain TextStyle rather than GoogleFonts, matching
+// _StudentIdCard above (the guest copy uses beVietnamPro because its whole
+// file does).
+// ─────────────────────────────────────────────────────────────
+class _FullscreenQrScreen extends StatelessWidget {
+  final String fullName;
+
+  const _FullscreenQrScreen({required this.fullName});
+
+  static const Color _dark = Color(0xFF1A1A2E);
+
+  @override
+  Widget build(BuildContext context) {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+
+    return Scaffold(
+      backgroundColor: _dark,
+      appBar: AppBar(
+        backgroundColor: _dark,
+        elevation: 0,
+        foregroundColor: Colors.white,
+        leading: IconButton(
+          icon: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: Colors.white.withAlpha(26),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.arrow_back, size: 18, color: Colors.white),
+          ),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text(
+          'Student ID — Scan QR',
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: Colors.white,
+          ),
+        ),
+      ),
+      body: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Text(
+              fullName.toUpperCase(),
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+                letterSpacing: 0.5,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'VERIFIED STUDENT',
+            style: TextStyle(
+              fontSize: 13,
+              color: Color(0xFF059669),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 32),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: kOrange.withAlpha(64),
+                  blurRadius: 40,
+                  spreadRadius: 5,
+                ),
+              ],
+            ),
+            child: QrImageView(
+              data: uid,
+              version: QrVersions.auto,
+              size: 240,
+              backgroundColor: Colors.white,
+              eyeStyle: const QrEyeStyle(
+                eyeShape: QrEyeShape.square,
+                color: _dark,
+              ),
+              dataModuleStyle: const QrDataModuleStyle(
+                dataModuleShape: QrDataModuleShape.square,
+                color: _dark,
+              ),
+            ),
+          ),
+          const SizedBox(height: 28),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: kOrange,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                'Show to event staff for scanning',
+                style: TextStyle(fontSize: 12, color: Colors.white54),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────
 // Reusable small widgets
 // ─────────────────────────────────────────────────────────────
-
-class _PhotoPlaceholder extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 86,
-      height: 108,
-      decoration: BoxDecoration(
-        color: const Color(0xFFF2F2F2),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Icon(Icons.person, size: 40, color: Colors.grey[400]),
-    );
-  }
-}
 
 class _EditField extends StatelessWidget {
   final String label;
@@ -1889,160 +1901,6 @@ class _EditField extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
               borderSide: const BorderSide(color: kOrange),
             ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _MajorDropdownField extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final String? value;
-  final List<String> options;
-  final ValueChanged<String?> onChanged;
-  final String hint;
-
-  const _MajorDropdownField({
-    required this.label,
-    required this.icon,
-    required this.value,
-    required this.options,
-    required this.onChanged,
-    this.hint = 'Select major',
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 13,
-            color: Colors.black87,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 6),
-        DropdownButtonFormField<String>(
-          value: value,
-          icon: const Icon(Icons.keyboard_arrow_down, size: 20),
-          style: const TextStyle(fontSize: 14, color: Colors.black87),
-          decoration: InputDecoration(
-            prefixIcon: Icon(icon, size: 18, color: Colors.grey),
-            hintText: hint,
-            hintStyle: TextStyle(fontSize: 14, color: Colors.grey.shade400),
-            filled: true,
-            fillColor: Colors.white,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 14,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: Colors.grey.shade200),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: Colors.grey.shade200),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: kOrange),
-            ),
-          ),
-          items: options
-              .map(
-                (option) => DropdownMenuItem<String>(
-                  value: option,
-                  child: Text(option),
-                ),
-              )
-              .toList(),
-          onChanged: onChanged,
-        ),
-      ],
-    );
-  }
-}
-
-class _IdFieldWidget extends StatelessWidget {
-  final String label;
-  final String value;
-  const _IdFieldWidget({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 9,
-            color: Colors.grey[400],
-            letterSpacing: 0.6,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 13.5,
-            fontWeight: FontWeight.w700,
-            color: Colors.black87,
-            height: 1.2,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ContactRow extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  const _ContactRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        kIconBadge(icon, size: 18),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.grey[500],
-                  letterSpacing: 0.5,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                value.isNotEmpty ? value : '—',
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Colors.black87,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
           ),
         ),
       ],
@@ -2138,40 +1996,25 @@ class EditProfileScreen extends StatefulWidget {
 }
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
-  static const List<String> kMajorOptions = ['WMAD', 'DBA', 'Infrastructure'];
-  static const List<String> kCollegeOptions = [
-    'College of Information and Communications Technology (CICT)',
-  ];
-  static const List<String> kCampusOptions = [
-    'Bulacan State University – Main Campus',
-    'Bulacan State University – Bustos Campus',
-    'Bulacan State University – Sarmiento Campus',
-    'Bulacan State University – Meneses Campus',
-    'Bulacan State University – Hagonoy Campus',
-    'Bulacan State University – San Rafael Campus',
-  ];
-
+  // Every field here is read-only: the organization supplies a student's
+  // details when it creates the account, and corrections go through the web
+  // admin. The photo is the one thing the student still owns, and it writes
+  // straight through ProfileModel.updatePhotoUrl() rather than a form save.
   late final TextEditingController _firstNameCtrl;
   late final TextEditingController _middleNameCtrl;
   late final TextEditingController _lastNameCtrl;
   late final TextEditingController _emailCtrl;
-  late final TextEditingController _mobileCtrl;
-  late final TextEditingController _addressCtrl;
   late final TextEditingController _courseCtrl;
   late final TextEditingController _yearLevelCtrl;
-  String? _selectedMajor;
-  String? _selectedDepartment;
-  String? _selectedCampus;
 
   @override
   void initState() {
     super.initState();
     final p = widget.profile;
     // Admin-created accounts only ever have a combined `fullName` on file
-    // (see student_accounts.dart) — firstName/middleName/lastName stay
-    // empty until the student edits here. Pre-fill a best-effort split of
-    // rawFullName so opening this form the first time doesn't present a
-    // blank slate for a name that's already on record.
+    // (see student_accounts.dart), so firstName/middleName/lastName can be
+    // empty. Fall back to a best-effort split of rawFullName so the form
+    // shows the name that's actually on record.
     String first = p.firstName;
     String middle = p.middleName;
     String last = p.lastName;
@@ -2183,22 +2026,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _firstNameCtrl = TextEditingController(text: first);
     _middleNameCtrl = TextEditingController(text: middle);
     _lastNameCtrl = TextEditingController(text: last);
-    _emailCtrl = TextEditingController(text: widget.profile.email);
-    _mobileCtrl = TextEditingController(text: widget.profile.mobile);
-    _addressCtrl = TextEditingController(text: widget.profile.address);
-    _courseCtrl = TextEditingController(text: widget.profile.course);
-    _yearLevelCtrl = TextEditingController(text: widget.profile.yearLevel);
-    _selectedMajor = kMajorOptions.contains(widget.profile.major)
-        ? widget.profile.major
-        : null;
-    // Only one real college exists in this app today, so default to it
-    // instead of leaving a single-option dropdown sitting on a blank hint.
-    _selectedDepartment = kCollegeOptions.contains(widget.profile.department)
-        ? widget.profile.department
-        : kCollegeOptions.first;
-    _selectedCampus = kCampusOptions.contains(widget.profile.campus)
-        ? widget.profile.campus
-        : null;
+    _emailCtrl = TextEditingController(text: p.email);
+    _courseCtrl = TextEditingController(text: p.course);
+    _yearLevelCtrl = TextEditingController(text: p.yearLevel);
   }
 
   @override
@@ -2207,69 +2037,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _middleNameCtrl.dispose();
     _lastNameCtrl.dispose();
     _emailCtrl.dispose();
-    _mobileCtrl.dispose();
-    _addressCtrl.dispose();
     _courseCtrl.dispose();
     _yearLevelCtrl.dispose();
     super.dispose();
-  }
-
-  Future<void> _save() async {
-    final newFirst = _firstNameCtrl.text.trim();
-    final newMiddle = _middleNameCtrl.text.trim();
-    final newLast = _lastNameCtrl.text.trim();
-
-    try {
-      await widget.profile.update(
-        firstName: newFirst,
-        middleName: newMiddle,
-        lastName: newLast,
-        email: _emailCtrl.text.trim(),
-        mobile: _mobileCtrl.text.trim(),
-        address: _addressCtrl.text.trim(),
-        course: _courseCtrl.text.trim(),
-        major: _selectedMajor ?? '',
-        yearLevel: _yearLevelCtrl.text.trim(),
-        department: _selectedDepartment ?? '',
-        campus: _selectedCampus ?? '',
-      );
-
-      // The update() method now automatically updates all registrations
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not save profile: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-    if (!mounted) return;
-
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      final displayName = [
-        newFirst,
-        newMiddle,
-        newLast,
-      ].where((p) => p.isNotEmpty).join(' ');
-      await user.updateDisplayName(displayName);
-    }
-    if (!mounted) return;
-
-    // Show success message with info about registrations update
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Profile updated successfully! All registrations have been updated.',
-        ),
-        backgroundColor: kOrange,
-        duration: Duration(seconds: 3),
-      ),
-    );
-
-    Navigator.pop(context, widget.profile.fullName);
   }
 
   @override
@@ -2375,23 +2145,46 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     'Personal Information',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                   ),
+                  const SizedBox(height: 6),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.lock_outline, size: 13, color: Colors.grey[500]),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'These details are maintained by your organization. '
+                          'Contact them or the CICT admin to have anything '
+                          'corrected.',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            height: 1.4,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 16),
                   _EditField(
                     label: 'First Name',
                     controller: _firstNameCtrl,
                     icon: Icons.person_outline,
+                    readOnly: true,
                   ),
                   const SizedBox(height: 14),
                   _EditField(
                     label: 'Middle Name',
                     controller: _middleNameCtrl,
                     icon: Icons.person_outline,
+                    readOnly: true,
                   ),
                   const SizedBox(height: 14),
                   _EditField(
                     label: 'Last Name',
                     controller: _lastNameCtrl,
                     icon: Icons.person_outline,
+                    readOnly: true,
                   ),
                   const SizedBox(height: 14),
                   _EditField(
@@ -2408,6 +2201,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     controller: _emailCtrl,
                     icon: Icons.mail_outline,
                     keyboardType: TextInputType.emailAddress,
+                    readOnly: true,
                   ),
                 ],
               ),
@@ -2430,72 +2224,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     label: 'Course / Program',
                     controller: _courseCtrl,
                     icon: Icons.school_outlined,
-                  ),
-                  const SizedBox(height: 14),
-                  _MajorDropdownField(
-                    label: 'Major',
-                    icon: Icons.workspace_premium_outlined,
-                    value: _selectedMajor,
-                    options: kMajorOptions,
-                    onChanged: (value) {
-                      setState(() => _selectedMajor = value);
-                    },
+                    readOnly: true,
                   ),
                   const SizedBox(height: 14),
                   _EditField(
                     label: 'Year Level',
                     controller: _yearLevelCtrl,
                     icon: Icons.stairs_outlined,
-                  ),
-                  const SizedBox(height: 14),
-                  _MajorDropdownField(
-                    label: 'College / Department',
-                    icon: Icons.account_balance_outlined,
-                    value: _selectedDepartment,
-                    options: kCollegeOptions,
-                    hint: 'Select college / department',
-                    onChanged: (value) {
-                      setState(() => _selectedDepartment = value);
-                    },
-                  ),
-                  const SizedBox(height: 14),
-                  _MajorDropdownField(
-                    label: 'Campus',
-                    icon: Icons.location_city_outlined,
-                    value: _selectedCampus,
-                    options: kCampusOptions,
-                    hint: 'Select campus',
-                    onChanged: (value) {
-                      setState(() => _selectedCampus = value);
-                    },
+                    readOnly: true,
                   ),
                 ],
               ),
             ),
 
-            const SizedBox(height: 24),
-
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _save,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: kOrange,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                  ),
-                  child: const Text(
-                    'Update Profile',
-                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
-                  ),
-                ),
-              ),
-            ),
             const SizedBox(height: 24),
           ],
         ),
@@ -2517,21 +2258,14 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  Widget _buildSectionHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      child: Text(
-        title,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 1.2,
-          color: Colors.grey[500],
-        ),
-      ),
-    );
-  }
+  /// Delegates to the file-level [kSectionLabel], the same way
+  /// [_buildSettingsTile] delegates to [kActionTile] — this used to be a
+  /// near-copy differing only in padding, and the guest Settings screen now
+  /// renders the shared one.
+  Widget _buildSectionHeader(String title) => kSectionLabel(title);
 
+  /// Delegates to the file-level [kActionTile] so the profile page's action
+  /// rows and these settings rows share one definition.
   Widget _buildSettingsTile({
     required IconData icon,
     required String title,
@@ -2539,49 +2273,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required VoidCallback onTap,
     Color? iconColor,
     Widget? trailing,
-  }) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.04),
-            blurRadius: 4,
-            offset: const Offset(0, 1),
-          ),
-        ],
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: (iconColor ?? kOrange).withOpacity(0.12),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(icon, color: iconColor ?? kOrange, size: 20),
-        ),
-        title: Text(
-          title,
-          style: const TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 14,
-            color: Colors.black87,
-          ),
-        ),
-        subtitle: Text(
-          subtitle,
-          style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-        ),
-        trailing:
-            trailing ??
-            const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
-        onTap: onTap,
-      ),
-    );
-  }
+  }) => kActionTile(
+    icon: icon,
+    title: title,
+    subtitle: subtitle,
+    onTap: onTap,
+    iconColor: iconColor,
+    trailing: trailing,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -2712,17 +2411,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
 
                 // ── Account Settings ──
+                // No profile entry here: Personal Information lives on the
+                // profile page, and it's read-only, so a "settings" entry
+                // for it would be misleading.
                 _buildSectionHeader('ACCOUNT SETTINGS'),
                 _buildSettingsTile(
-                  icon: Icons.person_outline,
-                  title: 'Edit Profile',
-                  subtitle: 'Update your personal information',
+                  icon: Icons.notifications_none_rounded,
+                  title: 'Notifications',
+                  subtitle: 'Choose what reaches you',
                   onTap: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (_) =>
-                            EditProfileScreen(profile: widget.profile),
+                            const StudentNotificationSettingsScreen(),
                       ),
                     );
                   },

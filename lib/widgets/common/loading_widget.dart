@@ -77,18 +77,42 @@ class _SkeletonLoaderState extends State<SkeletonLoader>
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _anim,
-      builder: (_, __) => Column(
-        children: List.generate(widget.count, (i) => Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: Container(
-            width: widget.width ?? double.infinity,
-            height: widget.height,
-            decoration: BoxDecoration(
-              color: Color.fromRGBO(180, 83, 9, _anim.value * 0.12),
-              borderRadius: BorderRadius.circular(widget.borderRadius),
+      // Callers pass a fixed count/height and can't know how much room the
+      // viewport actually has, so drop placeholders that wouldn't fit rather
+      // than overflowing the Column. The org feed's loading state asked for
+      // 3 x 220 (+10 gaps) = 690 in a 670 slot — a 20px overflow.
+      //
+      // maxHeight is unbounded in a sliver or a scrolling parent; there the
+      // requested count is honoured as-is.
+      builder: (_, __) => LayoutBuilder(
+        builder: (context, constraints) {
+          final spacing = widget.height + 10;
+          var count = widget.count;
+          if (constraints.maxHeight.isFinite && spacing > 0) {
+            // n fits when n * height + (n - 1) * 10 <= maxHeight.
+            final fits = (constraints.maxHeight + 10) ~/ spacing;
+            count = fits.clamp(1, widget.count);
+          }
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: List.generate(
+              count,
+              (i) => Padding(
+                // No trailing gap — it counted against the height budget
+                // while adding nothing below the last placeholder.
+                padding: EdgeInsets.only(bottom: i == count - 1 ? 0 : 10),
+                child: Container(
+                  width: widget.width ?? double.infinity,
+                  height: widget.height,
+                  decoration: BoxDecoration(
+                    color: Color.fromRGBO(180, 83, 9, _anim.value * 0.12),
+                    borderRadius: BorderRadius.circular(widget.borderRadius),
+                  ),
+                ),
+              ),
             ),
-          ),
-        )),
+          );
+        },
       ),
     );
   }
@@ -122,10 +146,10 @@ class UpriseEmptyState extends StatelessWidget {
             Container(
               width: 64, height: 64,
               decoration: BoxDecoration(
-                color: _kPrimary.withOpacity(0.08),
+                color: _kPrimary.withAlpha(20),
                 borderRadius: BorderRadius.circular(18),
               ),
-              child: Icon(icon, size: 30, color: _kPrimary.withOpacity(0.6)),
+              child: Icon(icon, size: 30, color: _kPrimary.withAlpha(153)),
             ),
             const SizedBox(height: 16),
             Text(

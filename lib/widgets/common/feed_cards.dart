@@ -745,3 +745,155 @@ class _FeedAnnouncementCardState extends State<FeedAnnouncementCard> {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────
+//  COMPACT FEED CARD  (bordered surface, small org header)
+// ─────────────────────────────────────────────────────────────
+
+/// The compact post card built for the Organizations tab's feed: a bordered,
+/// rounded surface with a banner, a small org header row (logo, name, time),
+/// then title and snippet, with the whole card as the tap target.
+///
+/// Lives here rather than in the Organizations screen so Home's announcements
+/// render from the same widget instead of a second copy of the style — the
+/// two drifting apart is exactly what this file exists to prevent. The larger
+/// [FeedAnnouncementCard] above is a different, full-bleed treatment and is
+/// still what guest Home uses.
+class CompactFeedCard extends StatelessWidget {
+  final String imageSource;
+  final String orgName;
+  final String orgLogoUrl;
+  final String badgeLabel;
+  final Color badgeColor;
+  final String title;
+  final String snippet;
+  final String timeAgo;
+  final VoidCallback onTap;
+  final double bannerHeight;
+
+  const CompactFeedCard({
+    super.key,
+    required this.imageSource,
+    required this.orgName,
+    this.orgLogoUrl = '',
+    required this.badgeLabel,
+    required this.badgeColor,
+    required this.title,
+    this.snippet = '',
+    required this.timeAgo,
+    required this.onTap,
+    this.bannerHeight = 160,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Never empty, so the avatar/banner initial below is always safe.
+    final name = orgName.isEmpty ? 'Organization' : orgName;
+    final logo = AppImage.provider(orgLogoUrl);
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.cardBg,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.divider),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x0D000000), // black @ 5%
+              blurRadius: 12,
+              offset: Offset(0, 4),
+            ),
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CardImageBanner(
+              imageBase64: imageSource,
+              orgName: name,
+              badgeLabel: badgeLabel,
+              badgeColor: badgeColor,
+              height: bannerHeight,
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ── Org header row ──
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 12,
+                        backgroundColor: AppColors.primarySoft,
+                        backgroundImage: logo,
+                        child: logo == null
+                            ? Text(
+                                name[0].toUpperCase(),
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.primaryDark,
+                                ),
+                              )
+                            : null,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        timeAgo,
+                        style: const TextStyle(
+                          fontSize: 10.5,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                      height: 1.25,
+                    ),
+                  ),
+                  if (snippet.trim().isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      snippet,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

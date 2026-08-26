@@ -12,10 +12,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import 'guest_auth_service.dart';
+import '../../widgets/student/app_colors.dart';
+import '../../widgets/student/student_app_bar.dart';
 
-const _kOrange = Color(0xFFBE4700);
-const _kOrangeLight = Color(0xFFF5E3D9);
-const _kBg = Color(0xFFF5F5F5);
+const _kOrange = AppColors.primaryDark;
+const _kOrangeLight = AppColors.primarySoft;
+const _kBg = AppColors.background;
 
 class _RegisteredEvent {
   final String eventId;
@@ -35,7 +37,11 @@ class _RegisteredEvent {
 }
 
 class GuestRegisteredEventsScreen extends StatefulWidget {
-  const GuestRegisteredEventsScreen({super.key});
+  /// True when hosted as a sub-tab of the Events screen. The Upcoming/Past
+  /// TabBar is still needed, so only the title row collapses.
+  final bool embedded;
+
+  const GuestRegisteredEventsScreen({super.key, this.embedded = false});
 
   @override
   State<GuestRegisteredEventsScreen> createState() => _GuestRegisteredEventsScreenState();
@@ -115,17 +121,18 @@ class _GuestRegisteredEventsScreenState extends State<GuestRegisteredEventsScree
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _kBg,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text('Registered Events', style: GoogleFonts.beVietnamPro(
-            fontSize: 17, fontWeight: FontWeight.w700, color: Colors.black87)),
+      appBar: StudentAppBar(
+        title: 'Registered Events',
+        // Hosted as the Events screen's "My Events" sub-tab, the parent
+        // already shows a title — only the TabBar below is needed.
+        showTitleBar: !widget.embedded,
         bottom: TabBar(
           controller: _tabController,
           labelColor: _kOrange,
           unselectedLabelColor: Colors.grey,
           indicatorColor: _kOrange,
-          labelStyle: GoogleFonts.beVietnamPro(fontSize: 13, fontWeight: FontWeight.w700),
+          indicatorWeight: 3,
+          dividerColor: Colors.transparent,
           tabs: [
             Tab(text: 'Upcoming (${_upcoming.length})'),
             Tab(text: 'Past (${_past.length})'),

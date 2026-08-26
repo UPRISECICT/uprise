@@ -21,16 +21,18 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import 'guest_auth_service.dart';
+import '../../widgets/student/app_colors.dart';
+import '../../widgets/student/student_app_bar.dart';
 
 // ─────────────────────────────────────────────────────────────
 //  THEME
 // ─────────────────────────────────────────────────────────────
-const _kOrange      = Color(0xFFBE4700);
-const _kOrangeLight = Color(0xFFF5E3D9);
+const _kOrange = AppColors.primaryDark;
+const _kOrangeLight = AppColors.primarySoft;
 const _kDark        = Color(0xFF1A1A2E);
-const _kBg          = Color(0xFFF5F5F5);
-const _kSuccess     = Color(0xFF059669);
-const _kSuccessBg   = Color(0xFFECFDF5);
+const _kBg = AppColors.background;
+const _kSuccess = AppColors.success;
+const _kSuccessBg = AppColors.successBg;
 
 ImageProvider _avatarImageProvider(String url) {
   if (url.startsWith('data:image')) {
@@ -122,20 +124,7 @@ class _IdCardView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _kBg,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        title: Text('Digital ID',
-            style: GoogleFonts.beVietnamPro(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: Colors.black87)),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: const Color(0xFFF0F0F0)),
-        ),
-      ),
+      appBar: const StudentAppBar(title: 'Digital ID'),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
         child: Column(
@@ -275,9 +264,9 @@ class _InfoBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF5E3D9),
+        color: AppColors.primarySoft,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _kOrange.withOpacity(0.25)),
+        border: Border.all(color: _kOrange.withAlpha(64)),
       ),
       child: Row(
         children: [
@@ -338,11 +327,11 @@ class _DigitalIdCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.10),
+              color: Colors.black.withAlpha(26),
               blurRadius: 20,
               offset: const Offset(0, 6)),
           BoxShadow(
-              color: _kOrange.withOpacity(0.06),
+              color: _kOrange.withAlpha(15),
               blurRadius: 32,
               offset: const Offset(0, 10)),
         ],
@@ -418,7 +407,7 @@ class _DigitalIdCard extends StatelessWidget {
                           color: _kSuccessBg,
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
-                              color: _kSuccess.withOpacity(0.3)),
+                              color: _kSuccess.withAlpha(77)),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -452,7 +441,7 @@ class _DigitalIdCard extends StatelessWidget {
                     color: _kOrangeLight,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                        color: _kOrange.withOpacity(0.25),
+                        color: _kOrange.withAlpha(64),
                         width: 1.5),
                   ),
                   clipBehavior: Clip.antiAlias,
@@ -515,7 +504,7 @@ class _DigitalIdCard extends StatelessWidget {
                           color: _kSuccessBg,
                           borderRadius: BorderRadius.circular(6),
                           border: Border.all(
-                              color: _kSuccess.withOpacity(0.4)),
+                              color: _kSuccess.withAlpha(102)),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -551,7 +540,7 @@ class _DigitalIdCard extends StatelessWidget {
                           boxShadow: [
                             BoxShadow(
                                 color:
-                                    Colors.black.withOpacity(0.06),
+                                    Colors.black.withAlpha(15),
                                 blurRadius: 8,
                                 offset: const Offset(0, 2)),
                           ],
@@ -695,7 +684,7 @@ class _FullscreenQrScreen extends StatelessWidget {
           icon: Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
+              color: Colors.white.withAlpha(26),
               shape: BoxShape.circle,
             ),
             child: const Icon(Icons.arrow_back,
@@ -735,7 +724,7 @@ class _FullscreenQrScreen extends StatelessWidget {
               borderRadius: BorderRadius.circular(24),
               boxShadow: [
                 BoxShadow(
-                    color: _kOrange.withOpacity(0.25),
+                    color: _kOrange.withAlpha(64),
                     blurRadius: 40,
                     spreadRadius: 5),
               ],
@@ -786,19 +775,7 @@ class _NotAuthView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _kBg,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text('Digital ID',
-            style: GoogleFonts.beVietnamPro(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: Colors.black87)),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: const Color(0xFFF0F0F0)),
-        ),
-      ),
+      appBar: const StudentAppBar(title: 'Digital ID'),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
@@ -846,19 +823,7 @@ class _PendingView extends StatelessWidget {
     final isPending = status == 'pending';
     return Scaffold(
       backgroundColor: _kBg,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text('Digital ID',
-            style: GoogleFonts.beVietnamPro(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: Colors.black87)),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: const Color(0xFFF0F0F0)),
-        ),
-      ),
+      appBar: const StudentAppBar(title: 'Digital ID'),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(32),

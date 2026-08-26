@@ -12,6 +12,7 @@
 //     auth state changes
 //
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -101,7 +102,21 @@ class GuestAuthService extends ChangeNotifier {
   }
 
   // ── Clear session (logout) ───────────────────────────────
+  //
+  // Ends the Firebase session too, not just the prefs. A guest logging out
+  // used to keep a live FirebaseAuth session and land on StudentLogin —
+  // signing in there with the same guest credentials was the shortest path
+  // into the student app, and RoleRouter would silently resume the guest
+  // session on the next launch.
   static Future<void> clearSession() async {
+    try {
+      await FirebaseAuth.instance.signOut();
+    } catch (e) {
+      // Keep going: a failed sign-out must not leave the prefs half-cleared
+      // and the app showing a guest as still logged in.
+      debugPrint('Guest signOut failed during clearSession: $e');
+    }
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kGuestDocId);
     await prefs.remove(_kGuestEmail);

@@ -18,6 +18,8 @@ import 'package:intl/intl.dart';
 import '../../widgets/common/loading_widget.dart';
 import 'guest_auth_service.dart';
 import 'guest_events_screen.dart'; // reuses GuestEventDetailScreen + _FirestoreEvent
+import '../../widgets/student/app_colors.dart';
+import '../../widgets/student/student_app_bar.dart';
 
 // ─────────────────────────────────────────────────────────────
 //  CATEGORY COLOURS  (matches org_events_schedule.dart)
@@ -41,15 +43,19 @@ Color _catColor(String cat) => _catColors[cat] ?? const Color(0xFF6B7280);
 // ─────────────────────────────────────────────────────────────
 //  THEME
 // ─────────────────────────────────────────────────────────────
-const _kPrimary = Color(0xFFBE4700);
-const _kPrimaryBg = Color(0xFFF5E3D9);
-const _kBg = Color(0xFFF5F5F5);
+const _kPrimary = AppColors.primaryDark;
+const _kPrimaryBg = AppColors.primarySoft;
+const _kBg = AppColors.background;
 
 // ─────────────────────────────────────────────────────────────
 //  SCREEN
 // ─────────────────────────────────────────────────────────────
 class GuestCalendarScreen extends StatefulWidget {
-  const GuestCalendarScreen({super.key});
+  /// True when hosted as a sub-tab of the Events screen, which supplies its
+  /// own app bar — rendering this screen's would stack two of them.
+  final bool embedded;
+
+  const GuestCalendarScreen({super.key, this.embedded = false});
 
   @override
   State<GuestCalendarScreen> createState() => _GuestCalendarScreenState();
@@ -169,23 +175,9 @@ class _GuestCalendarScreenState extends State<GuestCalendarScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _kBg,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: false,
-        title: Text(
-          'Calendar',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-            color: Colors.black87,
-          ),
-        ),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: const Color(0xFFF0F0F0)),
-        ),
-      ),
+      appBar: widget.embedded
+          ? null
+          : const StudentAppBar(title: 'Calendar'),
       body: _loading
           ? const Padding(
               padding: EdgeInsets.all(16),
@@ -426,7 +418,7 @@ class _MonthNav extends StatelessWidget {
               border: Border.all(color: const Color(0xFFE2E6EA)),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
+                  color: Colors.black.withAlpha(10),
                   blurRadius: 6,
                   offset: const Offset(0, 2),
                 ),
@@ -507,7 +499,7 @@ class _CalendarGrid extends StatelessWidget {
         border: Border.all(color: const Color(0xFFE8ECF0)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withAlpha(10),
             blurRadius: 10,
             offset: const Offset(0, 3),
           ),
@@ -520,7 +512,7 @@ class _CalendarGrid extends StatelessWidget {
             decoration: const BoxDecoration(
               color: Color(0xFFFFF7ED),
               borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-              border: Border(bottom: BorderSide(color: Color(0xFFF5E3D9))),
+              border: Border(bottom: BorderSide(color: AppColors.primarySoft)),
             ),
             child: Row(
               children: weekdays
@@ -631,10 +623,10 @@ class _DayCell extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      hoverColor: _kPrimary.withOpacity(0.04),
+      hoverColor: _kPrimary.withAlpha(10),
       child: Container(
         decoration: BoxDecoration(
-          color: isToday ? _kPrimary.withOpacity(0.07) : null,
+          color: isToday ? _kPrimary.withAlpha(18) : null,
           border: Border(
             right: colIndex < 6
                 ? const BorderSide(color: Color(0xFFF1F5F9))
@@ -660,7 +652,7 @@ class _DayCell extends StatelessWidget {
                           color: _kPrimary,
                           boxShadow: [
                             BoxShadow(
-                              color: _kPrimary.withOpacity(0.35),
+                              color: _kPrimary.withAlpha(89),
                               blurRadius: 6,
                               offset: const Offset(0, 2),
                             ),
@@ -699,7 +691,7 @@ class _DayCell extends StatelessWidget {
                     vertical: 2,
                   ),
                   decoration: BoxDecoration(
-                    color: _catColor(e.category).withOpacity(0.12),
+                    color: _catColor(e.category).withAlpha(31),
                     borderRadius: BorderRadius.circular(3),
                   ),
                   child: Row(
@@ -767,7 +759,7 @@ class _DayEventTile extends StatelessWidget {
           border: Border.all(color: const Color(0xFFF0F0F0)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.04),
+              color: Colors.black.withAlpha(10),
               blurRadius: 6,
               offset: const Offset(0, 2),
             ),
@@ -841,7 +833,7 @@ class _DayEventTile extends StatelessWidget {
                       vertical: 2,
                     ),
                     decoration: BoxDecoration(
-                      color: color.withOpacity(0.1),
+                      color: color.withAlpha(26),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(

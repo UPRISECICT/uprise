@@ -17,15 +17,16 @@ import '../../../widgets/org_action_icon_button.dart';
 import '../../../widgets/org_modal_shell.dart';
 
 // ─── STATUS SUMMARY ITEM ──────────────────────────────────────
-// Matches the app's established stat-card look (white card, colored icon
-// badge, big bold number, label below) instead of the small tinted pill
-// this used to be — that one-off style read as a lot less professional
-// than every other stat row in the portal. Tappable, same as those.
+// One inline "Label 12" pair, not a card. Four stacked label-over-number
+// tiles in four different accent colors turned a four-number summary into
+// the loudest thing in the modal; a single quiet text row lets the
+// recipient list be what you actually look at. [color] no longer tints the
+// number — it only draws the underline marking the active filter, so the
+// color still means "this filter is on" and nothing else.
 class _StatusSummaryItem extends StatelessWidget {
   final String label;
   final int count;
   final Color color;
-  final IconData? icon;
   final bool isSelected;
   final VoidCallback? onTap;
 
@@ -33,89 +34,50 @@ class _StatusSummaryItem extends StatelessWidget {
     required this.label,
     required this.count,
     required this.color,
-    this.icon,
     this.isSelected = false,
     this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Icon-left, number/label-right — the old icon-top-left /
-    // number-top-right layout only reads well with a lot of card width to
-    // stretch across; in the narrow right-hand column of the batch detail
-    // modal (4 of these squeezed into ~half the dialog's width) it left the
-    // icon and number jammed into opposite corners of a barely-there card.
-    // This layout stays legible and balanced no matter how narrow the card
-    // gets.
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          padding: const EdgeInsets.only(bottom: 5),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isSelected ? color : const Color(0xFFE8ECF0),
-              width: isSelected ? 1.5 : 1,
+            border: Border(
+              bottom: BorderSide(
+                color: isSelected ? color : Colors.transparent,
+                width: 2,
+              ),
             ),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: color.withAlpha(46),
-                      blurRadius: 14,
-                      offset: const Offset(0, 3),
-                    ),
-                  ]
-                : [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(10),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
           ),
           child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
             children: [
-              if (icon != null)
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: color.withAlpha(26),
-                    borderRadius: BorderRadius.circular(10),
+              Flexible(
+                child: Text(
+                  label,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w500,
+                    color: UpriseColors.darkGray,
                   ),
-                  alignment: Alignment.center,
-                  child: Icon(icon, color: color, size: 17),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      '$count',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 19,
-                        fontWeight: FontWeight.w800,
-                        color: const Color(0xFF1A202C),
-                        height: 1.1,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      label,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w600,
-                        color: UpriseColors.darkGray,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '$count',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF1A202C),
                 ),
               ),
             ],
@@ -376,49 +338,6 @@ Widget _batchBadge(String status) {
         fontWeight: FontWeight.w700,
         color: s.fg,
         letterSpacing: 0.8,
-      ),
-    ),
-  );
-}
-
-Widget _sendStatusBadge(String? status) {
-  final s = (status ?? 'sent').toLowerCase();
-  final Map<String, _BadgeStyle> styles = {
-    'sent': _BadgeStyle(
-      const Color(0xFFEFF6FF),
-      const Color(0xFF2563EB),
-      'SENT',
-    ),
-    'delivered': _BadgeStyle(
-      UpriseColors.success.withOpacity(0.18),
-      UpriseColors.success,
-      'DELIVERED',
-    ),
-    'failed': _BadgeStyle(
-      UpriseColors.error.withOpacity(0.18),
-      UpriseColors.error,
-      'FAILED',
-    ),
-    'resent': _BadgeStyle(
-      const Color(0xFFF3E8FF),
-      const Color(0xFF7C3AED),
-      'RESENT',
-    ),
-  };
-  final style = styles[s] ?? styles['sent']!;
-  return Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-    decoration: BoxDecoration(
-      color: style.bg,
-      borderRadius: BorderRadius.circular(_DS.radiusPill),
-    ),
-    child: Text(
-      style.label,
-      style: GoogleFonts.beVietnamPro(
-        fontSize: 9.5,
-        fontWeight: FontWeight.w700,
-        color: style.fg,
-        letterSpacing: 0.6,
       ),
     ),
   );
@@ -2180,131 +2099,92 @@ class _BatchDetailModalState extends State<_BatchDetailModal> {
     int awaitingEval,
     int readyToSend,
   ) {
-    // 2×2 grid instead of a single row of 4 — this section lives in the
-    // narrower of the modal's two columns, and 4 cards side by side left
-    // each one too thin to read comfortably. Two rows of two gives every
-    // card roughly double the width.
-    return OrgModalSection(
-      title: 'Summary',
-      icon: Icons.bar_chart_rounded,
-      accentColor: UpriseColors.primaryDark,
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: _StatusSummaryItem(
-                  label: 'Total',
-                  count: total,
-                  color: UpriseColors.charcoal,
-                  icon: Icons.people_outline,
-                  isSelected: _statusFilter == 'All' && _filterTouched,
-                  onTap: () => setState(() {
-                    _statusFilter = 'All';
-                    _filterTouched = true;
-                  }),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _StatusSummaryItem(
-                  label: 'Evaluated',
-                  count: evaluated,
-                  color: UpriseColors.success,
-                  icon: Icons.check_circle_outline,
-                  isSelected: _statusFilter == 'evaluated',
-                  onTap: () => setState(() {
-                    _filterTouched = true;
-                    _statusFilter = _statusFilter == 'evaluated'
-                        ? 'All'
-                        : 'evaluated';
-                  }),
-                ),
-              ),
-            ],
+    // A plain text row, not a card. Four numbers don't need a bordered,
+    // shadowed panel with an orange accent bar and an orange title on top of
+    // them — that framing made the summary compete with the recipient list
+    // for attention when it's really just a caption with a filter attached.
+    // Every count is the same charcoal; the accent color survives only as
+    // the underline under whichever filter is active.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'SUMMARY',
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 10.5,
+            fontWeight: FontWeight.w600,
+            color: UpriseColors.darkGray,
+            letterSpacing: 0.6,
           ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _StatusSummaryItem(
-                  label: 'Waiting',
-                  count: awaitingEval,
-                  color: UpriseColors.warning,
-                  icon: Icons.hourglass_empty,
-                  isSelected: _statusFilter == 'waiting',
-                  onTap: () => setState(() {
-                    _filterTouched = true;
-                    _statusFilter = _statusFilter == 'waiting'
-                        ? 'All'
-                        : 'waiting';
-                  }),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _StatusSummaryItem(
-                  label: 'Ready',
-                  count: readyToSend,
-                  color: UpriseColors.primaryDark,
-                  icon: Icons.send_outlined,
-                  isSelected: _statusFilter == 'ready',
-                  onTap: () => setState(() {
-                    _filterTouched = true;
-                    _statusFilter = _statusFilter == 'ready' ? 'All' : 'ready';
-                  }),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 10),
+        // Wrap, not Row: at a narrow right column four label+number pairs
+        // would otherwise overflow rather than move to a second line.
+        Wrap(
+          spacing: 20,
+          runSpacing: 8,
+          children: [
+            _StatusSummaryItem(
+              label: 'Total',
+              count: total,
+              color: UpriseColors.charcoal,
+              isSelected: _statusFilter == 'All' && _filterTouched,
+              onTap: () => setState(() {
+                _statusFilter = 'All';
+                _filterTouched = true;
+              }),
+            ),
+            _StatusSummaryItem(
+              label: 'Evaluated',
+              count: evaluated,
+              color: UpriseColors.success,
+              isSelected: _statusFilter == 'evaluated',
+              onTap: () => setState(() {
+                _filterTouched = true;
+                _statusFilter = _statusFilter == 'evaluated'
+                    ? 'All'
+                    : 'evaluated';
+              }),
+            ),
+            _StatusSummaryItem(
+              label: 'Waiting',
+              count: awaitingEval,
+              color: UpriseColors.warning,
+              isSelected: _statusFilter == 'waiting',
+              onTap: () => setState(() {
+                _filterTouched = true;
+                _statusFilter = _statusFilter == 'waiting' ? 'All' : 'waiting';
+              }),
+            ),
+            _StatusSummaryItem(
+              label: 'Ready',
+              count: readyToSend,
+              color: UpriseColors.primaryDark,
+              isSelected: _statusFilter == 'ready',
+              onTap: () => setState(() {
+                _filterTouched = true;
+                _statusFilter = _statusFilter == 'ready' ? 'All' : 'ready';
+              }),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
   Widget _buildRecipientRow(CertificateBatch b, _RecipientStatusRow row) {
     final bool canSend = row.evaluated && !row.certSent;
     final bool awaitingEval = !row.evaluated;
-    final rowColor = canSend
-        ? UpriseColors.warning
-        : (awaitingEval ? UpriseColors.darkGray : UpriseColors.success);
-    final initials = row.name
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((p) => p.isNotEmpty)
-        .take(2)
-        .map((p) => p[0].toUpperCase())
-        .join();
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
-        color: canSend
-            ? UpriseColors.warning.withOpacity(0.08)
-            : (awaitingEval
-                  ? Colors.grey.shade50
-                  : UpriseColors.success.withOpacity(0.05)),
-      ),
+    // No row tint and no initials avatar. Every row carrying a full-width
+    // colored wash meant a list of ten recipients was ten colored bands,
+    // and the status was already being said twice — once by the band, once
+    // by the badge. The badge says it now; the row stays paper-white so the
+    // names read as a list instead of a stack of alerts.
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
       child: Row(
         children: [
-          // A bare name in a plain row read as a spreadsheet line — a
-          // small initials avatar (tinted by the row's own status color)
-          // gives each recipient a visual anchor without needing a real
-          // photo.
-          CircleAvatar(
-            radius: 15,
-            backgroundColor: rowColor.withAlpha(31),
-            child: Text(
-              initials.isEmpty ? '?' : initials,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: rowColor,
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
           // Name
           Expanded(
             flex: 2,
@@ -2319,22 +2199,26 @@ class _BatchDetailModalState extends State<_BatchDetailModal> {
             ),
           ),
           // Status badge
-          Expanded(flex: 1, child: _buildStatusBadge(row)),
+          Expanded(
+            flex: 1,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: _buildStatusBadge(row),
+            ),
+          ),
           const SizedBox(width: 8),
           // Action button
           if (awaitingEval)
-            Container(
+            // Plain text, not a filled pill — nothing is actionable here,
+            // so it shouldn't carry a button's shape.
+            Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.grey[200],
-                borderRadius: BorderRadius.circular(6),
-              ),
               child: Text(
                 'Waiting',
                 style: GoogleFonts.beVietnamPro(
                   fontSize: 11,
-                  color: Colors.grey[600],
-                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF9AA5B4),
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             )
@@ -2409,38 +2293,50 @@ class _BatchDetailModalState extends State<_BatchDetailModal> {
       _ => rows,
     }.toList();
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(0, 8, 0, 0),
-      child: OrgModalSection(
-        title: 'Recipients',
-        icon: Icons.groups_outlined,
-        accentColor: UpriseColors.primaryDark,
-        // Expanded so the list scrolls within the right column's own
-        // bounded height instead of trying to grow to its full content
-        // height — the right column is the thing that scrolls now, not
-        // the whole modal.
-        child: filteredRows.isEmpty
-            ? Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
-                child: Center(
-                  child: Text(
-                    'No recipients match this filter.',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 13,
-                      color: const Color(0xFF64748B),
-                    ),
-                  ),
-                ),
-              )
-            : Expanded(
-                child: ListView.separated(
-                  padding: EdgeInsets.zero,
-                  itemCount: filteredRows.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (_, i) => _buildRecipientRow(b, filteredRows[i]),
+    // Same treatment as Summary — the section card's border, shadow and
+    // orange accent bar are gone, leaving a label and the list itself.
+    // The Expanded still has to sit inside a height-bounded Column (see
+    // _buildRecipientsColumn) or the list has no height to scroll within.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'RECIPIENTS',
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 10.5,
+            fontWeight: FontWeight.w600,
+            color: UpriseColors.darkGray,
+            letterSpacing: 0.6,
+          ),
+        ),
+        const SizedBox(height: 4),
+        if (filteredRows.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Center(
+              child: Text(
+                'No recipients match this filter.',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: const Color(0xFF64748B),
                 ),
               ),
-      ),
+            ),
+          )
+        else
+          Expanded(
+            child: ListView.separated(
+              padding: EdgeInsets.zero,
+              itemCount: filteredRows.length,
+              separatorBuilder: (_, __) => const Divider(
+                height: 1,
+                thickness: 1,
+                color: Color(0xFFF1F5F9),
+              ),
+              itemBuilder: (_, i) => _buildRecipientRow(b, filteredRows[i]),
+            ),
+          ),
+      ],
     );
   }
 
@@ -2647,7 +2543,7 @@ class _BatchDetailModalState extends State<_BatchDetailModal> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildSummarySection(total, evaluated, awaitingEval, readyToSend),
-          const Divider(),
+          const SizedBox(height: 20),
           Expanded(child: _buildRecipientsSection(b, rows)),
         ],
       ),
@@ -2797,48 +2693,40 @@ class _BatchDetailModalState extends State<_BatchDetailModal> {
 
   Widget _buildStatusBadge(_RecipientStatusRow row) {
     String label;
-    Color bg, fg;
-    IconData? icon;
+    Color fg;
 
     if (!row.evaluated) {
       label = 'Awaiting Eval';
-      bg = Colors.grey[200]!;
-      fg = Colors.grey[600]!;
-      icon = Icons.hourglass_empty;
+      fg = Colors.grey[500]!;
     } else if (!row.certSent) {
       label = 'Ready to Send';
-      bg = UpriseColors.warning.withOpacity(0.18);
       fg = UpriseColors.warning;
-      icon = Icons.send_outlined;
+    } else if (row.resendCount > 0) {
+      label = 'Resent';
+      fg = const Color(0xFF7C3AED);
     } else {
       label = 'Sent';
-      bg = UpriseColors.success.withOpacity(0.15);
       fg = UpriseColors.success;
-      icon = Icons.check_circle_outline;
     }
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) Icon(icon, size: 12, color: fg),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              color: fg,
-              letterSpacing: 0.5,
-            ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 6,
+          height: 6,
+          decoration: BoxDecoration(color: fg, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: fg,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

@@ -1414,6 +1414,15 @@ class _StatCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Text(
+                label,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: AdminSiteColors.ink,
+                ),
+              ),
+              const SizedBox(height: 2),
               numericValue != null
                   ? TweenAnimationBuilder<int>(
                       tween: IntTween(begin: 0, end: numericValue),
@@ -1438,15 +1447,6 @@ class _StatCard extends StatelessWidget {
                         letterSpacing: -0.5,
                       ),
                     ),
-              const SizedBox(height: 2),
-              Text(
-                label,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: AdminSiteColors.ink,
-                ),
-              ),
               const SizedBox(height: 2),
               Text(
                 sub,

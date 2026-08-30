@@ -226,6 +226,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
         final cardGap = isMobile ? 8.0 : 14.0;
         final statCards = [
           StatCard(
+            adminLayout: true,
             label: 'Total Students',
             value: '$total',
             icon: Icons.school_rounded,
@@ -233,6 +234,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
             onTap: () => setState(() => _archiveFilter = 'All Students'),
           ),
           StatCard(
+            adminLayout: true,
             label: 'Active',
             value: '${total - archived}',
             icon: Icons.person_rounded,
@@ -240,6 +242,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
             onTap: () => setState(() => _archiveFilter = 'Active Only'),
           ),
           StatCard(
+            adminLayout: true,
             label: 'Archived',
             value: '$archived',
             icon: Icons.archive_rounded,

@@ -442,6 +442,7 @@ class _ActivityLogsState extends State<ActivityLogs> {
 
         final cards = [
           StatCard(
+            adminLayout: true,
             label: 'Logs (Last 24 h)',
             value: '$total24h',
             icon: Icons.receipt_long_rounded,
@@ -453,6 +454,7 @@ class _ActivityLogsState extends State<ActivityLogs> {
             }),
           ),
           StatCard(
+            adminLayout: true,
             label: 'Critical Actions',
             value: '$critical',
             icon: Icons.warning_amber_rounded,
@@ -464,6 +466,7 @@ class _ActivityLogsState extends State<ActivityLogs> {
             }),
           ),
           StatCard(
+            adminLayout: true,
             label: 'Warnings',
             value: '$warnings',
             icon: Icons.info_outline_rounded,
@@ -475,6 +478,7 @@ class _ActivityLogsState extends State<ActivityLogs> {
             }),
           ),
           StatCard(
+            adminLayout: true,
             label: 'Failed Attempts',
             value: '$failed',
             icon: Icons.block_rounded,

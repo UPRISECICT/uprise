@@ -439,7 +439,7 @@ class AdviserRoles extends StatefulWidget {
 }
 
 class _AdviserRolesState extends State<AdviserRoles> {
-  String _statusFilter = 'All';
+  String _statusFilter = 'Active';
   int _currentPage = 1;
   static const int _pageSize = 10;
   final TextEditingController _searchController = TextEditingController();
@@ -1020,7 +1020,13 @@ class _AdviserRolesState extends State<AdviserRoles> {
           Expanded(flex: 2, child: _headerCell('ADVISER NAME')),
           Expanded(flex: 2, child: _headerCell('EMAIL')),
           Expanded(flex: 1, child: _headerCell('PHONE')),
-          Expanded(flex: 1, child: _headerCell('POSITION')),
+          Expanded(
+            flex: 1,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 40),
+              child: _headerCell('POSITION'),
+            ),
+          ),
           Expanded(
             flex: 2,
             child: Align(
@@ -1161,9 +1167,12 @@ class _AdviserRolesState extends State<AdviserRoles> {
             // POSITION column
             Expanded(
               flex: 1,
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: _PositionBadge(position),
+              child: Padding(
+                padding: const EdgeInsets.only(left: 40),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: _PositionBadge(position),
+                ),
               ),
             ),
 
@@ -2463,7 +2472,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
         await FirebaseFirestore.instance
             .collection('adviser_roles')
             .doc(docId)
-            .update({'archived': true});
+            .update({'archived': true, 'archivedByOrganization': false});
         await activity_log.ActivityLogger.log(
           action: 'Archived adviser role for $orgName',
           module: 'Adviser Roles',
@@ -2518,7 +2527,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
         await FirebaseFirestore.instance
             .collection('adviser_roles')
             .doc(docId)
-            .update({'archived': false});
+            .update({'archived': false, 'archivedByOrganization': false});
         await activity_log.ActivityLogger.log(
           action: 'Restored adviser role for $orgName',
           module: 'Adviser Roles',

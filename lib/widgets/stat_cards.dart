@@ -8,10 +8,8 @@
 // named ones and 4 function builders). They had drifted into two families:
 // an admin "Row" variant (icon | label / value / subtitle) and an org
 // "Column" variant (icon + big number, label underneath, with a selected
-// state). The Column layout wins here because the label gets the full card
-// width instead of sharing it with the icon, which is what starts to break
-// once a page has four or more cards on a narrow window. The admin
-// variant's `subtitle` survives as an optional third line.
+// state). Both are preserved here: admin call sites opt into [adminLayout],
+// while organization pages retain their established vertical composition.
 //
 // The companion rule this file exists to enforce: **a page shows at most
 // four cards.** Counts beyond that are secondary, and secondary counts
@@ -57,6 +55,10 @@ class StatCard extends StatelessWidget {
   final IconData icon;
   final Color color;
   final bool selected;
+  /// Uses the compact admin arrangement: icon at left, label over value.
+  /// Kept opt-in because org pages use the same component with a different
+  /// established summary-card composition.
+  final bool adminLayout;
   final VoidCallback? onTap;
 
   const StatCard({
@@ -68,6 +70,7 @@ class StatCard extends StatelessWidget {
     this.stream,
     this.subtitle,
     this.selected = false,
+    this.adminLayout = false,
     this.onTap,
   }) : assert(
          value != null || stream != null,
@@ -105,65 +108,36 @@ class StatCard extends StatelessWidget {
               ]
             : StatCardTokens.shadow,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: color.withAlpha(26),
-                  borderRadius: BorderRadius.circular(StatCardTokens.radius),
+      child: adminLayout
+          ? Row(
+              children: [
+                _iconBadge(),
+                const SizedBox(width: 14),
+                Expanded(child: _labelAndValue(shownValue)),
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _iconBadge(),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: _valueText(shownValue, textAlign: TextAlign.right),
+                    ),
+                  ],
                 ),
-                child: Icon(icon, color: color, size: 20),
-              ),
-              const SizedBox(width: 8),
-              // Flexible + ellipsis: a peso total or a four-digit count is
-              // wide enough to overflow a quarter-width card otherwise.
-              Flexible(
-                child: Text(
-                  shownValue,
-                  textAlign: TextAlign.right,
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w700,
-                    color: StatCardTokens.value,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: StatCardTokens.label,
+                const SizedBox(height: 12),
+                _labelText(),
+                if (subtitle != null && subtitle!.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  _subtitleText(),
+                ],
+              ],
             ),
-          ),
-          if (subtitle != null && subtitle!.isNotEmpty) ...[
-            const SizedBox(height: 2),
-            Text(
-              subtitle!,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 10,
-                color: StatCardTokens.faint,
-              ),
-            ),
-          ],
-        ],
-      ),
     );
 
     if (onTap == null) return card;
@@ -172,6 +146,63 @@ class StatCard extends StatelessWidget {
       child: GestureDetector(onTap: onTap, child: card),
     );
   }
+
+  Widget _iconBadge() => Container(
+    width: 44,
+    height: 44,
+    decoration: BoxDecoration(
+      color: color.withAlpha(26),
+      borderRadius: BorderRadius.circular(StatCardTokens.radius),
+    ),
+    child: Icon(icon, color: color, size: 20),
+  );
+
+  Widget _labelAndValue(String shownValue) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      _labelText(),
+      const SizedBox(height: 2),
+      _valueText(shownValue),
+      if (subtitle != null && subtitle!.isNotEmpty) ...[
+        const SizedBox(height: 2),
+        _subtitleText(),
+      ],
+    ],
+  );
+
+  Widget _labelText() => Text(
+    label,
+    maxLines: 1,
+    overflow: TextOverflow.ellipsis,
+    style: GoogleFonts.beVietnamPro(
+      fontSize: 11,
+      fontWeight: FontWeight.w600,
+      color: StatCardTokens.label,
+    ),
+  );
+
+  Widget _valueText(String shownValue, {TextAlign? textAlign}) => Text(
+    shownValue,
+    textAlign: textAlign,
+    overflow: TextOverflow.ellipsis,
+    maxLines: 1,
+    style: GoogleFonts.beVietnamPro(
+      fontSize: 28,
+      fontWeight: FontWeight.w700,
+      color: StatCardTokens.value,
+    ),
+  );
+
+  Widget _subtitleText() => Text(
+    subtitle!,
+    maxLines: 1,
+    overflow: TextOverflow.ellipsis,
+    style: GoogleFonts.beVietnamPro(
+      fontSize: 10,
+      color: StatCardTokens.faint,
+    ),
+  );
 }
 
 /// One entry in a [StatStrip].

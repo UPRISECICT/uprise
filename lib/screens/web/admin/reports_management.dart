@@ -2105,6 +2105,7 @@ class _ReportsManagementState extends State<ReportsManagement>
             .length;
     final cards = [
       StatCard(
+        adminLayout: true,
         label: 'Total Events',
         value: '${_events.length}',
         icon: Icons.event_note_rounded,
@@ -2112,6 +2113,7 @@ class _ReportsManagementState extends State<ReportsManagement>
         onTap: () => _tabController.animateTo(0),
       ),
       StatCard(
+        adminLayout: true,
         label: 'Financial Reports',
         value: '${_financialReports.where((r) => !r.archived).length}',
         icon: Icons.payments_rounded,
@@ -2119,6 +2121,7 @@ class _ReportsManagementState extends State<ReportsManagement>
         onTap: () => _tabController.animateTo(2),
       ),
       StatCard(
+        adminLayout: true,
         label: 'Accomplishment Reports',
         value: '${_accomplishmentReports.where((r) => !r.archived).length}',
         icon: Icons.assignment_rounded,
@@ -2126,6 +2129,7 @@ class _ReportsManagementState extends State<ReportsManagement>
         onTap: () => _tabController.animateTo(1),
       ),
       StatCard(
+        adminLayout: true,
         label: 'Overdue (Not Submitted)',
         value: '$overdue',
         icon: Icons.error_outline_rounded,

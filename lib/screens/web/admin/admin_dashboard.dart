@@ -2067,26 +2067,49 @@ class _DashboardHomeState extends State<DashboardHome> {
     final isMobile = width < 720;
     final isTablet = width >= 720 && width < 1200;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(28, 24, 28, 32),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildWelcomeHeader(isMobile),
-          const SizedBox(height: 20),
-          if (isMobile) ...[
-            _buildStatCards(isMobile, isTablet),
+    // Desktop keeps the dashboard context and KPI cards visible while the
+    // data-heavy panel below has its own scroll area. Mobile retains the
+    // single-page scroll because its stacked cards need the vertical room.
+    if (isMobile) {
+      return SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(28, 24, 28, 32),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildWelcomeHeader(true),
             const SizedBox(height: 20),
-            _buildDynamicPanel(isMobile),
+            _buildStatCards(true, isTablet),
             const SizedBox(height: 20),
-            _buildTopOrgsCard(isMobile),
-          ] else ...[
-            _buildStatCards(isMobile, isTablet),
+            _buildDynamicPanel(true),
             const SizedBox(height: 20),
-            _buildDynamicPanel(isMobile),
+            _buildTopOrgsCard(true),
           ],
-        ],
-      ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(28, 24, 28, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildWelcomeHeader(false),
+              const SizedBox(height: 20),
+              _buildStatCards(false, isTablet),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(28, 0, 28, 32),
+            child: _buildDynamicPanel(false),
+          ),
+        ),
+      ],
     );
   }
 
@@ -2364,6 +2387,7 @@ class _DashboardHomeState extends State<DashboardHome> {
         final loading = snap.connectionState == ConnectionState.waiting;
         final isSelected = _selectedCard == cardIndex;
         return StatCard(
+          adminLayout: true,
           label: label,
           value: loading ? '—' : '${snap.data?.docs.length ?? 0}',
           icon: icon,
@@ -2391,6 +2415,7 @@ class _DashboardHomeState extends State<DashboardHome> {
         final loading = snap.connectionState == ConnectionState.waiting;
         final isSelected = _selectedCard == cardIndex;
         return StatCard(
+          adminLayout: true,
           label: label,
           value: loading ? '—' : '${snap.data?.totalOverdue ?? 0}',
           icon: icon,
@@ -3497,27 +3522,43 @@ class _DashboardHomeState extends State<DashboardHome> {
   // Container's clipBehavior to pick up the same rounded corners — matching
   // the header-strip + bordered-card convention used by every other admin
   // page's table instead of a single uniformly-padded block.
-  Widget _tableCard({required Widget header, required Widget table}) =>
-      Container(
-        width: double.infinity,
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(_DS.radiusLg),
-          border: Border.all(color: const Color(0xFFE8ECF0)),
-          boxShadow: _DS.cardShadow,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
-              child: header,
-            ),
-            table,
-          ],
-        ),
-      );
+  Widget _tableCard({required Widget header, required Widget table}) {
+    final isDesktop = MediaQuery.sizeOf(context).width >= 720;
+    final tableParts = table is Column ? table.children : <Widget>[table];
+    final tableHeader = tableParts.isEmpty
+        ? const SizedBox.shrink()
+        : tableParts.first;
+    final tableRows = tableParts.length > 1
+        ? tableParts.sublist(1)
+        : const <Widget>[];
+
+    return Container(
+      width: double.infinity,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(_DS.radiusLg),
+        border: Border.all(color: const Color(0xFFE8ECF0)),
+        boxShadow: _DS.cardShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+            child: header,
+          ),
+          tableHeader,
+          if (isDesktop)
+            Expanded(
+              child: ListView(children: tableRows),
+            )
+          else
+            ...tableRows,
+        ],
+      ),
+    );
+  }
 
   // ── Analytics overview — the default panel when no card is selected ──
   Widget _buildAnalyticsOverview(bool isMobile) {

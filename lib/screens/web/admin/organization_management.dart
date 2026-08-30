@@ -466,6 +466,7 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
 
         final cards = [
           StatCard(
+            adminLayout: true,
             label: 'Total Organizations',
             value: '$total',
             icon: Icons.business_center_rounded,
@@ -476,6 +477,7 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
             }),
           ),
           StatCard(
+            adminLayout: true,
             label: 'Active',
             value: '$active',
             icon: Icons.check_circle_rounded,
@@ -486,6 +488,7 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
             }),
           ),
           StatCard(
+            adminLayout: true,
             label: 'Archived',
             value: '$archived',
             icon: Icons.archive_rounded,
@@ -1305,9 +1308,8 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
           // Archiving an org cascades to its adviser — an adviser's whole
           // reason for being active is the org they advise, so an archived
           // org shouldn't leave an "active" adviser role pointing at it.
-          // Deliberately one-directional: restoring the org does NOT
-          // auto-restore the adviser back, that's a separate action gated
-          // in adviser_roles.dart on the org being active again.
+          // Restoring an organization also restores the adviser roles that
+          // were archived by this organization-level action.
           if (!isArchived) {
             final linkedRoles = await FirebaseFirestore.instance
                 .collection('adviser_roles')
@@ -1317,7 +1319,31 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
             if (linkedRoles.docs.isNotEmpty) {
               final batch = FirebaseFirestore.instance.batch();
               for (final doc in linkedRoles.docs) {
-                batch.update(doc.reference, {'archived': true});
+                batch.update(doc.reference, {
+                  'archived': true,
+                  'archivedByOrganization': true,
+                });
+              }
+              await batch.commit();
+            }
+          } else {
+            final linkedRoles = await FirebaseFirestore.instance
+                .collection('adviser_roles')
+                .where('orgId', isEqualTo: org.id)
+                .where('archived', isEqualTo: true)
+                .get();
+            final rolesToRestore = linkedRoles.docs.where(
+              // Null covers adviser roles archived by older versions of the
+              // organization archive action, before the source flag existed.
+              (doc) => doc.data()['archivedByOrganization'] != false,
+            );
+            if (rolesToRestore.isNotEmpty) {
+              final batch = FirebaseFirestore.instance.batch();
+              for (final doc in rolesToRestore) {
+                batch.update(doc.reference, {
+                  'archived': false,
+                  'archivedByOrganization': false,
+                });
               }
               await batch.commit();
             }

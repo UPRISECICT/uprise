@@ -245,6 +245,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
 
         final cards = [
           StatCard(
+            adminLayout: true,
             label: 'Total Requests',
             value: '$total',
             icon: Icons.people_rounded,
@@ -255,6 +256,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
             }),
           ),
           StatCard(
+            adminLayout: true,
             label: 'Approved',
             value: '$approved',
             icon: Icons.check_circle_rounded,
@@ -265,6 +267,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
             }),
           ),
           StatCard(
+            adminLayout: true,
             label: 'Pending',
             value: '$pending',
             icon: Icons.pending_rounded,
@@ -275,6 +278,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
             }),
           ),
           StatCard(
+            adminLayout: true,
             label: 'Rejected',
             value: '$rejected',
             icon: Icons.cancel_rounded,

@@ -31,7 +31,7 @@
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-import '../models/event_model.dart';
+import 'package:uprise/models/event_model.dart';
 import '../utils/helpers.dart';
 import 'notification_service.dart';
 

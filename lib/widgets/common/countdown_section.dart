@@ -10,7 +10,7 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import '../../models/event_model.dart';
+import 'package:uprise/models/event_model.dart';
 import '../common/loading_widget.dart';
 import 'countdown_widget.dart';
 

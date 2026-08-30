@@ -4034,26 +4034,61 @@ class ReportModel {
   });
 
   factory ReportModel.fromFirestore(DocumentSnapshot doc) {
-    final d = doc.data() as Map<String, dynamic>;
+    // Reports created before this screen was introduced do not all have the
+    // exact same field types.  A direct `as String` / `as Timestamp` cast here
+    // makes one older document crash the StreamBuilder, leaving the entire
+    // Report Submissions tab blank.  Read these values defensively so every
+    // valid report still renders while Firestore finishes resolving a server
+    // timestamp (or while an older record is being migrated).
+    final rawData = doc.data();
+    final d = rawData is Map<String, dynamic>
+        ? rawData
+        : <String, dynamic>{};
     return ReportModel(
       id: doc.id,
-      reportId:
-          d['reportId'] as String? ??
-          'REP-${doc.id.substring(0, 6).toUpperCase()}',
-      title: d['title'] as String? ?? '',
-      type: d['type'] as String? ?? 'financial',
-      description: d['description'] as String? ?? '',
-      fileBase64: d['fileBase64'] as String?,
-      fileName: d['fileName'] as String?,
-      fileSize: d['fileSize'] as String?,
-      status: d['status'] as String? ?? 'pending',
-      submittedAt: d['submittedAt'] as Timestamp? ?? Timestamp.now(),
-      submittedBy: d['submittedBy'] as String? ?? '',
-      orgId: d['orgId'] as String? ?? '',
-      eventId: d['eventId'] as String?,
-      scope: d['scope'] as String? ?? 'event',
-      schoolYear: d['schoolYear'] as String?,
-      semester: d['semester'] as String?,
+      reportId: _stringValue(
+        d['reportId'],
+        fallback: 'REP-${doc.id.substring(0, 6).toUpperCase()}',
+      ),
+      title: _stringValue(d['title']),
+      type: _stringValue(d['type'], fallback: 'financial'),
+      description: _stringValue(d['description']),
+      fileBase64: _nullableStringValue(d['fileBase64']),
+      fileName: _nullableStringValue(d['fileName']),
+      fileSize: _nullableStringValue(d['fileSize']),
+      status: _stringValue(d['status'], fallback: 'pending'),
+      submittedAt: _timestampValue(d['submittedAt']),
+      submittedBy: _stringValue(d['submittedBy']),
+      orgId: _stringValue(d['orgId']),
+      eventId: _nullableStringValue(d['eventId']),
+      scope: _stringValue(d['scope'], fallback: 'event'),
+      schoolYear: _nullableStringValue(d['schoolYear']),
+      semester: _nullableStringValue(d['semester']),
     );
+  }
+
+  static String _stringValue(dynamic value, {String fallback = ''}) {
+    if (value == null) return fallback;
+    final text = value.toString();
+    return text.isEmpty ? fallback : text;
+  }
+
+  static String? _nullableStringValue(dynamic value) {
+    if (value == null) return null;
+    final text = value.toString();
+    return text.isEmpty ? null : text;
+  }
+
+  static Timestamp _timestampValue(dynamic value) {
+    if (value is Timestamp) return value;
+    if (value is DateTime) return Timestamp.fromDate(value);
+    if (value is int) {
+      return Timestamp.fromMillisecondsSinceEpoch(value);
+    }
+    if (value is String) {
+      final date = DateTime.tryParse(value);
+      if (date != null) return Timestamp.fromDate(date);
+    }
+    return Timestamp.now();
   }
 }

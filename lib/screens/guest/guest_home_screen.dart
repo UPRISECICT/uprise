@@ -19,7 +19,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-import '../../models/event_model.dart';
+import 'package:uprise/models/event_model.dart';
 import '../../services/guest_event_registration.dart';
 import '../../widgets/common/bottom_nav_bar.dart';
 import '../../widgets/common/countdown_section.dart';

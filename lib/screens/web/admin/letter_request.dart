@@ -1,4 +1,4 @@
-// lib/screens/web/admin/letter_request.dart - CORRECTED VERSION
+﻿// lib/screens/web/admin/letter_request.dart - CORRECTED VERSION
 
 import 'dart:convert';
 import 'dart:typed_data';
@@ -19,7 +19,7 @@ import '../../../services/firestore_collections.dart';
 import '../../../services/notification_service.dart';
 import '../../../utils/platform_file_utils.dart' as platform_file_utils;
 import '../../../utils/file_validation.dart';
-import '../../../widgets/stat_cards.dart';
+import '../../../widgets/admin_stat_cards_row.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/app_toast.dart';
 
@@ -343,83 +343,86 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
           }
         }
 
-        void setFilter(String f) => setState(() {
-          _statusFilter = f;
-          _currentPage = 1;
-        });
-
-        // Four cards, not seven. The old row forced all seven onto one
-        // line with maxPerRow: 7, which left each card too narrow to read
-        // and gave equal visual weight to "Archived" and "Pending". The
-        // three secondary states moved to the strip underneath.
         final cards = [
-          StatCard(
+          _StatCard(
             label: 'Total Requests',
             value: '$total',
             icon: Icons.description_rounded,
             color: AdminColors.primaryDark,
-            selected: _statusFilter == 'All',
-            onTap: () => setFilter('All'),
+            onTap: () => setState(() {
+              _statusFilter = 'All';
+              _currentPage = 1;
+            }),
           ),
-          StatCard(
-            label: 'Pending',
-            value: '$pending',
-            icon: Icons.pending_rounded,
-            color: AdminColors.warning,
-            selected: _statusFilter == 'Pending',
-            onTap: () => setFilter('Pending'),
-          ),
-          StatCard(
+          _StatCard(
             label: 'Approved',
             value: '$approved',
             icon: Icons.check_circle_rounded,
             color: AdminColors.success,
-            selected: _statusFilter == 'Approved',
-            onTap: () => setFilter('Approved'),
+            onTap: () => setState(() {
+              _statusFilter = 'Approved';
+              _currentPage = 1;
+            }),
           ),
-          StatCard(
+          _StatCard(
+            label: 'Pending',
+            value: '$pending',
+            icon: Icons.pending_rounded,
+            color: AdminColors.warning,
+            onTap: () => setState(() {
+              _statusFilter = 'Pending';
+              _currentPage = 1;
+            }),
+          ),
+          _StatCard(
             label: 'Rejected',
             value: '$rejected',
             icon: Icons.cancel_rounded,
             color: AdminColors.error,
-            selected: _statusFilter == 'Rejected',
-            onTap: () => setFilter('Rejected'),
+            onTap: () => setState(() {
+              _statusFilter = 'Rejected';
+              _currentPage = 1;
+            }),
+          ),
+          _StatCard(
+            label: 'Needs Revision',
+            value: '$revision',
+            icon: Icons.rate_review_rounded,
+            color: AdminColors.purple,
+            onTap: () => setState(() {
+              _statusFilter = 'Needs Revision';
+              _currentPage = 1;
+            }),
+          ),
+          _StatCard(
+            label: 'Resubmitted',
+            value: '$resubmitted',
+            icon: Icons.autorenew_rounded,
+            color: AdminColors.info,
+            onTap: () => setState(() {
+              _statusFilter = 'Resubmitted';
+              _currentPage = 1;
+            }),
+          ),
+          _StatCard(
+            label: 'Archived',
+            value: '$archived',
+            icon: Icons.archive_rounded,
+            color: AdminColors.darkGray,
+            onTap: () => setState(() {
+              _statusFilter = 'Archived';
+              _currentPage = 1;
+            }),
           ),
         ];
 
         return Padding(
           padding: const EdgeInsets.fromLTRB(28, 24, 28, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              StatCardsRow(cards: cards, isMobile: isMobile, gap: 12),
-              const SizedBox(height: 14),
-              StatStrip(
-                items: [
-                  StatStripItem.count(
-                    label: 'Needs revision',
-                    count: revision,
-                    color: AdminColors.purple,
-                    selected: _statusFilter == 'Needs Revision',
-                    onTap: () => setFilter('Needs Revision'),
-                  ),
-                  StatStripItem.count(
-                    label: 'Resubmitted',
-                    count: resubmitted,
-                    color: AdminColors.info,
-                    selected: _statusFilter == 'Resubmitted',
-                    onTap: () => setFilter('Resubmitted'),
-                  ),
-                  StatStripItem.count(
-                    label: 'Archived',
-                    count: archived,
-                    color: AdminColors.darkGray,
-                    selected: _statusFilter == 'Archived',
-                    onTap: () => setFilter('Archived'),
-                  ),
-                ],
-              ),
-            ],
+          child: StatCardsRow(
+            cards: cards,
+            isMobile: isMobile,
+            maxPerRow: 7,
+            gap: 10,
           ),
         );
       },
@@ -647,8 +650,6 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
           const SizedBox(width: 16),
           Expanded(flex: 1, child: _headerCell('DATE SUBMITTED')),
           const SizedBox(width: 16),
-          Expanded(flex: 1, child: _headerCell('NEEDED BY')),
-          const SizedBox(width: 16),
           Expanded(flex: 1, child: _headerCell('E-SIGNED')),
           const SizedBox(width: 16),
           Expanded(
@@ -668,57 +669,6 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  /// Needed-by date for one row. Overdue only counts while the request is
-  /// still open — a letter that was signed last week is not "late" just
-  /// because its date has since passed.
-  Widget _neededByCell(Map<String, dynamic> data) {
-    final ts = data['neededBy'] as Timestamp?;
-    if (ts == null) {
-      return Text(
-        '—',
-        style: GoogleFonts.beVietnamPro(
-          fontSize: 12,
-          color: const Color(0xFFD1D5DB),
-        ),
-      );
-    }
-    final due = ts.toDate();
-    final status = (data['status'] ?? 'pending').toString().toLowerCase();
-    final open = status != 'approved' && status != 'rejected';
-    final today = DateTime.now();
-    final overdue =
-        open && due.isBefore(DateTime(today.year, today.month, today.day));
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (overdue) ...[
-          const Icon(
-            Icons.error_outline_rounded,
-            size: 12,
-            color: Color(0xFFDC2626),
-          ),
-          const SizedBox(width: 4),
-        ],
-        Flexible(
-          child: Text(
-            DateFormat('MMM d, yyyy').format(due),
-            maxLines: 1,
-            softWrap: false,
-            overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 12,
-              fontWeight: overdue ? FontWeight.w600 : FontWeight.w400,
-              color: overdue
-                  ? const Color(0xFFDC2626)
-                  : const Color(0xFF64748B),
-            ),
-          ),
-        ),
-      ],
     );
   }
 
@@ -866,11 +816,6 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                const SizedBox(width: 16),
-                // Needed-by, with anything already past due called out in
-                // red. Every request used to look equally urgent, so there
-                // was nothing to triage the queue by.
-                Expanded(flex: 1, child: _neededByCell(data)),
                 const SizedBox(width: 16),
                 Expanded(
                   flex: 1,
@@ -2359,9 +2304,6 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
         pdfBytes = await AdminExportPdf.generateSignedLetterPdf(
           letterId: letterId,
           subject: subject,
-          letterType: (data['letterType'] ?? '').toString(),
-          addressedTo: (data['addressedTo'] ?? '').toString(),
-          purpose: (data['purpose'] ?? '').toString(),
           orgName: orgName,
           requestorName: requestorName,
           signatureBytes: signatureBytes,
@@ -3437,6 +3379,93 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
       default:
         return 'application/octet-stream';
     }
+  }
+}
+
+// ============ STAT CARD ============
+class _StatCard extends StatelessWidget {
+  final String label, value;
+  final IconData icon;
+  final Color color;
+  final VoidCallback? onTap;
+  const _StatCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Sized to hold 7 cards on one line (single row, not the 4+3 wrap the
+    // default card size forced) — smaller icon box, tighter padding, and
+    // maxLines/ellipsis on both label and value so a narrower card clips
+    // gracefully instead of overflowing.
+    final card = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE8ECF0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(15),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: color.withAlpha(26),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: color, size: 17),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 10,
+                    color: const Color(0xFF64748B),
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF1A202C),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+    final wrapped = onTap == null
+        ? card
+        : MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(onTap: onTap, child: card),
+          );
+    return wrapped;
   }
 }
 

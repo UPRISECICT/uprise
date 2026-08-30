@@ -1,7 +1,6 @@
 // ignore_for_file: use_build_context_synchronously, deprecated_member_use
 
 import 'dart:async';
-import '../../../widgets/stat_cards.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -419,30 +418,30 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
       padding: const EdgeInsets.fromLTRB(28, 24, 28, 8),
       child: Row(
         children: [
-          StatCard(
+          _StatCard(
             label: 'Total Reports',
             value: '$total',
             icon: Icons.article_outlined,
             color: _DS.primary,
-            selected: _selectedStatCard == 0,
+            isSelected: _selectedStatCard == 0,
             onTap: () => selectCard(0, null),
           ),
           const SizedBox(width: 14),
-          StatCard(
+          _StatCard(
             label: 'Financial',
             value: '$financial',
             icon: Icons.account_balance_outlined,
             color: const Color(0xFF059669),
-            selected: _selectedStatCard == 1,
+            isSelected: _selectedStatCard == 1,
             onTap: () => selectCard(1, 'Financial'),
           ),
           const SizedBox(width: 14),
-          StatCard(
+          _StatCard(
             label: 'Accomplishment',
             value: '$accompl',
             icon: Icons.assignment_turned_in_outlined,
             color: const Color(0xFF2563EB),
-            selected: _selectedStatCard == 2,
+            isSelected: _selectedStatCard == 2,
             onTap: () => selectCard(2, 'Accomplishment'),
           ),
         ],
@@ -3839,6 +3838,96 @@ class _ExportButton extends StatelessWidget {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Reusable widgets
+// ─────────────────────────────────────────────────────────────────────────────
+class _StatCard extends StatelessWidget {
+  final String label, value;
+  final IconData icon;
+  final Color color;
+  final bool isSelected;
+  final VoidCallback? onTap;
+  const _StatCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+    this.isSelected = false,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+    child: MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected ? color : _DS.border,
+              width: isSelected ? 2 : 1,
+            ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: color.withAlpha(46),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : _DS.cardShadow,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: color.withAlpha(26),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(icon, color: color, size: 20),
+                  ),
+                  Flexible(
+                    child: Text(
+                      value,
+                      textAlign: TextAlign.right,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                        color: _DS.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                label,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 11,
+                  color: _DS.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 class _FilterDropdown extends StatelessWidget {
   final String? value;
   final List<String> items;
@@ -4034,61 +4123,26 @@ class ReportModel {
   });
 
   factory ReportModel.fromFirestore(DocumentSnapshot doc) {
-    // Reports created before this screen was introduced do not all have the
-    // exact same field types.  A direct `as String` / `as Timestamp` cast here
-    // makes one older document crash the StreamBuilder, leaving the entire
-    // Report Submissions tab blank.  Read these values defensively so every
-    // valid report still renders while Firestore finishes resolving a server
-    // timestamp (or while an older record is being migrated).
-    final rawData = doc.data();
-    final d = rawData is Map<String, dynamic>
-        ? rawData
-        : <String, dynamic>{};
+    final d = doc.data() as Map<String, dynamic>;
     return ReportModel(
       id: doc.id,
-      reportId: _stringValue(
-        d['reportId'],
-        fallback: 'REP-${doc.id.substring(0, 6).toUpperCase()}',
-      ),
-      title: _stringValue(d['title']),
-      type: _stringValue(d['type'], fallback: 'financial'),
-      description: _stringValue(d['description']),
-      fileBase64: _nullableStringValue(d['fileBase64']),
-      fileName: _nullableStringValue(d['fileName']),
-      fileSize: _nullableStringValue(d['fileSize']),
-      status: _stringValue(d['status'], fallback: 'pending'),
-      submittedAt: _timestampValue(d['submittedAt']),
-      submittedBy: _stringValue(d['submittedBy']),
-      orgId: _stringValue(d['orgId']),
-      eventId: _nullableStringValue(d['eventId']),
-      scope: _stringValue(d['scope'], fallback: 'event'),
-      schoolYear: _nullableStringValue(d['schoolYear']),
-      semester: _nullableStringValue(d['semester']),
+      reportId:
+          d['reportId'] as String? ??
+          'REP-${doc.id.substring(0, 6).toUpperCase()}',
+      title: d['title'] as String? ?? '',
+      type: d['type'] as String? ?? 'financial',
+      description: d['description'] as String? ?? '',
+      fileBase64: d['fileBase64'] as String?,
+      fileName: d['fileName'] as String?,
+      fileSize: d['fileSize'] as String?,
+      status: d['status'] as String? ?? 'pending',
+      submittedAt: d['submittedAt'] as Timestamp? ?? Timestamp.now(),
+      submittedBy: d['submittedBy'] as String? ?? '',
+      orgId: d['orgId'] as String? ?? '',
+      eventId: d['eventId'] as String?,
+      scope: d['scope'] as String? ?? 'event',
+      schoolYear: d['schoolYear'] as String?,
+      semester: d['semester'] as String?,
     );
-  }
-
-  static String _stringValue(dynamic value, {String fallback = ''}) {
-    if (value == null) return fallback;
-    final text = value.toString();
-    return text.isEmpty ? fallback : text;
-  }
-
-  static String? _nullableStringValue(dynamic value) {
-    if (value == null) return null;
-    final text = value.toString();
-    return text.isEmpty ? null : text;
-  }
-
-  static Timestamp _timestampValue(dynamic value) {
-    if (value is Timestamp) return value;
-    if (value is DateTime) return Timestamp.fromDate(value);
-    if (value is int) {
-      return Timestamp.fromMillisecondsSinceEpoch(value);
-    }
-    if (value is String) {
-      final date = DateTime.tryParse(value);
-      if (date != null) return Timestamp.fromDate(date);
-    }
-    return Timestamp.now();
   }
 }

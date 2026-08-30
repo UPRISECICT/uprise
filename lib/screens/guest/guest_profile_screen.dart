@@ -15,7 +15,6 @@
 // Dependencies: cloud_firestore, google_fonts, shared_preferences
 //
 
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -24,6 +23,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/activity_logger.dart' as activity_log;
 import '../../widgets/common/app_intro.dart';
+import '../../widgets/student/app_image.dart';
 import '../../widgets/common/loading_widget.dart';
 import '../../widgets/common/terms_and_conditions.dart';
 import 'guest_auth_service.dart';
@@ -790,20 +790,10 @@ class _ApprovedProfileScreen extends StatelessWidget {
     return _fullName.isNotEmpty ? _fullName[0].toUpperCase() : 'G';
   }
 
-  ImageProvider? get _avatarImage {
-    if (_photoUrl.isEmpty) return null;
-    if (_photoUrl.startsWith('data:image')) {
-      try {
-        final b64 = _photoUrl.contains(',')
-            ? _photoUrl.split(',').last
-            : _photoUrl;
-        return MemoryImage(base64Decode(b64));
-      } catch (_) {
-        return null;
-      }
-    }
-    return NetworkImage(_photoUrl);
-  }
+  // AppImage.provider over a local decoder: it also handles raw base64 with no
+  // data: prefix and the malformed `dataimage...` variant some stored records
+  // carry, both of which fell through to NetworkImage here and failed.
+  ImageProvider? get _avatarImage => AppImage.provider(_photoUrl);
 
   @override
   Widget build(BuildContext context) {
@@ -1101,7 +1091,6 @@ class _ApprovedProfileScreen extends StatelessWidget {
     );
   }
 }
-
 
 // ─────────────────────────────────────────────────────────────
 //  REGISTRATION SCREEN (3-step form — unchanged logic)
@@ -1857,10 +1846,7 @@ class _ReviewStep extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: _kOrangeLight,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: _kOrange.withAlpha(77),
-                    width: 1.5,
-                  ),
+                  border: Border.all(color: _kOrange.withAlpha(77), width: 1.5),
                 ),
                 child: Center(
                   child: Text(

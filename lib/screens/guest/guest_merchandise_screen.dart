@@ -5,12 +5,12 @@
 // browsing only), styled with the guest scope's own color tokens instead
 // of importing the student AppColors.
 
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../../widgets/product_photo_gallery.dart';
 import '../../widgets/student/app_colors.dart';
+import '../../widgets/student/app_image.dart';
 import '../../widgets/student/student_app_bar.dart';
 
 // ─────────────────────────────────────────────────────────────
@@ -54,6 +54,12 @@ class _Product {
   final double price;
   final int stock;
   final String imageBase64;
+
+  /// The product photo as a URL, for products stored that way instead of
+  /// inline. A real field on the document — merchandise_model.dart maps it too
+  /// — and org_merchandise.dart writes `imageBase64: ''` for such a product, so
+  /// this is the only place its photo lives.
+  final String imageUrl;
   final String status;
   final List<_ProductVariant> variants;
   final List<String> rotationPhotos;
@@ -67,14 +73,17 @@ class _Product {
     required this.price,
     required this.stock,
     required this.imageBase64,
+    this.imageUrl = '',
     this.status = 'available',
     this.variants = const [],
     this.rotationPhotos = const [],
   });
 
-  List<String> get displayPhotos => rotationPhotos.isNotEmpty
-      ? rotationPhotos
-      : (imageBase64.isNotEmpty ? [imageBase64] : []);
+  List<String> get displayPhotos {
+    if (rotationPhotos.isNotEmpty) return rotationPhotos;
+    final single = firstNonEmptyImageSource([imageBase64, imageUrl]);
+    return single.isNotEmpty ? [single] : [];
+  }
 
   factory _Product.fromFirestore(DocumentSnapshot doc) {
     final d = doc.data() as Map<String, dynamic>;
@@ -97,6 +106,7 @@ class _Product {
       price: (d['price'] ?? 0).toDouble(),
       stock: (d['stock'] ?? 0) as int,
       imageBase64: imageDataUrl,
+      imageUrl: d['imageUrl'] as String? ?? '',
       status: d['status'] as String? ?? 'available',
       variants: (d['variants'] is List)
           ? (d['variants'] as List)
@@ -693,23 +703,22 @@ class _ProductCard extends StatelessWidget {
   }
 
   Widget _buildProductImage() {
-    final imageData = product.imageBase64;
+    // Both fields, first non-empty wins: org_merchandise.dart writes an
+    // explicit `imageBase64: ''` for a product photographed by URL, so reading
+    // imageBase64 alone showed a letter placeholder for every such product.
+    // AppImage then handles the URL, which the old base64-only decode couldn't.
+    final imageData = firstNonEmptyImageSource([
+      product.imageBase64,
+      product.imageUrl,
+    ]);
     if (imageData.isEmpty) return _imgPlaceholder(product.name);
 
-    try {
-      final base64String = imageData.startsWith('data:image')
-          ? imageData.split(',').last
-          : imageData;
-      final bytes = base64Decode(base64String);
-      return Image.memory(
-        bytes,
-        fit: BoxFit.cover,
-        cacheWidth: 400,
-        errorBuilder: (_, __, ___) => _imgPlaceholder(product.name),
-      );
-    } catch (e) {
-      return _imgPlaceholder(product.name);
-    }
+    return AppImage(
+      source: imageData,
+      fit: BoxFit.cover,
+      showLoadingIndicator: false,
+      placeholder: _imgPlaceholder(product.name),
+    );
   }
 
   Widget _imgPlaceholder(String name) => Container(

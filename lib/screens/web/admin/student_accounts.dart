@@ -19,7 +19,7 @@ import 'export_pdf.dart';
 import 'export_excel.dart';
 import '../../../theme/admin_theme.dart';
 import '../../../services/activity_logger.dart' as activity_log;
-import '../../../widgets/admin_stat_cards_row.dart';
+import '../../../widgets/stat_cards.dart';
 import '../../../utils/file_validation.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -225,21 +225,21 @@ class _StudentAccountsState extends State<StudentAccounts> {
         final horizontalPadding = isMobile ? 16.0 : (isTablet ? 20.0 : 28.0);
         final cardGap = isMobile ? 8.0 : 14.0;
         final statCards = [
-          _StatCard(
+          StatCard(
             label: 'Total Students',
             value: '$total',
             icon: Icons.school_rounded,
             color: AdminColors.primaryDark,
             onTap: () => setState(() => _archiveFilter = 'All Students'),
           ),
-          _StatCard(
+          StatCard(
             label: 'Active',
             value: '${total - archived}',
             icon: Icons.person_rounded,
             color: const Color(0xFF059669),
             onTap: () => setState(() => _archiveFilter = 'Active Only'),
           ),
-          _StatCard(
+          StatCard(
             label: 'Archived',
             value: '$archived',
             icon: Icons.archive_rounded,
@@ -2944,76 +2944,6 @@ class _StudentAccountsState extends State<StudentAccounts> {
 // ─────────────────────────────────────────────────────────────────────────────
 // Reusable widgets
 // ─────────────────────────────────────────────────────────────────────────────
-
-class _StatCard extends StatelessWidget {
-  final String label, value;
-  final IconData icon;
-  final Color color;
-  final VoidCallback? onTap;
-  const _StatCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final card = Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE8ECF0)),
-        boxShadow: _DS.cardShadow,
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.10),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: color, size: 22),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 11,
-                    color: const Color(0xFF64748B),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF1A202C),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-    if (onTap == null) return card;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(onTap: onTap, child: card),
-    );
-  }
-}
 
 class _FilterDropdown extends StatelessWidget {
   final String value;

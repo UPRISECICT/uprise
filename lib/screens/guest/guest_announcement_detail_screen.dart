@@ -11,14 +11,13 @@
 // Read-only by construction: there is nothing here to act on, which is exactly
 // the guest's relationship to an announcement.
 
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../../widgets/student/app_colors.dart';
+import '../../widgets/student/app_image.dart';
 import '../../widgets/student/student_app_bar.dart';
 
 class GuestAnnouncementDetailScreen extends StatelessWidget {
@@ -32,10 +31,14 @@ class GuestAnnouncementDetailScreen extends StatelessWidget {
     final content = (data['content'] ?? '').toString();
     final author = (data['authorName'] ?? '').toString();
     final orgName = (data['orgName'] ?? '').toString();
-    final imageBase64 = (data['imageBase64'] ?? '').toString();
+    // Both fields, first non-empty wins — `??` would let an empty
+    // imageBase64 beat a populated imageUrl.
+    final imageSource = firstNonEmptyImageSource([
+      data['imageBase64']?.toString(),
+      data['imageUrl']?.toString(),
+    ]);
     final ts = data['timestamp'];
     final date = ts is Timestamp ? ts.toDate() : null;
-    final isPinned = data['pinned'] == true;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -43,34 +46,12 @@ class GuestAnnouncementDetailScreen extends StatelessWidget {
       body: ListView(
         padding: EdgeInsets.zero,
         children: [
-          if (imageBase64.isNotEmpty)
-            _Banner(imageBase64: imageBase64),
+          if (imageSource.isNotEmpty) _Banner(imageSource: imageSource),
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 18, 18, 40),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (isPinned)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.primarySoft,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      'PINNED',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.8,
-                        color: AppColors.primaryDark,
-                      ),
-                    ),
-                  ),
                 Text(
                   title,
                   style: GoogleFonts.beVietnamPro(
@@ -112,30 +93,23 @@ class GuestAnnouncementDetailScreen extends StatelessWidget {
   }
 }
 
-/// Base64 banner with a graceful fallback — announcement images are stored
-/// inline rather than as URLs, and a malformed payload shouldn't blank the
-/// whole screen.
+/// Announcement banner with a graceful fallback. Announcement images are
+/// usually stored inline as base64, but not always — AppImage takes base64
+/// (with or without a data: prefix) and http(s) URLs alike, and returns the
+/// placeholder instead of throwing on a malformed payload.
 class _Banner extends StatelessWidget {
-  final String imageBase64;
-  const _Banner({required this.imageBase64});
+  final String imageSource;
+  const _Banner({required this.imageSource});
 
   @override
   Widget build(BuildContext context) {
-    try {
-      return Image.memory(
-        base64Decode(
-          imageBase64.contains(',')
-              ? imageBase64.split(',').last
-              : imageBase64,
-        ),
-        width: double.infinity,
-        height: 230,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => _placeholder(),
-      );
-    } catch (_) {
-      return _placeholder();
-    }
+    return AppImage(
+      source: imageSource,
+      width: double.infinity,
+      height: 230,
+      fit: BoxFit.cover,
+      placeholder: _placeholder(),
+    );
   }
 
   Widget _placeholder() => Container(

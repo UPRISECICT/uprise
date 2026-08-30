@@ -8,7 +8,7 @@ import 'export_pdf.dart';
 import 'export_excel.dart';
 import '../../../theme/admin_theme.dart';
 import '../../../widgets/anchored_dropdown.dart';
-import '../../../widgets/admin_stat_cards_row.dart';
+import '../../../widgets/stat_cards.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens (mirrors student_accounts.dart)
@@ -266,8 +266,11 @@ class _ActivityLogsState extends State<ActivityLogs> {
     'Events Schedule',
     'Org Profile',
     'Org Settings',
-    'Adviser Approvals',
-    'Adviser Signing',
+    // 'Adviser Approvals' and 'Adviser Signing' used to sit here, but
+    // nothing in the codebase ever wrote either string — they described a
+    // workflow that was never built. This one is real: the org records an
+    // adviser endorsement when submitting an event proposal.
+    'Adviser Endorsement',
   ];
   static const List<String> _dateRanges = [
     'Today',
@@ -438,7 +441,7 @@ class _ActivityLogsState extends State<ActivityLogs> {
         }
 
         final cards = [
-          _StatCard(
+          StatCard(
             label: 'Logs (Last 24 h)',
             value: '$total24h',
             icon: Icons.receipt_long_rounded,
@@ -449,7 +452,7 @@ class _ActivityLogsState extends State<ActivityLogs> {
               _currentPage = 1;
             }),
           ),
-          _StatCard(
+          StatCard(
             label: 'Critical Actions',
             value: '$critical',
             icon: Icons.warning_amber_rounded,
@@ -460,7 +463,7 @@ class _ActivityLogsState extends State<ActivityLogs> {
               _currentPage = 1;
             }),
           ),
-          _StatCard(
+          StatCard(
             label: 'Warnings',
             value: '$warnings',
             icon: Icons.info_outline_rounded,
@@ -471,7 +474,7 @@ class _ActivityLogsState extends State<ActivityLogs> {
               _currentPage = 1;
             }),
           ),
-          _StatCard(
+          StatCard(
             label: 'Failed Attempts',
             value: '$failed',
             icon: Icons.block_rounded,
@@ -1252,88 +1255,6 @@ class _ActivityLogsState extends State<ActivityLogs> {
     final a = value.toLowerCase().replaceAll('_', ' ').trim();
     final b = selected.toLowerCase().trim();
     return a == b || a.contains(b) || b.contains(a);
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Stat card
-// ─────────────────────────────────────────────────────────────────────────────
-class _StatCard extends StatelessWidget {
-  final String label, value, subtitle;
-  final IconData icon;
-  final Color color;
-  final VoidCallback? onTap;
-  const _StatCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-    required this.subtitle,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final card = Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE8ECF0)),
-        boxShadow: _DS.cardShadow,
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: color.withAlpha(26),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: color, size: 22),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 11,
-                    color: const Color(0xFF64748B),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF1A202C),
-                  ),
-                ),
-                const SizedBox(height: 1),
-                Text(
-                  subtitle,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 10,
-                    color: const Color(0xFF9AA5B4),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-    if (onTap == null) return card;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(onTap: onTap, child: card),
-    );
   }
 }
 

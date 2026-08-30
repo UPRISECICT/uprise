@@ -12,7 +12,6 @@
 // Firestore: external_requests/{docId}  (streamed live)
 //
 
-import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -22,6 +21,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import 'guest_auth_service.dart';
 import '../../widgets/student/app_colors.dart';
+import '../../widgets/student/app_image.dart';
 import '../../widgets/student/student_app_bar.dart';
 
 // ─────────────────────────────────────────────────────────────
@@ -34,13 +34,6 @@ const _kBg = AppColors.background;
 const _kSuccess = AppColors.success;
 const _kSuccessBg = AppColors.successBg;
 
-ImageProvider _avatarImageProvider(String url) {
-  if (url.startsWith('data:image')) {
-    final base64Part = url.contains(',') ? url.split(',').last : url;
-    return MemoryImage(base64Decode(base64Part));
-  }
-  return NetworkImage(url);
-}
 
 // ─────────────────────────────────────────────────────────────
 //  SCREEN
@@ -445,25 +438,25 @@ class _DigitalIdCard extends StatelessWidget {
                         width: 1.5),
                   ),
                   clipBehavior: Clip.antiAlias,
-                  child: photoUrl.isNotEmpty
-                      ? Image(
-                          image: _avatarImageProvider(photoUrl),
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Center(
-                            child: Text(initials,
-                                style: GoogleFonts.beVietnamPro(
-                                    fontSize: 26,
-                                    fontWeight: FontWeight.w900,
-                                    color: _kOrange)),
-                          ),
-                        )
-                      : Center(
-                          child: Text(initials,
-                              style: GoogleFonts.beVietnamPro(
-                                  fontSize: 26,
-                                  fontWeight: FontWeight.w900,
-                                  color: _kOrange)),
-                        ),
+                  // AppImage rather than Image + a local provider: it takes the
+                  // empty, unreadable and no-photo cases through the same
+                  // `placeholder`, so the initials fallback is written once
+                  // instead of duplicated across an errorBuilder and an else.
+                  // It also reads raw base64 and the malformed `dataimage...`
+                  // variant, both of which used to fall through to
+                  // NetworkImage and fail.
+                  child: AppImage(
+                    source: photoUrl,
+                    fit: BoxFit.cover,
+                    showLoadingIndicator: false,
+                    placeholder: Center(
+                      child: Text(initials,
+                          style: GoogleFonts.beVietnamPro(
+                              fontSize: 26,
+                              fontWeight: FontWeight.w900,
+                              color: _kOrange)),
+                    ),
+                  ),
                 ),
               ],
             ),

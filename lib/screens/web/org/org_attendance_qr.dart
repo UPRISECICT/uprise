@@ -1,6 +1,7 @@
 // ignore_for_file: unused_element_parameter
 
 import 'dart:async';
+import '../../../widgets/stat_cards.dart';
 import 'dart:typed_data';
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show ValueListenable;
@@ -262,6 +263,9 @@ class EventModel {
   final DateTime date;
   final bool markLate;
   final int lateAfterMinutes;
+  // Written on the proposal but never read here until the event card
+  // started showing it alongside the registered count.
+  final int? capacity;
   const EventModel({
     required this.id,
     required this.title,
@@ -271,6 +275,7 @@ class EventModel {
     required this.date,
     this.markLate = false,
     this.lateAfterMinutes = 15,
+    this.capacity,
   });
   factory EventModel.fromDoc(DocumentSnapshot d) {
     final m = d.data() as Map<String, dynamic>;
@@ -283,6 +288,7 @@ class EventModel {
       date: (m['date'] as Timestamp).toDate(),
       markLate: m['markLate'] == true,
       lateAfterMinutes: (m['lateAfterMinutes'] as num?)?.toInt() ?? 15,
+      capacity: (m['capacity'] as num?)?.toInt(),
     );
   }
 }
@@ -405,32 +411,24 @@ class _EventManagementScreenState extends State<EventManagementScreen> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Event switcher (only shown when there's more than one live/upcoming event) ──
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              horizontalPadding,
-              24,
-              horizontalPadding,
-              0,
-            ),
+          // The switcher used to be its own bordered bar above the event
+          // banner, and it disappeared entirely when an org had exactly one
+          // event — so the page's layout shifted depending on how many
+          // events you had. It is now part of the event card itself; this
+          // StreamBuilder only resolves the list and the default selection.
+          Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: _eventsStream,
               builder: (ctx, snap) {
-                // Every event stays selectable here — including ended ones —
-                // so Registered Participants, form answers, and "Send
-                // Evaluation" all remain reachable after an event is over
-                // instead of vanishing from the switcher the moment it ends.
-                // QR/manual attendance marking is unaffected: that's gated
-                // separately by _isActive()/_eventState(), which already
-                // correctly turns itself off once an event is no longer
-                // `active`, regardless of what's selectable here.
+                // Every event stays selectable — including ended ones — so
+                // Registered Participants, form answers and "Send Evaluation"
+                // remain reachable after an event is over. QR/manual marking
+                // is gated separately by _isActive()/_eventState().
                 final events = (snap.data?.docs ?? [])
                     .map((d) => EventModel.fromDoc(d))
                     .toList();
-                // Default selection still prefers an active/upcoming event
-                // exactly as before; only falls back to the most recent
-                // ended one when nothing active/upcoming exists (previously
-                // this showed an empty state instead of a usable screen).
+                // Default selection prefers an active/upcoming event, falling
+                // back to the most recent ended one.
                 final nonEnded = events
                     .where((e) => _eventState(e) != _EState.ended)
                     .toList();
@@ -444,125 +442,61 @@ class _EventManagementScreenState extends State<EventManagementScreen> {
                 }
 
                 if (events.isEmpty) {
-                  return Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(_DS.radiusMd),
-                      border: Border.all(color: const Color(0xFFEBEEF3)),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.info_outline_rounded,
-                          size: 15,
-                          color: const Color(0xFFB0BAC8),
+                  return Align(
+                    alignment: Alignment.topCenter,
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        horizontalPadding,
+                        24,
+                        horizontalPadding,
+                        0,
+                      ),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
                         ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'No events available for this organization yet',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13,
-                            color: const Color(0xFFB0BAC8),
-                          ),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(_DS.radiusMd),
+                          border: Border.all(color: const Color(0xFFEBEEF3)),
                         ),
-                      ],
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.info_outline_rounded,
+                              size: 15,
+                              color: const Color(0xFFB0BAC8),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'No events available for this organization yet',
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 13,
+                                color: const Color(0xFFB0BAC8),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   );
                 }
 
-                // A single event is already fully described by the banner below —
-                // no need for a second card just to name it again.
-                if (events.length == 1) return const SizedBox.shrink();
-
-                return Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(_DS.radiusMd),
-                    border: Border.all(color: const Color(0xFFEBEEF3)),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.event_rounded,
-                        size: 14,
-                        color: UpriseColors.primaryDark,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Switch event',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFF64748B),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: _event?.id,
-                            isExpanded: true,
-                            // Bounded + rounded so an org with a long event
-                            // history gets a scrollable list here instead of
-                            // one giant unstyled menu dumping every event at
-                            // once.
-                            menuMaxHeight: 320,
-                            borderRadius: BorderRadius.circular(_DS.radiusMd),
-                            icon: const Icon(
-                              Icons.keyboard_arrow_down_rounded,
-                              size: 18,
-                              color: Color(0xFFB0BAC8),
-                            ),
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w600,
-                              color: const Color(0xFF1A202C),
-                            ),
-                            items: events
-                                .map(
-                                  (e) => DropdownMenuItem(
-                                    value: e.id,
-                                    child: Text(
-                                      _eventState(e) == _EState.ended
-                                          ? '${e.title} (Ended)'
-                                          : e.title,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: (v) {
-                              if (v != null)
-                                _selectEvent(
-                                  events.firstWhere((e) => e.id == v),
-                                );
-                            },
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                return AttendanceTab(
+                  key: const PageStorageKey('att'),
+                  orgId: widget.orgId,
+                  event: _event,
+                  eventDocId: _eventDocId,
+                  allEvents: events,
+                  onSelectEvent: (id) {
+                    final match = events.where((e) => e.id == id).toList();
+                    if (match.isNotEmpty) _selectEvent(match.first);
+                  },
+                  visibleTabIndex: widget.visibleTabIndex,
+                  myTabIndex: widget.myTabIndex,
                 );
               },
-            ),
-          ),
-          SizedBox(height: isMobile ? 12 : 14),
-          Expanded(
-            child: AttendanceTab(
-              key: const PageStorageKey('att'),
-              orgId: widget.orgId,
-              event: _event,
-              eventDocId: _eventDocId,
-              visibleTabIndex: widget.visibleTabIndex,
-              myTabIndex: widget.myTabIndex,
             ),
           ),
         ],
@@ -651,6 +585,11 @@ class AttendanceTab extends StatefulWidget {
   final String orgId;
   final EventModel? event;
   final String? eventDocId;
+  // The full selectable list plus a way to change the selection, so the
+  // event card can carry its own switcher instead of the parent stacking a
+  // separate bar above it.
+  final List<EventModel> allEvents;
+  final ValueChanged<String>? onSelectEvent;
   // Lets the parent sidebar (org_dashboard.dart's IndexedStack, which
   // deliberately keeps every section's state alive instead of tearing it
   // down on tab switch) tell this screen when it's been navigated away from,
@@ -665,6 +604,8 @@ class AttendanceTab extends StatefulWidget {
     required this.orgId,
     this.event,
     this.eventDocId,
+    this.allEvents = const [],
+    this.onSelectEvent,
     this.visibleTabIndex,
     this.myTabIndex = -1,
   });
@@ -697,7 +638,6 @@ class _AttendanceTabState extends State<AttendanceTab>
   bool _attendanceActive = false;
 
   // Late-marking settings state
-  bool _editingLateMark = false;
   late bool _tempMarkLate;
   late int _tempLateAfterMinutes;
   bool _savingLateMark = false;
@@ -1543,6 +1483,9 @@ class _AttendanceTabState extends State<AttendanceTab>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // One registrations subscription feeding both the stat
+                  // row and the event card, rather than a second identical
+                  // listener for each consumer.
                   StreamBuilder<QuerySnapshot>(
                     stream: _regStream,
                     builder: (ctx, regSnap) {
@@ -1555,16 +1498,24 @@ class _AttendanceTabState extends State<AttendanceTab>
                                 ? regCount
                                 : attDocs.length)
                           : attDocs.length;
-                      return _buildStatsRow(total, present, late);
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildStatsRow(total, present, late),
+                          const SizedBox(height: 20),
+                          if (widget.event != null) ...[
+                            _buildEventCard(
+                              active,
+                              evSnap.data,
+                              attDocs.cast(),
+                              regCount ?? 0,
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                        ],
+                      );
                     },
                   ),
-                  const SizedBox(height: 20),
-                  if (widget.event != null) ...[
-                    _buildEventBanner(active, evSnap.data, attDocs.cast()),
-                    const SizedBox(height: 16),
-                    _buildLateMarkingSettings(widget.event, evSnap.data),
-                    const SizedBox(height: 16),
-                  ],
                   _buildInputModeRow(active, attSnap.data),
                   const SizedBox(height: 14),
                   if (_inputMode == 0)
@@ -1610,57 +1561,68 @@ class _AttendanceTabState extends State<AttendanceTab>
       _subTab = 0;
     });
 
-    return Row(
-      children: [
-        _StatCard(
+    // StatCardsRow, not a bare Row: the four cards had no Expanded and no
+    // wrapping, so they overflowed the moment the window got narrow.
+    return StatCardsRow(
+      isMobile: MediaQuery.of(context).size.width < 720,
+      gap: 14,
+      cards: [
+        StatCard(
           label: 'Total Registrants',
           value: '$total',
           icon: Icons.people_alt_rounded,
           color: UpriseColors.primaryDark,
-          isSelected: _statusFilter == 'All' && _filterTouched,
+          selected: _statusFilter == 'All' && _filterTouched,
           onTap: () => setState(() {
             _statusFilter = 'All';
             _filterTouched = true;
             _subTab = 0;
           }),
         ),
-        const SizedBox(width: 14),
-        _StatCard(
+        StatCard(
           label: 'Present',
           value: '$present',
           icon: Icons.check_circle_rounded,
           color: const Color(0xFF059669),
-          isSelected: _statusFilter == 'present',
+          selected: _statusFilter == 'present',
           onTap: () => selectStatus('present'),
         ),
-        const SizedBox(width: 14),
-        _StatCard(
+        StatCard(
           label: 'Late',
           value: '$late',
           icon: Icons.schedule_rounded,
           color: const Color(0xFFFB923C),
-          isSelected: _statusFilter == 'late',
+          selected: _statusFilter == 'late',
           onTap: () => selectStatus('late'),
         ),
-        const SizedBox(width: 14),
-        _StatCard(
+        StatCard(
           label: 'Absent',
           value: '${(total - present - late).clamp(0, total)}',
           icon: Icons.cancel_rounded,
           color: const Color(0xFFDC2626),
-          isSelected: _statusFilter == 'absent',
+          selected: _statusFilter == 'absent',
           onTap: () => selectStatus('absent'),
         ),
       ],
     );
   }
 
-  Widget _buildEventBanner(
+  /// The single event card. This used to be three stacked bordered boxes —
+  /// a "Switch event" bar, this banner, and a Late Marking card whose whole
+  /// payload was one boolean — so the user scrolled past three surfaces
+  /// before reaching a control. Everything about the event now lives here,
+  /// with late-marking editing behind a dialog.
+  Widget _buildEventCard(
     bool active,
     DocumentSnapshot? evDoc,
     List<QueryDocumentSnapshot> attDocs,
+    int regCount,
   ) {
     final e = widget.event!;
+    final liveMarkLate = _liveMarkLate(evDoc);
+    final liveLateAfterMinutes = _liveLateAfterMinutes(evDoc);
+    final canSwitch = widget.allEvents.length > 1;
+
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -1673,158 +1635,250 @@ class _AttendanceTabState extends State<AttendanceTab>
         ),
         boxShadow: _DS.cardShadow,
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: UpriseColors.primaryDark.withOpacity(0.09),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              Icons.event_rounded,
-              size: 22,
-              color: UpriseColors.primaryDark,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        e.title,
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 14.5,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFF1A202C),
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    _StatePill(e),
-                  ],
-                ),
-                const SizedBox(height: 5),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.location_on_outlined,
-                      size: 12,
-                      color: const Color(0xFFB0BAC8),
-                    ),
-                    const SizedBox(width: 3),
-                    Text(
-                      e.location,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 12,
-                        color: const Color(0xFF94A3B8),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Icon(
-                      Icons.schedule_outlined,
-                      size: 12,
-                      color: const Color(0xFFB0BAC8),
-                    ),
-                    const SizedBox(width: 3),
-                    Text(
-                      '${e.startTime} – ${e.endTime}',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 12,
-                        color: const Color(0xFF94A3B8),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Icon(
-                      Icons.calendar_today_outlined,
-                      size: 12,
-                      color: const Color(0xFFB0BAC8),
-                    ),
-                    const SizedBox(width: 3),
-                    Text(
-                      DateFormat('MMM dd, yyyy').format(e.date),
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 12,
-                        color: const Color(0xFF94A3B8),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 14),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _PrimaryButton(
-                label: active
-                    ? 'Close Attendance'
-                    : widget.eventDocId == null
-                    ? 'Sync Pending'
-                    : _isEventDay
-                    ? 'Open Attendance'
-                    : 'Open on Event Day',
-                icon: active
-                    ? Icons.stop_circle_outlined
-                    : Icons.play_circle_outline_rounded,
-                color: active
-                    ? const Color(0xFFDC2626)
-                    : UpriseColors.primaryDark,
-                onPressed: active
-                    ? () => _toggleActive(active)
-                    : widget.eventDocId == null || !_isEventDay
-                    ? null
-                    : () => _toggleActive(active),
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: UpriseColors.primaryDark.withOpacity(0.09),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.event_rounded,
+                  size: 22,
+                  color: UpriseColors.primaryDark,
+                ),
               ),
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed:
-                    (widget.eventDocId == null ||
-                        attDocs.isEmpty ||
-                        _sendingEvaluations)
-                    ? null
-                    : () => _sendEvaluationRequests(attDocs),
-                icon: _sendingEvaluations
-                    ? SizedBox(
-                        width: 13,
-                        height: 13,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: UpriseColors.primaryDark,
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Title carries the switcher. When there is only one
+                    // event it is plain text, so nothing appears or
+                    // disappears from the layout between orgs.
+                    Row(
+                      children: [
+                        Flexible(
+                          child: canSwitch
+                              ? _buildEventSwitcher(e)
+                              : Text(
+                                  e.title,
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                    color: const Color(0xFF1A202C),
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                         ),
-                      )
-                    : const Icon(Icons.forward_to_inbox_outlined, size: 14),
-                label: Text(
-                  'Send Evaluation',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
-                  ),
+                        const SizedBox(width: 10),
+                        _StatePill(e),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    // Wrap, not a Row: three bare icon/text pairs used to
+                    // overflow rather than reflow on a narrow window.
+                    Wrap(
+                      spacing: 14,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        _eventMetaBit(
+                          Icons.calendar_today_outlined,
+                          DateFormat('MMM dd, yyyy').format(e.date),
+                        ),
+                        _eventMetaBit(
+                          Icons.schedule_outlined,
+                          '${e.startTime} – ${e.endTime}',
+                        ),
+                        _eventMetaBit(Icons.location_on_outlined, e.location),
+                        _eventMetaBit(
+                          Icons.people_outline_rounded,
+                          e.capacity == null
+                              ? '$regCount registered'
+                              : '$regCount / ${e.capacity} registered',
+                        ),
+                        // Late marking, folded in from the card it used to
+                        // own outright.
+                        _eventMetaBit(
+                          Icons.timelapse_outlined,
+                          liveMarkLate
+                              ? 'Late after $liveLateAfterMinutes min'
+                              : 'Late marking off',
+                          onTap: () => _showLateMarkingDialog(
+                            liveMarkLate,
+                            liveLateAfterMinutes,
+                          ),
+                          trailing: Icons.edit_outlined,
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: UpriseColors.primaryDark,
-                  side: BorderSide(
-                    color: UpriseColors.primaryDark.withOpacity(0.4),
+              ),
+              const SizedBox(width: 14),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  _PrimaryButton(
+                    label: active
+                        ? 'Close Attendance'
+                        : widget.eventDocId == null
+                        ? 'Sync Pending'
+                        : _isEventDay
+                        ? 'Open Attendance'
+                        : 'Open on Event Day',
+                    icon: active
+                        ? Icons.stop_circle_outlined
+                        : Icons.play_circle_outline_rounded,
+                    color: active
+                        ? const Color(0xFFDC2626)
+                        : UpriseColors.primaryDark,
+                    onPressed: active
+                        ? () => _toggleActive(active)
+                        : widget.eventDocId == null || !_isEventDay
+                        ? null
+                        : () => _toggleActive(active),
                   ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 9,
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed:
+                        (widget.eventDocId == null ||
+                            attDocs.isEmpty ||
+                            _sendingEvaluations)
+                        ? null
+                        : () => _sendEvaluationRequests(attDocs),
+                    icon: _sendingEvaluations
+                        ? SizedBox(
+                            width: 13,
+                            height: 13,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: UpriseColors.primaryDark,
+                            ),
+                          )
+                        : const Icon(Icons.forward_to_inbox_outlined, size: 14),
+                    label: Text(
+                      'Send Evaluation',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: UpriseColors.primaryDark,
+                      side: BorderSide(
+                        color: UpriseColors.primaryDark.withOpacity(0.4),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 9,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
                   ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
+                ],
               ),
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  /// One `icon + text` fact in the card's meta line. [onTap] turns it into
+  /// a control (used by late marking).
+  Widget _eventMetaBit(
+    IconData icon,
+    String text, {
+    VoidCallback? onTap,
+    IconData? trailing,
+  }) {
+    final row = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 12, color: const Color(0xFFB0BAC8)),
+        const SizedBox(width: 4),
+        Text(
+          text,
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 12,
+            color: const Color(0xFF64748B),
+            fontWeight: onTap == null ? FontWeight.w400 : FontWeight.w500,
+          ),
+        ),
+        if (trailing != null) ...[
+          const SizedBox(width: 4),
+          Icon(trailing, size: 11, color: UpriseColors.primaryDark),
+        ],
+      ],
+    );
+    if (onTap == null) return row;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(onTap: onTap, child: row),
+    );
+  }
+
+  /// Title-as-switcher. Reads as the event name with a caret, not as a
+  /// form field, so the card still leads with the event.
+  Widget _buildEventSwitcher(EventModel current) {
+    return DropdownButtonHideUnderline(
+      child: DropdownButton<String>(
+        value: current.id,
+        isDense: true,
+        isExpanded: true,
+        borderRadius: BorderRadius.circular(_DS.radiusMd),
+        menuMaxHeight: 320,
+        icon: const Icon(Icons.arrow_drop_down_rounded, size: 22),
+        style: GoogleFonts.beVietnamPro(
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
+          color: const Color(0xFF1A202C),
+        ),
+        selectedItemBuilder: (_) => [
+          for (final e in widget.allEvents)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                e.title,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF1A202C),
+                ),
+              ),
+            ),
+        ],
+        items: [
+          for (final e in widget.allEvents)
+            DropdownMenuItem(
+              value: e.id,
+              child: Text(
+                _eventState(e) == _EState.ended
+                    ? '${e.title} (Ended)'
+                    : e.title,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: const Color(0xFF1A202C),
+                ),
+              ),
+            ),
+        ],
+        onChanged: (id) {
+          if (id != null) widget.onSelectEvent?.call(id);
+        },
       ),
     );
   }
@@ -1844,10 +1898,7 @@ class _AttendanceTabState extends State<AttendanceTab>
       // before dismissing the saving state, improving UX
       await Future.delayed(const Duration(milliseconds: 300));
       if (mounted) {
-        setState(() {
-          _editingLateMark = false;
-          _savingLateMark = false;
-        });
+        setState(() => _savingLateMark = false);
         _toast(context, 'Attendance settings saved');
       }
     } catch (e) {
@@ -1858,297 +1909,185 @@ class _AttendanceTabState extends State<AttendanceTab>
     }
   }
 
-  Widget _buildLateMarkingSettings(
-    EventModel? event,
-    DocumentSnapshot? eventDoc,
-  ) {
-    if (event == null) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(_DS.radiusMd),
-          border: Border.all(color: const Color(0xFFEBEEF3)),
-        ),
-        child: Center(
-          child: Text(
-            'Select an event to manage attendance settings',
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 13,
-              color: const Color(0xFF94A3B8),
-            ),
-          ),
-        ),
-      );
+  // The event doc is the source of truth once it exists; the proposal-backed
+  // EventModel is the fallback before the events doc has been resolved.
+  bool _liveMarkLate(DocumentSnapshot? eventDoc) {
+    final m = eventDoc?.data() as Map?;
+    if (m != null && m.containsKey('markLate')) return m['markLate'] == true;
+    return widget.event?.markLate ?? false;
+  }
+
+  int _liveLateAfterMinutes(DocumentSnapshot? eventDoc) {
+    final m = eventDoc?.data() as Map?;
+    if (m != null && m.containsKey('lateAfterMinutes')) {
+      return (m['lateAfterMinutes'] as num?)?.toInt() ?? 15;
     }
+    return widget.event?.lateAfterMinutes ?? 15;
+  }
 
-    // Get the live values from Firestore document if available, otherwise use event model
-    final liveMarkLate =
-        (eventDoc?.data() as Map?)?.containsKey('markLate') ?? false
-        ? (eventDoc?.data() as Map)['markLate'] == true
-        : event.markLate;
-    final liveLateAfterMinutes =
-        (eventDoc?.data() as Map?)?.containsKey('lateAfterMinutes') ?? false
-        ? ((eventDoc?.data() as Map)['lateAfterMinutes'] as num?)?.toInt() ?? 15
-        : event.lateAfterMinutes;
+  /// Late-marking settings. This was a full-width bordered card sitting
+  /// permanently below the event banner to display one boolean, with an
+  /// inline expand-to-edit form. It is a dialog now — the same
+  /// OrgModalShell idiom this file already uses for registration answers —
+  /// and the value itself reads in the event card's meta line.
+  void _showLateMarkingDialog(bool markLate, int lateAfterMinutes) {
+    _tempMarkLate = markLate;
+    _tempLateAfterMinutes = lateAfterMinutes;
+    _lateController.text = lateAfterMinutes.toString();
 
-    if (!_editingLateMark) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(_DS.radiusMd),
-          border: Border.all(color: const Color(0xFFEBEEF3)),
-          boxShadow: _DS.cardShadow,
-        ),
-        child: Row(
-          children: [
-            Icon(
-              Icons.schedule_outlined,
-              size: 18,
-              color: UpriseColors.primaryDark,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        'Late Marking: ',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFF1A202C),
-                        ),
-                      ),
-                      Text(
-                        liveMarkLate
-                            ? 'ON (after $liveLateAfterMinutes min)'
-                            : 'OFF',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 12.5,
-                          color: liveMarkLate
-                              ? const Color(0xFFFB923C)
-                              : const Color(0xFF059669),
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Attendees marking as present outside grace period',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11,
-                      color: const Color(0xFF94A3B8),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            OutlinedButton.icon(
-              onPressed: () {
-                setState(() {
-                  _editingLateMark = true;
-                  _tempMarkLate = liveMarkLate;
-                  _tempLateAfterMinutes = liveLateAfterMinutes;
-
-                  _lateController.text = liveLateAfterMinutes.toString();
-                });
-              },
-              icon: const Icon(Icons.edit_outlined, size: 13),
-              label: const Text('Edit'),
+    // `saving` is local to the dialog route: _saveLateMark's setState
+    // rebuilds the page behind it, not this builder, so the outer
+    // _savingLateMark flag would never reach the button.
+    bool saving = false;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => OrgModalShell(
+          accentColor: UpriseColors.primaryDark,
+          icon: Icons.timelapse_outlined,
+          title: 'Attendance Settings',
+          subtitle: widget.event?.title,
+          width: 460,
+          maxHeightFraction: 0.75,
+          closeEnabled: !saving,
+          footerActions: [
+            OutlinedButton(
+              onPressed: saving ? null : () => Navigator.pop(ctx),
               style: OutlinedButton.styleFrom(
-                foregroundColor: UpriseColors.primaryDark,
-                side: BorderSide(
-                  color: UpriseColors.primaryDark.withOpacity(0.4),
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
+                side: const BorderSide(color: Color(0xFFE2E6EA)),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(_DS.radiusSm),
                 ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 11,
+                ),
+              ),
+              child: Text(
+                'Cancel',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: const Color(0xFF374151),
+                ),
               ),
             ),
-          ],
-        ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(_DS.radiusMd),
-        border: Border.all(color: const Color(0xFFEBEEF3)),
-        boxShadow: _DS.cardShadow,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _sectionLabel('Attendance Settings', icon: Icons.schedule_outlined),
-          // Mark Late Toggle
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF7F8FA),
-              borderRadius: BorderRadius.circular(_DS.radiusSm),
-              border: Border.all(color: const Color(0xFFE4E8EF)),
+            const SizedBox(width: 12),
+            ElevatedButton(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      setDlg(() => saving = true);
+                      await _saveLateMark();
+                      if (ctx.mounted) Navigator.pop(ctx);
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: UpriseColors.primaryDark,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(_DS.radiusSm),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 11,
+                ),
+              ),
+              child: saving
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Text(
+                      'Save',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
             ),
-            child: Row(
+          ],
+          body: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: _tempMarkLate,
+                  activeThumbColor: UpriseColors.primaryDark,
+                  onChanged: (v) => setDlg(() => _tempMarkLate = v),
+                  title: Text(
+                    'Mark attendees late',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF1A202C),
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Anyone checking in after the grace period is recorded '
+                    'as Late instead of Present.',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11.5,
+                      color: const Color(0xFF94A3B8),
+                      height: 1.45,
+                    ),
+                  ),
+                ),
+                if (_tempMarkLate) ...[
+                  const SizedBox(height: 14),
+                  Text(
+                    'GRACE PERIOD',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF64748B),
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
                     children: [
-                      Text(
-                        'Mark attendees as late',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFF1A202C),
+                      SizedBox(
+                        width: 110,
+                        child: TextField(
+                          controller: _lateController,
+                          keyboardType: TextInputType.number,
+                          style: GoogleFonts.beVietnamPro(fontSize: 13),
+                          decoration: _DS.inputDeco('Minutes'),
+                          onChanged: (v) {
+                            final parsed = int.tryParse(v.trim());
+                            if (parsed != null && parsed >= 0) {
+                              _tempLateAfterMinutes = parsed;
+                            }
+                          },
                         ),
                       ),
-                      const SizedBox(height: 3),
-                      Text(
-                        'Automatically mark late if checked in after grace period',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 11,
-                          color: const Color(0xFF94A3B8),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Minutes after the event start time before a '
+                          'check-in counts as late.',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 11.5,
+                            color: const Color(0xFF94A3B8),
+                            height: 1.45,
+                          ),
                         ),
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(width: 12),
-                Switch(
-                  value: _tempMarkLate,
-                  onChanged: (v) => setState(() => _tempMarkLate = v),
-                  activeColor: UpriseColors.primaryDark,
-                ),
+                ],
               ],
             ),
           ),
-          const SizedBox(height: 14),
-          // Late After Minutes Input (only visible when markLate is ON)
-          if (_tempMarkLate) ...[
-            Text(
-              'Late after',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: const Color(0xFF64748B),
-                letterSpacing: 0.5,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                SizedBox(
-                  width: 100,
-                  child: TextField(
-                    controller: _lateController, // ✅ ITO NA! GAMITIN MO ITO
-                    keyboardType: TextInputType.number,
-                    style: GoogleFonts.beVietnamPro(fontSize: 13),
-                    decoration: InputDecoration(
-                      hintText: 'Minutes',
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(_DS.radiusSm),
-                        borderSide: const BorderSide(color: Color(0xFFE4E8EF)),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(_DS.radiusSm),
-                        borderSide: const BorderSide(color: Color(0xFFE4E8EF)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(_DS.radiusSm),
-                        borderSide: BorderSide(
-                          color: UpriseColors.primaryDark,
-                          width: 1.5,
-                        ),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 12,
-                      ),
-                    ),
-                    onChanged: (v) {
-                      final parsed = int.tryParse(v.trim()) ?? 15;
-                      if (parsed >= 1 && parsed <= 300) {
-                        // ✅ MAS MAGANDA ITO
-                        setState(() {
-                          _tempLateAfterMinutes = parsed;
-                        });
-                      }
-                    },
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'minutes',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 12,
-                    color: const Color(0xFF94A3B8),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            _InfoBanner(
-              color: const Color(0xFFEFF6FF),
-              border: const Color(0xFFBFD7FF),
-              icon: Icons.info_outline_rounded,
-              iconColor: const Color(0xFF2563EB),
-              text:
-                  'Attendees checking in after this duration is added to the event start time will be marked late.',
-              textColor: const Color(0xFF1D4ED8),
-            ),
-          ],
-          const SizedBox(height: 16),
-          // Action Buttons
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              OutlinedButton(
-                onPressed: _savingLateMark
-                    ? null
-                    : () => setState(() => _editingLateMark = false),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF94A3B8),
-                  side: BorderSide(color: const Color(0xFFE4E8EF)),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(_DS.radiusSm),
-                  ),
-                ),
-                child: Text(
-                  'Cancel',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              _PrimaryButton(
-                label: _savingLateMark ? 'Saving...' : 'Save',
-                icon: _savingLateMark ? null : Icons.check_rounded,
-                color: UpriseColors.primaryDark,
-                onPressed: _savingLateMark ? null : _saveLateMark,
-              ),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -2576,12 +2515,9 @@ class _AttendanceTabState extends State<AttendanceTab>
         .map((d) => (d.data() as Map)['studentId']?.toString() ?? '')
         .toSet();
     return StreamBuilder<QuerySnapshot>(
-      stream: widget.eventDocId == null
-          ? null
-          : FirebaseFirestore.instance
-                .collection('registrations')
-                .where('eventId', isEqualTo: widget.eventDocId)
-                .snapshots(),
+      // Was an inline copy of the exact query _regStream already runs —
+      // a third live listener on the same registrations documents.
+      stream: _regStream,
       builder: (ctx, snap) {
         final regs = snap.data?.docs ?? [];
         _ensureStudentsLoaded(
@@ -3269,93 +3205,6 @@ class _DataTable extends StatelessWidget {
 // =============================================================================
 // SHARED REUSABLE WIDGETS
 // =============================================================================
-
-class _StatCard extends StatelessWidget {
-  final String label, value;
-  final IconData icon;
-  final Color color;
-  final bool isSelected;
-  final VoidCallback? onTap;
-  const _StatCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-    this.isSelected = false,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) => Expanded(
-    child: MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isSelected ? color : const Color(0xFFEBEEF3),
-              width: isSelected ? 2 : 1,
-            ),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: color.withAlpha(46),
-                      blurRadius: 16,
-                      offset: const Offset(0, 4),
-                    ),
-                  ]
-                : _DS.cardShadow,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: color.withAlpha(26),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(icon, color: color, size: 20),
-                  ),
-                  Flexible(
-                    child: Text(
-                      value,
-                      textAlign: TextAlign.right,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w800,
-                        color: const Color(0xFF1A202C),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                label,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 11,
-                  color: const Color(0xFF64748B),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
-}
 
 class _StudentAvatar extends StatelessWidget {
   final String name;

@@ -13,6 +13,7 @@ import 'package:image_picker/image_picker.dart';
 
 import 'guest_auth_service.dart';
 import '../../widgets/student/app_colors.dart';
+import '../../widgets/student/app_image.dart';
 import '../../widgets/student/student_app_bar.dart';
 
 const _kOrange = AppColors.primaryDark;
@@ -132,18 +133,10 @@ class _GuestProfileInformationScreenState extends State<GuestProfileInformationS
     }
   }
 
-  ImageProvider? get _photoProvider {
-    if (_photoUrl == null || _photoUrl!.isEmpty) return null;
-    if (_photoUrl!.startsWith('data:image')) {
-      final b64 = _photoUrl!.contains(',') ? _photoUrl!.split(',').last : _photoUrl!;
-      try {
-        return MemoryImage(base64Decode(b64));
-      } catch (_) {
-        return null;
-      }
-    }
-    return NetworkImage(_photoUrl!);
-  }
+  // AppImage.provider over a local decoder: it also reads raw base64 with no
+  // data: prefix and the malformed `dataimage...` variant some stored records
+  // carry, both of which fell through to NetworkImage here and failed.
+  ImageProvider? get _photoProvider => AppImage.provider(_photoUrl ?? '');
 
   InputDecoration _deco(String label) => InputDecoration(
     labelText: label,

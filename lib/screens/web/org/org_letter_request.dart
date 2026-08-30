@@ -2,12 +2,14 @@
 // ignore_for_file: deprecated_member_use, use_build_context_synchronously
 
 import 'dart:convert';
+import '../../../widgets/stat_cards.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../../services/activity_logger.dart' as activity_log;
+import '../../../models/letter_type.dart';
 import '../../../services/firestore_collections.dart';
 import '../../../services/notification_service.dart';
 import '../../../utils/platform_file_utils.dart' as platform_file_utils;
@@ -289,8 +291,12 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
           _currentPage = 1;
         });
 
+        // Four cards, not six. These used to sit in a bare Row with no
+        // Expanded and no wrapping, so at six cards the row simply ran off
+        // the edge of a narrow window. StatCardsRow divides the width and
+        // wraps; the two least-used states moved to the strip below.
         final cards = [
-          _StatCard(
+          StatCard(
             label: 'Total Requests',
             value: '$total',
             icon: Icons.description_outlined,
@@ -301,51 +307,35 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
             // this, the very first card always rendered pre-highlighted
             // on page load, before the user had clicked anything (same
             // bug as event proposals' stat cards).
-            isSelected: false,
+            selected: false,
             onTap: () => setState(() {
               _statusFilter = 'All';
               _currentPage = 1;
             }),
           ),
-          _StatCard(
+          StatCard(
             label: 'Pending',
             value: '$pending',
             icon: Icons.pending_outlined,
             color: const Color(0xFFFB923C),
-            isSelected: _statusFilter == 'Pending',
+            selected: _statusFilter == 'Pending',
             onTap: () => selectStatus('Pending'),
           ),
-          _StatCard(
+          StatCard(
             label: 'Approved',
             value: '$approved',
             icon: Icons.check_circle_outline,
             color: const Color(0xFF059669),
-            isSelected: _statusFilter == 'Approved',
+            selected: _statusFilter == 'Approved',
             onTap: () => selectStatus('Approved'),
           ),
-          _StatCard(
-            label: 'Needs Revision',
-            value: '$revision',
-            icon: Icons.edit_note_rounded,
-            color: const Color(0xFF2563EB),
-            isSelected: _statusFilter == 'Needs Revision',
-            onTap: () => selectStatus('Needs Revision'),
-          ),
-          _StatCard(
+          StatCard(
             label: 'Rejected',
             value: '$rejected',
             icon: Icons.cancel_outlined,
             color: const Color(0xFFDC2626),
-            isSelected: _statusFilter == 'Rejected',
+            selected: _statusFilter == 'Rejected',
             onTap: () => selectStatus('Rejected'),
-          ),
-          _StatCard(
-            label: 'Resubmitted',
-            value: '$resubmitted',
-            icon: Icons.refresh_rounded,
-            color: const Color(0xFF7C3AED),
-            isSelected: _statusFilter == 'Resubmitted',
-            onTap: () => selectStatus('Resubmitted'),
           ),
         ];
 
@@ -356,30 +346,36 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
             horizontalPadding,
             0,
           ),
-          child: isMobile
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (var i = 0; i < cards.length; i++) ...[
-                      cards[i],
-                      if (i != cards.length - 1) const SizedBox(height: 12),
-                    ],
-                  ],
-                )
-              : Row(
-                  children: [
-                    for (var i = 0; i < cards.length; i++) ...[
-                      cards[i],
-                      if (i != cards.length - 1) const SizedBox(width: 14),
-                    ],
-                  ],
-                ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              StatCardsRow(cards: cards, isMobile: isMobile, gap: 12),
+              const SizedBox(height: 14),
+              StatStrip(
+                items: [
+                  StatStripItem.count(
+                    label: 'Needs revision',
+                    count: revision,
+                    color: const Color(0xFF2563EB),
+                    selected: _statusFilter == 'Needs Revision',
+                    onTap: () => selectStatus('Needs Revision'),
+                  ),
+                  StatStripItem.count(
+                    label: 'Resubmitted',
+                    count: resubmitted,
+                    color: const Color(0xFF7C3AED),
+                    selected: _statusFilter == 'Resubmitted',
+                    onTap: () => selectStatus('Resubmitted'),
+                  ),
+                ],
+              ),
+            ],
+          ),
         );
       },
     );
   }
 
-  // ── Toolbar ───────────────────────────────────────────────────────
   Widget _buildToolbar(bool isMobile, bool isTablet) {
     final horizontalPadding = isMobile ? 16.0 : (isTablet ? 20.0 : 28.0);
     final fieldWidth = isMobile ? double.infinity : (isTablet ? 260.0 : 340.0);
@@ -1808,6 +1804,10 @@ class _LetterRequestModalState extends State<_LetterRequestModal> {
   final _formKey = GlobalKey<FormState>();
   final _subjectCtrl = TextEditingController();
   final _messageCtrl = TextEditingController();
+  final _addressedToCtrl = TextEditingController();
+  final _purposeCtrl = TextEditingController();
+  String _letterType = LetterType.all.first.id;
+  DateTime? _neededBy;
 
   String? _attachmentBase64;
   String? _attachmentName;
@@ -1827,6 +1827,13 @@ class _LetterRequestModalState extends State<_LetterRequestModal> {
     if (r != null) {
       _subjectCtrl.text = r.subject;
       _messageCtrl.text = r.message ?? '';
+      _addressedToCtrl.text = r.addressedTo;
+      _purposeCtrl.text = r.purpose;
+      // Legacy documents carry the old hardcoded 'General', which
+      // LetterType.byId resolves to 'Other' — the type that still requires
+      // the attachment those requests already have.
+      _letterType = LetterType.byId(r.letterType).id;
+      _neededBy = r.neededBy?.toDate();
       _attachmentBase64 = r.attachmentBase64;
       _attachmentName = r.attachmentName;
       _attachmentSize = r.attachmentSize;
@@ -1839,6 +1846,8 @@ class _LetterRequestModalState extends State<_LetterRequestModal> {
   void dispose() {
     _subjectCtrl.dispose();
     _messageCtrl.dispose();
+    _addressedToCtrl.dispose();
+    _purposeCtrl.dispose();
     super.dispose();
   }
 
@@ -1916,6 +1925,43 @@ class _LetterRequestModalState extends State<_LetterRequestModal> {
     );
   }
 
+  Future<void> _pickNeededBy() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _neededBy ?? now.add(const Duration(days: 7)),
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 365)),
+      builder: (context, child) {
+        // Material 3's default seed skews purple/indigo unless the scheme
+        // is seeded from the brand color instead — same fix as the other
+        // date pickers in the portal.
+        final base = Theme.of(context);
+        return Theme(
+          data: base.copyWith(
+            colorScheme:
+                ColorScheme.fromSeed(
+                  seedColor: _DS.primary,
+                  brightness: Brightness.light,
+                ).copyWith(
+                  primary: _DS.primary,
+                  onPrimary: Colors.white,
+                  surface: Colors.white,
+                  surfaceTint: Colors.transparent,
+                ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null && mounted) {
+      setState(() {
+        _neededBy = picked;
+        _errorMsg = null;
+      });
+    }
+  }
+
   Future<void> _submit() async {
     setState(() {
       _errorMsg = null;
@@ -1923,9 +1969,17 @@ class _LetterRequestModalState extends State<_LetterRequestModal> {
     });
     if (!_formKey.currentState!.validate()) return;
 
-    if (widget.existingRequest == null && _attachmentBase64 == null) {
+    if (_neededBy == null) {
+      setState(() => _errorMsg = 'Pick the date you need this letter by.');
+      return;
+    }
+    if (widget.existingRequest == null &&
+        _attachmentBase64 == null &&
+        LetterType.needsAttachment(_letterType)) {
       setState(() {
-        _errorMsg = 'Please attach a file before submitting.';
+        _errorMsg =
+            'A ${LetterType.byId(_letterType).label} request needs your \n'
+            'draft attached.';
         _attachmentError = true;
       });
       return;
@@ -1941,7 +1995,10 @@ class _LetterRequestModalState extends State<_LetterRequestModal> {
         'orgLogoUrl': widget.orgLogoUrl,
         'name': widget.orgName,
         'email': widget.orgEmail,
-        'letterType': 'General',
+        'letterType': _letterType,
+        'addressedTo': _addressedToCtrl.text.trim(),
+        'purpose': _purposeCtrl.text.trim(),
+        'neededBy': _neededBy == null ? null : Timestamp.fromDate(_neededBy!),
         'schoolYear': _schoolYear,
         'semester': _semester,
         'subject': _subjectCtrl.text.trim(),
@@ -2090,6 +2147,39 @@ class _LetterRequestModalState extends State<_LetterRequestModal> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Type first: it decides whether an attachment is
+                    // required further down, so asking for it last would
+                    // move the goalposts after the org had already filled
+                    // the form in.
+                    DropdownButtonFormField<String>(
+                      value: _letterType,
+                      isExpanded: true,
+                      decoration: _DS.inputDecoration(
+                        'Type of letter *',
+                        icon: Icons.category_outlined,
+                      ),
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        color: const Color(0xFF1A202C),
+                      ),
+                      items: [
+                        for (final t in LetterType.all)
+                          DropdownMenuItem(value: t.id, child: Text(t.label)),
+                      ],
+                      onChanged: (v) => setState(() {
+                        _letterType = v!;
+                        _errorMsg = null;
+                      }),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      LetterType.byId(_letterType).description,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 11.5,
+                        color: const Color(0xFF9AA5B4),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
                     TextFormField(
                       controller: _subjectCtrl,
                       style: GoogleFonts.beVietnamPro(fontSize: 13),
@@ -2101,6 +2191,57 @@ class _LetterRequestModalState extends State<_LetterRequestModal> {
                       validator: (v) => v?.trim().isEmpty == true
                           ? 'Subject is required'
                           : null,
+                    ),
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: _addressedToCtrl,
+                      style: GoogleFonts.beVietnamPro(fontSize: 13),
+                      decoration: _DS.inputDecoration(
+                        'Addressed to *',
+                        hint: 'e.g. Dean, College of ICT',
+                        icon: Icons.person_outline_rounded,
+                      ),
+                      validator: (v) => v?.trim().isEmpty == true
+                          ? 'Say who the letter is addressed to'
+                          : null,
+                    ),
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: _purposeCtrl,
+                      maxLines: 2,
+                      style: GoogleFonts.beVietnamPro(fontSize: 13),
+                      decoration: _DS.inputDecoration(
+                        'Purpose *',
+                        hint: 'Why the letter is needed',
+                        icon: Icons.flag_outlined,
+                      ),
+                      validator: (v) => v?.trim().isEmpty == true
+                          ? 'Describe the purpose'
+                          : null,
+                    ),
+                    const SizedBox(height: 14),
+                    // Needed-by gives the admin something to triage by;
+                    // before this every request looked equally urgent.
+                    InkWell(
+                      onTap: _pickNeededBy,
+                      borderRadius: BorderRadius.circular(8),
+                      child: InputDecorator(
+                        decoration: _DS.inputDecoration(
+                          'Needed by *',
+                          icon: Icons.event_outlined,
+                        ),
+                        child: Text(
+                          _neededBy == null
+                              ? 'Select a date'
+                              : DateFormat('MMM d, yyyy').format(_neededBy!),
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 13,
+                            color: _neededBy == null
+                                ? const Color(0xFF9AA5B4)
+                                : const Color(0xFF1A202C),
+                          ),
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 14),
                     Row(
@@ -2167,7 +2308,9 @@ class _LetterRequestModalState extends State<_LetterRequestModal> {
                 title: 'File Attachment',
                 icon: Icons.attach_file_rounded,
                 accentColor: _DS.primary,
-                required: widget.existingRequest == null,
+                required:
+                    widget.existingRequest == null &&
+                    LetterType.needsAttachment(_letterType),
                 child: _buildFileZone(),
               ),
 
@@ -2459,98 +2602,6 @@ class _LetterRequestModalState extends State<_LetterRequestModal> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Reusable widgets
-// ─────────────────────────────────────────────────────────────────────────────
-class _StatCard extends StatelessWidget {
-  final String label, value;
-  final IconData icon;
-  final Color color;
-  final bool isSelected;
-  final VoidCallback? onTap;
-  const _StatCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-    this.isSelected = false,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          onTap: onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isSelected ? color : const Color(0xFFE8ECF0),
-                width: isSelected ? 2 : 1,
-              ),
-              boxShadow: isSelected
-                  ? [
-                      BoxShadow(
-                        color: color.withAlpha(46),
-                        blurRadius: 16,
-                        offset: const Offset(0, 4),
-                      ),
-                    ]
-                  : _DS.cardShadow,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: color.withAlpha(26),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(icon, color: color, size: 20),
-                    ),
-                    Flexible(
-                      child: Text(
-                        value,
-                        textAlign: TextAlign.right,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0xFF1A202C),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  label,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 11,
-                    color: const Color(0xFF64748B),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _FilterDropdown extends StatelessWidget {
   final String value;
   final List<String> items;
@@ -2727,6 +2778,11 @@ class LetterRequestModel {
   final String orgEmail;
   final String orgLogoUrl;
   final String letterType;
+  // Added when letterType became a real taxonomy. All four default so that
+  // documents written before this change keep parsing untouched.
+  final String addressedTo;
+  final String purpose;
+  final Timestamp? neededBy;
   final String schoolYear;
   final String semester;
   final String subject;
@@ -2753,6 +2809,9 @@ class LetterRequestModel {
     required this.orgEmail,
     this.orgLogoUrl = '',
     required this.letterType,
+    this.addressedTo = '',
+    this.purpose = '',
+    this.neededBy,
     this.schoolYear = '',
     this.semester = '',
     required this.subject,
@@ -2782,6 +2841,9 @@ class LetterRequestModel {
       orgEmail: d['orgEmail'] ?? '',
       orgLogoUrl: d['orgLogoUrl'] ?? '',
       letterType: d['letterType'] ?? 'General',
+      addressedTo: (d['addressedTo'] ?? '').toString(),
+      purpose: (d['purpose'] ?? '').toString(),
+      neededBy: d['neededBy'] as Timestamp?,
       schoolYear: (d['schoolYear'] ?? '').toString(),
       semester: (d['semester'] ?? '').toString(),
       subject: d['subject'] ?? '',

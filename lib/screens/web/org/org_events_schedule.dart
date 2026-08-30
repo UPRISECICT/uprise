@@ -1,5 +1,6 @@
 // ignore_for_file: unused_element_parameter
 import 'dart:convert';
+import '../../../widgets/stat_cards.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -153,6 +154,9 @@ Color _statusColor(String status) {
 // (Registration/Attendance/Feedback/Certificates/Finance/Report) — a
 // separate, lighter helper from _detailCard (which stays on the Details
 // tab) so those tabs don't need to reach into the screen's own State class.
+// Thin adapter over the shared [StatCard] — the Event Overview's five tabs
+// call this 14 times with positional args, so the signature stays put while
+// the 80-line hand-rolled copy of the card underneath it is gone.
 Widget _overviewStatCard(
   String label,
   String value,
@@ -161,91 +165,21 @@ Widget _overviewStatCard(
   VoidCallback? onTap,
   bool isSelected = false,
 }) {
-  // Matches org_dashboard.dart's own _StatCardWidget exactly (icon badge
-  // top-left, big number top-right, label below), including the same
-  // selected/clickable treatment (colored border + tinted shadow when
-  // isSelected, click cursor when onTap is given) for cards where tapping
-  // filters the list below — the dashboard's stat cards are the reference
-  // "this looks good" style for the whole portal, so every stat card
-  // elsewhere should read as the same family.
-  final c = accent ?? UpriseColors.primaryDark;
-  final card = AnimatedContainer(
-    duration: const Duration(milliseconds: 150),
-    padding: const EdgeInsets.all(18),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(
-        color: isSelected ? c : const Color(0xFFE2E6EA),
-        width: isSelected ? 2 : 1,
-      ),
-      boxShadow: isSelected
-          ? [
-              BoxShadow(
-                color: c.withAlpha(46),
-                blurRadius: 16,
-                offset: const Offset(0, 4),
-              ),
-            ]
-          : _DS.cardShadow,
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: c.withAlpha(26),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              alignment: Alignment.center,
-              child: Icon(icon, color: c, size: 20),
-            ),
-            Text(
-              value,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 28,
-                fontWeight: FontWeight.w800,
-                color: const Color(0xFF1A202C),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Text(
-          label,
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: const Color(0xFF64748B),
-          ),
-        ),
-      ],
-    ),
-  );
-  if (onTap == null) return card;
-  return MouseRegion(
-    cursor: SystemMouseCursors.click,
-    child: GestureDetector(onTap: onTap, child: card),
+  return StatCard(
+    label: label,
+    value: value,
+    icon: icon,
+    color: accent ?? UpriseColors.primaryDark,
+    selected: isSelected,
+    onTap: onTap,
   );
 }
 
-// Lays out 2-4 _overviewStatCard's evenly across the available width via
-// Expanded, instead of a left-aligned Wrap — sparse tabs (a couple of stat
-// cards on an otherwise-empty 720px-wide dialog page) were reading as
-// misaligned/unbalanced with fixed-width cards floating at the left.
-Widget _overviewStatRow(List<Widget> cards) {
-  final children = <Widget>[];
-  for (var i = 0; i < cards.length; i++) {
-    if (i > 0) children.add(const SizedBox(width: 12));
-    children.add(Expanded(child: cards[i]));
-  }
-  return Row(crossAxisAlignment: CrossAxisAlignment.start, children: children);
-}
+// Lays out 2-4 overview stat cards evenly across the available width.
+// Delegates to the shared [StatCardsRow] rather than re-implementing the
+// same Expanded-with-gaps loop a third time.
+Widget _overviewStatRow(List<Widget> cards) =>
+    StatCardsRow(cards: cards, isMobile: false, gap: 12);
 
 // Per-feedback-entry star row for the Event Overview's Feedback tab — shows
 // the individual rating each respondent gave, alongside their comment.

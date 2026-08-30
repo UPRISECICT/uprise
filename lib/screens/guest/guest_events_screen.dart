@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
@@ -16,14 +15,8 @@ import '../../widgets/common/event_browsing.dart';
 import '../../widgets/common/event_card.dart';
 import '../../widgets/common/loading_widget.dart' show SkeletonLoader;
 import '../../widgets/student/app_colors.dart';
+import '../../widgets/student/app_image.dart';
 import '../../widgets/student/student_app_bar.dart';
-
-ImageProvider _guestImageProvider(String url) {
-  if (url.startsWith('data:image')) {
-    return MemoryImage(base64Decode(url.split(',').last));
-  }
-  return NetworkImage(url);
-}
 
 // Shared by both the browse-list filter (which just hides events a guest
 // classification isn't allowed to see) and the registration screen (which
@@ -500,22 +493,21 @@ class _GuestEventsScreenState extends State<GuestEventsScreen>
     final category = _selectedCategory?.toLowerCase();
 
     return _eventMap.values.where((e) {
-          if (_activeStatus != null && e.timeStatus != _activeStatus) {
-            return false;
-          }
-          if (_selectedOrgId != null && e.orgId != _selectedOrgId) return false;
-          if (category != null && e.category.toLowerCase() != category) {
-            return false;
-          }
-          if (q.isNotEmpty &&
-              !e.title.toLowerCase().contains(q) &&
-              !e.orgName.toLowerCase().contains(q) &&
-              !e.location.toLowerCase().contains(q)) {
-            return false;
-          }
-          return true;
-        }).toList()
-      ..sort(_latestFirst);
+      if (_activeStatus != null && e.timeStatus != _activeStatus) {
+        return false;
+      }
+      if (_selectedOrgId != null && e.orgId != _selectedOrgId) return false;
+      if (category != null && e.category.toLowerCase() != category) {
+        return false;
+      }
+      if (q.isNotEmpty &&
+          !e.title.toLowerCase().contains(q) &&
+          !e.orgName.toLowerCase().contains(q) &&
+          !e.location.toLowerCase().contains(q)) {
+        return false;
+      }
+      return true;
+    }).toList()..sort(_latestFirst);
   }
 
   /// Derived from the events already loaded rather than the `organizations`
@@ -913,8 +905,7 @@ class _GuestEventDetailScreenState extends State<GuestEventDetailScreen> {
   /// calendar day) has passed — `date` alone is day-granular. Reads the same
   /// classification the Discover chips filter on, rather than a second
   /// hand-rolled end-time comparison beside it.
-  bool get _isPast =>
-      widget.event.timeStatus == EventTimeStatus.completed;
+  bool get _isPast => widget.event.timeStatus == EventTimeStatus.completed;
 
   bool get _isEligible => _identity == null
       ? false
@@ -928,10 +919,7 @@ class _GuestEventDetailScreenState extends State<GuestEventDetailScreen> {
     if (identity == null || _busy) return;
     setState(() => _busy = true);
     try {
-      await registerGuestForEvent(
-        identity: identity,
-        eventId: widget.event.id,
-      );
+      await registerGuestForEvent(identity: identity, eventId: widget.event.id);
       if (!mounted) return;
       setState(() => _registered = true);
       _snack('You\'re registered for this event.', ok: true);
@@ -949,9 +937,7 @@ class _GuestEventDetailScreenState extends State<GuestEventDetailScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Cancel registration?'),
         content: const Text(
           'Your slot will be released and someone else can take it.',
@@ -1095,9 +1081,7 @@ class _GuestEventDetailScreenState extends State<GuestEventDetailScreen> {
     padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
     decoration: BoxDecoration(
       color: Colors.white,
-      boxShadow: [
-        BoxShadow(color: Colors.black.withAlpha(20), blurRadius: 12),
-      ],
+      boxShadow: [BoxShadow(color: Colors.black.withAlpha(20), blurRadius: 12)],
     ),
     child: SafeArea(top: false, child: child),
   );
@@ -1241,7 +1225,7 @@ class _GuestEventDetailScreenState extends State<GuestEventDetailScreen> {
                             radius: 22,
                             backgroundColor: Colors.grey[200],
                             backgroundImage: event.orgLogoUrl.isNotEmpty
-                                ? _guestImageProvider(event.orgLogoUrl)
+                                ? AppImage.provider(event.orgLogoUrl)
                                 : null,
                             child: event.orgLogoUrl.isEmpty
                                 ? Text(

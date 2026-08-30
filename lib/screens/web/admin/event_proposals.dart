@@ -14,10 +14,11 @@ import 'export_pdf.dart';
 import 'export_excel.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../services/notification_service.dart';
+import '../../../services/proposal_review_log.dart';
 import '../../../theme/admin_theme.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/app_toast.dart';
-import '../../../widgets/admin_stat_cards_row.dart';
+import '../../../widgets/stat_cards.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper: get user full name from UID
@@ -199,6 +200,20 @@ Widget _sectionLabel(String text, {IconData? icon}) {
     ),
   );
 }
+
+// The stored status is `for_review`; every surface calls it "Needs
+// Revision". Admin already used that wording, the org screen said "For
+// Review", and the two were the same state — so a proposal appeared to be
+// in different places depending on which portal you were looking at. The
+// filter label can no longer be derived by lowercasing (it would give
+// `needs_revision`), hence the explicit map.
+const Map<String, String> kProposalFilterStatus = {
+  'Pending': 'pending',
+  'Needs Revision': 'for_review',
+  'Approved': 'approved',
+  'Rejected': 'rejected',
+  'Archived': 'archived',
+};
 
 Widget _statusBadge(String status) {
   const Map<String, _BadgeStyle> styles = {
@@ -382,7 +397,12 @@ class _EventProposalsState extends State<EventProposals> {
     return StreamBuilder<QuerySnapshot>(
       stream: _proposalsStream,
       builder: (context, snapshot) {
-        int total = 0, pending = 0, approved = 0, rejected = 0;
+        int total = 0,
+            pending = 0,
+            approved = 0,
+            rejected = 0,
+            needsRevision = 0,
+            archived = 0;
         if (snapshot.hasData) {
           total = snapshot.data!.docs.length;
           for (final doc in snapshot.data!.docs) {
@@ -390,50 +410,54 @@ class _EventProposalsState extends State<EventProposals> {
             if (status == 'pending') pending++;
             if (status == 'approved') approved++;
             if (status == 'rejected') rejected++;
+            if (status == 'for_review') needsRevision++;
+            if (status == 'archived') archived++;
           }
         }
         final horizontalPadding = isMobile ? 16.0 : (isTablet ? 20.0 : 28.0);
         final cardGap = isMobile ? 8.0 : 14.0;
+        void setFilter(String f) => setState(() {
+          _statusFilter = f;
+          _currentPage = 1;
+        });
+
+        // Needs Revision gets a card here for the first time. The org
+        // portal had one and admin didn't, which is backwards: admin is
+        // the side that *creates* that state, and had no way to see how
+        // many proposals were sitting in it waiting on an org. Rejected
+        // and Archived are terminal, so they move to the strip.
         final statCards = [
-          _StatCard(
+          StatCard(
             label: 'Total Proposals',
             value: '$total',
             icon: Icons.event_note_rounded,
             color: AdminColors.primaryDark,
-            onTap: () => setState(() {
-              _statusFilter = 'All';
-              _currentPage = 1;
-            }),
+            selected: _statusFilter == 'All',
+            onTap: () => setFilter('All'),
           ),
-          _StatCard(
-            label: 'Approved',
-            value: '$approved',
-            icon: Icons.check_circle_rounded,
-            color: const Color(0xFF059669),
-            onTap: () => setState(() {
-              _statusFilter = 'Approved';
-              _currentPage = 1;
-            }),
-          ),
-          _StatCard(
+          StatCard(
             label: 'Pending',
             value: '$pending',
             icon: Icons.pending_rounded,
             color: const Color(0xFFFB923C),
-            onTap: () => setState(() {
-              _statusFilter = 'Pending';
-              _currentPage = 1;
-            }),
+            selected: _statusFilter == 'Pending',
+            onTap: () => setFilter('Pending'),
           ),
-          _StatCard(
-            label: 'Rejected',
-            value: '$rejected',
-            icon: Icons.cancel_rounded,
-            color: const Color(0xFFDC2626),
-            onTap: () => setState(() {
-              _statusFilter = 'Rejected';
-              _currentPage = 1;
-            }),
+          StatCard(
+            label: 'Needs Revision',
+            value: '$needsRevision',
+            icon: Icons.rate_review_rounded,
+            color: AdminColors.info,
+            selected: _statusFilter == 'Needs Revision',
+            onTap: () => setFilter('Needs Revision'),
+          ),
+          StatCard(
+            label: 'Approved',
+            value: '$approved',
+            icon: Icons.check_circle_rounded,
+            color: const Color(0xFF059669),
+            selected: _statusFilter == 'Approved',
+            onTap: () => setFilter('Approved'),
           ),
         ];
 
@@ -444,17 +468,36 @@ class _EventProposalsState extends State<EventProposals> {
             horizontalPadding,
             0,
           ),
-          child: StatCardsRow(
-            cards: statCards,
-            isMobile: isMobile,
-            gap: cardGap,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              StatCardsRow(cards: statCards, isMobile: isMobile, gap: cardGap),
+              const SizedBox(height: 14),
+              StatStrip(
+                items: [
+                  StatStripItem.count(
+                    label: 'Rejected',
+                    count: rejected,
+                    color: const Color(0xFFDC2626),
+                    selected: _statusFilter == 'Rejected',
+                    onTap: () => setFilter('Rejected'),
+                  ),
+                  StatStripItem.count(
+                    label: 'Archived',
+                    count: archived,
+                    color: const Color(0xFF6B7280),
+                    selected: _statusFilter == 'Archived',
+                    onTap: () => setFilter('Archived'),
+                  ),
+                ],
+              ),
+            ],
           ),
         );
       },
     );
   }
 
-  // ── Toolbar ───────────────────────────────────────────────────────
   Widget _buildToolbar(bool isMobile, bool isTablet) {
     final horizontalPadding = isMobile ? 16.0 : (isTablet ? 20.0 : 28.0);
     final itemGap = isMobile ? 10.0 : 12.0;
@@ -518,8 +561,8 @@ class _EventProposalsState extends State<EventProposals> {
                     'Pending',
                     'Approved',
                     'Rejected',
+                    'Needs Revision',
                     'Archived',
-                    'For Review',
                   ],
                   hint: 'Status',
                   icon: Icons.tune_rounded,
@@ -546,8 +589,8 @@ class _EventProposalsState extends State<EventProposals> {
                     'Pending',
                     'Approved',
                     'Rejected',
+                    'Needs Revision',
                     'Archived',
-                    'For Review',
                   ],
                   hint: 'Status',
                   icon: Icons.tune_rounded,
@@ -603,10 +646,7 @@ class _EventProposalsState extends State<EventProposals> {
               .where((d) => (d.data() as Map)['status'] != 'archived')
               .toList();
         } else {
-          // 'For Review' -> 'for_review': the one status value that isn't
-          // a single lowercased word, so the naive .toLowerCase() compare
-          // below needs the space converted to match the stored value.
-          final statusValue = _statusFilter.toLowerCase().replaceAll(' ', '_');
+          final statusValue = kProposalFilterStatus[_statusFilter] ?? '';
           docs = docs
               .where((d) => (d.data() as Map)['status'] == statusValue)
               .toList();
@@ -915,6 +955,22 @@ class _EventProposalsState extends State<EventProposals> {
                             docId,
                             data['title'] ?? 'this event',
                             'approved',
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        // Sending a proposal back for revision used to be
+                        // reachable only from inside the detail dialog, so
+                        // the cheap middle option between approve and
+                        // reject was the one nobody could find. It belongs
+                        // beside them.
+                        _ActionIconButton(
+                          icon: Icons.rate_review_outlined,
+                          tooltip: 'Request revision',
+                          color: AdminColors.info,
+                          onTap: () => _showRevisionDialog(
+                            context,
+                            docId,
+                            data['title'] ?? 'this event',
                           ),
                         ),
                         const SizedBox(width: 4),
@@ -1721,10 +1777,18 @@ class _EventProposalsState extends State<EventProposals> {
       final orgId = (await docRef.get()).data()?['orgId']?.toString() ?? '';
       await docRef.update({
         'status': 'rejected',
-        'adminFeedback': reason, // store rejection reason in adminFeedback
+        // Still written so existing documents and the org's current
+        // "latest feedback" box keep working — the reviews subcollection
+        // is what preserves the earlier rounds.
+        'adminFeedback': reason,
         'reviewedAt': FieldValue.serverTimestamp(),
         'reviewedBy': FirebaseAuth.instance.currentUser?.uid ?? '',
       });
+      await ProposalReviewLog.add(
+        proposalId: docId,
+        action: ProposalReviewAction.rejected,
+        message: reason,
+      );
       await activity_log.ActivityLogger.log(
         action: 'Rejected proposal: $title',
         module: 'Event Management',
@@ -1781,6 +1845,14 @@ class _EventProposalsState extends State<EventProposals> {
         'reviewedBy': FirebaseAuth.instance.currentUser?.uid ?? '',
         if (extraFields != null) ...extraFields,
       });
+      await ProposalReviewLog.add(
+        proposalId: docId,
+        action: switch (newStatus) {
+          'approved' => ProposalReviewAction.approved,
+          'rejected' => ProposalReviewAction.rejected,
+          _ => newStatus,
+        },
+      );
       await activity_log.ActivityLogger.log(
         action: '${newStatus.toUpperCase()} proposal: $title',
         module: 'Event Management',
@@ -1849,6 +1921,11 @@ class _EventProposalsState extends State<EventProposals> {
         'reviewedAt': FieldValue.serverTimestamp(),
         'reviewedBy': FirebaseAuth.instance.currentUser?.uid ?? '',
       });
+      await ProposalReviewLog.add(
+        proposalId: docId,
+        action: ProposalReviewAction.revisionRequested,
+        message: feedback,
+      );
       await activity_log.ActivityLogger.log(
         action: 'Requested revision for proposal: $title',
         module: 'Event Management',
@@ -2332,6 +2409,51 @@ class _EventProposalsState extends State<EventProposals> {
                               ),
                               Column(
                                 children: [
+                                  // Whether the org's adviser signed off
+                                  // before this reached the admin office.
+                                  // The adviser has no account, so this is
+                                  // the org attesting to an offline
+                                  // endorsement, named at the time it was
+                                  // given.
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(
+                                        child: _detailItem(
+                                          'Adviser Endorsement',
+                                          data['endorsedByAdviser'] == true
+                                              ? [
+                                                  'Endorsed by',
+                                                  (data['endorsedAdviserName'] ??
+                                                          '—')
+                                                      .toString(),
+                                                  if ((data['endorsedAdviserRank'] ??
+                                                          '')
+                                                      .toString()
+                                                      .isNotEmpty)
+                                                    '(${data['endorsedAdviserRank']})',
+                                                ].join(' ')
+                                              : 'Not endorsed',
+                                          Icons.verified_user_outlined,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: _detailItem(
+                                          'Endorsement Remarks',
+                                          (data['endorsementRemarks'] ?? '')
+                                                  .toString()
+                                                  .isEmpty
+                                              ? '—'
+                                              : data['endorsementRemarks']
+                                                    .toString(),
+                                          Icons.notes_rounded,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
                                   Row(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
@@ -3208,76 +3330,6 @@ class _ConfirmStyle {
     required this.body,
     required this.btnLabel,
   });
-}
-
-class _StatCard extends StatelessWidget {
-  final String label, value;
-  final IconData icon;
-  final Color color;
-  final VoidCallback? onTap;
-  const _StatCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final card = Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE8ECF0)),
-        boxShadow: _DS.cardShadow,
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.10),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: color, size: 22),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 11,
-                    color: const Color(0xFF64748B),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF1A202C),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-    if (onTap == null) return card;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(onTap: onTap, child: card),
-    );
-  }
 }
 
 class _FilterDropdown extends StatelessWidget {

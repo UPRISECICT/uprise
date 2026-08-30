@@ -8,7 +8,6 @@
 // org_certificates.dart's distribution flow — never the student
 // "recipientUid == null" broadcast-fallback branch.
 
-import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -18,6 +17,7 @@ import 'package:http/http.dart' as http;
 import '../../utils/platform_file_utils.dart' as platform_file_utils;
 import 'guest_auth_service.dart';
 import '../../widgets/student/app_colors.dart';
+import '../../widgets/student/app_image.dart';
 import '../../widgets/student/student_app_bar.dart';
 
 const _kOrange = AppColors.primaryDark;
@@ -107,31 +107,27 @@ class _GuestCertificateRepositoryScreenState
     return '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
   }
 
-  bool _isBase64Image(String url) =>
-      url.startsWith('data:image') || (!url.startsWith('http') && url.isNotEmpty);
-
+  // AppImage rather than a local base64/network split. Certificate templates
+  // uploaded as PDFs are stored as a Cloudinary .pdf URL, which no Image widget
+  // can decode as pixels; AppImage re-requests the same asset as .jpg so the
+  // first page rasterizes. The student certificates screen already renders
+  // these correctly for exactly that reason — this one showed nothing.
+  //
+  // A broken image now lands on the same placeholder as an empty one, rather
+  // than the old SizedBox.shrink() that collapsed the card's image slot.
   Widget _buildImage(String imageUrl, {double height = 160}) {
-    if (imageUrl.isEmpty) {
-      return Container(
+    return AppImage(
+      source: imageUrl,
+      height: height,
+      width: double.infinity,
+      fit: BoxFit.cover,
+      placeholder: Container(
         height: height,
         color: _kOrangeLight,
         child: const Center(
             child: Icon(Icons.workspace_premium_outlined, size: 40, color: _kOrange)),
-      );
-    }
-    if (_isBase64Image(imageUrl)) {
-      try {
-        final base64Str = imageUrl.contains(',') ? imageUrl.split(',').last : imageUrl;
-        return Image.memory(base64Decode(base64Str),
-            height: height, width: double.infinity, fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => const SizedBox.shrink());
-      } catch (_) {
-        return const SizedBox.shrink();
-      }
-    }
-    return Image.network(imageUrl,
-        height: height, width: double.infinity, fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => const SizedBox.shrink());
+      ),
+    );
   }
 
   Future<void> _download(Map<String, dynamic> cert) async {
@@ -140,9 +136,13 @@ class _GuestCertificateRepositoryScreenState
     final fileName = '${cert['title']}.${imageUrl.isNotEmpty ? 'png' : 'pdf'}';
     try {
       Uint8List? bytes;
-      if (imageUrl.isNotEmpty && _isBase64Image(imageUrl)) {
-        final b64 = imageUrl.contains(',') ? imageUrl.split(',').last : imageUrl;
-        bytes = base64Decode(b64);
+      // decodeAppImageBytes returns null for network URLs and for anything it
+      // can't decode, so null here is exactly the "fetch it instead" case. It
+      // accepts more shapes than the old check did: raw base64 with no prefix,
+      // and the malformed `dataimage...` variant.
+      final inlineBytes = decodeAppImageBytes(imageUrl);
+      if (inlineBytes != null) {
+        bytes = inlineBytes;
       } else {
         final url = imageUrl.isNotEmpty ? imageUrl : fileUrl;
         if (url.isEmpty) throw Exception('No downloadable file for this certificate.');

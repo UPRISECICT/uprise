@@ -198,8 +198,13 @@ class AnnouncementData {
         ? timestamp
         : DateTime.now();
 
-    final rawImage =
-        d['imageBase64'] as String? ?? d['imageUrl'] as String? ?? '';
+    // First non-empty, not `??`: `??` falls through only on null, so an
+    // announcement stored with an empty imageBase64 and a real imageUrl
+    // rendered nothing at all.
+    final rawImage = firstNonEmptyImageSource([
+      d['imageBase64'] as String?,
+      d['imageUrl'] as String?,
+    ]);
 
     String logoUrl = d['logoUrl'] as String? ?? '';
 
@@ -373,19 +378,11 @@ class _StudentAnnouncementsScreenState
             );
           }
 
-          // Pinned first, each group keeping the query's existing
-          // timestamp-descending order — a manual partition instead of
-          // .sort() because List.sort() isn't guaranteed stable, and an
-          // unstable sort here would shuffle same-pin-status posts out of
-          // date order. Mirrors the pin-to-top behavior org_announcements.dart
-          // (web) already does for the org's own view of this same data.
-          final pinned = <AnnouncementData>[];
-          final unpinned = <AnnouncementData>[];
-          for (final doc in docs) {
-            final ann = AnnouncementData.fromFirestore(doc);
-            (ann.isPinned ? pinned : unpinned).add(ann);
-          }
-          final items = [...pinned, ...unpinned];
+          // Straight timestamp-descending, exactly as the query returns them.
+          // Pinned posts used to be partitioned to the top here; pin status is
+          // an org-level curation signal now, surfaced only on that org's
+          // profile, so this feed treats every post the same.
+          final items = docs.map(AnnouncementData.fromFirestore).toList();
 
           return ListView.builder(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -550,18 +547,13 @@ class _AnnouncementCardState extends State<_AnnouncementCard> {
           borderRadius: BorderRadius.circular(16),
           // A BoxDecoration border can only carry a borderRadius when every
           // side is the same color — mixing a category-colored left edge
-          // with a plain grey/pinned border on the other three sides throws
+          // with a plain grey border on the other three sides throws
           // "A borderRadius can only be given on borders with uniform
           // colors" at paint time, which silently blanks the whole card
           // instead of showing a build-time error (this exact mistake broke
           // the org web feed until traced with a widget test). The category
           // accent is a separate Container below instead.
-          border: Border.all(
-            color: ann.isPinned
-                ? AppColors.primaryDark.withOpacity(0.35)
-                : const Color(0xFFEDEDEF),
-            width: ann.isPinned ? 1.4 : 1,
-          ),
+          border: Border.all(color: const Color(0xFFEDEDEF)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.05),
@@ -586,36 +578,6 @@ class _AnnouncementCardState extends State<_AnnouncementCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ── Pinned strip ──
-                    if (ann.isPinned)
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 6,
-                        ),
-                        color: const Color(0xFFFFFBEB),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.push_pin_rounded,
-                              size: 13,
-                              color: Color(0xFFD97706),
-                            ),
-                            const SizedBox(width: 6),
-                            const Text(
-                              'Pinned Announcement',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFFD97706),
-                                letterSpacing: 0.3,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
                     // ── Post header: avatar + org name + time + tag ──
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),

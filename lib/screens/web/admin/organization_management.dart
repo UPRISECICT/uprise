@@ -20,7 +20,7 @@ import 'package:intl/intl.dart';
 import '../../../theme/admin_theme.dart';
 import '../../../utils/file_validation.dart';
 import '../../../widgets/anchored_dropdown.dart';
-import '../../../widgets/admin_stat_cards_row.dart';
+import '../../../widgets/stat_cards.dart';
 
 // ============ GLOBAL CONTEXT FOR SNACKBAR ============
 final GlobalKey<ScaffoldMessengerState> globalMessengerKey =
@@ -473,7 +473,7 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
         }
 
         final cards = [
-          _StatCard(
+          StatCard(
             label: 'Total Organizations',
             value: '$total',
             icon: Icons.business_center_rounded,
@@ -483,7 +483,7 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
               _currentPage = 1;
             }),
           ),
-          _StatCard(
+          StatCard(
             label: 'Active',
             value: '$active',
             icon: Icons.check_circle_rounded,
@@ -493,7 +493,7 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
               _currentPage = 1;
             }),
           ),
-          _StatCard(
+          StatCard(
             label: 'Suspended',
             value: '$suspended',
             icon: Icons.pause_circle_rounded,
@@ -503,7 +503,7 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
               _currentPage = 1;
             }),
           ),
-          _StatCard(
+          StatCard(
             label: 'Archived',
             value: '$archived',
             icon: Icons.archive_rounded,
@@ -1373,80 +1373,6 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
   }
 
   String _formatDate(DateTime d) => DateFormat('MMM d, yyyy').format(d);
-}
-
-// ============ STAT CARD ============
-class _StatCard extends StatelessWidget {
-  final String label, value;
-  final IconData icon;
-  final Color color;
-  final VoidCallback? onTap;
-
-  const _StatCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final card = Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE8ECF0)),
-        boxShadow: _DS.cardShadow,
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.10),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: color, size: 22),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 11,
-                    color: const Color(0xFF64748B),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF1A202C),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-    final wrapped = onTap == null
-        ? card
-        : MouseRegion(
-            cursor: SystemMouseCursors.click,
-            child: GestureDetector(onTap: onTap, child: card),
-          );
-    return wrapped;
-  }
 }
 
 // ============ FILTER DROPDOWN ============

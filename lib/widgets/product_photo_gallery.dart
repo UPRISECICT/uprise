@@ -1,4 +1,4 @@
-import 'dart:convert';
+import 'student/app_image.dart';
 import 'package:flutter/material.dart';
 
 /// A swipeable product photo gallery — several angle photos (front, side,
@@ -33,18 +33,10 @@ class _ProductPhotoGalleryState extends State<ProductPhotoGallery> {
     super.dispose();
   }
 
-  ImageProvider? _decode(String b64) {
-    try {
-      var clean = b64;
-      final comma = clean.indexOf(',');
-      if (clean.startsWith('data:') && comma != -1) {
-        clean = clean.substring(comma + 1);
-      }
-      return MemoryImage(base64Decode(clean));
-    } catch (_) {
-      return null;
-    }
-  }
+  // AppImage.provider over a local decoder: product photos aren't always
+  // inline base64 — a Cloudinary/Storage URL used to fall through to null here
+  // and render as a missing photo.
+  ImageProvider? _decode(String b64) => AppImage.provider(b64);
 
   @override
   Widget build(BuildContext context) {

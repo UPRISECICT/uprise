@@ -1,6 +1,7 @@
 // lib/screens/web/admin/adviser_roles.dart
 
 import 'dart:async';
+import '../../../models/adviser_rank.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -13,7 +14,7 @@ import 'export_pdf.dart';
 import 'export_excel.dart';
 import '../../../theme/admin_theme.dart';
 import '../../../widgets/anchored_dropdown.dart';
-import '../../../widgets/admin_stat_cards_row.dart';
+import '../../../widgets/stat_cards.dart';
 
 // Helper for image handling
 //
@@ -775,20 +776,20 @@ class _AdviserRolesState extends State<AdviserRoles> {
 
   Widget _buildStatsRow(bool isMobile, bool isTablet) {
     final cards = [
-      _StatCard(
+      StatCard(
         label: 'Active Advisers',
         value: '$_totalAdvisers',
         icon: Icons.supervisor_account_rounded,
         color: AdminColors.primaryDark,
         onTap: () => setState(() => _statusFilter = 'Active'),
       ),
-      _StatCard(
+      StatCard(
         label: 'Unique Individuals',
         value: '${_adviserNames.length}',
         icon: Icons.badge_outlined,
         color: const Color(0xFF2563EB),
       ),
-      _StatCard(
+      StatCard(
         label: 'Orgs Without an Adviser',
         value: '$_orgsWithoutAdviser',
         icon: Icons.report_gmailerrorred_rounded,
@@ -796,7 +797,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
             ? const Color(0xFFDC2626)
             : const Color(0xFF059669),
       ),
-      _StatCard(
+      StatCard(
         label: 'Archived Advisers',
         value: '—',
         icon: Icons.archive_rounded,
@@ -1327,9 +1328,77 @@ class _AdviserRolesState extends State<AdviserRoles> {
     );
   }
 
+  /// What an adviser at [rank] is responsible for. Reads from
+  /// [AdviserRank] so the admin view, the student-facing org page and the
+  /// proposal endorsement all describe the role the same way.
+  Widget _buildResponsibilitiesCard(String rank) {
+    final items = AdviserRank.responsibilitiesFor(rank);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFBFCFE),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE8ECF0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'RESPONSIBILITIES',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF64748B),
+              letterSpacing: 0.6,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            AdviserRank.byId(rank).label,
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF1A202C),
+            ),
+          ),
+          const SizedBox(height: 10),
+          for (final r in items)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 4,
+                    height: 4,
+                    margin: const EdgeInsets.only(top: 7, right: 10),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF9AA5B4),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      r,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12.5,
+                        color: const Color(0xFF374151),
+                        height: 1.45,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   // ── View dialog with photos ────────────────────────────────────────────────
   void _showViewDialog(Map<String, dynamic> data, String docId) {
-    final rank = data['adviserRank'] ?? 'Instructor';
+    final rank = data['adviserRank'] ?? 'Faculty';
     final archived = data['archived'] == true;
     final orgName = data['orgName'] ?? '—';
     final orgTag = data['orgTag'] ?? '';
@@ -1452,6 +1521,15 @@ class _AdviserRolesState extends State<AdviserRoles> {
                   rank: rank,
                   photoUrl: data['adviserPhotoUrl'] ?? '',
                 ),
+              ),
+
+              // ---- Responsibilities ----
+              // The rank used to be a bare label. This is what it obliges
+              // the adviser to do — descriptive only, since advisers hold
+              // no account and therefore no permission in the system.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                child: _buildResponsibilitiesCard(rank),
               ),
 
               // ---- Footer ----
@@ -1757,7 +1835,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
       text: existing?['adviserPhone'] ?? '',
     );
     final advRankCtrl = TextEditingController(
-      text: existing?['adviserRank'] ?? 'Instructor',
+      text: existing?['adviserRank'] ?? 'Faculty',
     );
     final formKey = GlobalKey<FormState>();
 
@@ -1782,7 +1860,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
                 advNameCtrl.text = d['adviserName'] ?? '';
                 advEmailCtrl.text = d['adviserEmail'] ?? '';
                 advPhoneCtrl.text = d['adviserPhone'] ?? '';
-                advRankCtrl.text = d['adviserTitle'] ?? 'Instructor';
+                advRankCtrl.text = d['adviserTitle'] ?? 'Faculty';
               });
             }
           }
@@ -2273,14 +2351,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
                             ),
                             const SizedBox(height: 10),
                             AnchoredDropdownField<String>(
-                              value:
-                                  [
-                                    'Dean',
-                                    'Program Chair',
-                                    'Department Head',
-                                    'Coordinator',
-                                    'Faculty',
-                                  ].contains(advRankCtrl.text)
+                              value: AdviserRank.ids.contains(advRankCtrl.text)
                                   ? advRankCtrl.text
                                   : 'Faculty',
                               decoration: _DS.inputDecoration(
@@ -2291,21 +2362,14 @@ class _AdviserRolesState extends State<AdviserRoles> {
                                 fontSize: 13,
                                 color: const Color(0xFF1A202C),
                               ),
-                              items:
-                                  [
-                                        'Dean',
-                                        'Program Chair',
-                                        'Department Head',
-                                        'Coordinator',
-                                        'Faculty',
-                                      ]
-                                      .map(
-                                        (r) => DropdownMenuItem(
-                                          value: r,
-                                          child: Text(r),
-                                        ),
-                                      )
-                                      .toList(),
+                              items: AdviserRank.ids
+                                  .map(
+                                    (r) => DropdownMenuItem(
+                                      value: r,
+                                      child: Text(r),
+                                    ),
+                                  )
+                                  .toList(),
                               onChanged: (v) {
                                 if (v != null) advRankCtrl.text = v;
                               },
@@ -2887,108 +2951,6 @@ class _StatusDropdown extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  final String label, value;
-  final IconData icon;
-  final Color color;
-  final Stream<QuerySnapshot>? stream;
-  final VoidCallback? onTap;
-
-  const _StatCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-    this.stream,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    Widget countWidget;
-    if (stream != null) {
-      countWidget = StreamBuilder<QuerySnapshot>(
-        stream: stream,
-        builder: (ctx, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2, color: color),
-            );
-          }
-          final count = snap.hasData ? snap.data!.docs.length : 0;
-          return Text(
-            '$count',
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-              color: const Color(0xFF1A202C),
-            ),
-          );
-        },
-      );
-    } else {
-      countWidget = Text(
-        value,
-        style: GoogleFonts.beVietnamPro(
-          fontSize: 28,
-          fontWeight: FontWeight.w800,
-          color: const Color(0xFF1A202C),
-        ),
-      );
-    }
-
-    final card = Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE8ECF0)),
-        boxShadow: _DS.cardShadow,
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: color.withAlpha(26),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: color, size: 22),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 11,
-                    color: const Color(0xFF64748B),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                countWidget,
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-    final wrapped = onTap == null
-        ? card
-        : MouseRegion(
-            cursor: SystemMouseCursors.click,
-            child: GestureDetector(onTap: onTap, child: card),
-          );
-    return wrapped;
   }
 }
 

@@ -15,7 +15,7 @@ import 'dart:convert'; // for base64Decode, utf8
 import '../../../utils/platform_file_utils.dart'
     as platform_file_utils; // adjust path if needed
 import '../../../widgets/anchored_dropdown.dart';
-import '../../../widgets/admin_stat_cards_row.dart';
+import '../../../widgets/stat_cards.dart';
 import '../../../services/notification_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -226,6 +226,14 @@ class EventReport {
   final int registrants, attendees;
   final String submittedBy, reportPeriod;
   final DateTime? submittedDate;
+  // Written onto every event doc by org_event_proposals.dart when a
+  // proposal is approved, but never read here until now — the detail view
+  // showed four fields while these sat unused in a document it was already
+  // fetching in full.
+  final String startTime, endTime;
+  final int? capacity;
+  final String audience, schoolYear, semester;
+  final bool issuesCertificate;
   final List<Map<String, dynamic>> incomeBreakdown,
       expenseBreakdown,
       attachments;
@@ -250,6 +258,13 @@ class EventReport {
     this.description = '',
     this.location = '',
     this.eventImageUrl = '',
+    this.startTime = '',
+    this.endTime = '',
+    this.capacity,
+    this.audience = '',
+    this.schoolYear = '',
+    this.semester = '',
+    this.issuesCertificate = false,
     this.incomeBreakdown = const [],
     this.expenseBreakdown = const [],
     this.attachments = const [],
@@ -286,6 +301,13 @@ class EventReport {
           (d['bannerUrl'] as String?)?.toString() ??
           (d['imageUrl'] as String?)?.toString() ??
           '',
+      startTime: d['startTime']?.toString() ?? '',
+      endTime: d['endTime']?.toString() ?? '',
+      capacity: (d['capacity'] as num?)?.toInt(),
+      audience: d['audience']?.toString() ?? '',
+      schoolYear: d['schoolYear']?.toString() ?? '',
+      semester: d['semester']?.toString() ?? '',
+      issuesCertificate: d['issuesCertificate'] == true,
       totalIncome: (d['totalIncome'] as num?)?.toDouble() ?? 0,
       totalExpenses: (d['totalExpenses'] as num?)?.toDouble() ?? 0,
       registrants: registrants,
@@ -714,6 +736,18 @@ class _ReportsManagementState extends State<ReportsManagement>
       reportPeriod: e.reportPeriod,
       submittedDate: e.submittedDate,
       eventImageUrl: e.eventImageUrl,
+      // description and location were already being dropped here, so an
+      // event silently lost both the moment its page's attendance counts
+      // came back. Everything the model carries is copied now.
+      description: e.description,
+      location: e.location,
+      startTime: e.startTime,
+      endTime: e.endTime,
+      capacity: e.capacity,
+      audience: e.audience,
+      schoolYear: e.schoolYear,
+      semester: e.semester,
+      issuesCertificate: e.issuesCertificate,
       incomeBreakdown: e.incomeBreakdown,
       expenseBreakdown: e.expenseBreakdown,
       attachments: e.attachments,
@@ -995,6 +1029,10 @@ class _ReportsManagementState extends State<ReportsManagement>
         orElse: () => <String, dynamic>{'name': event.orgName},
       );
       final orgName = org['name'] as String? ?? event.orgName;
+      // fromFirestore takes orgAbbrev as a 5th positional arg; omitting it
+      // meant the detail view silently lost the abbreviation the table row
+      // had already resolved.
+      final orgAbbrev = org['shortName'] as String? ?? event.orgAbbrev;
 
       final stats = await _loadEventAttendanceStats(event.id);
       final registrants = stats.$1;
@@ -1005,6 +1043,7 @@ class _ReportsManagementState extends State<ReportsManagement>
         orgName,
         registrants,
         attendees,
+        orgAbbrev,
       );
       if (!mounted) return;
       setState(() => _detailEvent = populated);
@@ -2065,28 +2104,28 @@ class _ReportsManagementState extends State<ReportsManagement>
             )
             .length;
     final cards = [
-      _StatCard(
+      StatCard(
         label: 'Total Events',
         value: '${_events.length}',
         icon: Icons.event_note_rounded,
         color: UpriseColors.primaryDark,
         onTap: () => _tabController.animateTo(0),
       ),
-      _StatCard(
+      StatCard(
         label: 'Financial Reports',
         value: '${_financialReports.where((r) => !r.archived).length}',
         icon: Icons.payments_rounded,
         color: UpriseColors.success,
         onTap: () => _tabController.animateTo(2),
       ),
-      _StatCard(
+      StatCard(
         label: 'Accomplishment Reports',
         value: '${_accomplishmentReports.where((r) => !r.archived).length}',
         icon: Icons.assignment_rounded,
         color: UpriseColors.info,
         onTap: () => _tabController.animateTo(1),
       ),
-      _StatCard(
+      StatCard(
         label: 'Overdue (Not Submitted)',
         value: '$overdue',
         icon: Icons.error_outline_rounded,
@@ -4334,513 +4373,611 @@ class _ReportsManagementState extends State<ReportsManagement>
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(28),
-              child: Column(
-                children: [
-                  // Meta grid
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFFE8ECF0)),
-                      boxShadow: _DS.cardShadow,
-                    ),
-                    child: Row(
-                      children: [
-                        _metaCell('ORGANIZATION', event.orgName),
-                        _metaCell('EVENT TYPE', event.type),
-                        _metaCell(
-                          'DATE',
-                          DateFormat('MMM dd, yyyy').format(event.date),
-                        ),
-                        _metaCell(
-                          'LOCATION',
-                          event.location.isNotEmpty ? event.location : '—',
-                          last: true,
-                          lastRow: true,
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Registration & attendance — fetched on-demand for just
-                  // this one event (cheap: two queries) rather than eagerly
-                  // for every event in the list, which used to be the cause
-                  // of the page-wide lag. Attendees comes from the real
-                  // attendance subcollection (events/{id}/attendances),
-                  // not the `registrations.attended` field, which nothing
-                  // in the app ever actually writes to.
-                  FutureBuilder<(int, int)>(
-                    future: _loadEventAttendanceStats(event.id),
-                    builder: (context, snapshot) {
-                      final registrants = snapshot.data?.$1 ?? 0;
-                      final attendees = snapshot.data?.$2 ?? 0;
-                      final ratio = registrants > 0
-                          ? ((attendees / registrants) * 100).round()
-                          : 0;
-                      final loading =
-                          snapshot.connectionState == ConnectionState.waiting;
-                      return Row(
-                        children: [
-                          _detailStatCard(
-                            'Registrants',
-                            loading ? '—' : '$registrants',
-                            UpriseColors.info,
-                            UpriseColors.infoBg,
-                            Icons.people_outline_rounded,
-                          ),
-                          const SizedBox(width: 14),
-                          _detailStatCard(
-                            'Attendees',
-                            loading ? '—' : '$attendees',
-                            UpriseColors.primaryDark,
-                            UpriseColors.primaryLight,
-                            Icons.check_circle_outline_rounded,
-                          ),
-                          const SizedBox(width: 14),
-                          _detailStatCard(
-                            'Attendance Rate',
-                            loading ? '—' : '$ratio%',
-                            ratio >= 50
-                                ? UpriseColors.success
-                                : UpriseColors.warning,
-                            ratio >= 50
-                                ? UpriseColors.successBg
-                                : UpriseColors.warningBg,
-                            Icons.donut_large_rounded,
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  // Participants (attendees list)
-                  FutureBuilder<List<Map<String, dynamic>>>(
-                    future: _loadEventAttendeesList(event.id),
-                    builder: (context, snap) {
-                      final loadingA =
-                          snap.connectionState == ConnectionState.waiting;
-                      final attendeesList = snap.data ?? [];
-                      return Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(18),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFFE8ECF0)),
-                          boxShadow: _DS.cardShadow,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _sectionLabel(
-                              'Participants',
-                              icon: Icons.people_outline_rounded,
+              // One container for the whole report. This used to be seven
+              // separately bordered and shadowed cards stacked down the
+              // page — the properties box, an attendance stat row, a
+              // participants card, a feedback card, a financial stat row
+              // with two breakdown cards, and attachments — all repeating
+              // the same chrome. They are sections of one box now,
+              // separated by hairlines instead of gaps.
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFE8ECF0)),
+                  boxShadow: _DS.cardShadow,
+                ),
+                // Sections pair up two-across when there is room for them.
+                // The switch reads LayoutBuilder's real content width rather
+                // than MediaQuery's screen width, because the admin shell
+                // swaps its 256px sidebar for a drawer at 900px: a 900px
+                // screen leaves *less* room in here than an 899px one, so a
+                // screen-width threshold would flip the layout the wrong way
+                // around exactly that point.
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final twoCol = constraints.maxWidth >= 780;
+
+                    // Registration & attendance — fetched on-demand for just
+                    // this one event (cheap: two queries) rather than eagerly
+                    // for every event in the list, which used to be the cause
+                    // of the page-wide lag. Attendees comes from the real
+                    // attendance subcollection (events/{id}/attendances),
+                    // not the `registrations.attended` field, which nothing
+                    // in the app ever actually writes to.
+                    final attendanceBlock = Padding(
+                      // 14 at the top rather than 18 so the first stat lines
+                      // up with the properties grid's first _metaCell row
+                      // across the divider.
+                      padding: twoCol
+                          ? const EdgeInsets.fromLTRB(18, 14, 18, 18)
+                          : const EdgeInsets.all(18),
+                      child: FutureBuilder<(int, int)>(
+                        future: _loadEventAttendanceStats(event.id),
+                        builder: (context, snapshot) {
+                          final registrants = snapshot.data?.$1 ?? 0;
+                          final attendees = snapshot.data?.$2 ?? 0;
+                          final ratio = registrants > 0
+                              ? ((attendees / registrants) * 100).round()
+                              : 0;
+                          final loading =
+                              snapshot.connectionState ==
+                              ConnectionState.waiting;
+                          // There is no separate loading branch here and
+                          // never was — `loading` just swaps the value for a
+                          // dash, so both layouts below take the same
+                          // arguments.
+                          final rateColor = ratio >= 50
+                              ? UpriseColors.success
+                              : UpriseColors.warning;
+                          final rateBg = ratio >= 50
+                              ? UpriseColors.successBg
+                              : UpriseColors.warningBg;
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _sectionLabel(
+                                'Attendance',
+                                icon: Icons.how_to_reg_rounded,
+                              ),
+                              if (twoCol) ...[
+                                // Narrow column: one stat per line.
+                                _compactStatRow(
+                                  'Registrants',
+                                  loading ? '—' : '$registrants',
+                                  UpriseColors.info,
+                                  UpriseColors.infoBg,
+                                  Icons.people_outline_rounded,
+                                ),
+                                _compactStatRow(
+                                  'Attendees',
+                                  loading ? '—' : '$attendees',
+                                  UpriseColors.primaryDark,
+                                  UpriseColors.primaryLight,
+                                  Icons.check_circle_outline_rounded,
+                                ),
+                                _compactStatRow(
+                                  'Attendance Rate',
+                                  loading ? '—' : '$ratio%',
+                                  rateColor,
+                                  rateBg,
+                                  Icons.donut_large_rounded,
+                                ),
+                              ] else
+                                // Full width: the three cards across, as they
+                                // sat before the two-column split.
+                                Row(
+                                  children: [
+                                    _detailStatCard(
+                                      'Registrants',
+                                      loading ? '—' : '$registrants',
+                                      UpriseColors.info,
+                                      UpriseColors.infoBg,
+                                      Icons.people_outline_rounded,
+                                    ),
+                                    const SizedBox(width: 14),
+                                    _detailStatCard(
+                                      'Attendees',
+                                      loading ? '—' : '$attendees',
+                                      UpriseColors.primaryDark,
+                                      UpriseColors.primaryLight,
+                                      Icons.check_circle_outline_rounded,
+                                    ),
+                                    const SizedBox(width: 14),
+                                    _detailStatCard(
+                                      'Attendance Rate',
+                                      loading ? '—' : '$ratio%',
+                                      rateColor,
+                                      rateBg,
+                                      Icons.donut_large_rounded,
+                                    ),
+                                  ],
+                                ),
+                            ],
+                          );
+                        },
+                      ),
+                    );
+
+                    // Participants (attendees list)
+                    final participantsBlock = Padding(
+                      padding: const EdgeInsets.all(18),
+                      child: FutureBuilder<List<Map<String, dynamic>>>(
+                        future: _loadEventAttendeesList(event.id),
+                        builder: (context, snap) {
+                          final loadingA =
+                              snap.connectionState == ConnectionState.waiting;
+                          final attendeesList = snap.data ?? [];
+                          // Flat: this is a section of the detail view's one
+                          // container now, not a card of its own.
+                          return SizedBox(
+                            width: double.infinity,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _sectionLabel(
+                                  'Participants',
+                                  icon: Icons.people_outline_rounded,
+                                ),
+                                const SizedBox(height: 8),
+                                if (loadingA)
+                                  const Center(
+                                    child: SizedBox(
+                                      height: 36,
+                                      width: 36,
+                                      child: CircularProgressIndicator(),
+                                    ),
+                                  )
+                                else if (attendeesList.isEmpty)
+                                  Text(
+                                    'No attendees recorded.',
+                                    style: GoogleFonts.beVietnamPro(
+                                      color: const Color(0xFF64748B),
+                                    ),
+                                  )
+                                else ...[
+                                  ...attendeesList
+                                      .take(5)
+                                      .map(
+                                        (a) => Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 4,
+                                          ),
+                                          child: _attendeeTile(a),
+                                        ),
+                                      ),
+                                  if (attendeesList.length > 5) ...[
+                                    const SizedBox(height: 4),
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: TextButton(
+                                        onPressed: () =>
+                                            _showAllParticipantsDialog(
+                                              event.title,
+                                              attendeesList,
+                                            ),
+                                        style: TextButton.styleFrom(
+                                          foregroundColor:
+                                              UpriseColors.primaryDark,
+                                          padding: EdgeInsets.zero,
+                                          minimumSize: Size.zero,
+                                          tapTargetSize:
+                                              MaterialTapTargetSize.shrinkWrap,
+                                        ),
+                                        child: Text(
+                                          'View all ${attendeesList.length} participants',
+                                          style: GoogleFonts.beVietnamPro(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ],
                             ),
-                            const SizedBox(height: 8),
-                            if (loadingA)
-                              const Center(
-                                child: SizedBox(
-                                  height: 36,
-                                  width: 36,
-                                  child: CircularProgressIndicator(),
+                          );
+                        },
+                      ),
+                    );
+
+                    // Evaluation / Feedback
+                    final feedbackBlock = Padding(
+                      padding: const EdgeInsets.all(18),
+                      child: FutureBuilder<List<Map<String, dynamic>>>(
+                        future: _loadEventFeedbacks(event.id),
+                        builder: (context, snap) {
+                          final loadingF =
+                              snap.connectionState == ConnectionState.waiting;
+                          final feedbacks = snap.data ?? [];
+                          final total = feedbacks.length;
+                          final avg = total == 0
+                              ? 0.0
+                              : (feedbacks.fold<double>(
+                                      0.0,
+                                      (s, f) =>
+                                          s +
+                                          ((f['rating'] as num?)?.toDouble() ??
+                                              0),
+                                    ) /
+                                    total);
+                          final starCounts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+                          for (final f in feedbacks) {
+                            final r = (f['rating'] as num?)?.toInt() ?? 0;
+                            if (starCounts.containsKey(r))
+                              starCounts[r] = starCounts[r]! + 1;
+                          }
+                          // Flat: this is a section of the detail view's one
+                          // container now, not a card of its own.
+                          return SizedBox(
+                            width: double.infinity,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _sectionLabel(
+                                  'Evaluation & Feedback',
+                                  icon: Icons.reviews_rounded,
                                 ),
-                              )
-                            else if (attendeesList.isEmpty)
-                              Text(
-                                'No attendees recorded.',
-                                style: GoogleFonts.beVietnamPro(
-                                  color: const Color(0xFF64748B),
-                                ),
-                              )
-                            else ...[
-                              ...attendeesList
-                                  .take(5)
-                                  .map(
-                                    (a) => Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 4,
+                                const SizedBox(height: 8),
+                                if (loadingF)
+                                  const Center(
+                                    child: SizedBox(
+                                      height: 36,
+                                      width: 36,
+                                      child: CircularProgressIndicator(),
+                                    ),
+                                  )
+                                else if (feedbacks.isEmpty)
+                                  Text(
+                                    'No feedback recorded.',
+                                    style: GoogleFonts.beVietnamPro(
+                                      color: const Color(0xFF64748B),
+                                    ),
+                                  )
+                                else ...[
+                                  Row(
+                                    children: [
+                                      Text(
+                                        'Average Rating',
+                                        style: GoogleFonts.beVietnamPro(
+                                          fontSize: 12,
+                                          color: const Color(0xFF64748B),
+                                        ),
                                       ),
-                                      child: _attendeeTile(a),
-                                    ),
+                                      const SizedBox(width: 10),
+                                      Text(
+                                        avg.toStringAsFixed(1),
+                                        style: GoogleFonts.beVietnamPro(
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.w800,
+                                          color: UpriseColors.primaryDark,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        '· $total feedbacks',
+                                        style: GoogleFonts.beVietnamPro(
+                                          color: const Color(0xFF64748B),
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                              if (attendeesList.length > 5) ...[
-                                const SizedBox(height: 4),
-                                Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: TextButton(
-                                    onPressed: () => _showAllParticipantsDialog(
-                                      event.title,
-                                      attendeesList,
-                                    ),
-                                    style: TextButton.styleFrom(
-                                      foregroundColor: UpriseColors.primaryDark,
-                                      padding: EdgeInsets.zero,
-                                      minimumSize: Size.zero,
-                                      tapTargetSize:
-                                          MaterialTapTargetSize.shrinkWrap,
-                                    ),
-                                    child: Text(
-                                      'View all ${attendeesList.length} participants',
-                                      style: GoogleFonts.beVietnamPro(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
+                                  const SizedBox(height: 12),
+                                  ...[5, 4, 3, 2, 1]
+                                      .map(
+                                        (star) => Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 4,
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              SizedBox(
+                                                width: 18,
+                                                child: Text(
+                                                  '$star',
+                                                  textAlign: TextAlign.right,
+                                                  style:
+                                                      GoogleFonts.beVietnamPro(
+                                                        fontSize: 12,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                        color: const Color(
+                                                          0xFF374151,
+                                                        ),
+                                                      ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Icon(
+                                                Icons.star,
+                                                size: 14,
+                                                color: UpriseColors.primaryDark,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: LinearProgressIndicator(
+                                                  value: total == 0
+                                                      ? 0
+                                                      : (starCounts[star]! /
+                                                            total),
+                                                  backgroundColor: const Color(
+                                                    0xFFE8ECF0,
+                                                  ),
+                                                  color:
+                                                      UpriseColors.primaryDark,
+                                                  minHeight: 8,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              SizedBox(
+                                                width: 20,
+                                                child: Text(
+                                                  '${starCounts[star]}',
+                                                  style:
+                                                      GoogleFonts.beVietnamPro(
+                                                        color: const Color(
+                                                          0xFF64748B,
+                                                        ),
+                                                      ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      )
+                                      .toList(),
+                                  const SizedBox(height: 12),
+                                  // Recent comments
+                                  Column(
+                                    children: feedbacks
+                                        .take(3)
+                                        .map(
+                                          (f) => Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 6,
+                                            ),
+                                            child: _feedbackTile(f),
+                                          ),
+                                        )
+                                        .toList(),
+                                  ),
+                                  if (feedbacks.length > 3) ...[
+                                    const SizedBox(height: 4),
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: TextButton(
+                                        onPressed: () => _showAllFeedbackDialog(
+                                          event.title,
+                                          feedbacks,
+                                        ),
+                                        style: TextButton.styleFrom(
+                                          foregroundColor:
+                                              UpriseColors.primaryDark,
+                                          padding: EdgeInsets.zero,
+                                          minimumSize: Size.zero,
+                                          tapTargetSize:
+                                              MaterialTapTargetSize.shrinkWrap,
+                                        ),
+                                        child: Text(
+                                          'View all ${feedbacks.length} feedback',
+                                          style: GoogleFonts.beVietnamPro(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
                                       ),
                                     ),
-                                  ),
+                                  ],
+                                ],
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    );
+
+                    // stretch, not the default center: _boxDivider is a
+                    // height-1 Container with no width of its own, so a
+                    // centering Column would render it as nothing.
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Attendance beside the properties grid. IntrinsicHeight
+                        // is load-bearing, not decoration: this sits in a
+                        // SingleChildScrollView, so a stretch Row would
+                        // otherwise be handed an infinite height to stretch to.
+                        // _buildEventPropertiesSection already uses the same
+                        // pairing for its own meta rows.
+                        if (twoCol)
+                          IntrinsicHeight(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Expanded(flex: 1, child: attendanceBlock),
+                                _vBoxDivider(),
+                                Expanded(
+                                  flex: 2,
+                                  child: _buildEventPropertiesSection(event),
                                 ),
                               ],
-                            ],
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  // Evaluation / Feedback
-                  FutureBuilder<List<Map<String, dynamic>>>(
-                    future: _loadEventFeedbacks(event.id),
-                    builder: (context, snap) {
-                      final loadingF =
-                          snap.connectionState == ConnectionState.waiting;
-                      final feedbacks = snap.data ?? [];
-                      final total = feedbacks.length;
-                      final avg = total == 0
-                          ? 0.0
-                          : (feedbacks.fold<double>(
-                                  0.0,
-                                  (s, f) =>
-                                      s +
-                                      ((f['rating'] as num?)?.toDouble() ?? 0),
-                                ) /
-                                total);
-                      final starCounts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
-                      for (final f in feedbacks) {
-                        final r = (f['rating'] as num?)?.toInt() ?? 0;
-                        if (starCounts.containsKey(r))
-                          starCounts[r] = starCounts[r]! + 1;
-                      }
-                      return Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(18),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFFE8ECF0)),
-                          boxShadow: _DS.cardShadow,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _sectionLabel(
-                              'Evaluation & Feedback',
-                              icon: Icons.reviews_rounded,
                             ),
-                            const SizedBox(height: 8),
-                            if (loadingF)
-                              const Center(
-                                child: SizedBox(
-                                  height: 36,
-                                  width: 36,
-                                  child: CircularProgressIndicator(),
+                          )
+                        else ...[
+                          _buildEventPropertiesSection(event),
+                          _boxDivider(),
+                          attendanceBlock,
+                        ],
+                        _boxDivider(),
+                        // Participants beside evaluation & feedback. Both
+                        // FutureBuilders are still siblings built in the same
+                        // frame, so they still fetch in parallel.
+                        if (twoCol)
+                          IntrinsicHeight(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Expanded(child: participantsBlock),
+                                _vBoxDivider(),
+                                Expanded(child: feedbackBlock),
+                              ],
+                            ),
+                          )
+                        else ...[
+                          participantsBlock,
+                          _boxDivider(),
+                          feedbackBlock,
+                        ],
+                        _boxDivider(),
+                        // The standalone "Event Summary" card that used to sit
+                        // here held only event.description, which the info box at
+                        // the top of this page now carries alongside the rest of
+                        // the event's own properties.
+                        // Financial stats — live totals computed from transactions.
+                        Padding(
+                          padding: const EdgeInsets.all(18),
+                          child:
+                              StreamBuilder<
+                                (
+                                  double totalIncome,
+                                  double totalExpenses,
+                                  double netAmount,
+                                  List<Map<String, dynamic>> incomeBreakdown,
+                                  List<Map<String, dynamic>> expenseBreakdown,
+                                  int transactionCount,
+                                )
+                              >(
+                                stream: _eventTransactionSummaryStream(
+                                  event.orgId,
+                                  event.id,
+                                  event.title,
                                 ),
-                              )
-                            else if (feedbacks.isEmpty)
-                              Text(
-                                'No feedback recorded.',
-                                style: GoogleFonts.beVietnamPro(
-                                  color: const Color(0xFF64748B),
-                                ),
-                              )
-                            else ...[
-                              Row(
-                                children: [
-                                  Text(
-                                    'Average Rating',
-                                    style: GoogleFonts.beVietnamPro(
-                                      fontSize: 12,
-                                      color: const Color(0xFF64748B),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Text(
-                                    avg.toStringAsFixed(1),
-                                    style: GoogleFonts.beVietnamPro(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.w800,
-                                      color: UpriseColors.primaryDark,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    '· $total feedbacks',
-                                    style: GoogleFonts.beVietnamPro(
-                                      color: const Color(0xFF64748B),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              ...[5, 4, 3, 2, 1]
-                                  .map(
-                                    (star) => Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 4,
-                                      ),
-                                      child: Row(
+                                builder: (context, snapshot) {
+                                  final loading =
+                                      snapshot.connectionState ==
+                                      ConnectionState.waiting;
+                                  final totalIncome =
+                                      snapshot.data?.$1 ?? event.totalIncome;
+                                  final totalExpenses =
+                                      snapshot.data?.$2 ?? event.totalExpenses;
+                                  final netAmount =
+                                      snapshot.data?.$3 ??
+                                      (totalIncome - totalExpenses);
+                                  final incomeBreakdown =
+                                      snapshot.data?.$4 ??
+                                      event.incomeBreakdown;
+                                  final expenseBreakdown =
+                                      snapshot.data?.$5 ??
+                                      event.expenseBreakdown;
+                                  final transactionCount =
+                                      snapshot.data?.$6 ?? 0;
+                                  final maxInc = incomeBreakdown.isEmpty
+                                      ? 1.0
+                                      : incomeBreakdown
+                                            .map(
+                                              (i) =>
+                                                  (i['amount'] as num?)
+                                                      ?.toDouble() ??
+                                                  0.0,
+                                            )
+                                            .reduce((a, b) => a > b ? a : b);
+                                  final maxExp = expenseBreakdown.isEmpty
+                                      ? 1.0
+                                      : expenseBreakdown
+                                            .map(
+                                              (i) =>
+                                                  (i['amount'] as num?)
+                                                      ?.toDouble() ??
+                                                  0.0,
+                                            )
+                                            .reduce((a, b) => a > b ? a : b);
+
+                                  return Column(
+                                    children: [
+                                      Row(
                                         children: [
-                                          SizedBox(
-                                            width: 18,
-                                            child: Text(
-                                              '$star',
-                                              textAlign: TextAlign.right,
-                                              style: GoogleFonts.beVietnamPro(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w600,
-                                                color: const Color(0xFF374151),
-                                              ),
-                                            ),
+                                          _detailStatCard(
+                                            'Total Income',
+                                            loading
+                                                ? '—'
+                                                : '₱${_fmt(totalIncome)}',
+                                            UpriseColors.success,
+                                            UpriseColors.successBg,
+                                            Icons.trending_up_rounded,
                                           ),
-                                          const SizedBox(width: 4),
-                                          Icon(
-                                            Icons.star,
-                                            size: 14,
-                                            color: UpriseColors.primaryDark,
+                                          const SizedBox(width: 14),
+                                          _detailStatCard(
+                                            'Total Expenses',
+                                            loading
+                                                ? '—'
+                                                : '₱${_fmt(totalExpenses)}',
+                                            UpriseColors.error,
+                                            UpriseColors.errorBg,
+                                            Icons.trending_down_rounded,
                                           ),
-                                          const SizedBox(width: 8),
+                                          const SizedBox(width: 14),
+                                          _detailStatCard(
+                                            'Net Amount',
+                                            loading
+                                                ? '—'
+                                                : '₱${_fmt(netAmount)}',
+                                            netAmount >= 0
+                                                ? UpriseColors.success
+                                                : UpriseColors.error,
+                                            netAmount >= 0
+                                                ? UpriseColors.successBg
+                                                : UpriseColors.errorBg,
+                                            Icons
+                                                .account_balance_wallet_rounded,
+                                          ),
+                                          const SizedBox(width: 14),
+                                          _detailStatCard(
+                                            'Transactions',
+                                            loading ? '—' : '$transactionCount',
+                                            UpriseColors.primaryDark,
+                                            UpriseColors.primaryLight,
+                                            Icons.receipt_long_rounded,
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 16),
+                                      // Breakdowns
+                                      Row(
+                                        children: [
                                           Expanded(
-                                            child: LinearProgressIndicator(
-                                              value: total == 0
-                                                  ? 0
-                                                  : (starCounts[star]! / total),
-                                              backgroundColor: const Color(
-                                                0xFFE8ECF0,
-                                              ),
-                                              color: UpriseColors.primaryDark,
-                                              minHeight: 8,
+                                            child: _breakdownCard(
+                                              'Income Breakdown',
+                                              incomeBreakdown,
+                                              maxInc,
+                                              UpriseColors.success,
+                                              Icons.trending_up_rounded,
                                             ),
                                           ),
-                                          const SizedBox(width: 8),
-                                          SizedBox(
-                                            width: 20,
-                                            child: Text(
-                                              '${starCounts[star]}',
-                                              style: GoogleFonts.beVietnamPro(
-                                                color: const Color(0xFF64748B),
-                                              ),
+                                          const SizedBox(width: 14),
+                                          Expanded(
+                                            child: _breakdownCard(
+                                              'Expense Breakdown',
+                                              expenseBreakdown,
+                                              maxExp,
+                                              UpriseColors.error,
+                                              Icons.trending_down_rounded,
                                             ),
                                           ),
                                         ],
                                       ),
-                                    ),
-                                  )
-                                  .toList(),
-                              const SizedBox(height: 12),
-                              // Recent comments
-                              Column(
-                                children: feedbacks
-                                    .take(3)
-                                    .map(
-                                      (f) => Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 6,
-                                        ),
-                                        child: _feedbackTile(f),
-                                      ),
-                                    )
-                                    .toList(),
+                                    ],
+                                  );
+                                },
                               ),
-                              if (feedbacks.length > 3) ...[
-                                const SizedBox(height: 4),
-                                Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: TextButton(
-                                    onPressed: () => _showAllFeedbackDialog(
-                                      event.title,
-                                      feedbacks,
-                                    ),
-                                    style: TextButton.styleFrom(
-                                      foregroundColor: UpriseColors.primaryDark,
-                                      padding: EdgeInsets.zero,
-                                      minimumSize: Size.zero,
-                                      tapTargetSize:
-                                          MaterialTapTargetSize.shrinkWrap,
-                                    ),
-                                    child: Text(
-                                      'View all ${feedbacks.length} feedback',
-                                      style: GoogleFonts.beVietnamPro(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ],
                         ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  // Event Summary (non-financial)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFFE8ECF0)),
-                      boxShadow: _DS.cardShadow,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _sectionLabel(
-                          'Event Summary',
-                          icon: Icons.event_note_rounded,
-                        ),
-                        const SizedBox(height: 8),
-                        if (event.description.isEmpty)
-                          Text(
-                            'No summary provided.',
-                            style: GoogleFonts.beVietnamPro(
-                              color: const Color(0xFF64748B),
-                            ),
-                          )
-                        else
-                          Text(
-                            event.description,
-                            style: GoogleFonts.beVietnamPro(
-                              color: const Color(0xFF374151),
-                              height: 1.4,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  // Financial stats — live totals computed from transactions.
-                  StreamBuilder<
-                    (
-                      double totalIncome,
-                      double totalExpenses,
-                      double netAmount,
-                      List<Map<String, dynamic>> incomeBreakdown,
-                      List<Map<String, dynamic>> expenseBreakdown,
-                      int transactionCount,
-                    )
-                  >(
-                    stream: _eventTransactionSummaryStream(
-                      event.orgId,
-                      event.id,
-                      event.title,
-                    ),
-                    builder: (context, snapshot) {
-                      final loading =
-                          snapshot.connectionState == ConnectionState.waiting;
-                      final totalIncome =
-                          snapshot.data?.$1 ?? event.totalIncome;
-                      final totalExpenses =
-                          snapshot.data?.$2 ?? event.totalExpenses;
-                      final netAmount =
-                          snapshot.data?.$3 ?? (totalIncome - totalExpenses);
-                      final incomeBreakdown =
-                          snapshot.data?.$4 ?? event.incomeBreakdown;
-                      final expenseBreakdown =
-                          snapshot.data?.$5 ?? event.expenseBreakdown;
-                      final transactionCount = snapshot.data?.$6 ?? 0;
-                      final maxInc = incomeBreakdown.isEmpty
-                          ? 1.0
-                          : incomeBreakdown
-                                .map(
-                                  (i) =>
-                                      (i['amount'] as num?)?.toDouble() ?? 0.0,
-                                )
-                                .reduce((a, b) => a > b ? a : b);
-                      final maxExp = expenseBreakdown.isEmpty
-                          ? 1.0
-                          : expenseBreakdown
-                                .map(
-                                  (i) =>
-                                      (i['amount'] as num?)?.toDouble() ?? 0.0,
-                                )
-                                .reduce((a, b) => a > b ? a : b);
-
-                      return Column(
-                        children: [
-                          Row(
-                            children: [
-                              _detailStatCard(
-                                'Total Income',
-                                loading ? '—' : '₱${_fmt(totalIncome)}',
-                                UpriseColors.success,
-                                UpriseColors.successBg,
-                                Icons.trending_up_rounded,
-                              ),
-                              const SizedBox(width: 14),
-                              _detailStatCard(
-                                'Total Expenses',
-                                loading ? '—' : '₱${_fmt(totalExpenses)}',
-                                UpriseColors.error,
-                                UpriseColors.errorBg,
-                                Icons.trending_down_rounded,
-                              ),
-                              const SizedBox(width: 14),
-                              _detailStatCard(
-                                'Net Amount',
-                                loading ? '—' : '₱${_fmt(netAmount)}',
-                                netAmount >= 0
-                                    ? UpriseColors.success
-                                    : UpriseColors.error,
-                                netAmount >= 0
-                                    ? UpriseColors.successBg
-                                    : UpriseColors.errorBg,
-                                Icons.account_balance_wallet_rounded,
-                              ),
-                              const SizedBox(width: 14),
-                              _detailStatCard(
-                                'Transactions',
-                                loading ? '—' : '$transactionCount',
-                                UpriseColors.primaryDark,
-                                UpriseColors.primaryLight,
-                                Icons.receipt_long_rounded,
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          // Breakdowns
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _breakdownCard(
-                                  'Income Breakdown',
-                                  incomeBreakdown,
-                                  maxInc,
-                                  UpriseColors.success,
-                                  Icons.trending_up_rounded,
-                                ),
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: _breakdownCard(
-                                  'Expense Breakdown',
-                                  expenseBreakdown,
-                                  maxExp,
-                                  UpriseColors.error,
-                                  Icons.trending_down_rounded,
-                                ),
-                              ),
-                            ],
-                          ),
+                        if (event.attachments.isNotEmpty) ...[
+                          _boxDivider(),
+                          _attachmentsCard(event.attachments),
                         ],
-                      );
-                    },
-                  ),
-                  if (event.attachments.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    _attachmentsCard(event.attachments),
-                  ],
-                  const SizedBox(height: 24),
-                ],
+                      ],
+                    );
+                  },
+                ),
               ),
             ),
           ),
@@ -5088,15 +5225,13 @@ class _ReportsManagementState extends State<ReportsManagement>
     Color bgColor,
     IconData icon,
   ) {
+    // Flat: every call site now lives inside the detail view's single
+    // container, so a border and shadow here would just draw a card inside
+    // a card. Still an Expanded — both call sites place it directly in a
+    // Row and rely on it dividing the width.
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFE8ECF0)),
-          boxShadow: _DS.cardShadow,
-        ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(
           children: [
             Container(
@@ -5135,6 +5270,57 @@ class _ReportsManagementState extends State<ReportsManagement>
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // The narrow-column twin of _detailStatCard. _detailStatCard is sized for a
+  // Row — it returns an Expanded and puts the value under the label — which
+  // leaves it far too tall and wide once the attendance stats stack down a
+  // one-third column beside the properties grid. Same icon chip, same colors,
+  // just slimmer: label and value on one line, and no Expanded, because this
+  // goes in a Column.
+  Widget _compactStatRow(
+    String label,
+    String value,
+    Color color,
+    Color bgColor,
+    IconData icon,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Row(
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: bgColor,
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(icon, color: color, size: 16),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              label,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 11,
+                color: const Color(0xFF64748B),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            value,
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -5200,14 +5386,10 @@ class _ReportsManagementState extends State<ReportsManagement>
     Color color,
     IconData icon,
   ) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE8ECF0)),
-        boxShadow: _DS.cardShadow,
-      ),
+    // Flat — see _detailStatCard. This sits inside the detail view's one
+    // container now, so it only needs its padding.
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -5321,14 +5503,10 @@ class _ReportsManagementState extends State<ReportsManagement>
   }
 
   Widget _attachmentsCard(List<Map<String, dynamic>> attachments) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE8ECF0)),
-        boxShadow: _DS.cardShadow,
-      ),
+    // Flat — see _detailStatCard. Pads itself since it is placed straight
+    // into the container's Column rather than through a Padding wrapper.
+    return Padding(
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -5416,11 +5594,21 @@ class _ReportsManagementState extends State<ReportsManagement>
     );
   }
 
+  /// One label-over-value cell of the event info box.
+  ///
+  /// [child] renders a widget instead of the plain value text — used for the
+  /// category chip and the report-status badges so they match how the same
+  /// facts are drawn elsewhere on the page.
+  ///
+  /// The value now wraps to two lines. It was capped at one with an
+  /// ellipsis, which truncated most real venue names ("BulSU Gymnasium,
+  /// Malolos Campus") down to something unreadable in a cell this narrow.
   Widget _metaCell(
     String key,
     String value, {
     bool last = false,
     bool lastRow = false,
+    Widget? child,
   }) {
     return Expanded(
       child: Container(
@@ -5448,21 +5636,173 @@ class _ReportsManagementState extends State<ReportsManagement>
               ),
             ),
             const SizedBox(height: 4),
-            Text(
-              value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: const Color(0xFF1A202C),
+            if (child != null)
+              Align(alignment: Alignment.centerLeft, child: child)
+            else
+              Text(
+                value,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF1A202C),
+                ),
               ),
-            ),
           ],
         ),
       ),
     );
   }
+
+  /// Report status for one event, resolved from the submission rows that
+  /// `_loadSubmissionData()` already loaded in initState — no extra query.
+  /// Returns a key `_statusBadge` understands.
+  String _reportStatusFor(List<OrgSubmission> subs, EventReport event) {
+    final match = subs.where((s) => s.eventId == event.id).toList();
+    if (match.isEmpty) return 'pending';
+    final sub = match.first;
+    if (sub.submittedAt == null) {
+      final deadline = sub.eventDeadline;
+      final overdue = deadline != null && DateTime.now().isAfter(deadline);
+      return overdue ? 'overdue' : 'pending';
+    }
+    return sub.isLate ? 'late' : 'on time';
+  }
+
+  /// The event's own properties — the first section of the detail view's
+  /// single container. Carries everything the event document knows about
+  /// itself, including the description that used to have a card of its own
+  /// further down the page.
+  Widget _buildEventPropertiesSection(EventReport event) {
+    String orDash(String v) => v.trim().isEmpty ? '—' : v.trim();
+
+    final timeRange = (event.startTime.isEmpty && event.endTime.isEmpty)
+        ? '—'
+        : '${orDash(event.startTime)} – ${orDash(event.endTime)}';
+    final term = [
+      if (event.schoolYear.isNotEmpty) event.schoolYear,
+      if (event.semester.isNotEmpty) event.semester,
+    ].join(' · ');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _metaCell('ORGANIZATION', orDash(event.orgName)),
+              _metaCell(
+                'EVENT TYPE',
+                event.type,
+                child: _EventCategoryChip(type: event.type),
+              ),
+              _metaCell(
+                'STATUS',
+                event.status == 'archived' ? 'Archived' : 'Approved',
+                last: true,
+              ),
+            ],
+          ),
+        ),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _metaCell('DATE', DateFormat('MMM dd, yyyy').format(event.date)),
+              _metaCell('TIME', timeRange),
+              _metaCell('LOCATION', orDash(event.location), last: true),
+            ],
+          ),
+        ),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _metaCell('AUDIENCE', orDash(event.audience)),
+              _metaCell(
+                'CAPACITY',
+                event.capacity == null ? 'Unlimited' : '${event.capacity}',
+              ),
+              _metaCell('TERM', orDash(term), last: true),
+            ],
+          ),
+        ),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _metaCell(
+                'CERTIFICATES',
+                event.issuesCertificate ? 'Issued' : 'Not issued',
+                lastRow: true,
+              ),
+              _metaCell(
+                'FINANCIAL REPORT',
+                '',
+                lastRow: true,
+                child: _statusBadge(_reportStatusFor(_financialSubs, event)),
+              ),
+              _metaCell(
+                'ACCOMPLISHMENT REPORT',
+                '',
+                last: true,
+                lastRow: true,
+                child: _statusBadge(
+                  _reportStatusFor(_accomplishmentSubs, event),
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Description lives here rather than in a card of its own further
+        // down — it is a property of the event like everything above it.
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+          decoration: const BoxDecoration(
+            border: Border(top: BorderSide(color: Color(0xFFE8ECF0))),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'DESCRIPTION',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF64748B),
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                event.description.trim().isEmpty
+                    ? 'No summary provided.'
+                    : event.description.trim(),
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  height: 1.55,
+                  color: event.description.trim().isEmpty
+                      ? const Color(0xFF9AA5B4)
+                      : const Color(0xFF374151),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Hairline between sections of the detail container.
+  Widget _boxDivider() => Container(height: 1, color: const Color(0xFFE8ECF0));
+
+  /// Hairline between two side-by-side columns of one detail section.
+  /// Mirrors _boxDivider(); has no height of its own, so the parent Row must
+  /// use CrossAxisAlignment.stretch inside an IntrinsicHeight.
+  Widget _vBoxDivider() => Container(width: 1, color: const Color(0xFFE8ECF0));
 
   // ── Dialogs ───────────────────────────────────────────────────────
   void _viewSubmission(OrgSubmission sub, String reportType) {
@@ -6541,78 +6881,6 @@ class _ConfirmDialog extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 // Reusable Widgets
 // ─────────────────────────────────────────────────────────────────────────────
-
-class _StatCard extends StatelessWidget {
-  final String label, value;
-  final IconData icon;
-  final Color color;
-  final VoidCallback? onTap;
-  const _StatCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final card = Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE8ECF0)),
-        boxShadow: _DS.cardShadow,
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: color.withAlpha(26),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: color, size: 22),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 11,
-                    color: const Color(0xFF64748B),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF1A202C),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-    final wrapped = onTap == null
-        ? card
-        : MouseRegion(
-            cursor: SystemMouseCursors.click,
-            child: GestureDetector(onTap: onTap, child: card),
-          );
-    return wrapped;
-  }
-}
 
 class _FilterDropdown extends StatelessWidget {
   final String value;

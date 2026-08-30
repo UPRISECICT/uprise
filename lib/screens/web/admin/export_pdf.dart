@@ -519,6 +519,13 @@ class AdminExportPdf {
     required String signedByName,
     required DateTime signedAt,
     String remark = '',
+    // Optional so existing callers keep compiling. These matter for the
+    // request types that no longer require the org to attach a draft —
+    // without them, an attachment-less request would produce a signed page
+    // that never says who the letter is for or what it is for.
+    String letterType = '',
+    String addressedTo = '',
+    String purpose = '',
   }) async {
     final pdf = pw.Document(theme: await _loadTheme());
     final bsuLogo = await _loadImage('assets/images/bsu_logo.png');
@@ -560,7 +567,11 @@ class AdminExportPdf {
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
                   _signedRow('Letter ID', letterId),
+                  if (letterType.isNotEmpty) _signedRow('Type', letterType),
                   _signedRow('Subject', subject),
+                  if (addressedTo.isNotEmpty)
+                    _signedRow('Addressed to', addressedTo),
+                  if (purpose.isNotEmpty) _signedRow('Purpose', purpose),
                   _signedRow('Organization', orgName),
                   _signedRow('Requested by', requestorName),
                 ],

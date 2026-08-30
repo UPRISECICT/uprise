@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../../../widgets/stat_cards.dart';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -1477,43 +1478,39 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
         }
 
         final statCards = [
-          _StatCard(
+          StatCard(
             label: 'Total Income',
             value: '₱${NumberFormat('#,###').format(income)}',
             icon: Icons.trending_up_rounded,
             color: OrgColors.success,
-            isSelected: _selectedStatCard == 0,
+            selected: _selectedStatCard == 0,
             onTap: () => selectCard(0, 'income'),
-            expand: !isMobile,
           ),
-          _StatCard(
+          StatCard(
             label: 'Total Expenses',
             value: '₱${NumberFormat('#,###').format(expense)}',
             icon: Icons.trending_down_rounded,
             color: OrgColors.error,
-            isSelected: _selectedStatCard == 1,
+            selected: _selectedStatCard == 1,
             onTap: () => selectCard(1, 'expense'),
-            expand: !isMobile,
           ),
-          _StatCard(
+          StatCard(
             label: 'Net Balance',
             value: net >= 0
                 ? '₱${NumberFormat('#,###').format(net)}'
                 : '-₱${NumberFormat('#,###').format(net.abs())}',
             icon: Icons.account_balance_wallet_outlined,
             color: net >= 0 ? OrgColors.info : OrgColors.error,
-            isSelected: _selectedStatCard == 2,
+            selected: _selectedStatCard == 2,
             onTap: () => selectCard(2, 'all'),
-            expand: !isMobile,
           ),
-          _StatCard(
+          StatCard(
             label: 'Transactions',
             value: '$activeCount',
             icon: Icons.receipt_long_outlined,
             color: UpriseColors.primaryDark,
-            isSelected: _selectedStatCard == 3,
+            selected: _selectedStatCard == 3,
             onTap: () => selectCard(3, 'all'),
-            expand: !isMobile,
           ),
         ];
 
@@ -1539,20 +1536,7 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
                     ),
                   ),
                 )
-              : Row(
-                  // _StatCard wraps itself in Expanded when expand:true (the
-                  // desktop case here), and Expanded must be a *direct* Flex
-                  // child — wrapping it in Padding like the mobile branch
-                  // above would throw "Expanded widgets must be placed
-                  // inside a Flex widget". Spacers have to be separate Row
-                  // children instead.
-                  children: [
-                    for (var i = 0; i < statCards.length; i++) ...[
-                      statCards[i],
-                      if (i < statCards.length - 1) const SizedBox(width: 14),
-                    ],
-                  ],
-                ),
+              : StatCardsRow(cards: statCards, isMobile: false, gap: 14),
         );
       },
     );
@@ -3355,104 +3339,6 @@ class _ReceiptPicker extends StatelessWidget {
 }
 
 // ============ SHARED SMALL WIDGETS ============
-
-class _StatCard extends StatelessWidget {
-  final String label;
-  final String value;
-  final IconData icon;
-  final Color color;
-  final bool isSelected;
-  final VoidCallback? onTap;
-  // Desktop's Row relies on this self-wrapping in Expanded to fill the row
-  // evenly (matches every other stat-card row in the org portal). The
-  // mobile horizontal-scroll layout instead gives each card a fixed
-  // SizedBox width, where an inner Expanded would crash — Expanded needs a
-  // bounded main-axis size to divide up, and a horizontally scrolling Row
-  // is intentionally unbounded on that axis.
-  final bool expand;
-
-  const _StatCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-    this.isSelected = false,
-    this.onTap,
-    this.expand = true,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final card = MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isSelected ? color : const Color(0xFFE8ECF0),
-              width: isSelected ? 2 : 1,
-            ),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: color.withAlpha(46),
-                      blurRadius: 16,
-                      offset: const Offset(0, 4),
-                    ),
-                  ]
-                : _DS.cardShadow,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: color.withAlpha(26),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(icon, color: color, size: 20),
-                  ),
-                  Flexible(
-                    child: Text(
-                      value,
-                      textAlign: TextAlign.right,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w800,
-                        color: OrgColors.charcoal,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                label,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 11,
-                  color: OrgColors.darkGray,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    return expand ? Expanded(child: card) : card;
-  }
-}
 
 class _FilterDropdown extends StatelessWidget {
   final String value;

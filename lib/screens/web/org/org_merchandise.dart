@@ -1,6 +1,7 @@
 // lib/screens/web/org/org_merchandise.dart
 
 import 'dart:convert';
+import '../../../widgets/stat_cards.dart';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -5758,38 +5759,46 @@ class _SalesReportModal extends StatelessWidget {
                           children: [
                             _sectionTitle('Overview'),
                             const SizedBox(height: 10),
-                            Row(
-                              children: [
-                                _miniStatCard(
-                                  'Total Sales',
-                                  orders.length.toString(),
-                                  UpriseColors.info,
+                            // Two cards, not five. The three count-only
+                            // stats (sales, completed, processing) say more
+                            // as one text line than as three more bordered
+                            // boxes; the two the original already marked as
+                            // highlighted are the money figures, so those
+                            // are the ones that stay as cards.
+                            StatCardsRow(
+                              isMobile: false,
+                              gap: 12,
+                              cards: [
+                                StatCard(
+                                  label: 'Total Revenue',
+                                  value:
+                                      '₱${NumberFormat('#,###').format(totalRevenue)}',
+                                  icon: Icons.payments_outlined,
+                                  color: UpriseColors.primaryDark,
                                 ),
-                                const SizedBox(width: 10),
-                                _miniStatCard(
-                                  'Total Revenue',
-                                  '₱${NumberFormat('#,###').format(totalRevenue)}',
-                                  UpriseColors.primaryDark,
-                                  highlight: true,
+                                StatCard(
+                                  label: 'Total Profit',
+                                  value:
+                                      '₱${NumberFormat('#,###').format(totalProfit)}',
+                                  icon: Icons.trending_up_rounded,
+                                  color: UpriseColors.success,
                                 ),
-                                const SizedBox(width: 10),
-                                _miniStatCard(
-                                  'Total Profit',
-                                  '₱${NumberFormat('#,###').format(totalProfit)}',
-                                  UpriseColors.success,
-                                  highlight: true,
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+                            StatStrip(
+                              items: [
+                                StatStripItem.count(
+                                  label: 'Total sales',
+                                  count: orders.length,
                                 ),
-                                const SizedBox(width: 10),
-                                _miniStatCard(
-                                  'Completed',
-                                  completed.toString(),
-                                  UpriseColors.success,
+                                StatStripItem.count(
+                                  label: 'Completed',
+                                  count: completed,
                                 ),
-                                const SizedBox(width: 10),
-                                _miniStatCard(
-                                  'Processing',
-                                  processing.toString(),
-                                  UpriseColors.warning,
+                                StatStripItem.count(
+                                  label: 'Processing',
+                                  count: processing,
                                 ),
                               ],
                             ),
@@ -6070,45 +6079,6 @@ class _SalesReportModal extends StatelessWidget {
       fontSize: 13,
       fontWeight: FontWeight.w700,
       color: const Color(0xFF1A202C),
-    ),
-  );
-  Widget _miniStatCard(
-    String label,
-    String value,
-    Color color, {
-    bool highlight = false,
-  }) => Expanded(
-    child: Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: highlight ? color.withAlpha(20) : const Color(0xFFF8F9FB),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: highlight ? color.withAlpha(77) : const Color(0xFFE2E6EA),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 10,
-              color: const Color(0xFF64748B),
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: highlight ? color : const Color(0xFF1A202C),
-            ),
-          ),
-        ],
-      ),
     ),
   );
 }

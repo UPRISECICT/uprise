@@ -1,9 +1,8 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../widgets/student/app_colors.dart';
+import '../../widgets/student/app_image.dart';
 import '../../widgets/student/student_app_bar.dart';
 
 class GuestAnnouncementsScreen extends StatelessWidget {
@@ -72,9 +71,14 @@ class GuestAnnouncementsScreen extends StatelessWidget {
               final title = data['title'] ?? '';
               final content = data['content'] ?? '';
               final authorName = data['authorName'] ?? 'Unknown';
-              final imageBase64 = data['imageBase64'] ?? '';
-              final isPinned = data['pinned'] ?? false;
               final audience = data['targetAudience'] ?? 'Public';
+              // Both fields, first non-empty wins — an announcement's photo
+              // can be stored inline or as a URL, and `??` would let an empty
+              // imageBase64 beat a populated imageUrl.
+              final imageSource = firstNonEmptyImageSource([
+                data['imageBase64']?.toString(),
+                data['imageUrl']?.toString(),
+              ]);
 
               return Container(
                 margin: const EdgeInsets.only(bottom: 18),
@@ -94,27 +98,34 @@ class GuestAnnouncementsScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // IMAGE
-                    if (imageBase64.toString().isNotEmpty)
+                    // IMAGE — AppImage rather than a bare
+                    // Image.memory(base64Decode(...)): a stored `data:image`
+                    // URI made base64Decode throw while building the argument,
+                    // which errorBuilder can't catch (it only handles failures
+                    // inside the codec), so the card rendered a red error box.
+                    // AppImage also handles network URLs, which this never did.
+                    if (imageSource.isNotEmpty)
                       ClipRRect(
                         borderRadius: const BorderRadius.vertical(
                           top: Radius.circular(18),
                         ),
 
-                        child: Image.memory(
-                          base64Decode(imageBase64),
+                        child: AppImage(
+                          source: imageSource,
 
                           width: double.infinity,
                           height: 220,
                           fit: BoxFit.cover,
 
-                          errorBuilder: (_, __, ___) {
-                            return Container(
-                              height: 220,
-                              color: Colors.grey.shade200,
-                              child: const Icon(Icons.broken_image),
-                            );
-                          },
+                          // Default spinner rather than the placeholder while
+                          // loading: the source can now be a URL, and a
+                          // broken-image icon that later turns into a photo
+                          // claims a failure that hasn't happened.
+                          placeholder: Container(
+                            height: 220,
+                            color: Colors.grey.shade200,
+                            child: const Icon(Icons.broken_image),
+                          ),
                         ),
                       ),
 
@@ -124,44 +135,6 @@ class GuestAnnouncementsScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // PINNED
-                          if (isPinned)
-                            Container(
-                              margin: const EdgeInsets.only(bottom: 10),
-
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 5,
-                              ),
-
-                              decoration: BoxDecoration(
-                                color: AppColors.primaryDark,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(
-                                    Icons.push_pin,
-                                    color: Colors.white,
-                                    size: 14,
-                                  ),
-
-                                  const SizedBox(width: 6),
-
-                                  Text(
-                                    'Pinned',
-                                    style: GoogleFonts.beVietnamPro(
-                                      color: Colors.white,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-
                           // TITLE
                           Text(
                             title,

@@ -353,8 +353,12 @@ class _StudentOrganizationsScreenState extends State<StudentOrganizationsScreen>
           isEvent: false,
           title: (data['title'] ?? 'Untitled').toString(),
           snippet: (data['content'] ?? '').toString(),
-          imageSource: (data['imageBase64'] ?? data['imageUrl'] ?? '')
-              .toString(),
+          // First non-empty, not `??`: `??` falls through only on null, so an
+          // empty imageBase64 used to beat a populated imageUrl.
+          imageSource: firstNonEmptyImageSource([
+            data['imageBase64']?.toString(),
+            data['imageUrl']?.toString(),
+          ]),
           category: (data['category'] ?? '').toString(),
           sortDate: ts is Timestamp ? ts.toDate() : DateTime.now(),
         ),
@@ -587,17 +591,23 @@ class _StudentOrganizationsScreenState extends State<StudentOrganizationsScreen>
         return SliverPadding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
           sliver: SliverGrid(
-            gridDelegate:
-                const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: 0.82,
-                ),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 0.82,
+            ),
             delegate: SliverChildBuilderDelegate((context, i) {
               final data = docs[i].data() as Map<String, dynamic>;
               return _MediaTile(
-                imageSource: (data['imageBase64'] ?? '').toString(),
+                // imageUrl as well as imageBase64: org_merchandise.dart writes
+                // an explicit `imageBase64: ''` for a product photographed by
+                // URL, so reading imageBase64 alone showed a placeholder for
+                // every such product.
+                imageSource: firstNonEmptyImageSource([
+                  data['imageBase64']?.toString(),
+                  data['imageUrl']?.toString(),
+                ]),
                 name: (data['name'] ?? '').toString(),
                 price: ((data['price'] ?? 0) as num).toDouble(),
                 onOpen: widget.config.onOpenMerch == null
@@ -928,10 +938,8 @@ class _OrganizationCard extends StatelessWidget {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => StudentOrganizationsDetailsScreen(
-              orgId: id,
-              config: config,
-            ),
+            builder: (_) =>
+                StudentOrganizationsDetailsScreen(orgId: id, config: config),
           ),
         );
       },
@@ -1135,10 +1143,8 @@ class _OrganizationListCard extends StatelessWidget {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => StudentOrganizationsDetailsScreen(
-              orgId: id,
-              config: config,
-            ),
+            builder: (_) =>
+                StudentOrganizationsDetailsScreen(orgId: id, config: config),
           ),
         );
       },

@@ -1,6 +1,7 @@
 // ignore_for_file: use_build_context_synchronously, deprecated_member_use
 
 import 'dart:async';
+import '../../../widgets/stat_cards.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -418,30 +419,30 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
       padding: const EdgeInsets.fromLTRB(28, 24, 28, 8),
       child: Row(
         children: [
-          _StatCard(
+          StatCard(
             label: 'Total Reports',
             value: '$total',
             icon: Icons.article_outlined,
             color: _DS.primary,
-            isSelected: _selectedStatCard == 0,
+            selected: _selectedStatCard == 0,
             onTap: () => selectCard(0, null),
           ),
           const SizedBox(width: 14),
-          _StatCard(
+          StatCard(
             label: 'Financial',
             value: '$financial',
             icon: Icons.account_balance_outlined,
             color: const Color(0xFF059669),
-            isSelected: _selectedStatCard == 1,
+            selected: _selectedStatCard == 1,
             onTap: () => selectCard(1, 'Financial'),
           ),
           const SizedBox(width: 14),
-          _StatCard(
+          StatCard(
             label: 'Accomplishment',
             value: '$accompl',
             icon: Icons.assignment_turned_in_outlined,
             color: const Color(0xFF2563EB),
-            isSelected: _selectedStatCard == 2,
+            selected: _selectedStatCard == 2,
             onTap: () => selectCard(2, 'Accomplishment'),
           ),
         ],
@@ -3836,96 +3837,6 @@ class _ExportButton extends StatelessWidget {
       );
     }
   }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Reusable widgets
-// ─────────────────────────────────────────────────────────────────────────────
-class _StatCard extends StatelessWidget {
-  final String label, value;
-  final IconData icon;
-  final Color color;
-  final bool isSelected;
-  final VoidCallback? onTap;
-  const _StatCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-    this.isSelected = false,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) => Expanded(
-    child: MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isSelected ? color : _DS.border,
-              width: isSelected ? 2 : 1,
-            ),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: color.withAlpha(46),
-                      blurRadius: 16,
-                      offset: const Offset(0, 4),
-                    ),
-                  ]
-                : _DS.cardShadow,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: color.withAlpha(26),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(icon, color: color, size: 20),
-                  ),
-                  Flexible(
-                    child: Text(
-                      value,
-                      textAlign: TextAlign.right,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w800,
-                        color: _DS.textPrimary,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                label,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 11,
-                  color: _DS.textSecondary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
 }
 
 class _FilterDropdown extends StatelessWidget {

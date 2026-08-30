@@ -10,6 +10,7 @@
 //  - Unified "org" role — no officer/adviser split
 
 import 'dart:async';
+import '../../../widgets/stat_cards.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -4046,7 +4047,8 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      if (actionLabel != null && navigateToTabIndex != null) ...[
+                      if (actionLabel != null &&
+                          navigateToTabIndex != null) ...[
                         TextButton(
                           onPressed: () {
                             Navigator.pop(ctx);
@@ -4186,7 +4188,14 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
   }
 }
 
-// ── Stat card widget ────────────────────────────────────────────────────────
+// ── Merch sales card (FutureBuilder) ────────────────────────────────────────
+// Was "Merch Sales" (summed price*sold) \u2014 merch has no checkout anymore, so
+// sold/revenue are permanently frozen at 0 and meaningless. This now counts
+// the org's active catalog listings instead.
+// Adapter over the shared [StatCard]. Keeps this screen's `count` +
+// `loading` call shape while the card itself now lives in one place — and
+// renders an em dash rather than a misleading "0" while the stream is
+// still connecting.
 class _StatCardWidget extends StatelessWidget {
   final String label;
   final IconData icon;
@@ -4207,87 +4216,16 @@ class _StatCardWidget extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: OrgColors.white,
-            borderRadius: BorderRadius.circular(_DS.radiusMd),
-            border: Border.all(
-              color: isSelected ? color : OrgColors.border,
-              width: isSelected ? 2 : 1,
-            ),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: color.withAlpha(46),
-                      blurRadius: 16,
-                      offset: const Offset(0, 4),
-                    ),
-                  ]
-                : _DS.cardShadow,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: color.withAlpha(26),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(icon, color: color, size: 20),
-                  ),
-                  if (loading)
-                    SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: color,
-                      ),
-                    )
-                  else
-                    Text(
-                      '$count',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w800,
-                        color: OrgColors.charcoal,
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                label,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 11,
-                  color: OrgColors.darkGray,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => StatCard(
+    label: label,
+    value: loading ? '—' : '$count',
+    icon: icon,
+    color: color,
+    selected: isSelected,
+    onTap: onTap,
+  );
 }
 
-// ── Merch sales card (FutureBuilder) ────────────────────────────────────────
-// Was "Merch Sales" (summed price*sold) \u2014 merch has no checkout anymore, so
-// sold/revenue are permanently frozen at 0 and meaningless. This now counts
-// the org's active catalog listings instead.
 class _MerchSalesStatCard extends StatefulWidget {
   final String orgId;
   final bool isSelected;
@@ -4317,89 +4255,17 @@ class _MerchSalesStatCardState extends State<_MerchSalesStatCard> {
 
   @override
   Widget build(BuildContext context) {
-    final isSelected = widget.isSelected;
-    final onTap = widget.onTap;
     return StreamBuilder<QuerySnapshot>(
       stream: _stream,
       builder: (_, snap) {
         final loading = snap.connectionState == ConnectionState.waiting;
-        final count = snap.data?.docs.length ?? 0;
-        return MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: GestureDetector(
-            onTap: onTap,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: OrgColors.white,
-                borderRadius: BorderRadius.circular(_DS.radiusMd),
-                border: Border.all(
-                  color: isSelected ? OrgColors.primaryDark : OrgColors.border,
-                  width: isSelected ? 2 : 1,
-                ),
-                boxShadow: isSelected
-                    ? [
-                        BoxShadow(
-                          color: OrgColors.primaryDark.withAlpha(46),
-                          blurRadius: 16,
-                          offset: const Offset(0, 4),
-                        ),
-                      ]
-                    : _DS.cardShadow,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: OrgColors.primaryDark.withAlpha(26),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(
-                          Icons.shopping_bag_rounded,
-                          color: OrgColors.primaryDark,
-                          size: 20,
-                        ),
-                      ),
-                      if (loading)
-                        const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: OrgColors.primaryDark,
-                          ),
-                        )
-                      else
-                        Text(
-                          '$count',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w800,
-                            color: OrgColors.charcoal,
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Merchandise Items',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11,
-                      color: OrgColors.darkGray,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+        return StatCard(
+          label: 'Merchandise Items',
+          value: loading ? '—' : '${snap.data?.docs.length ?? 0}',
+          icon: Icons.shopping_bag_rounded,
+          color: OrgColors.primaryDark,
+          selected: widget.isSelected,
+          onTap: widget.onTap,
         );
       },
     );

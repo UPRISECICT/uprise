@@ -15,7 +15,7 @@ import '../../../theme/admin_theme.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/app_toast.dart';
-import '../../../widgets/admin_stat_cards_row.dart';
+import '../../../widgets/stat_cards.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens (mirrors student_accounts.dart / org_management.dart)
@@ -244,7 +244,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
         }
 
         final cards = [
-          _StatCard(
+          StatCard(
             label: 'Total Requests',
             value: '$total',
             icon: Icons.people_rounded,
@@ -254,7 +254,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
               _currentPage = 1;
             }),
           ),
-          _StatCard(
+          StatCard(
             label: 'Approved',
             value: '$approved',
             icon: Icons.check_circle_rounded,
@@ -264,7 +264,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
               _currentPage = 1;
             }),
           ),
-          _StatCard(
+          StatCard(
             label: 'Pending',
             value: '$pending',
             icon: Icons.pending_rounded,
@@ -274,7 +274,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
               _currentPage = 1;
             }),
           ),
-          _StatCard(
+          StatCard(
             label: 'Rejected',
             value: '$rejected',
             icon: Icons.cancel_rounded,
@@ -2068,78 +2068,6 @@ class _ExternalAccountState extends State<ExternalAccount> {
 // ─────────────────────────────────────────────────────────────────────────────
 // Reusable widgets (mirrors student_accounts.dart)
 // ─────────────────────────────────────────────────────────────────────────────
-
-class _StatCard extends StatelessWidget {
-  final String label, value;
-  final IconData icon;
-  final Color color;
-  final VoidCallback? onTap;
-  const _StatCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final card = Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE8ECF0)),
-        boxShadow: _DS.cardShadow,
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.10),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: color, size: 22),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 11,
-                    color: const Color(0xFF64748B),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF1A202C),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-    final wrapped = onTap == null
-        ? card
-        : MouseRegion(
-            cursor: SystemMouseCursors.click,
-            child: GestureDetector(onTap: onTap, child: card),
-          );
-    return wrapped;
-  }
-}
 
 class _FilterDropdown extends StatelessWidget {
   final String value;

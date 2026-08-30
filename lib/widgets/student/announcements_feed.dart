@@ -56,17 +56,16 @@ class _AnnouncementsFeedState extends State<AnnouncementsFeed> {
   bool _isNew(AnnouncementData a) =>
       DateTime.now().difference(a.timestamp).inHours < 24;
 
-  // PINNED / NEW carried over from the card this replaced — they say
-  // something the reader can't infer. Everything else falls back to the
-  // Organizations tab's plain ANNOUNCEMENT badge.
+  // NEW says something the reader can't infer; everything else falls back to
+  // the Organizations tab's plain ANNOUNCEMENT badge. Pin status deliberately
+  // isn't surfaced here — it's an org-level curation signal, so it only shows
+  // on that org's profile (the Pinned Announcements section on its About tab).
   String _badgeLabel(AnnouncementData a) {
-    if (a.isPinned) return 'PINNED';
     if (_isNew(a)) return 'NEW';
     return 'ANNOUNCEMENT';
   }
 
   Color _badgeColor(AnnouncementData a) {
-    if (a.isPinned) return AppColors.primaryDark;
     if (_isNew(a)) return const Color(0xFF059669);
     return AppColors.accent;
   }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../../../widgets/stat_cards.dart';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -2348,6 +2349,8 @@ class _DashboardHomeState extends State<DashboardHome> {
     );
   }
 
+  // Adapter over the shared [StatCard] — keeps the cardIndex/stream call
+  // shape used by _buildStatCards while the card visual lives in one place.
   Widget _buildStatCard(
     int cardIndex,
     String label,
@@ -2358,83 +2361,16 @@ class _DashboardHomeState extends State<DashboardHome> {
     return StreamBuilder<QuerySnapshot>(
       stream: stream,
       builder: (ctx, snap) {
-        final count = snap.hasData ? snap.data!.docs.length : 0;
         final loading = snap.connectionState == ConnectionState.waiting;
         final isSelected = _selectedCard == cardIndex;
-
-        return MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: GestureDetector(
-            onTap: () =>
-                setState(() => _selectedCard = isSelected ? null : cardIndex),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(_DS.radiusMd),
-                border: Border.all(
-                  color: isSelected ? color : const Color(0xFFE8ECF0),
-                  width: isSelected ? 2 : 1,
-                ),
-                boxShadow: isSelected
-                    ? [
-                        BoxShadow(
-                          color: color.withAlpha(46),
-                          blurRadius: 16,
-                          offset: const Offset(0, 4),
-                        ),
-                      ]
-                    : _DS.cardShadow,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: color.withAlpha(26),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(icon, color: color, size: 20),
-                      ),
-                      if (loading)
-                        SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: color,
-                          ),
-                        )
-                      else
-                        Text(
-                          '$count',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w800,
-                            color: const Color(0xFF1A202C),
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    label,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11,
-                      color: const Color(0xFF64748B),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+        return StatCard(
+          label: label,
+          value: loading ? '—' : '${snap.data?.docs.length ?? 0}',
+          icon: icon,
+          color: color,
+          selected: isSelected,
+          onTap: () =>
+              setState(() => _selectedCard = isSelected ? null : cardIndex),
         );
       },
     );
@@ -2442,6 +2378,7 @@ class _DashboardHomeState extends State<DashboardHome> {
 
   // Same card shell as _buildStatCard, but driven by the computed
   // _overdueFuture instead of a simple Firestore count stream.
+  // Same adapter, but sourced from the overdue summary future.
   Widget _buildOverdueStatCard(
     int cardIndex,
     String label,
@@ -2451,83 +2388,16 @@ class _DashboardHomeState extends State<DashboardHome> {
     return FutureBuilder<_OverdueSummary>(
       future: _overdueFuture,
       builder: (ctx, snap) {
-        final count = snap.data?.totalOverdue ?? 0;
         final loading = snap.connectionState == ConnectionState.waiting;
         final isSelected = _selectedCard == cardIndex;
-
-        return MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: GestureDetector(
-            onTap: () =>
-                setState(() => _selectedCard = isSelected ? null : cardIndex),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(_DS.radiusMd),
-                border: Border.all(
-                  color: isSelected ? color : const Color(0xFFE8ECF0),
-                  width: isSelected ? 2 : 1,
-                ),
-                boxShadow: isSelected
-                    ? [
-                        BoxShadow(
-                          color: color.withAlpha(46),
-                          blurRadius: 16,
-                          offset: const Offset(0, 4),
-                        ),
-                      ]
-                    : _DS.cardShadow,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: color.withAlpha(26),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(icon, color: color, size: 20),
-                      ),
-                      if (loading)
-                        SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: color,
-                          ),
-                        )
-                      else
-                        Text(
-                          '$count',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w800,
-                            color: const Color(0xFF1A202C),
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    label,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11,
-                      color: const Color(0xFF64748B),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+        return StatCard(
+          label: label,
+          value: loading ? '—' : '${snap.data?.totalOverdue ?? 0}',
+          icon: icon,
+          color: color,
+          selected: isSelected,
+          onTap: () =>
+              setState(() => _selectedCard = isSelected ? null : cardIndex),
         );
       },
     );

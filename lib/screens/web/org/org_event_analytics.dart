@@ -1,6 +1,7 @@
 // lib/screens/web/org/org_event_analytics.dart
 
 import 'dart:async';
+import '../../../widgets/stat_cards.dart';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -840,90 +841,21 @@ class _KpiStatsRow extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isNarrow = constraints.maxWidth < 640;
-        final cardWidth = isNarrow
-            ? (constraints.maxWidth - 12) / 2
-            : (constraints.maxWidth - 36) / 4;
-        return Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
+        return StatCardsRow(
+          isMobile: constraints.maxWidth < 640,
+          gap: 12,
+          cards: [
             for (final s in stats)
-              SizedBox(
-                width: cardWidth,
-                child: _kpiCard(s.$1, s.$2, s.$3, s.$4, s.$5),
+              StatCard(
+                label: s.$1,
+                value: s.$2,
+                icon: s.$3,
+                color: s.$4,
+                onTap: s.$5,
               ),
           ],
         );
       },
-    );
-  }
-
-  // Matches org_dashboard.dart's own stat card exactly (44×44 icon badge
-  // top-left, big number top-right in the same row, label below) instead
-  // of this screen's own smaller icon-stacked-above-value layout — that's
-  // the reference "this looks good" style the rest of the portal already
-  // uses, so this stat row should read as the same family, not a
-  // one-off. Now tappable — jumps to the chart section with more detail
-  // on that metric instead of just sitting there as a static number.
-  Widget _kpiCard(
-    String label,
-    String value,
-    IconData icon,
-    Color color,
-    VoidCallback? onTap,
-  ) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: _C.white,
-            borderRadius: BorderRadius.circular(_DS.radiusMd),
-            border: Border.all(color: _C.border.withAlpha(128)),
-            boxShadow: _DS.cardShadow,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: color.withAlpha(26),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    alignment: Alignment.center,
-                    child: Icon(icon, color: color, size: 20),
-                  ),
-                  Text(
-                    value,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
-                      color: _C.charcoal,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Text(
-                label,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                  color: _C.muted,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
@@ -1448,12 +1380,26 @@ class _SingleSeriesBarChart extends StatelessWidget {
   }
 }
 
-class _DistributionCard extends StatelessWidget {
+// One donut at a time, chosen by a toggle, instead of two side by side.
+// This page was showing four chart surfaces at once (two donuts, a bar
+// chart and a four-tab bar chart); the two donuts answer different
+// questions and were never meant to be read against each other, so
+// showing one and letting you switch costs nothing and halves what the
+// page throws at you on arrival.
+class _DistributionCard extends StatefulWidget {
   final _AnalyticsData data;
   const _DistributionCard({required this.data});
 
   @override
+  State<_DistributionCard> createState() => _DistributionCardState();
+}
+
+class _DistributionCardState extends State<_DistributionCard> {
+  int _view = 0; // 0 = rating, 1 = attendance
+
+  @override
   Widget build(BuildContext context) {
+    final data = widget.data;
     final counts = data.starCounts;
     final totalRatings = data.totalFeedbacks;
     final ratingSlices = [
@@ -1485,64 +1431,94 @@ class _DistributionCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFFBEB),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.insert_chart_outlined,
-                  size: 16,
-                  color: _C.amber,
-                ),
-              ),
-              const SizedBox(width: 10),
               Text(
-                'Rating & attendance breakdown',
+                _view == 0 ? 'Rating breakdown' : 'Attendance breakdown',
                 style: GoogleFonts.beVietnamPro(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: _C.charcoal,
                 ),
               ),
+              const Spacer(),
+              _DistributionToggle(
+                selected: _view,
+                onChanged: (v) => setState(() => _view = v),
+              ),
             ],
           ),
           const SizedBox(height: 16),
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: _DonutSection(
-                    label: 'By rating',
-                    slices: ratingSlices,
-                    centerBig: totalRatings == 0
-                        ? '—'
-                        : data.avgRating.toStringAsFixed(1),
-                    centerSmall: 'average',
-                    emptyText: 'No feedback yet',
-                  ),
-                ),
-                Container(
-                  width: 1,
-                  margin: const EdgeInsets.symmetric(horizontal: 18),
-                  color: _C.border.withOpacity(0.5),
-                ),
-                Expanded(
-                  child: _DonutSection(
-                    label: 'By attendance',
-                    slices: attendanceSlices,
-                    centerBig: attTotal == 0
-                        ? '—'
-                        : '${data.attendanceRate.toStringAsFixed(0)}%',
-                    centerSmall: 'attended',
-                    emptyText: 'No attendance yet',
-                  ),
-                ),
-              ],
+          if (_view == 0)
+            _DonutSection(
+              label: 'By rating',
+              slices: ratingSlices,
+              centerBig: totalRatings == 0
+                  ? '—'
+                  : data.avgRating.toStringAsFixed(1),
+              centerSmall: 'average',
+              emptyText: 'No feedback yet',
+            )
+          else
+            _DonutSection(
+              label: 'By attendance',
+              slices: attendanceSlices,
+              centerBig: attTotal == 0
+                  ? '—'
+                  : '${data.attendanceRate.toStringAsFixed(0)}%',
+              centerSmall: 'attended',
+              emptyText: 'No attendance yet',
             ),
-          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Two-segment switch for [_DistributionCard]. Plain text segments, no
+/// icons or fills beyond the active one — it is a control, not a stat.
+class _DistributionToggle extends StatelessWidget {
+  final int selected;
+  final ValueChanged<int> onChanged;
+  const _DistributionToggle({required this.selected, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: _C.border.withOpacity(0.35),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < 2; i++)
+            MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: () => onChanged(i),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: selected == i ? _C.white : Colors.transparent,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    i == 0 ? 'Rating' : 'Attendance',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11.5,
+                      fontWeight: selected == i
+                          ? FontWeight.w600
+                          : FontWeight.w500,
+                      color: selected == i ? _C.charcoal : _C.muted,
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

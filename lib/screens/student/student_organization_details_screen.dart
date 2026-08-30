@@ -1,5 +1,6 @@
 // lib/screens/student/student_organization_details_screen.dart
 import 'package:flutter/material.dart';
+import '../../models/adviser_rank.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -37,13 +38,12 @@ class _UiTokens {
 
   /// The one card surface used across both org screens (mirrors the same
   /// helper in student_organizations_screen.dart).
-  static BoxDecoration card({double radiusOverride = radius}) =>
-      BoxDecoration(
-        color: AppColors.cardBg,
-        borderRadius: BorderRadius.circular(radiusOverride),
-        border: Border.all(color: cardBorder),
-        boxShadow: subtleShadow,
-      );
+  static BoxDecoration card({double radiusOverride = radius}) => BoxDecoration(
+    color: AppColors.cardBg,
+    borderRadius: BorderRadius.circular(radiusOverride),
+    border: Border.all(color: cardBorder),
+    boxShadow: subtleShadow,
+  );
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -518,10 +518,7 @@ class _StudentOrganizationsDetailsScreenState
                       onAnnouncementTap: _navigateToAnnouncementDetail,
                       config: widget.config,
                     ),
-                    _OrgShopTab(
-                      orgId: widget.orgId,
-                      config: widget.config,
-                    ),
+                    _OrgShopTab(orgId: widget.orgId, config: widget.config),
                   ],
                 ),
               ),
@@ -540,87 +537,83 @@ class _StudentOrganizationsDetailsScreenState
       children: [
         // ── COVER IMAGE WITH LOGO OVERLAY ──
         Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      ClipRRect(
-                        borderRadius: const BorderRadius.only(
-                          bottomLeft: Radius.circular(20),
-                          bottomRight: Radius.circular(20),
-                        ),
-                        child: Container(
-                          height: 180,
-                          width: double.infinity,
-                          decoration: BoxDecoration(
-                            image:
-                                (org['coverPhotoUrl'] != null &&
-                                    (org['coverPhotoUrl'] as String)
-                                        .isNotEmpty &&
-                                    !_coverImageFailed)
-                                ? _buildCoverImage(org['coverPhotoUrl'])
-                                : null,
-                            color: AppColors.primaryDark.withAlpha(20),
-                          ),
-                          child:
-                              (org['coverPhotoUrl'] == null ||
-                                  (org['coverPhotoUrl'] as String).isEmpty ||
-                                  _coverImageFailed)
-                              ? _buildCoverPlaceholder()
-                              : null,
-                        ),
-                      ),
+          clipBehavior: Clip.none,
+          children: [
+            ClipRRect(
+              borderRadius: const BorderRadius.only(
+                bottomLeft: Radius.circular(20),
+                bottomRight: Radius.circular(20),
+              ),
+              child: Container(
+                height: 180,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  image:
+                      (org['coverPhotoUrl'] != null &&
+                          (org['coverPhotoUrl'] as String).isNotEmpty &&
+                          !_coverImageFailed)
+                      ? _buildCoverImage(org['coverPhotoUrl'])
+                      : null,
+                  color: AppColors.primaryDark.withAlpha(20),
+                ),
+                child:
+                    (org['coverPhotoUrl'] == null ||
+                        (org['coverPhotoUrl'] as String).isEmpty ||
+                        _coverImageFailed)
+                    ? _buildCoverPlaceholder()
+                    : null,
+              ),
+            ),
 
-                      Positioned.fill(
-                        child: Container(
-                          height: 180,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Colors.transparent,
-                                Colors.black.withAlpha(51),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      Positioned(
-                        bottom: -35,
-                        left: 16,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 4),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withAlpha(38),
-                                blurRadius: 10,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: CircleAvatar(
-                            radius: 45,
-                            backgroundColor: Colors.white,
-                            backgroundImage: _buildLogoImage(org['logoUrl']),
-                            child:
-                                (org['logoUrl'] == null ||
-                                    (org['logoUrl'] as String).isEmpty)
-                                ? Text(
-                                    (org['name'] ?? 'O')[0].toUpperCase(),
-                                    style: TextStyle(
-                                      fontSize: 32,
-                                      fontWeight: FontWeight.bold,
-                                      color: AppColors.primaryDark,
-                                    ),
-                                  )
-                                : null,
-                          ),
-                        ),
-                      ),
-                    ],
+            Positioned.fill(
+              child: Container(
+                height: 180,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black.withAlpha(51)],
                   ),
+                ),
+              ),
+            ),
+
+            Positioned(
+              bottom: -35,
+              left: 16,
+              child: Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 4),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withAlpha(38),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: CircleAvatar(
+                  radius: 45,
+                  backgroundColor: Colors.white,
+                  backgroundImage: _buildLogoImage(org['logoUrl']),
+                  child:
+                      (org['logoUrl'] == null ||
+                          (org['logoUrl'] as String).isEmpty)
+                      ? Text(
+                          (org['name'] ?? 'O')[0].toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.primaryDark,
+                          ),
+                        )
+                      : null,
+                ),
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: 50),
 
         // ── Organization Info ──
@@ -747,296 +740,318 @@ class _AboutTab extends StatelessWidget {
                 const SizedBox(height: 24),
               ],
 
-                        // ── Organization Adviser(s) ──
-                        Builder(
-                          builder: (context) {
-                            final adviserList = (org['advisers'] as List?)
-                                ?.whereType<Map<String, dynamic>>()
-                                .toList();
-                            final hasMultiple =
-                                adviserList != null && adviserList.isNotEmpty;
-                            final photoUrl = org['adviserPhotoUrl'] as String?;
-                            final photoProvider = AppImage.provider(
-                              photoUrl ?? '',
-                            );
-                            final advisersToShow = hasMultiple
-                                ? adviserList
-                                : [
-                                    {
-                                      'name':
-                                          org['adviserName'] ??
-                                          'No adviser listed',
-                                      'title': org['adviserTitle'],
-                                    },
-                                  ];
-                            return Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: _UiTokens.card(radiusOverride: 12),
-                              child: Column(
+              // ── Organization Adviser(s) ──
+              Builder(
+                builder: (context) {
+                  final adviserList = (org['advisers'] as List?)
+                      ?.whereType<Map<String, dynamic>>()
+                      .toList();
+                  final hasMultiple =
+                      adviserList != null && adviserList.isNotEmpty;
+                  final photoUrl = org['adviserPhotoUrl'] as String?;
+                  final photoProvider = AppImage.provider(photoUrl ?? '');
+                  final advisersToShow = hasMultiple
+                      ? adviserList
+                      : [
+                          {
+                            'name': org['adviserName'] ?? 'No adviser listed',
+                            'title': org['adviserTitle'],
+                          },
+                        ];
+                  return Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: _UiTokens.card(radiusOverride: 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (final adv in advisersToShow)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Row(
+                              children: [
+                                photoProvider != null
+                                    ? CircleAvatar(
+                                        radius: 20,
+                                        backgroundImage: photoProvider,
+                                      )
+                                    : Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.primaryDark
+                                              .withAlpha(20),
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                        ),
+                                        child: Icon(
+                                          Icons.person_outline,
+                                          color: AppColors.primaryDark,
+                                          size: 20,
+                                        ),
+                                      ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'Organization Adviser',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        (adv['name'] ?? 'No adviser listed')
+                                            .toString(),
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: _UiTokens.headingText,
+                                        ),
+                                      ),
+                                      if ((adv['title'] ?? '')
+                                          .toString()
+                                          .isNotEmpty)
+                                        Text(
+                                          (adv['title']).toString(),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: _UiTokens.mutedText,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        // What the adviser's position actually
+                        // covers. Students could see who the
+                        // adviser was but had no way to know what
+                        // they were the person to go to for.
+                        if (advisersToShow.isNotEmpty &&
+                            (advisersToShow.first['title'] ?? '')
+                                .toString()
+                                .isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          const Divider(height: 1),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'RESPONSIBILITIES',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.grey,
+                              letterSpacing: 0.6,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          for (final r in AdviserRank.responsibilitiesFor(
+                            advisersToShow.first['title']?.toString(),
+                          ))
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 6),
+                              child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  for (final adv in advisersToShow)
-                                    Padding(
-                                      padding: const EdgeInsets.only(bottom: 4),
-                                      child: Row(
-                                        children: [
-                                          photoProvider != null
-                                              ? CircleAvatar(
-                                                  radius: 20,
-                                                  backgroundImage:
-                                                      photoProvider,
-                                                )
-                                              : Container(
-                                                  padding: const EdgeInsets.all(
-                                                    8,
-                                                  ),
-                                                  decoration: BoxDecoration(
-                                                    color: AppColors.primaryDark
-                                                        .withAlpha(20),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          10,
-                                                        ),
-                                                  ),
-                                                  child: Icon(
-                                                    Icons.person_outline,
-                                                    color:
-                                                        AppColors.primaryDark,
-                                                    size: 20,
-                                                  ),
-                                                ),
-                                          const SizedBox(width: 12),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                const Text(
-                                                  'Organization Adviser',
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    color: Colors.grey,
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 2),
-                                                Text(
-                                                  (adv['name'] ??
-                                                          'No adviser listed')
-                                                      .toString(),
-                                                  style: const TextStyle(
-                                                    fontSize: 14,
-                                                    fontWeight: FontWeight.w600,
-                                                    color: _UiTokens.headingText,
-                                                  ),
-                                                ),
-                                                if ((adv['title'] ?? '')
-                                                    .toString()
-                                                    .isNotEmpty)
-                                                  Text(
-                                                    (adv['title']).toString(),
-                                                    style: TextStyle(
-                                                      fontSize: 12,
-                                                      color:
-                                                          _UiTokens.mutedText,
-                                                    ),
-                                                  ),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
+                                  Container(
+                                    width: 4,
+                                    height: 4,
+                                    margin: const EdgeInsets.only(
+                                      top: 7,
+                                      right: 10,
+                                    ),
+                                    decoration: const BoxDecoration(
+                                      color: Colors.grey,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                      r,
+                                      style: const TextStyle(
+                                        fontSize: 12.5,
+                                        height: 1.45,
+                                        color: _UiTokens.mutedText,
                                       ),
                                     ),
+                                  ),
                                 ],
                               ),
-                            );
-                          },
-                        ),
-                        const SizedBox(height: 24),
-
-                        // ── Connect / Social Links ──
-                        if ([
-                          org['facebook'],
-                          org['instagram'],
-                          org['twitter'],
-                          org['tiktok'],
-                          org['gmail'],
-                        ].any(
-                          (v) => (v ?? '').toString().trim().isNotEmpty,
-                        )) ...[
-                          const Text(
-                            'Connect',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: _UiTokens.headingText,
                             ),
-                          ),
-                          const SizedBox(height: 10),
-                          Wrap(
-                            spacing: 10,
-                            runSpacing: 10,
-                            children: [
-                              if ((org['facebook'] ?? '')
-                                  .toString()
-                                  .trim()
-                                  .isNotEmpty)
-                                _SocialChip(
-                                  icon: Icons.facebook_rounded,
-                                  label: 'Facebook',
-                                  url: normalizeSocialUrl(
-                                    'facebook',
-                                    org['facebook'].toString(),
-                                  ),
-                                ),
-                              if ((org['instagram'] ?? '')
-                                  .toString()
-                                  .trim()
-                                  .isNotEmpty)
-                                _SocialChip(
-                                  icon: Icons.camera_alt_outlined,
-                                  label: 'Instagram',
-                                  url: normalizeSocialUrl(
-                                    'instagram',
-                                    org['instagram'].toString(),
-                                  ),
-                                ),
-                              if ((org['twitter'] ?? '')
-                                  .toString()
-                                  .trim()
-                                  .isNotEmpty)
-                                _SocialChip(
-                                  icon: Icons.alternate_email_rounded,
-                                  label: 'Twitter/X',
-                                  url: normalizeSocialUrl(
-                                    'twitter',
-                                    org['twitter'].toString(),
-                                  ),
-                                ),
-                              if ((org['tiktok'] ?? '')
-                                  .toString()
-                                  .trim()
-                                  .isNotEmpty)
-                                _SocialChip(
-                                  icon: Icons.music_note_rounded,
-                                  label: 'TikTok',
-                                  url: normalizeSocialUrl(
-                                    'tiktok',
-                                    org['tiktok'].toString(),
-                                  ),
-                                ),
-                              if ((org['gmail'] ?? '')
-                                  .toString()
-                                  .trim()
-                                  .isNotEmpty)
-                                _SocialChip(
-                                  icon: Icons.email_outlined,
-                                  label: org['gmail'],
-                                  url: normalizeSocialUrl(
-                                    'gmail',
-                                    org['gmail'].toString(),
-                                  ),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 24),
                         ],
+                      ],
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 24),
 
-                        // ── Executive Officers ──
-                        const Text(
-                          'Executive Officers',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: _UiTokens.headingText,
-                          ),
+              // ── Connect / Social Links ──
+              if ([
+                org['facebook'],
+                org['instagram'],
+                org['twitter'],
+                org['tiktok'],
+                org['gmail'],
+              ].any((v) => (v ?? '').toString().trim().isNotEmpty)) ...[
+                const Text(
+                  'Connect',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: _UiTokens.headingText,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    if ((org['facebook'] ?? '').toString().trim().isNotEmpty)
+                      _SocialChip(
+                        icon: Icons.facebook_rounded,
+                        label: 'Facebook',
+                        url: normalizeSocialUrl(
+                          'facebook',
+                          org['facebook'].toString(),
                         ),
-                        const SizedBox(height: 12),
-                        if (officers.isEmpty)
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: _UiTokens.card(radiusOverride: 12),
-                            child: Center(
-                              child: Text(
-                                'No officers listed',
-                                style: TextStyle(color: _UiTokens.mutedText),
-                              ),
+                      ),
+                    if ((org['instagram'] ?? '').toString().trim().isNotEmpty)
+                      _SocialChip(
+                        icon: Icons.camera_alt_outlined,
+                        label: 'Instagram',
+                        url: normalizeSocialUrl(
+                          'instagram',
+                          org['instagram'].toString(),
+                        ),
+                      ),
+                    if ((org['twitter'] ?? '').toString().trim().isNotEmpty)
+                      _SocialChip(
+                        icon: Icons.alternate_email_rounded,
+                        label: 'Twitter/X',
+                        url: normalizeSocialUrl(
+                          'twitter',
+                          org['twitter'].toString(),
+                        ),
+                      ),
+                    if ((org['tiktok'] ?? '').toString().trim().isNotEmpty)
+                      _SocialChip(
+                        icon: Icons.music_note_rounded,
+                        label: 'TikTok',
+                        url: normalizeSocialUrl(
+                          'tiktok',
+                          org['tiktok'].toString(),
+                        ),
+                      ),
+                    if ((org['gmail'] ?? '').toString().trim().isNotEmpty)
+                      _SocialChip(
+                        icon: Icons.email_outlined,
+                        label: org['gmail'],
+                        url: normalizeSocialUrl(
+                          'gmail',
+                          org['gmail'].toString(),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+              ],
+
+              // ── Executive Officers ──
+              const Text(
+                'Executive Officers',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: _UiTokens.headingText,
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (officers.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: _UiTokens.card(radiusOverride: 12),
+                  child: Center(
+                    child: Text(
+                      'No officers listed',
+                      style: TextStyle(color: _UiTokens.mutedText),
+                    ),
+                  ),
+                )
+              else
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: officers.length,
+                  separatorBuilder: (_, __) =>
+                      const Divider(height: 0, color: Colors.grey),
+                  itemBuilder: (context, index) {
+                    final officer = officers[index];
+                    return Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 24,
+                            backgroundColor: AppColors.primaryDark.withAlpha(
+                              20,
                             ),
-                          )
-                        else
-                          ListView.separated(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: officers.length,
-                            separatorBuilder: (_, __) =>
-                                const Divider(height: 0, color: Colors.grey),
-                            itemBuilder: (context, index) {
-                              final officer = officers[index];
-                              return Container(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 8,
-                                ),
-                                child: Row(
-                                  children: [
-                                    CircleAvatar(
-                                      radius: 24,
-                                      backgroundColor: AppColors.primaryDark
-                                          .withAlpha(20),
-                                      backgroundImage: AppImage.provider(
-                                        (officer['photoUrl'] ?? '').toString(),
-                                      ),
-                                      child:
-                                          (officer['photoUrl'] == null ||
-                                              (officer['photoUrl'] as String?)
-                                                      ?.isEmpty ==
-                                                  true)
-                                          ? Text(
-                                              // Guard the empty string — a
-                                              // blank name used to throw
-                                              // RangeError on [0].
-                                              (officer['name'] ?? '')
-                                                      .toString()
-                                                      .isEmpty
-                                                  ? '?'
-                                                  : officer['name']
-                                                        .toString()[0]
-                                                        .toUpperCase(),
-                                              style: TextStyle(
-                                                color: AppColors.primaryDark,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 16,
-                                              ),
-                                            )
-                                          : null,
+                            backgroundImage: AppImage.provider(
+                              (officer['photoUrl'] ?? '').toString(),
+                            ),
+                            child:
+                                (officer['photoUrl'] == null ||
+                                    (officer['photoUrl'] as String?)?.isEmpty ==
+                                        true)
+                                ? Text(
+                                    // Guard the empty string — a
+                                    // blank name used to throw
+                                    // RangeError on [0].
+                                    (officer['name'] ?? '').toString().isEmpty
+                                        ? '?'
+                                        : officer['name']
+                                              .toString()[0]
+                                              .toUpperCase(),
+                                    style: TextStyle(
+                                      color: AppColors.primaryDark,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
                                     ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            officer['name'] ?? '',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w600,
-                                              fontSize: 14,
-                                              color: _UiTokens.headingText,
-                                            ),
-                                          ),
-                                          Text(
-                                            officer['position'] ?? '',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: _UiTokens.mutedText,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
+                                  )
+                                : null,
                           ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  officer['name'] ?? '',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
+                                    color: _UiTokens.headingText,
+                                  ),
+                                ),
+                                Text(
+                                  officer['position'] ?? '',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: _UiTokens.mutedText,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
 
               // ── Pinned announcements (hides itself when there are none) ──
               _PinnedAnnouncements(
@@ -1123,7 +1138,12 @@ Widget _announcementCard({
   // "Pinned" heading, so URGENT is the more useful thing to surface there.
   final urgent = _isUrgentAnnouncement(data);
   return CompactFeedCard(
-    imageSource: (data['imageBase64'] ?? data['imageUrl'] ?? '').toString(),
+    // First non-empty, not `??`: `??` falls through only on null, so an empty
+    // imageBase64 used to beat a populated imageUrl.
+    imageSource: firstNonEmptyImageSource([
+      data['imageBase64']?.toString(),
+      data['imageUrl']?.toString(),
+    ]),
     orgName: orgName,
     orgLogoUrl: orgLogoUrl,
     badgeLabel: urgent
@@ -1197,15 +1217,17 @@ class _PinnedAnnouncementsState extends State<_PinnedAnnouncements> {
                 )
                 .toList()
               ..sort((a, b) {
-            final ta =
-                (a.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
-            final tb =
-                (b.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
-            if (ta == null && tb == null) return 0;
-            if (ta == null) return 1;
-            if (tb == null) return -1;
-            return tb.compareTo(ta);
-          });
+                final ta =
+                    (a.data() as Map<String, dynamic>)['timestamp']
+                        as Timestamp?;
+                final tb =
+                    (b.data() as Map<String, dynamic>)['timestamp']
+                        as Timestamp?;
+                if (ta == null && tb == null) return 0;
+                if (ta == null) return 1;
+                if (tb == null) return -1;
+                return tb.compareTo(ta);
+              });
         if (docs.isEmpty) return const SizedBox.shrink();
 
         final items = docs.map((d) {
@@ -1699,18 +1721,24 @@ class _OrgShopTabState extends State<_OrgShopTab> {
             return SliverPadding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
               sliver: SliverGrid(
-                gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      childAspectRatio: 0.8,
-                    ),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 0.8,
+                ),
                 delegate: SliverChildBuilderDelegate((context, index) {
                   final data = docs[index].data() as Map<String, dynamic>;
                   final name = (data['name'] ?? '').toString();
                   final price = ((data['price'] ?? 0) as num).toDouble();
-                  final imageSource = (data['imageBase64'] ?? '').toString();
+                  // imageUrl as well as imageBase64: org_merchandise.dart
+                  // writes an explicit `imageBase64: ''` for a product
+                  // photographed by URL, so reading imageBase64 alone showed a
+                  // placeholder for every such product.
+                  final imageSource = firstNonEmptyImageSource([
+                    data['imageBase64']?.toString(),
+                    data['imageUrl']?.toString(),
+                  ]);
 
                   return GestureDetector(
                     // The catalog browses app-wide and can't yet open to a

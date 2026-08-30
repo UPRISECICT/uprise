@@ -1,6 +1,7 @@
 // ignore_for_file: unnecessary_cast, unused_field, deprecated_member_use
 
 import 'package:flutter/material.dart';
+import '../../../widgets/stat_cards.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -743,36 +744,36 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
         }
 
         final statCards = [
-          _StatCard(
+          StatCard(
             label: 'Total Certificates',
-            value: total,
+            value: '$total',
             icon: Icons.card_membership_outlined,
             color: UpriseColors.primaryDark,
-            isSelected: _selectedStatCard == 0,
+            selected: _selectedStatCard == 0,
             onTap: () => selectCard(0, null),
           ),
-          _StatCard(
+          StatCard(
             label: 'Total Recipients',
-            value: totalRec,
+            value: '$totalRec',
             icon: Icons.people_outline_rounded,
             color: UpriseColors.accent,
-            isSelected: _selectedStatCard == 1,
+            selected: _selectedStatCard == 1,
             onTap: () => selectCard(1, null),
           ),
-          _StatCard(
+          StatCard(
             label: 'Distributed',
-            value: distributed,
+            value: '$distributed',
             icon: Icons.assignment_turned_in_outlined,
             color: UpriseColors.success,
-            isSelected: _selectedStatCard == 2,
+            selected: _selectedStatCard == 2,
             onTap: () => selectCard(2, (b) => b.sentCount > 0),
           ),
-          _StatCard(
+          StatCard(
             label: 'Pending',
-            value: pending,
+            value: '$pending',
             icon: Icons.pending_outlined,
             color: UpriseColors.warning,
-            isSelected: _selectedStatCard == 3,
+            selected: _selectedStatCard == 3,
             onTap: () => selectCard(
               3,
               (b) => !b.isArchived && b.sentCount < b.totalRecipients,
@@ -1805,97 +1806,6 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
                 ),
               ],
             ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Stat Card
-// ─────────────────────────────────────────────────────────────────────────────
-class _StatCard extends StatelessWidget {
-  final String label;
-  final int value;
-  final IconData icon;
-  final Color color;
-  final bool isSelected;
-  final VoidCallback? onTap;
-  const _StatCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-    this.isSelected = false,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isSelected ? color : const Color(0xFFE8ECF0),
-              width: isSelected ? 2 : 1,
-            ),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: color.withAlpha(46),
-                      blurRadius: 16,
-                      offset: const Offset(0, 4),
-                    ),
-                  ]
-                : _DS.cardShadow,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: color.withAlpha(26),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(icon, color: color, size: 20),
-                  ),
-                  Flexible(
-                    child: Text(
-                      '$value',
-                      textAlign: TextAlign.right,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w800,
-                        color: const Color(0xFF1A202C),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                label,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 11,
-                  color: const Color(0xFF64748B),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

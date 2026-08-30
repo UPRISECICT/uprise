@@ -44,6 +44,20 @@ Uint8List? decodeAppImageBytes(String source) {
 bool isNetworkImageSource(String source) =>
     source.startsWith('http://') || source.startsWith('https://');
 
+/// First non-empty source out of [candidates], or `''` if there is none.
+///
+/// Call sites used to write `d['imageBase64'] ?? d['imageUrl'] ?? ''`, but `??`
+/// only falls through on **null** and these documents store an explicit empty
+/// string — org_merchandise.dart writes `data['imageBase64'] = ''` when a
+/// product has no inline photo. A populated `imageUrl` therefore lost to an
+/// empty `imageBase64` and the image silently vanished.
+String firstNonEmptyImageSource(List<String?> candidates) {
+  for (final c in candidates) {
+    if (c != null && c.isNotEmpty) return c;
+  }
+  return '';
+}
+
 // Certificate templates uploaded to Cloudinary as a PDF are stored as-is —
 // the URL points straight at the raw PDF document, which Flutter's Image
 // widgets can't decode as pixels. Cloudinary renders a PDF's first page as

@@ -1,5 +1,7 @@
 // ignore_for_file: unused_field, duplicate_ignore, use_build_context_synchronously, deprecated_member_use
 import 'dart:convert';
+import '../../../models/adviser_rank.dart';
+import '../../../widgets/stat_cards.dart';
 import 'dart:async';
 import '../../../utils/platform_file_utils.dart' as platform_file_utils;
 import 'package:flutter/material.dart';
@@ -12,6 +14,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:image/image.dart' as img;
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../services/notification_service.dart';
+import '../../../services/proposal_review_log.dart';
 import '../../../widgets/admin_export_button.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/org_action_icon_button.dart';
@@ -99,6 +102,20 @@ class _BadgeStyle {
   const _BadgeStyle(this.bg, this.fg, this.label);
 }
 
+// The stored status is `for_review`; every surface calls it "Needs
+// Revision". Admin already used that wording, the org screen said "For
+// Review", and the two were the same state — so a proposal appeared to be
+// in different places depending on which portal you were looking at. The
+// filter label can no longer be derived by lowercasing (it would give
+// `needs_revision`), hence the explicit map.
+const Map<String, String> kProposalFilterStatus = {
+  'Pending': 'pending',
+  'Needs Revision': 'for_review',
+  'Approved': 'approved',
+  'Rejected': 'rejected',
+  'Archived': 'archived',
+};
+
 Widget _statusBadge(String status) {
   final Map<String, _BadgeStyle> styles = {
     'approved': _BadgeStyle(
@@ -119,7 +136,7 @@ Widget _statusBadge(String status) {
     'for_review': _BadgeStyle(
       const Color(0xFFEFF6FF),
       const Color(0xFF2563EB),
-      'FOR REVIEW',
+      'NEEDS REVISION',
     ),
   };
   final s =
@@ -403,11 +420,6 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
       .where('status', isEqualTo: 'for_review')
       .snapshots();
 
-  late final Stream<QuerySnapshot> _proposalsStream = FirebaseFirestore.instance
-      .collection('event_proposals')
-      .where('orgId', isEqualTo: widget.orgId)
-      .snapshots();
-
   @override
   void dispose() {
     _searchController.dispose();
@@ -442,7 +454,7 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
           )
           .toList();
     } else {
-      final key = _filterStatus.toLowerCase().replaceAll(' ', '_');
+      final key = kProposalFilterStatus[_filterStatus] ?? '';
       filtered = filtered
           .where(
             (d) =>
@@ -1208,7 +1220,7 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
     });
 
     final statCards = [
-      _StatCard(
+      StatCard(
         label: 'Total Proposals',
         stream: _allStream,
         icon: Icons.description_outlined,
@@ -1218,35 +1230,35 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
         // though _filterStatus starts equal to 'All'. Without this, the
         // very first card always rendered pre-highlighted on page load,
         // before the user had clicked anything.
-        isSelected: false,
+        selected: false,
         onTap: () => setState(() {
           _filterStatus = 'All';
           _currentPage = 1;
         }),
       ),
-      _StatCard(
+      StatCard(
         label: 'Pending',
         stream: _pendingStream,
         icon: Icons.hourglass_empty_rounded,
         color: const Color(0xFFFB923C),
-        isSelected: _filterStatus == 'Pending',
+        selected: _filterStatus == 'Pending',
         onTap: () => selectStatus('Pending'),
       ),
-      _StatCard(
+      StatCard(
         label: 'Approved',
         stream: _approvedStream,
         icon: Icons.check_circle_outline_rounded,
         color: const Color(0xFF059669),
-        isSelected: _filterStatus == 'Approved',
+        selected: _filterStatus == 'Approved',
         onTap: () => selectStatus('Approved'),
       ),
-      _StatCard(
-        label: 'For Review',
+      StatCard(
+        label: 'Needs Revision',
         stream: _forReviewStream,
         icon: Icons.rate_review_outlined,
         color: const Color(0xFF2563EB),
-        isSelected: _filterStatus == 'For Review',
-        onTap: () => selectStatus('For Review'),
+        selected: _filterStatus == 'Needs Revision',
+        onTap: () => selectStatus('Needs Revision'),
       ),
     ];
 
@@ -1347,7 +1359,7 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
                     'All',
                     'Pending',
                     'Approved',
-                    'For Review',
+                    'Needs Revision',
                     'Rejected',
                     'Archived',
                   ],
@@ -1430,7 +1442,7 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
                     'All',
                     'Pending',
                     'Approved',
-                    'For Review',
+                    'Needs Revision',
                     'Rejected',
                     'Archived',
                   ],
@@ -1463,7 +1475,7 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
     final horizontalPadding = isMobile ? 16.0 : (isTablet ? 20.0 : 28.0);
 
     return StreamBuilder<QuerySnapshot>(
-      stream: _proposalsStream,
+      stream: _allStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -2005,103 +2017,6 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
           ),
         ],
       ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Stat Card
-// ─────────────────────────────────────────────────────────────────────────────
-class _StatCard extends StatelessWidget {
-  final String label;
-  final Stream<QuerySnapshot> stream;
-  final IconData icon;
-  final Color color;
-  final bool isSelected;
-  final VoidCallback? onTap;
-  const _StatCard({
-    required this.label,
-    required this.stream,
-    required this.icon,
-    required this.color,
-    this.isSelected = false,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: stream,
-      builder: (context, snapshot) {
-        final count = snapshot.data?.docs.length ?? 0;
-        return MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: GestureDetector(
-            onTap: onTap,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isSelected ? color : const Color(0xFFE8ECF0),
-                  width: isSelected ? 2 : 1,
-                ),
-                boxShadow: isSelected
-                    ? [
-                        BoxShadow(
-                          color: color.withAlpha(46),
-                          blurRadius: 16,
-                          offset: const Offset(0, 4),
-                        ),
-                      ]
-                    : _DS.cardShadow,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: color.withAlpha(26),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Icon(icon, color: color, size: 20),
-                      ),
-                      Flexible(
-                        child: Text(
-                          '$count',
-                          textAlign: TextAlign.right,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w800,
-                            color: const Color(0xFF1A202C),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    label,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11,
-                      color: const Color(0xFF64748B),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
     );
   }
 }
@@ -3299,6 +3214,20 @@ class _SubmitProposalModal extends StatefulWidget {
 
 class _SubmitProposalModalState extends State<_SubmitProposalModal> {
   final _formKey = GlobalKey<FormState>();
+  // Adviser endorsement, read from the organization record. The adviser
+  // has no account to sign with, so what is captured is the org attesting
+  // that the endorsement happened offline, plus a snapshot of who the
+  // adviser was at the time — a later adviser change must not silently
+  // rewrite the history of an already-submitted proposal.
+  bool _endorsedByAdviser = false;
+  final _endorsementRemarksCtrl = TextEditingController();
+  String _adviserName = '';
+  String _adviserRank = '';
+  bool _adviserLoaded = false;
+
+  // Which wizard step is showing. All three stay mounted (see
+  // _buildWizardBody) — this only drives the IndexedStack index.
+  int _step = 0;
   final _titleCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   final _locCtrl = TextEditingController();
@@ -3361,6 +3290,7 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
   @override
   void initState() {
     super.initState();
+    _loadAdviser();
     final e = widget.existing;
     if (e != null) {
       _titleCtrl.text = e['title'] ?? '';
@@ -3378,6 +3308,8 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
       _attachmentBase64 = e['attachmentBase64'];
       _attachmentName = e['attachmentName'];
       _attachmentSize = e['attachmentSize'];
+      _endorsedByAdviser = e['endorsedByAdviser'] == true;
+      _endorsementRemarksCtrl.text = (e['endorsementRemarks'] ?? '').toString();
       if (e['date'] is Timestamp) {
         _selectedDate = (e['date'] as Timestamp).toDate();
         _dateCtrl.text = DateFormat('MM/dd/yyyy').format(_selectedDate!);
@@ -3422,11 +3354,109 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
     _startTimeCtrl.dispose();
     _endTimeCtrl.dispose();
     _otherCategoryCtrl.dispose();
+    _endorsementRemarksCtrl.dispose();
     _capacityCtrl.dispose();
     super.dispose();
   }
 
   // ── Image upload ──────────────────────────────────────────────────
+  /// Pulls the adviser off the organization record so the org confirms a
+  /// real name rather than typing one. Silent on failure: an org with no
+  /// adviser on file must still be able to submit a proposal.
+  Future<void> _loadAdviser() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('organizations')
+          .doc(widget.orgId)
+          .get();
+      final d = doc.data();
+      if (!mounted || d == null) return;
+      setState(() {
+        _adviserName = (d['adviserName'] ?? '').toString();
+        _adviserRank = (d['adviserTitle'] ?? '').toString();
+        _adviserLoaded = true;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _adviserLoaded = true);
+    }
+  }
+
+  Widget _buildEndorsementSection() {
+    final hasAdviser = _adviserName.trim().isNotEmpty;
+    return OrgModalSection(
+      title: 'Adviser Endorsement',
+      icon: Icons.verified_user_outlined,
+      accentColor: UpriseColors.primaryDark,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (!_adviserLoaded)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: SizedBox(
+                height: 18,
+                width: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else if (!hasAdviser)
+            Text(
+              'No adviser is on file for this organization. You can still '
+              'submit — ask the admin office to add one so future proposals '
+              'can carry an endorsement.',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 12,
+                color: const Color(0xFF9AA5B4),
+                height: 1.5,
+              ),
+            )
+          else ...[
+            Text(
+              _adviserName,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF1A202C),
+              ),
+            ),
+            Text(
+              AdviserRank.byId(_adviserRank).label,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 12,
+                color: const Color(0xFF64748B),
+              ),
+            ),
+            const SizedBox(height: 10),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              dense: true,
+              value: _endorsedByAdviser,
+              onChanged: (v) => setState(() => _endorsedByAdviser = v ?? false),
+              title: Text(
+                'This proposal has been endorsed by our adviser',
+                style: GoogleFonts.beVietnamPro(fontSize: 13),
+              ),
+            ),
+            if (_endorsedByAdviser) ...[
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _endorsementRemarksCtrl,
+                maxLines: 2,
+                style: GoogleFonts.beVietnamPro(fontSize: 13),
+                decoration: _orgEventProposalsInputDecoration(
+                  'Endorsement remarks (optional)',
+                  hint: 'Anything the adviser asked to be noted',
+                  icon: Icons.notes_rounded,
+                ),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
   Future<void> _pickImage() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.image,
@@ -3450,11 +3480,6 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
       _imageName = file.name;
       _imageSize = '$sizeKB KB';
     });
-    // Simulate progress
-    for (int i = 0; i <= 100; i += 20) {
-      await Future.delayed(const Duration(milliseconds: 50));
-      if (mounted) setState(() => _imageUploadProgress = i / 100);
-    }
     setState(() {
       _imageBase64 = base64Encode(file.bytes!);
       _imageUploadProgress = 1.0;
@@ -3494,10 +3519,6 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
       _attachmentName = file.name;
       _attachmentSize = '$sizeKB KB';
     });
-    for (int i = 0; i <= 100; i += 20) {
-      await Future.delayed(const Duration(milliseconds: 50));
-      if (mounted) setState(() => _attachmentUploadProgress = i / 100);
-    }
     setState(() {
       _attachmentBase64 = base64Encode(file.bytes!);
       _attachmentUploadProgress = 1.0;
@@ -3536,6 +3557,18 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
     } catch (_) {
       return null;
     }
+  }
+
+  // Nothing validated that the end time came after the start time, so a
+  // proposal could be saved as 5:00 PM to 9:00 AM. That also quietly broke
+  // the venue-overlap maths below, which assumes start < end.
+  String? _timeOrderError() {
+    final start = _minutesSinceMidnight(_startTimeCtrl.text);
+    final end = _minutesSinceMidnight(_endTimeCtrl.text);
+    if (start == null || end == null) return null;
+    if (end == start) return 'The start and end time are the same.';
+    if (end < start) return 'The end time must be after the start time.';
+    return null;
   }
 
   // Same venue, same day, overlapping time — across every org, not just
@@ -3591,9 +3624,18 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_selectedAudiences.isEmpty) {
-      setState(() => _errorMsg = 'Select at least one audience.');
-      return;
+    // Re-run both step gates: the user can reach the last step and then go
+    // back and clear something, and these checks (audience chips, date in
+    // the future, end-after-start) live outside the Form's validators.
+    for (var i = 0; i < _stepTitles.length - 1; i++) {
+      final err = _validateStep(i);
+      if (err != null) {
+        setState(() {
+          _errorMsg = err;
+          _step = i;
+        });
+        return;
+      }
     }
     final capacityText = _capacityCtrl.text.trim();
     int? capacity;
@@ -3643,6 +3685,15 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
         'submittedBy': user?.uid ?? '',
         'submittedByEmail': user?.email ?? '',
         'issuesCertificate': _issuesCertificate,
+        // Snapshot, not a live reference: whoever the adviser was when the
+        // endorsement was given is who the record must keep naming.
+        'endorsedByAdviser': _endorsedByAdviser,
+        'endorsedAt': _endorsedByAdviser ? FieldValue.serverTimestamp() : null,
+        'endorsementRemarks': _endorsedByAdviser
+            ? _endorsementRemarksCtrl.text.trim()
+            : '',
+        'endorsedAdviserName': _endorsedByAdviser ? _adviserName : '',
+        'endorsedAdviserRank': _endorsedByAdviser ? _adviserRank : '',
         // Dedicated image
         'imageBase64': _imageBase64,
         'imageName': _imageName,
@@ -3711,6 +3762,10 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
           details: {'orgId': widget.orgId, 'proposalId': widget.editDocId},
         );
         if (wasForReview) {
+          await ProposalReviewLog.add(
+            proposalId: widget.editDocId!,
+            action: ProposalReviewAction.resubmitted,
+          );
           _notifyAdminsOfProposal(
             title: payload['title'] as String,
             verb: 'resubmitted',
@@ -3726,6 +3781,26 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
           module: 'event_proposals',
           details: {'orgId': widget.orgId, 'proposalId': ref.id},
         );
+        await ProposalReviewLog.add(
+          proposalId: ref.id,
+          action: ProposalReviewAction.submitted,
+        );
+        // Makes the 'Adviser Endorsement' audit module real — it was a
+        // filter option with nothing behind it until now.
+        if (_endorsedByAdviser) {
+          await activity_log.ActivityLogger.log(
+            action:
+                'Adviser endorsement recorded for proposal: '
+                '${payload['title']}',
+            module: 'Adviser Endorsement',
+            details: {
+              'orgId': widget.orgId,
+              'proposalId': ref.id,
+              'adviserName': _adviserName,
+              'adviserRank': _adviserRank,
+            },
+          );
+        }
         _notifyAdminsOfProposal(
           title: payload['title'] as String,
           verb: 'submitted',
@@ -3890,12 +3965,16 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
       accentColor: UpriseColors.primaryDark,
       icon: isEdit ? Icons.edit_rounded : Icons.description_outlined,
       title: isEdit ? 'Edit Event Proposal' : 'Submit Event Proposal',
-      width: 560,
+      width: 640,
       maxHeightFraction: 0.88,
       closeEnabled: !_isSubmitting,
       footerActions: [
+        // Step 0 offers Cancel; later steps offer Back, so there is always
+        // a way out to the left and a way forward to the right.
         OutlinedButton(
-          onPressed: _isSubmitting ? null : () => Navigator.pop(context),
+          onPressed: _isSubmitting
+              ? null
+              : (_step == 0 ? () => Navigator.pop(context) : _goBack),
           style: OutlinedButton.styleFrom(
             side: const BorderSide(color: Color(0xFFE2E6EA)),
             shape: RoundedRectangleBorder(
@@ -3904,7 +3983,7 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
           ),
           child: Text(
-            'Cancel',
+            _step == 0 ? 'Cancel' : 'Back',
             style: GoogleFonts.beVietnamPro(
               fontSize: 13,
               color: const Color(0xFF374151),
@@ -3912,420 +3991,626 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
           ),
         ),
         const SizedBox(width: 12),
-        ElevatedButton.icon(
-          onPressed:
-              (_isSubmitting || _isImageUploading || _isAttachmentUploading)
-              ? null
-              : _submit,
-          icon: _isSubmitting
-              ? const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
+        if (_step < _stepTitles.length - 1)
+          ElevatedButton.icon(
+            onPressed: _isSubmitting ? null : _goNext,
+            icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+            label: Text(
+              'Next',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: UpriseColors.primaryDark,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
+            ),
+          )
+        else
+          ElevatedButton.icon(
+            onPressed:
+                (_isSubmitting || _isImageUploading || _isAttachmentUploading)
+                ? null
+                : _submit,
+            icon: _isSubmitting
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : Icon(
+                    isEdit ? Icons.save_rounded : Icons.send_rounded,
+                    size: 16,
                   ),
-                )
-              : Icon(
-                  isEdit ? Icons.save_rounded : Icons.send_rounded,
-                  size: 16,
-                ),
-          label: Text(
-            isEdit ? 'Save Changes' : 'Submit Proposal',
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
+            label: Text(
+              isEdit ? 'Save Changes' : 'Submit Proposal',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: UpriseColors.primaryDark,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
             ),
           ),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: UpriseColors.primaryDark,
-            foregroundColor: Colors.white,
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
+      ],
+      body: _buildWizardBody(),
+    );
+  }
+
+  // -- Wizard ----------------------------------------------------------
+  // Three steps instead of one 1,400-line scroll. The old form put fifteen
+  // required fields in a single column, so the only way to discover you had
+  // missed one was to press Submit and hunt for the red text.
+  //
+  // The step bodies live in an IndexedStack, not a swap: Form.validate()
+  // only visits *mounted* fields, so tearing down step 1 to show step 2
+  // would quietly exempt every field behind you from the final submit
+  // check. IndexedStack keeps all three mounted, which also means every
+  // controller and scroll offset survives moving back and forth for free.
+  static const List<String> _stepTitles = [
+    'Details',
+    'Schedule & Venue',
+    'Attachments & Review',
+  ];
+
+  Widget _buildWizardBody() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildStepHeader(),
+        Flexible(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  IndexedStack(
+                    index: _step,
+                    sizing: StackFit.loose,
+                    children: [
+                      _buildStepDetails(),
+                      _buildStepSchedule(),
+                      _buildStepAttachments(),
+                    ],
+                  ),
+                  if (_errorMsg != null) ...[
+                    const SizedBox(height: 14),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFEF2F2),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFFFCA5A5)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.error_outline_rounded,
+                            size: 15,
+                            color: Color(0xFFDC2626),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _errorMsg!,
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 12,
+                                color: const Color(0xFF991B1B),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
           ),
         ),
       ],
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              OrgModalSection(
-                title: 'Event Image',
-                icon: Icons.image_outlined,
-                accentColor: UpriseColors.primaryDark,
-                child: _buildImageUploadArea(),
-              ),
-              const SizedBox(height: 20),
+    );
+  }
 
-              OrgModalSection(
-                title: 'Event Details',
-                icon: Icons.event_outlined,
-                accentColor: UpriseColors.primaryDark,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: _titleCtrl,
-                            decoration: _orgEventProposalsInputDecoration(
-                              'Event Title *',
-                              hint: 'e.g. Flutter Workshop 2025',
-                              icon: Icons.title,
-                            ),
-                            style: GoogleFonts.beVietnamPro(fontSize: 13),
-                            validator: (v) =>
-                                v?.trim().isEmpty == true ? 'Required' : null,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: _category,
-                            decoration: _orgEventProposalsInputDecoration(
-                              'Category *',
-                            ),
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 13,
-                              color: const Color(0xFF1A202C),
-                            ),
-                            items: _categories
-                                .map(
-                                  (c) => DropdownMenuItem(
-                                    value: c,
-                                    child: Text(c),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: (v) => setState(() => _category = v!),
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (_category == 'Other') ...[
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _otherCategoryCtrl,
-                        decoration: _orgEventProposalsInputDecoration(
-                          'Specify Category *',
-                          hint: 'e.g. Webinar',
-                          icon: Icons.category_outlined,
-                        ),
-                        style: GoogleFonts.beVietnamPro(fontSize: 13),
-                        validator: (v) =>
-                            _category == 'Other' && v?.trim().isEmpty == true
-                            ? 'Required'
-                            : null,
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    Text(
-                      'Audience *',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFF64748B),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Select every group this event applies to — more '
-                      'than one can apply at once.',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 11.5,
-                        color: const Color(0xFF9AA5B4),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    // A Wrap here would drop whichever chip doesn't fit onto
-                    // its own row below the rest once the label list grows
-                    // (e.g. adding "BulSUan" made the 4th chip wrap alone).
-                    // Splitting the row's own width evenly across every chip
-                    // keeps them on one line regardless of how many there
-                    // are or how long their labels get.
-                    Row(
-                      children: [
-                        for (int i = 0; i < _audiences.length; i++) ...[
-                          if (i > 0) const SizedBox(width: 8),
-                          Expanded(child: _audienceChip(_audiences[i])),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _descCtrl,
-                      maxLines: 3,
-                      decoration: _orgEventProposalsInputDecoration(
-                        'Description *',
-                        hint: 'Describe your event...',
-                        icon: Icons.notes_rounded,
-                      ),
-                      style: GoogleFonts.beVietnamPro(fontSize: 13),
-                      validator: (v) =>
-                          v?.trim().isEmpty == true ? 'Required' : null,
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: _dateCtrl,
-                            readOnly: true,
-                            onTap: () async {
-                              final tomorrow = DateTime.now().add(
-                                const Duration(days: 1),
-                              );
-                              final picked = await showDatePicker(
-                                context: context,
-                                initialDate: tomorrow,
-                                firstDate: tomorrow,
-                                lastDate: DateTime(2030),
-                                // Material 3's default seed skews
-                                // purple/indigo unless the scheme is
-                                // seeded from the brand color instead.
-                                builder: (context, child) {
-                                  final baseTheme = Theme.of(context);
-                                  final scheme =
-                                      ColorScheme.fromSeed(
-                                        seedColor: UpriseColors.primaryDark,
-                                        brightness: Brightness.light,
-                                      ).copyWith(
-                                        primary: UpriseColors.primaryDark,
-                                        onPrimary: Colors.white,
-                                        surface: Colors.white,
-                                        surfaceTint: Colors.transparent,
-                                      );
-                                  return Theme(
-                                    data: baseTheme.copyWith(
-                                      colorScheme: scheme,
-                                      textButtonTheme: TextButtonThemeData(
-                                        style: TextButton.styleFrom(
-                                          foregroundColor:
-                                              UpriseColors.primaryDark,
-                                        ),
-                                      ),
-                                    ),
-                                    child: child!,
-                                  );
-                                },
-                              );
-                              if (picked != null) {
-                                setState(() {
-                                  _selectedDate = picked;
-                                  _dateCtrl.text = DateFormat(
-                                    'MM/dd/yyyy',
-                                  ).format(picked);
-                                });
-                              }
-                            },
-                            decoration: _orgEventProposalsInputDecoration(
-                              'Date *',
-                              hint: 'MM/DD/YYYY',
-                              icon: Icons.calendar_today_outlined,
-                            ),
-                            style: GoogleFonts.beVietnamPro(fontSize: 13),
-                            validator: (v) =>
-                                v?.trim().isEmpty == true ? 'Required' : null,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextFormField(
-                            controller: _startTimeCtrl,
-                            readOnly: true,
-                            onTap: () async {
-                              final picked = await showTimePicker(
-                                context: context,
-                                initialTime: TimeOfDay.now(),
-                              );
-                              if (picked != null && mounted)
-                                _startTimeCtrl.text = picked.format(context);
-                            },
-                            decoration: _orgEventProposalsInputDecoration(
-                              'Start Time *',
-                              hint: '-- : --',
-                              icon: Icons.access_time_rounded,
-                            ),
-                            style: GoogleFonts.beVietnamPro(fontSize: 13),
-                            validator: (v) =>
-                                v?.trim().isEmpty == true ? 'Required' : null,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextFormField(
-                            controller: _endTimeCtrl,
-                            readOnly: true,
-                            onTap: () async {
-                              final picked = await showTimePicker(
-                                context: context,
-                                initialTime: TimeOfDay.now(),
-                              );
-                              if (picked != null && mounted)
-                                _endTimeCtrl.text = picked.format(context);
-                            },
-                            decoration: _orgEventProposalsInputDecoration(
-                              'End Time *',
-                              hint: '-- : --',
-                              icon: Icons.access_time_rounded,
-                            ),
-                            style: GoogleFonts.beVietnamPro(fontSize: 13),
-                            validator: (v) =>
-                                v?.trim().isEmpty == true ? 'Required' : null,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: _schoolYear,
-                            decoration: _orgEventProposalsInputDecoration(
-                              'School Year *',
-                            ),
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 13,
-                              color: const Color(0xFF1A202C),
-                            ),
-                            items: SchoolYearUtil.schoolYears()
-                                .map(
-                                  (y) => DropdownMenuItem(
-                                    value: y,
-                                    child: Text(y),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: (v) => setState(() => _schoolYear = v!),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: _semester,
-                            decoration: _orgEventProposalsInputDecoration(
-                              'Semester *',
-                            ),
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 13,
-                              color: const Color(0xFF1A202C),
-                            ),
-                            items: SchoolYearUtil.semesters
-                                .map(
-                                  (s) => DropdownMenuItem(
-                                    value: s,
-                                    child: Text(s),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: (v) => setState(() => _semester = v!),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _locCtrl,
-                      decoration: _orgEventProposalsInputDecoration(
-                        'Location *',
-                        hint: 'e.g. IT Building Room 301',
-                        icon: Icons.location_on_outlined,
-                      ),
-                      style: GoogleFonts.beVietnamPro(fontSize: 13),
-                      validator: (v) =>
-                          v?.trim().isEmpty == true ? 'Required' : null,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _capacityCtrl,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      decoration: _orgEventProposalsInputDecoration(
-                        'Capacity',
-                        hint: 'Leave blank for unlimited slots',
-                        icon: Icons.groups_outlined,
-                      ),
-                      style: GoogleFonts.beVietnamPro(fontSize: 13),
-                      validator: (v) {
-                        final t = v?.trim() ?? '';
-                        if (t.isEmpty) return null;
-                        final n = int.tryParse(t);
-                        return (n == null || n <= 0)
-                            ? 'Enter a whole number greater than 0'
-                            : null;
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    CheckboxListTile(
-                      contentPadding: EdgeInsets.zero,
-                      controlAffinity: ListTileControlAffinity.leading,
-                      dense: true,
-                      title: Text(
-                        'Issue certificates to participants/guests',
-                        style: GoogleFonts.beVietnamPro(fontSize: 13),
-                      ),
-                      value: _issuesCertificate,
-                      onChanged: (v) =>
-                          setState(() => _issuesCertificate = v ?? false),
-                    ),
-                    const SizedBox(height: 20),
-                  ],
+  Widget _buildStepHeader() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 18, 24, 18),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Color(0xFFE8ECF0))),
+      ),
+      child: Row(
+        children: [
+          for (var i = 0; i < _stepTitles.length; i++) ...[
+            if (i > 0)
+              Expanded(
+                child: Container(
+                  height: 1,
+                  margin: const EdgeInsets.symmetric(horizontal: 10),
+                  color: i <= _step
+                      ? UpriseColors.primaryDark
+                      : const Color(0xFFE8ECF0),
                 ),
               ),
-              const SizedBox(height: 20),
-
-              OrgModalSection(
-                title: 'Attachment (PDF, DOC, etc.)',
-                icon: Icons.attach_file_rounded,
-                accentColor: UpriseColors.primaryDark,
-                child: _buildAttachmentArea(),
-              ),
-              if (_errorMsg != null) ...[
-                const SizedBox(height: 14),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFEF2F2),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFFCA5A5)),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.error_outline_rounded,
-                        size: 15,
-                        color: Color(0xFFDC2626),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _errorMsg!,
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 12,
-                            color: const Color(0xFF991B1B),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
+            _StepDot(
+              index: i,
+              label: _stepTitles[i],
+              current: _step,
+              // Only steps already completed are clickable - jumping ahead
+              // past an unfilled required field is what this prevents.
+              onTap: i < _step ? () => setState(() => _step = i) : null,
+            ),
+          ],
+        ],
       ),
     );
   }
 
-  // ── Image upload UI ──────────────────────────────────────────────────
+  /// Validates only the fields belonging to [step], by reading the
+  /// controllers directly. _formKey.currentState!.validate() cannot be used
+  /// per step: every step is mounted, so it would validate all three and
+  /// light up errors on pages the user has not reached yet.
+  String? _validateStep(int step) {
+    if (step == 0) {
+      if (_titleCtrl.text.trim().isEmpty) return 'Enter an event title.';
+      if (_category == 'Other' && _otherCategoryCtrl.text.trim().isEmpty) {
+        return 'Specify the category.';
+      }
+      if (_selectedAudiences.isEmpty) return 'Select at least one audience.';
+      if (_descCtrl.text.trim().isEmpty) return 'Enter a description.';
+      return null;
+    }
+    if (step == 1) {
+      final date = _selectedDate;
+      if (date == null) return 'Pick an event date.';
+      final today = DateTime.now();
+      if (!date.isAfter(DateTime(today.year, today.month, today.day))) {
+        return 'The event date must be in the future.';
+      }
+      if (_startTimeCtrl.text.trim().isEmpty) return 'Pick a start time.';
+      if (_endTimeCtrl.text.trim().isEmpty) return 'Pick an end time.';
+      final order = _timeOrderError();
+      if (order != null) return order;
+      if (_locCtrl.text.trim().isEmpty) return 'Enter a location.';
+      final cap = _capacityCtrl.text.trim();
+      if (cap.isNotEmpty && (int.tryParse(cap) ?? 0) <= 0) {
+        return 'Capacity must be a number greater than zero.';
+      }
+      return null;
+    }
+    return null;
+  }
+
+  void _goNext() {
+    final err = _validateStep(_step);
+    if (err != null) {
+      setState(() => _errorMsg = err);
+      return;
+    }
+    setState(() {
+      _errorMsg = null;
+      _step = (_step + 1).clamp(0, _stepTitles.length - 1);
+    });
+  }
+
+  void _goBack() => setState(() {
+    _errorMsg = null;
+    _step = (_step - 1).clamp(0, _stepTitles.length - 1);
+  });
+
+  Widget _buildStepDetails() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: TextFormField(
+                controller: _titleCtrl,
+                decoration: _orgEventProposalsInputDecoration(
+                  'Event Title *',
+                  hint: 'e.g. Flutter Workshop 2025',
+                  icon: Icons.title,
+                ),
+                style: GoogleFonts.beVietnamPro(fontSize: 13),
+                validator: (v) => v?.trim().isEmpty == true ? 'Required' : null,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                value: _category,
+                decoration: _orgEventProposalsInputDecoration('Category *'),
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: const Color(0xFF1A202C),
+                ),
+                items: _categories
+                    .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                    .toList(),
+                onChanged: (v) => setState(() => _category = v!),
+              ),
+            ),
+          ],
+        ),
+        if (_category == 'Other') ...[
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _otherCategoryCtrl,
+            decoration: _orgEventProposalsInputDecoration(
+              'Specify Category *',
+              hint: 'e.g. Webinar',
+              icon: Icons.category_outlined,
+            ),
+            style: GoogleFonts.beVietnamPro(fontSize: 13),
+            validator: (v) => _category == 'Other' && v?.trim().isEmpty == true
+                ? 'Required'
+                : null,
+          ),
+        ],
+        const SizedBox(height: 12),
+        Text(
+          'Audience *',
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: const Color(0xFF64748B),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Select every group this event applies to — more '
+          'than one can apply at once.',
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 11.5,
+            color: const Color(0xFF9AA5B4),
+          ),
+        ),
+        const SizedBox(height: 8),
+        // A Wrap here would drop whichever chip doesn't fit onto
+        // its own row below the rest once the label list grows
+        // (e.g. adding "BulSUan" made the 4th chip wrap alone).
+        // Splitting the row's own width evenly across every chip
+        // keeps them on one line regardless of how many there
+        // are or how long their labels get.
+        Row(
+          children: [
+            for (int i = 0; i < _audiences.length; i++) ...[
+              if (i > 0) const SizedBox(width: 8),
+              Expanded(child: _audienceChip(_audiences[i])),
+            ],
+          ],
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: _descCtrl,
+          maxLines: 3,
+          decoration: _orgEventProposalsInputDecoration(
+            'Description *',
+            hint: 'Describe your event...',
+            icon: Icons.notes_rounded,
+          ),
+          style: GoogleFonts.beVietnamPro(fontSize: 13),
+          validator: (v) => v?.trim().isEmpty == true ? 'Required' : null,
+        ),
+        const SizedBox(height: 12),
+        const SizedBox(height: 12),
+        CheckboxListTile(
+          contentPadding: EdgeInsets.zero,
+          controlAffinity: ListTileControlAffinity.leading,
+          dense: true,
+          title: Text(
+            'Issue certificates to participants/guests',
+            style: GoogleFonts.beVietnamPro(fontSize: 13),
+          ),
+          value: _issuesCertificate,
+          onChanged: (v) => setState(() => _issuesCertificate = v ?? false),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStepSchedule() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: TextFormField(
+                controller: _dateCtrl,
+                readOnly: true,
+                onTap: () async {
+                  final tomorrow = DateTime.now().add(const Duration(days: 1));
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: tomorrow,
+                    firstDate: tomorrow,
+                    lastDate: DateTime(2030),
+                    // Material 3's default seed skews
+                    // purple/indigo unless the scheme is
+                    // seeded from the brand color instead.
+                    builder: (context, child) {
+                      final baseTheme = Theme.of(context);
+                      final scheme =
+                          ColorScheme.fromSeed(
+                            seedColor: UpriseColors.primaryDark,
+                            brightness: Brightness.light,
+                          ).copyWith(
+                            primary: UpriseColors.primaryDark,
+                            onPrimary: Colors.white,
+                            surface: Colors.white,
+                            surfaceTint: Colors.transparent,
+                          );
+                      return Theme(
+                        data: baseTheme.copyWith(
+                          colorScheme: scheme,
+                          textButtonTheme: TextButtonThemeData(
+                            style: TextButton.styleFrom(
+                              foregroundColor: UpriseColors.primaryDark,
+                            ),
+                          ),
+                        ),
+                        child: child!,
+                      );
+                    },
+                  );
+                  if (picked != null) {
+                    setState(() {
+                      _selectedDate = picked;
+                      _dateCtrl.text = DateFormat('MM/dd/yyyy').format(picked);
+                    });
+                  }
+                },
+                decoration: _orgEventProposalsInputDecoration(
+                  'Date *',
+                  hint: 'MM/DD/YYYY',
+                  icon: Icons.calendar_today_outlined,
+                ),
+                style: GoogleFonts.beVietnamPro(fontSize: 13),
+                validator: (v) => v?.trim().isEmpty == true ? 'Required' : null,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextFormField(
+                controller: _startTimeCtrl,
+                readOnly: true,
+                onTap: () async {
+                  final picked = await showTimePicker(
+                    context: context,
+                    initialTime: TimeOfDay.now(),
+                  );
+                  if (picked != null && mounted) {
+                    // setState so the review summary and the
+                    // end-after-start check repaint, matching
+                    // what the Date field above already does.
+                    setState(
+                      () => _startTimeCtrl.text = picked.format(context),
+                    );
+                  }
+                },
+                decoration: _orgEventProposalsInputDecoration(
+                  'Start Time *',
+                  hint: '-- : --',
+                  icon: Icons.access_time_rounded,
+                ),
+                style: GoogleFonts.beVietnamPro(fontSize: 13),
+                validator: (v) => v?.trim().isEmpty == true ? 'Required' : null,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextFormField(
+                controller: _endTimeCtrl,
+                readOnly: true,
+                onTap: () async {
+                  final picked = await showTimePicker(
+                    context: context,
+                    initialTime: TimeOfDay.now(),
+                  );
+                  if (picked != null && mounted) {
+                    // setState so the review summary and the
+                    // end-after-start check repaint, matching
+                    // what the Date field above already does.
+                    setState(() => _endTimeCtrl.text = picked.format(context));
+                  }
+                },
+                decoration: _orgEventProposalsInputDecoration(
+                  'End Time *',
+                  hint: '-- : --',
+                  icon: Icons.access_time_rounded,
+                ),
+                style: GoogleFonts.beVietnamPro(fontSize: 13),
+                validator: (v) => v?.trim().isEmpty == true ? 'Required' : null,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                value: _schoolYear,
+                decoration: _orgEventProposalsInputDecoration('School Year *'),
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: const Color(0xFF1A202C),
+                ),
+                items: SchoolYearUtil.schoolYears()
+                    .map((y) => DropdownMenuItem(value: y, child: Text(y)))
+                    .toList(),
+                onChanged: (v) => setState(() => _schoolYear = v!),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                value: _semester,
+                decoration: _orgEventProposalsInputDecoration('Semester *'),
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: const Color(0xFF1A202C),
+                ),
+                items: SchoolYearUtil.semesters
+                    .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                    .toList(),
+                onChanged: (v) => setState(() => _semester = v!),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: _locCtrl,
+          decoration: _orgEventProposalsInputDecoration(
+            'Location *',
+            hint: 'e.g. IT Building Room 301',
+            icon: Icons.location_on_outlined,
+          ),
+          style: GoogleFonts.beVietnamPro(fontSize: 13),
+          validator: (v) => v?.trim().isEmpty == true ? 'Required' : null,
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: _capacityCtrl,
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          decoration: _orgEventProposalsInputDecoration(
+            'Capacity',
+            hint: 'Leave blank for unlimited slots',
+            icon: Icons.groups_outlined,
+          ),
+          style: GoogleFonts.beVietnamPro(fontSize: 13),
+          validator: (v) {
+            final t = v?.trim() ?? '';
+            if (t.isEmpty) return null;
+            final n = int.tryParse(t);
+            return (n == null || n <= 0)
+                ? 'Enter a whole number greater than 0'
+                : null;
+          },
+        ),
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+
+  Widget _buildStepAttachments() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        OrgModalSection(
+          title: 'Event Image',
+          icon: Icons.image_outlined,
+          accentColor: UpriseColors.primaryDark,
+          child: _buildImageUploadArea(),
+        ),
+        const SizedBox(height: 20),
+        OrgModalSection(
+          title: 'Attachment (PDF, DOC, etc.)',
+          icon: Icons.attach_file_rounded,
+          accentColor: UpriseColors.primaryDark,
+          child: _buildAttachmentArea(),
+        ),
+        const SizedBox(height: 20),
+        _buildEndorsementSection(),
+        const SizedBox(height: 20),
+        _buildReviewSummary(),
+      ],
+    );
+  }
+
+  /// Read-only recap of steps 1-2, so the last thing before Submit is a
+  /// look at what is actually being sent rather than a file picker.
+  Widget _buildReviewSummary() {
+    final rows = <MapEntry<String, String>>[
+      MapEntry('Title', _titleCtrl.text.trim()),
+      MapEntry(
+        'Category',
+        _category == 'Other' ? _otherCategoryCtrl.text.trim() : _category,
+      ),
+      MapEntry('Audience', _selectedAudiences.join(', ')),
+      MapEntry('Date', _dateCtrl.text.trim()),
+      MapEntry(
+        'Time',
+        _startTimeCtrl.text.trim() + ' - ' + _endTimeCtrl.text.trim(),
+      ),
+      MapEntry('Location', _locCtrl.text.trim()),
+      MapEntry('School year', _schoolYear + ' - ' + _semester),
+      MapEntry(
+        'Capacity',
+        _capacityCtrl.text.trim().isEmpty
+            ? 'Unlimited'
+            : _capacityCtrl.text.trim(),
+      ),
+      MapEntry('Certificates', _issuesCertificate ? 'Yes' : 'No'),
+      MapEntry(
+        'Adviser endorsement',
+        _endorsedByAdviser ? 'Endorsed by $_adviserName' : 'Not endorsed',
+      ),
+    ];
+
+    return OrgModalSection(
+      title: 'Review',
+      icon: Icons.fact_check_outlined,
+      accentColor: UpriseColors.primaryDark,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final r in rows)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 110,
+                    child: Text(
+                      r.key,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12,
+                        color: const Color(0xFF64748B),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      r.value.isEmpty ? '-' : r.value,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w500,
+                        color: const Color(0xFF1A202C),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildImageUploadArea() {
     final hasImage = _imageBase64 != null;
     return AnimatedContainer(
@@ -4745,6 +5030,72 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
 // ─────────────────────────────────────────────────────────────────────────────
 // View Proposal Modal – REDESIGNED to match admin's clean layout
 // ─────────────────────────────────────────────────────────────────────────────
+/// One numbered node in the proposal wizard's step header. Filled when the
+/// step is done, outlined-in-brand when it is the current one, and plain
+/// grey when it is still ahead.
+class _StepDot extends StatelessWidget {
+  final int index;
+  final int current;
+  final String label;
+  final VoidCallback? onTap;
+
+  const _StepDot({
+    required this.index,
+    required this.current,
+    required this.label,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final done = index < current;
+    final active = index == current;
+    final accent = UpriseColors.primaryDark;
+    final color = done || active ? accent : const Color(0xFF9AA5B4);
+
+    final node = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 22,
+          height: 22,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: done ? accent : Colors.transparent,
+            shape: BoxShape.circle,
+            border: Border.all(color: color, width: active ? 2 : 1),
+          ),
+          child: done
+              ? const Icon(Icons.check_rounded, size: 13, color: Colors.white)
+              : Text(
+                  '${index + 1}',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                  ),
+                ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          label,
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 12.5,
+            fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+            color: active ? const Color(0xFF1A202C) : color,
+          ),
+        ),
+      ],
+    );
+
+    if (onTap == null) return node;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(onTap: onTap, child: node),
+    );
+  }
+}
+
 class _ViewProposalModal extends StatelessWidget {
   final String docId;
   final Map<String, dynamic> data;
@@ -4776,6 +5127,122 @@ class _ViewProposalModal extends StatelessWidget {
       default:
         return 'application/octet-stream';
     }
+  }
+
+  /// Full review history from the `reviews` subcollection. Renders
+  /// nothing until there are at least two entries — for a proposal that
+  /// has only just been submitted, a one-item "timeline" is noise, and
+  /// the status badge already says the same thing.
+  Widget _buildReviewTimeline() {
+    return StreamBuilder<List<ProposalReviewEntry>>(
+      stream: ProposalReviewLog.watch(docId),
+      builder: (context, snap) {
+        final entries = snap.data ?? const <ProposalReviewEntry>[];
+        if (entries.length < 2) return const SizedBox.shrink();
+
+        Color colorFor(String action) => switch (action) {
+          ProposalReviewAction.approved => const Color(0xFF059669),
+          ProposalReviewAction.rejected => const Color(0xFFDC2626),
+          ProposalReviewAction.revisionRequested => const Color(0xFF2563EB),
+          _ => const Color(0xFF64748B),
+        };
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 20),
+            _sectionLabel('Review History', icon: Icons.history_rounded),
+            for (var i = 0; i < entries.length; i++)
+              Builder(
+                builder: (context) {
+                  final e = entries[i];
+                  final isLast = i == entries.length - 1;
+                  final c = colorFor(e.action);
+                  return IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Dot + connector rail
+                        Column(
+                          children: [
+                            Container(
+                              width: 9,
+                              height: 9,
+                              margin: const EdgeInsets.only(top: 5),
+                              decoration: BoxDecoration(
+                                color: c,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            if (!isLast)
+                              Expanded(
+                                child: Container(
+                                  width: 1,
+                                  margin: const EdgeInsets.symmetric(
+                                    vertical: 3,
+                                  ),
+                                  color: const Color(0xFFE2E6EA),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Padding(
+                            padding: EdgeInsets.only(bottom: isLast ? 0 : 14),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text(
+                                      e.label,
+                                      style: GoogleFonts.beVietnamPro(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: c,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        e.at == null
+                                            ? ''
+                                            : DateFormat(
+                                                'MMM d, y · h:mm a',
+                                              ).format(e.at!.toDate()),
+                                        style: GoogleFonts.beVietnamPro(
+                                          fontSize: 11,
+                                          color: const Color(0xFF9AA5B4),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (e.message.isNotEmpty) ...[
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    e.message,
+                                    style: GoogleFonts.beVietnamPro(
+                                      fontSize: 12.5,
+                                      color: const Color(0xFF374151),
+                                      height: 1.5,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -5174,6 +5641,13 @@ class _ViewProposalModal extends StatelessWidget {
                         ),
                       ),
                     ],
+
+                    // ── Review history ──
+                    // The box above shows only the *latest* note, because
+                    // adminFeedback is one field. This is every round of
+                    // it, so an org that has been sent back twice can
+                    // still read what was asked the first time.
+                    _buildReviewTimeline(),
 
                     // ── Attachment (if present) ──
                     if (hasAttachment) ...[

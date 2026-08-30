@@ -479,6 +479,36 @@ Widget _card({
   );
 }
 
+// Officers and Members both grow without bound as a roster fills up, pushing
+// the Hierarchy/Social sections far down the page. Cap those lists at ~5 rows
+// and scroll inside the card instead. shrinkWrap keeps a short list at its
+// natural height, so the cap only engages once the content actually overflows
+// and a small org sees no empty space and no scrollbar.
+const double _listMaxHeight = 400;
+
+Widget _scrollableList({
+  required ScrollController controller,
+  required List<Widget> children,
+}) {
+  return ConstrainedBox(
+    constraints: const BoxConstraints(maxHeight: _listMaxHeight),
+    child: RawScrollbar(
+      controller: controller,
+      thumbVisibility: true,
+      thickness: 6,
+      radius: const Radius.circular(4),
+      thumbColor: _C.textFaint.withAlpha(120),
+      child: ListView(
+        controller: controller,
+        shrinkWrap: true,
+        // Clears the thumb so it never sits on a tile's action buttons.
+        padding: const EdgeInsets.only(right: 10),
+        children: children,
+      ),
+    ),
+  );
+}
+
 // Shared visual style for a row-tile's edit/remove actions — mirrors the
 // Officer tile's own _iconBtn exactly (same padding/size/tinted background)
 // so Advisers and Members tiles read as the same action pattern instead of
@@ -657,6 +687,8 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
   @override
   void dispose() {
     _memberSearchCtrl.dispose();
+    _officersScrollCtrl.dispose();
+    _membersScrollCtrl.dispose();
     super.dispose();
   }
 
@@ -802,6 +834,11 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
 
   final TextEditingController _memberSearchCtrl = TextEditingController();
   String _memberSearchQuery = '';
+
+  // Each capped list needs its own controller: RawScrollbar asserts unless it
+  // and the scrollable it decorates share one explicit controller.
+  final ScrollController _officersScrollCtrl = ScrollController();
+  final ScrollController _membersScrollCtrl = ScrollController();
 
   void _snack(String msg, {bool isError = false}) {
     if (!mounted) return;
@@ -1240,8 +1277,6 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
               _buildHierarchyCard(),
               const SizedBox(height: 20),
               _buildSocialCard(),
-              const SizedBox(height: 16),
-              _buildQuickStatsCard(),
             ] else
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1266,13 +1301,7 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
                   // Right column (sidebar)
                   SizedBox(
                     width: 240,
-                    child: Column(
-                      children: [
-                        _buildSocialCard(),
-                        const SizedBox(height: 16),
-                        _buildQuickStatsCard(),
-                      ],
-                    ),
+                    child: Column(children: [_buildSocialCard()]),
                   ),
                 ],
               ),
@@ -1937,7 +1966,8 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
                   ),
                 );
               }
-              return Column(
+              return _scrollableList(
+                controller: _officersScrollCtrl,
                 children: officers
                     .map(
                       (o) => _OfficerTile(
@@ -2183,7 +2213,8 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
                   ),
                 );
               }
-              return Column(
+              return _scrollableList(
+                controller: _membersScrollCtrl,
                 children: docs.map((d) {
                   final m = d.data() as Map<String, dynamic>;
                   return _MemberTile(
@@ -2350,82 +2381,6 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
   }
 
   // ── Quick Stats Card ──────────────────────────────────────────────────────
-  Widget _buildQuickStatsCard() {
-    return _card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _sectionLabel('Quick Stats', icon: Icons.bar_chart_rounded),
-          const SizedBox(height: 14),
-          StreamBuilder<QuerySnapshot>(
-            stream: _officersStream,
-            builder: (ctx, snap) {
-              final officerCount = snap.data?.docs.length ?? 0;
-              return Column(
-                children: [
-                  _statRow(
-                    Icons.badge_outlined,
-                    'Total Officers',
-                    officerCount.toString(),
-                    _C.primaryDark,
-                  ),
-                  const SizedBox(height: 10),
-                  StreamBuilder<QuerySnapshot>(
-                    stream: _membersStream,
-                    builder: (ctx2, snap2) => _statRow(
-                      Icons.people_outline_rounded,
-                      'Total Members',
-                      (snap2.data?.docs.length ?? 0).toString(),
-                      _C.success,
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _statRow(IconData icon, String label, String value, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: _C.surface,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _C.borderSoft),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 16, color: color),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              label,
-              style: GoogleFonts.beVietnamPro(fontSize: 12, color: _C.darkGray),
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.09),
-              borderRadius: BorderRadius.circular(_DS.radiusPill),
-            ),
-            child: Text(
-              value,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: color,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   // ═════════════════════════════════════════════════════════════════════════
   // Members — account creation, batch import, resend/archive
   // ═════════════════════════════════════════════════════════════════════════

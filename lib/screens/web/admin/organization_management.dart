@@ -287,11 +287,6 @@ Widget _statusBadge(String status) {
       const Color(0xFF059669),
       'ACTIVE',
     ),
-    'suspended': _BadgeStyle(
-      const Color(0xFFFFFBEB),
-      const Color(0xFFFB923C),
-      'SUSPENDED',
-    ),
     'archived': _BadgeStyle(
       const Color(0xFFF3F4F6),
       const Color(0xFF6B7280),
@@ -452,7 +447,7 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
     return StreamBuilder<QuerySnapshot>(
       stream: _orgsStream,
       builder: (context, snapshot) {
-        int total = 0, active = 0, suspended = 0, archived = 0;
+        int total = 0, active = 0, archived = 0;
         if (snapshot.hasData) {
           total = snapshot.data!.docs.length;
           for (var doc in snapshot.data!.docs) {
@@ -461,9 +456,6 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
             switch (status) {
               case 'active':
                 active++;
-                break;
-              case 'suspended':
-                suspended++;
                 break;
               case 'archived':
                 archived++;
@@ -490,16 +482,6 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
             color: const Color(0xFF059669),
             onTap: () => setState(() {
               _statusFilter = 'Active';
-              _currentPage = 1;
-            }),
-          ),
-          StatCard(
-            label: 'Suspended',
-            value: '$suspended',
-            icon: Icons.pause_circle_rounded,
-            color: const Color(0xFFFB923C),
-            onTap: () => setState(() {
-              _statusFilter = 'Suspended';
               _currentPage = 1;
             }),
           ),
@@ -570,7 +552,7 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
       children: [
         _FilterDropdown(
           value: _statusFilter,
-          items: ['All', 'Active', 'Suspended', 'Archived'],
+          items: ['All', 'Active', 'Archived'],
           hint: 'Status',
           icon: Icons.tune_rounded,
           onChanged: (v) => setState(() {
@@ -3771,7 +3753,9 @@ class _EditOrganizationDialogState extends State<_EditOrganizationDialog> {
     _orgEmailCtrl = TextEditingController(text: org.orgEmail);
     _descCtrl = TextEditingController(text: org.description);
     _type = org.type;
-    _status = org.status;
+    // Older records remain editable, but the form only exposes supported
+    // organization states.
+    _status = org.status.toLowerCase() == 'archived' ? 'archived' : 'active';
     _advisers = org.advisers.isNotEmpty
         ? List<Adviser>.from(org.advisers)
         : [
@@ -3966,7 +3950,7 @@ class _EditOrganizationDialogState extends State<_EditOrganizationDialog> {
                                   fontSize: 13,
                                   color: const Color(0xFF1A202C),
                                 ),
-                                items: ['active', 'suspended', 'archived']
+                                items: ['active', 'archived']
                                     .map(
                                       (s) => DropdownMenuItem(
                                         value: s,

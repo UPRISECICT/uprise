@@ -319,8 +319,6 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
             pending = 0,
             approved = 0,
             rejected = 0,
-            revision = 0,
-            resubmitted = 0,
             archived = 0;
         if (snapshot.hasData) {
           for (final doc in snapshot.data!.docs) {
@@ -338,8 +336,6 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
             if (s == 'pending') pending++;
             if (s == 'approved') approved++;
             if (s == 'rejected') rejected++;
-            if (s == 'revision') revision++;
-            if (s == 'resubmitted') resubmitted++;
           }
         }
 
@@ -385,26 +381,6 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
             }),
           ),
           _StatCard(
-            label: 'Needs Revision',
-            value: '$revision',
-            icon: Icons.rate_review_rounded,
-            color: AdminColors.purple,
-            onTap: () => setState(() {
-              _statusFilter = 'Needs Revision';
-              _currentPage = 1;
-            }),
-          ),
-          _StatCard(
-            label: 'Resubmitted',
-            value: '$resubmitted',
-            icon: Icons.autorenew_rounded,
-            color: AdminColors.info,
-            onTap: () => setState(() {
-              _statusFilter = 'Resubmitted';
-              _currentPage = 1;
-            }),
-          ),
-          _StatCard(
             label: 'Archived',
             value: '$archived',
             icon: Icons.archive_rounded,
@@ -421,7 +397,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
           child: StatCardsRow(
             cards: cards,
             isMobile: isMobile,
-            maxPerRow: 7,
+            maxPerRow: 5,
             gap: 10,
           ),
         );

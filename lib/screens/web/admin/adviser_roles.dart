@@ -1,7 +1,6 @@
-// lib/screens/web/admin/adviser_roles.dart
+﻿// lib/screens/web/admin/adviser_roles.dart
 
 import 'dart:async';
-import '../../../models/adviser_rank.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -14,7 +13,7 @@ import 'export_pdf.dart';
 import 'export_excel.dart';
 import '../../../theme/admin_theme.dart';
 import '../../../widgets/anchored_dropdown.dart';
-import '../../../widgets/stat_cards.dart';
+import '../../../widgets/admin_stat_cards_row.dart';
 
 // Helper for image handling
 //
@@ -440,7 +439,7 @@ class AdviserRoles extends StatefulWidget {
 }
 
 class _AdviserRolesState extends State<AdviserRoles> {
-  String _statusFilter = 'Active';
+  String _statusFilter = 'All';
   int _currentPage = 1;
   static const int _pageSize = 10;
   final TextEditingController _searchController = TextEditingController();
@@ -451,11 +450,6 @@ class _AdviserRolesState extends State<AdviserRoles> {
   // re-subscribing to Firestore from scratch on every keystroke. The table
   // needs the Active/Archived split to keep working when the filter
   // toggles, so both are cached and a getter just picks between them.
-  late final Stream<QuerySnapshot> _archivedCountStream = FirebaseFirestore
-      .instance
-      .collection('adviser_roles')
-      .where('archived', isEqualTo: true)
-      .snapshots();
   // Deliberately no server-side orderBy('createdAt') on either of these —
   // Firestore silently drops any document missing that field from an
   // ordered query, so an adviser role written (or manually added)
@@ -473,9 +467,14 @@ class _AdviserRolesState extends State<AdviserRoles> {
       .collection('adviser_roles')
       .where('archived', isEqualTo: true)
       .snapshots();
-  Stream<QuerySnapshot> get _advisersTableStream => _statusFilter == 'Archived'
-      ? _archivedAdvisersStream
-      : _activeAdvisersStream;
+  // The table always listens to one stable stream. Switching card filters
+  // then filters locally, preventing the blank/loading state caused by
+  // replacing the StreamBuilder's source on every card tap.
+  late final Stream<QuerySnapshot> _allAdvisersStream = FirebaseFirestore
+      .instance
+      .collection('adviser_roles')
+      .snapshots();
+  Stream<QuerySnapshot> get _advisersTableStream => _allAdvisersStream;
 
   // Export re-fetching the whole collection with a fresh `.get()` meant
   // re-downloading every doc's embedded base64 officer photos over again —
@@ -488,11 +487,11 @@ class _AdviserRolesState extends State<AdviserRoles> {
   late final StreamSubscription _archivedAdvisersCacheSub;
 
   List<OrgModel> _orgs = [];
-  List<String> _adviserNames = [];
+  Set<String> _archivedOrgIds = {};
   bool _loadingMeta = true;
   bool _didInitialOfficerSync = false;
-  int _totalAdvisers = 0;
-  int _orgsWithoutAdviser = 0;
+  int _activeAdviserCount = 0;
+  int _archivedAdviserCount = 0;
   late StreamSubscription _metaListener;
   late StreamSubscription _officersListener;
   late StreamSubscription _orgsListener;
@@ -550,6 +549,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
         .snapshots()
         .skip(1)
         .listen((snapshot) {
+          _loadMeta();
           _loadOfficersForAllOrgs();
         });
   }
@@ -564,6 +564,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
         .snapshots()
         .skip(1)
         .listen((snapshot) {
+          _loadMeta();
           _loadOfficersForAllOrgs();
         });
   }
@@ -690,10 +691,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
       // Independent reads — fire together instead of one after another.
       final results = await Future.wait([
         FirebaseFirestore.instance.collection('organizations').get(),
-        FirebaseFirestore.instance
-            .collection('adviser_roles')
-            .where('archived', isEqualTo: false)
-            .get(),
+        FirebaseFirestore.instance.collection('adviser_roles').get(),
       ]);
       final orgSnap = results[0];
       final rolesSnap = results[1];
@@ -709,6 +707,11 @@ class _AdviserRolesState extends State<AdviserRoles> {
               .toList()
             ..sort((a, b) => a.name.compareTo(b.name));
 
+      final orgIsArchived = <String, bool>{
+        for (final doc in orgSnap.docs)
+          doc.id: (doc.data()['status'] ?? '').toString().toLowerCase() ==
+              'archived',
+      };
       final validRoles = rolesSnap.docs.where((doc) {
         final d = doc.data();
         final orgId = (d['orgId'] ?? '').toString().trim();
@@ -716,23 +719,27 @@ class _AdviserRolesState extends State<AdviserRoles> {
         return orgId.isNotEmpty && orgName.isNotEmpty;
       }).toList();
 
-      final namesSet = <String>{};
-      final orgIdsWithAdviser = <String>{};
+      var activeAdviserCount = 0;
+      var archivedAdviserCount = 0;
       for (final doc in validRoles) {
         final d = doc.data();
-        final n = d['adviserName']?.toString().trim();
-        if (n != null && n.isNotEmpty) namesSet.add(n);
-        orgIdsWithAdviser.add((d['orgId'] ?? '').toString().trim());
+        final orgId = (d['orgId'] ?? '').toString().trim();
+        final roleIsArchived = d['archived'] == true;
+        if (roleIsArchived || (orgIsArchived[orgId] ?? false)) {
+          archivedAdviserCount++;
+        } else {
+          activeAdviserCount++;
+        }
       }
-      final orgsWithoutAdviser = orgs
-          .where((o) => !orgIdsWithAdviser.contains(o.id))
-          .length;
 
       setState(() {
         _orgs = orgs;
-        _adviserNames = namesSet.toList()..sort();
-        _totalAdvisers = validRoles.length;
-        _orgsWithoutAdviser = orgsWithoutAdviser;
+        _archivedOrgIds = orgIsArchived.entries
+            .where((entry) => entry.value)
+            .map((entry) => entry.key)
+            .toSet();
+        _activeAdviserCount = activeAdviserCount;
+        _archivedAdviserCount = archivedAdviserCount;
         _loadingMeta = false;
       });
 
@@ -776,34 +783,35 @@ class _AdviserRolesState extends State<AdviserRoles> {
 
   Widget _buildStatsRow(bool isMobile, bool isTablet) {
     final cards = [
-      StatCard(
+      _StatCard(
+        label: 'Total Advisers',
+        value: '${_activeAdviserCount + _archivedAdviserCount}',
+        icon: Icons.groups_rounded,
+        color: AdminColors.primaryDark,
+        onTap: () => setState(() {
+          _statusFilter = 'All';
+          _currentPage = 1;
+        }),
+      ),
+      _StatCard(
         label: 'Active Advisers',
-        value: '$_totalAdvisers',
+        value: '$_activeAdviserCount',
         icon: Icons.supervisor_account_rounded,
         color: AdminColors.primaryDark,
-        onTap: () => setState(() => _statusFilter = 'Active'),
+        onTap: () => setState(() {
+          _statusFilter = 'Active';
+          _currentPage = 1;
+        }),
       ),
-      StatCard(
-        label: 'Unique Individuals',
-        value: '${_adviserNames.length}',
-        icon: Icons.badge_outlined,
-        color: const Color(0xFF2563EB),
-      ),
-      StatCard(
-        label: 'Orgs Without an Adviser',
-        value: '$_orgsWithoutAdviser',
-        icon: Icons.report_gmailerrorred_rounded,
-        color: _orgsWithoutAdviser > 0
-            ? const Color(0xFFDC2626)
-            : const Color(0xFF059669),
-      ),
-      StatCard(
+      _StatCard(
         label: 'Archived Advisers',
-        value: '—',
+        value: '$_archivedAdviserCount',
         icon: Icons.archive_rounded,
         color: const Color(0xFF64748B),
-        stream: _archivedCountStream,
-        onTap: () => setState(() => _statusFilter = 'Archived'),
+        onTap: () => setState(() {
+          _statusFilter = 'Archived';
+          _currentPage = 1;
+        }),
       ),
     ];
 
@@ -899,7 +907,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
     return StreamBuilder<QuerySnapshot>(
       stream: _advisersTableStream,
       builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
+        if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
         if (snap.hasError) {
@@ -923,15 +931,19 @@ class _AdviserRolesState extends State<AdviserRoles> {
           return orgId.isNotEmpty && orgName.isNotEmpty;
         }).toList();
 
-        // 🔥 FIX: Only show advisers from ACTIVE organizations
-        final activeOrgIds = _orgs
-            .where((o) => o.id.isNotEmpty)
-            .map((o) => o.id)
-            .toSet();
+        // An adviser becomes archived when either its own role or its parent
+        // organization is archived.  This is the same classification used by
+        // the summary cards, so every card opens the corresponding rows.
         docs = docs.where((d) {
           final data = d.data() as Map<String, dynamic>;
           final orgId = (data['orgId'] ?? '').toString().trim();
-          return activeOrgIds.contains(orgId);
+          final isArchived =
+              data['archived'] == true || _archivedOrgIds.contains(orgId);
+          return switch (_statusFilter) {
+            'Active' => !isArchived,
+            'Archived' => isArchived,
+            _ => true,
+          };
         }).toList();
 
         final _searchTerm = _searchController.text.trim().toLowerCase();
@@ -1328,77 +1340,9 @@ class _AdviserRolesState extends State<AdviserRoles> {
     );
   }
 
-  /// What an adviser at [rank] is responsible for. Reads from
-  /// [AdviserRank] so the admin view, the student-facing org page and the
-  /// proposal endorsement all describe the role the same way.
-  Widget _buildResponsibilitiesCard(String rank) {
-    final items = AdviserRank.responsibilitiesFor(rank);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFBFCFE),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE8ECF0)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'RESPONSIBILITIES',
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 10.5,
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFF64748B),
-              letterSpacing: 0.6,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            AdviserRank.byId(rank).label,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              color: const Color(0xFF1A202C),
-            ),
-          ),
-          const SizedBox(height: 10),
-          for (final r in items)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 4,
-                    height: 4,
-                    margin: const EdgeInsets.only(top: 7, right: 10),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF9AA5B4),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  Expanded(
-                    child: Text(
-                      r,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 12.5,
-                        color: const Color(0xFF374151),
-                        height: 1.45,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
   // ── View dialog with photos ────────────────────────────────────────────────
   void _showViewDialog(Map<String, dynamic> data, String docId) {
-    final rank = data['adviserRank'] ?? 'Faculty';
+    final rank = data['adviserRank'] ?? 'Instructor';
     final archived = data['archived'] == true;
     final orgName = data['orgName'] ?? '—';
     final orgTag = data['orgTag'] ?? '';
@@ -1521,15 +1465,6 @@ class _AdviserRolesState extends State<AdviserRoles> {
                   rank: rank,
                   photoUrl: data['adviserPhotoUrl'] ?? '',
                 ),
-              ),
-
-              // ---- Responsibilities ----
-              // The rank used to be a bare label. This is what it obliges
-              // the adviser to do — descriptive only, since advisers hold
-              // no account and therefore no permission in the system.
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                child: _buildResponsibilitiesCard(rank),
               ),
 
               // ---- Footer ----
@@ -1835,7 +1770,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
       text: existing?['adviserPhone'] ?? '',
     );
     final advRankCtrl = TextEditingController(
-      text: existing?['adviserRank'] ?? 'Faculty',
+      text: existing?['adviserRank'] ?? 'Instructor',
     );
     final formKey = GlobalKey<FormState>();
 
@@ -1860,7 +1795,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
                 advNameCtrl.text = d['adviserName'] ?? '';
                 advEmailCtrl.text = d['adviserEmail'] ?? '';
                 advPhoneCtrl.text = d['adviserPhone'] ?? '';
-                advRankCtrl.text = d['adviserTitle'] ?? 'Faculty';
+                advRankCtrl.text = d['adviserTitle'] ?? 'Instructor';
               });
             }
           }
@@ -2351,7 +2286,14 @@ class _AdviserRolesState extends State<AdviserRoles> {
                             ),
                             const SizedBox(height: 10),
                             AnchoredDropdownField<String>(
-                              value: AdviserRank.ids.contains(advRankCtrl.text)
+                              value:
+                                  [
+                                    'Dean',
+                                    'Program Chair',
+                                    'Department Head',
+                                    'Coordinator',
+                                    'Faculty',
+                                  ].contains(advRankCtrl.text)
                                   ? advRankCtrl.text
                                   : 'Faculty',
                               decoration: _DS.inputDecoration(
@@ -2362,14 +2304,21 @@ class _AdviserRolesState extends State<AdviserRoles> {
                                 fontSize: 13,
                                 color: const Color(0xFF1A202C),
                               ),
-                              items: AdviserRank.ids
-                                  .map(
-                                    (r) => DropdownMenuItem(
-                                      value: r,
-                                      child: Text(r),
-                                    ),
-                                  )
-                                  .toList(),
+                              items:
+                                  [
+                                        'Dean',
+                                        'Program Chair',
+                                        'Department Head',
+                                        'Coordinator',
+                                        'Faculty',
+                                      ]
+                                      .map(
+                                        (r) => DropdownMenuItem(
+                                          value: r,
+                                          child: Text(r),
+                                        ),
+                                      )
+                                      .toList(),
                               onChanged: (v) {
                                 if (v != null) advRankCtrl.text = v;
                               },
@@ -2712,9 +2661,11 @@ class _AdviserRolesState extends State<AdviserRoles> {
   // firing a fresh `.get()` — each doc embeds up to 3 base64 officer photos,
   // so re-querying the whole collection on every export was what made this
   // noticeably slower than other pages' exports.
-  List<QueryDocumentSnapshot> get _docsForExport => _statusFilter == 'Archived'
-      ? _cachedArchivedAdviserDocs
-      : _cachedActiveAdviserDocs;
+  List<QueryDocumentSnapshot> get _docsForExport {
+    if (_statusFilter == 'Archived') return _cachedArchivedAdviserDocs;
+    if (_statusFilter == 'Active') return _cachedActiveAdviserDocs;
+    return [..._cachedActiveAdviserDocs, ..._cachedArchivedAdviserDocs];
+  }
 
   Future<void> _exportCSV() async {
     try {
@@ -2918,7 +2869,7 @@ class _StatusDropdown extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AnchoredMenuTrigger<String>(
-      items: const ['Active', 'Archived'],
+      items: const ['All', 'Active', 'Archived'],
       labelOf: (s) => s,
       selectedValue: value,
       onSelected: (s) => onChanged(s),
@@ -2951,6 +2902,108 @@ class _StatusDropdown extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  final String label, value;
+  final IconData icon;
+  final Color color;
+  final Stream<QuerySnapshot>? stream;
+  final VoidCallback? onTap;
+
+  const _StatCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+    this.stream,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    Widget countWidget;
+    if (stream != null) {
+      countWidget = StreamBuilder<QuerySnapshot>(
+        stream: stream,
+        builder: (ctx, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2, color: color),
+            );
+          }
+          final count = snap.hasData ? snap.data!.docs.length : 0;
+          return Text(
+            '$count',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF1A202C),
+            ),
+          );
+        },
+      );
+    } else {
+      countWidget = Text(
+        value,
+        style: GoogleFonts.beVietnamPro(
+          fontSize: 28,
+          fontWeight: FontWeight.w800,
+          color: const Color(0xFF1A202C),
+        ),
+      );
+    }
+
+    final card = Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE8ECF0)),
+        boxShadow: _DS.cardShadow,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: color.withAlpha(26),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: color, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 11,
+                    color: const Color(0xFF64748B),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                countWidget,
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+    final wrapped = onTap == null
+        ? card
+        : MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(onTap: onTap, child: card),
+          );
+    return wrapped;
   }
 }
 

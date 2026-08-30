@@ -1119,7 +1119,7 @@ class _EventCalendarState extends State<EventCalendar> {
     );
   }
 
-  // ─── NEW PROFESSIONAL EVENT DETAIL DIALOG (replaces the old one) ──
+  // ─── EVENT DETAIL DIALOG ─────────────────────────────────────────
   Future<void> _showEventDetailDialog(_Event event) async {
     // Fetch latest data from proposal (if available)
     var time = event.time;
@@ -1151,7 +1151,7 @@ class _EventCalendarState extends State<EventCalendar> {
       context: context,
       barrierColor: Colors.black54,
       builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Container(
           width: 620,
           constraints: BoxConstraints(
@@ -1159,126 +1159,82 @@ class _EventCalendarState extends State<EventCalendar> {
           ),
           decoration: const BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.all(Radius.circular(20)),
+            borderRadius: BorderRadius.all(Radius.circular(16)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               // ─── HEADER ──────────────────────────────────────────────
-              // Gradient + soft decorative circles
+              // A restrained, flat brand header keeps the modal aligned with
+              // the UPRISE admin portal instead of competing with the data.
               ClipRRect(
                 borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(20),
+                  top: Radius.circular(16),
                 ),
                 child: Container(
-                  padding: const EdgeInsets.fromLTRB(26, 24, 18, 22),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        AdminColors.primaryDark,
-                        catColor.withAlpha(230),
-                      ],
-                    ),
-                  ),
-                  child: Stack(
-                    clipBehavior: Clip.none,
+                  padding: const EdgeInsets.fromLTRB(26, 22, 18, 20),
+                  decoration: const BoxDecoration(color: AdminColors.primaryDark),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Positioned(
-                        right: -30,
-                        top: -40,
-                        child: Container(
-                          width: 130,
-                          height: 130,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white.withAlpha(18),
-                          ),
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withAlpha(20),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.white.withAlpha(55)),
+                        ),
+                        child: const Icon(
+                          Icons.event_rounded,
+                          color: Colors.white,
+                          size: 21,
                         ),
                       ),
-                      Positioned(
-                        right: 40,
-                        bottom: -50,
-                        child: Container(
-                          width: 90,
-                          height: 90,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white.withAlpha(14),
-                          ),
-                        ),
-                      ),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Icon badge
-                          Container(
-                            width: 46,
-                            height: 46,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withAlpha(35),
-                              borderRadius: BorderRadius.circular(13),
-                              border: Border.all(
-                                color: Colors.white.withAlpha(90),
-                              ),
-                            ),
-                            child: const Icon(
-                              Icons.event_rounded,
-                              color: Colors.white,
-                              size: 22,
-                            ),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 6,
+                              crossAxisAlignment: WrapCrossAlignment.center,
                               children: [
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 6,
-                                  crossAxisAlignment: WrapCrossAlignment.center,
-                                  children: [
-                                    _outlinedChip(event.category.toUpperCase()),
-                                    if (event.organization.isNotEmpty &&
-                                        event.organization != 'Unknown')
-                                      _outlinedChip(
-                                        event.organization,
-                                        dim: true,
-                                      ),
-                                    if (event.status.toLowerCase() !=
-                                        'approved')
-                                      _outlinedChip(
-                                        event.status.toUpperCase(),
-                                        accent: _statusColor(event.status),
-                                      ),
-                                  ],
-                                ),
-                                const SizedBox(height: 10),
-                                Text(
-                                  event.title,
-                                  style: GoogleFonts.beVietnamPro(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white,
-                                    height: 1.25,
+                                _outlinedChip(event.category.toUpperCase()),
+                                if (event.organization.isNotEmpty &&
+                                    event.organization != 'Unknown')
+                                  _outlinedChip(event.organization, dim: true),
+                                if (event.status.toLowerCase() != 'approved')
+                                  _outlinedChip(
+                                    event.status.toUpperCase(),
+                                    accent: _statusColor(event.status),
                                   ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
                               ],
                             ),
-                          ),
-                          IconButton(
-                            icon: const Icon(
-                              Icons.close_rounded,
-                              color: Colors.white,
-                              size: 20,
+                            const SizedBox(height: 10),
+                            Text(
+                              event.title,
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                                height: 1.25,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            tooltip: 'Close',
-                            onPressed: () => Navigator.pop(ctx),
-                          ),
-                        ],
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                        tooltip: 'Close',
+                        onPressed: () => Navigator.pop(ctx),
                       ),
                     ],
                   ),
@@ -1301,19 +1257,16 @@ class _EventCalendarState extends State<EventCalendar> {
                             'Date',
                             DateFormat('MMM d, yyyy').format(event.date),
                             Icons.calendar_today_rounded,
-                            accent: catColor,
                           ),
                           _detailCard(
                             'Time',
                             time.isNotEmpty && time != 'TBD' ? time : 'TBD',
                             Icons.access_time_rounded,
-                            accent: catColor,
                           ),
                           _detailCard(
                             'Location',
                             event.location.isNotEmpty ? event.location : 'TBD',
                             Icons.location_on_outlined,
-                            accent: catColor,
                           ),
                           _detailCard(
                             'Audience',
@@ -1321,21 +1274,18 @@ class _EventCalendarState extends State<EventCalendar> {
                                 ? event.audience
                                 : 'Public',
                             Icons.group_outlined,
-                            accent: catColor,
                           ),
                           if (event.schoolYear.isNotEmpty)
                             _detailCard(
                               'School Year',
                               event.schoolYear,
                               Icons.school_outlined,
-                              accent: catColor,
                             ),
                           if (event.semester.isNotEmpty)
                             _detailCard(
                               'Semester',
                               event.semester,
                               Icons.date_range_outlined,
-                              accent: catColor,
                             ),
                         ],
                       ),
@@ -1354,7 +1304,10 @@ class _EventCalendarState extends State<EventCalendar> {
                             color: const Color(0xFFF8F9FB),
                             borderRadius: BorderRadius.circular(12),
                             border: Border(
-                              left: BorderSide(color: catColor, width: 3),
+                              left: BorderSide(
+                                color: AdminColors.accent,
+                                width: 3,
+                              ),
                             ),
                           ),
                           child: Text(
@@ -1495,17 +1448,15 @@ class _EventCalendarState extends State<EventCalendar> {
   Widget _detailCard(
     String label,
     String value,
-    IconData icon, {
-    Color? accent,
-  }) {
-    final c = accent ?? AdminColors.primaryDark;
+    IconData icon,
+  ) {
     return Container(
       width: 260,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: c.withAlpha(12),
+        color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: c.withAlpha(35)),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1514,11 +1465,15 @@ class _EventCalendarState extends State<EventCalendar> {
             width: 32,
             height: 32,
             decoration: BoxDecoration(
-              color: c.withAlpha(35),
+              color: const Color(0xFFEFF3F8),
               borderRadius: BorderRadius.circular(9),
             ),
             alignment: Alignment.center,
-            child: Icon(icon, size: 16, color: c),
+            child: Icon(
+              icon,
+              size: 16,
+              color: AdminColors.primaryDark,
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(

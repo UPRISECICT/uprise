@@ -6,7 +6,7 @@ import 'guest_auth_service.dart';
 import 'guest_access_gateway_screen.dart';
 import 'guest_calendar_screen.dart';
 import 'guest_registered_events_screen.dart';
-import '../../models/event_model.dart';
+import 'package:uprise/models/event_model.dart';
 import '../../services/guest_event_registration.dart';
 import '../../utils/helpers.dart' show combineDateAndTime;
 import '../../widgets/common/error_state.dart';

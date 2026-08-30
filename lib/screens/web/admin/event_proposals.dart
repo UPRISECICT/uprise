@@ -688,8 +688,16 @@ class _EventProposalsState extends State<EventProposals> {
       child: Row(
         children: [
           Expanded(flex: 1, child: _headerCell('ORGANIZATION')),
-          Expanded(flex: 4, child: _headerCell('EVENT TITLE')),
-          Expanded(flex: 1, child: _headerCell('CATEGORY')),
+          // Rebalanced title/category widths keep these two related fields
+          // visually closer without shifting the date, status, or actions.
+          Expanded(
+            flex: 3,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 48),
+              child: _headerCell('EVENT TITLE'),
+            ),
+          ),
+          Expanded(flex: 2, child: _headerCell('CATEGORY')),
           Expanded(flex: 1, child: _headerCell('DATE')),
           Expanded(
             flex: 1,
@@ -795,32 +803,35 @@ class _EventProposalsState extends State<EventProposals> {
                     ],
                   ),
                 ),
-                // EVENT TITLE – widened so long titles show more
+                // EVENT TITLE – inset slightly for a calmer column rhythm.
                 Expanded(
-                  flex: 4,
-                  child: Row(
-                    children: [
-                      if (imageThumbnail != null) ...[
-                        imageThumbnail,
-                        const SizedBox(width: 10),
-                      ],
-                      Expanded(
-                        child: Text(
-                          data['title'] ?? '—',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: const Color(0xFF1A202C),
+                  flex: 3,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 48),
+                    child: Row(
+                      children: [
+                        if (imageThumbnail != null) ...[
+                          imageThumbnail,
+                          const SizedBox(width: 10),
+                        ],
+                        Expanded(
+                          child: Text(
+                            data['title'] ?? '—',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFF1A202C),
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-                // CATEGORY – flex 1, matches the header
+                // CATEGORY – flex 2, matches the header and sits closer to title
                 Expanded(
-                  flex: 1,
+                  flex: 2,
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: Container(

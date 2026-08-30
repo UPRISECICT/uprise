@@ -4,7 +4,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import '../../models/event_model.dart';
+import 'package:uprise/models/event_model.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../widgets/student/student_app_bar.dart';
 import '../../widgets/student/app_image.dart';

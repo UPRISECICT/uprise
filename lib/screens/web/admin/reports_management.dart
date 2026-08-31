@@ -628,9 +628,10 @@ class _ReportsManagementState extends State<ReportsManagement>
         'status',
         isEqualTo: _filterStatus == 'Archived' ? 'archived' : 'approved',
       );
-      if (_filterType != 'All Types') {
-        query = query.where('type', isEqualTo: _filterType);
-      }
+      // Events written by the organization flow use `category`, while older
+      // records may use `type`. Filtering in Firestore by only `type` made
+      // the Type dropdown appear broken for category-based events. Resolve
+      // the unified EventReport.type locally after loading instead.
       if (_filterOrg != 'All Organizations') {
         final org = _organizations.firstWhere(
           (o) => o['name'] == _filterOrg,
@@ -689,9 +690,18 @@ class _ReportsManagementState extends State<ReportsManagement>
       // a new composite index alongside the existing status/type/orgId/date
       // filters — this app has been bitten before by a query silently
       // returning empty when one isn't provisioned.
-      loaded.sort((a, b) => b.date.compareTo(a.date));
+      final typeFiltered = _filterType == 'All Types'
+          ? loaded
+          : loaded
+                .where(
+                  (event) =>
+                      event.type.trim().toLowerCase() ==
+                      _filterType.trim().toLowerCase(),
+                )
+                .toList();
+      typeFiltered.sort((a, b) => b.date.compareTo(a.date));
       if (!mounted) return;
-      setState(() => _events = loaded);
+      setState(() => _events = typeFiltered);
     } catch (e) {
       debugPrint('Error loading events: $e');
     } finally {
@@ -4409,13 +4419,14 @@ class _ReportsManagementState extends State<ReportsManagement>
                     // attendance subcollection (events/{id}/attendances),
                     // not the `registrations.attended` field, which nothing
                     // in the app ever actually writes to.
-                    final attendanceBlock = Padding(
-                      // 14 at the top rather than 18 so the first stat lines
-                      // up with the properties grid's first _metaCell row
-                      // across the divider.
-                      padding: twoCol
-                          ? const EdgeInsets.fromLTRB(18, 14, 18, 18)
-                          : const EdgeInsets.all(18),
+                    final attendanceBlock = Container(
+                      margin: const EdgeInsets.all(18),
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFAFBFC),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFE8ECF0)),
+                      ),
                       child: FutureBuilder<(int, int)>(
                         future: _loadEventAttendanceStats(event.id),
                         builder: (context, snapshot) {
@@ -4444,8 +4455,8 @@ class _ReportsManagementState extends State<ReportsManagement>
                                 'Attendance',
                                 icon: Icons.how_to_reg_rounded,
                               ),
-                              if (twoCol) ...[
-                                // Narrow column: one stat per line.
+                              if (constraints.maxWidth < 600) ...[
+                                // Keep the cards readable on narrow layouts.
                                 _compactStatRow(
                                   'Registrants',
                                   loading ? '—' : '$registrants',
@@ -4503,93 +4514,51 @@ class _ReportsManagementState extends State<ReportsManagement>
                       ),
                     );
 
-                    // Participants (attendees list)
-                    final participantsBlock = Padding(
-                      padding: const EdgeInsets.all(18),
-                      child: FutureBuilder<List<Map<String, dynamic>>>(
-                        future: _loadEventAttendeesList(event.id),
-                        builder: (context, snap) {
-                          final loadingA =
-                              snap.connectionState == ConnectionState.waiting;
-                          final attendeesList = snap.data ?? [];
-                          // Flat: this is a section of the detail view's one
-                          // container now, not a card of its own.
-                          return SizedBox(
-                            width: double.infinity,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                _sectionLabel(
-                                  'Participants',
-                                  icon: Icons.people_outline_rounded,
-                                ),
-                                const SizedBox(height: 8),
-                                if (loadingA)
-                                  const Center(
-                                    child: SizedBox(
-                                      height: 36,
-                                      width: 36,
-                                      child: CircularProgressIndicator(),
-                                    ),
-                                  )
-                                else if (attendeesList.isEmpty)
-                                  Text(
+                    // Participants stay contained when an event has a long
+                    // attendance list, instead of making the entire detail
+                    // page grow indefinitely.
+                    final participantsBlock = FutureBuilder<List<Map<String, dynamic>>>(
+                      future: _loadEventAttendeesList(event.id),
+                      builder: (context, snap) {
+                        final loadingA =
+                            snap.connectionState == ConnectionState.waiting;
+                        final attendeesList = snap.data ?? [];
+                        return _detailScrollPanel(
+                          title: 'Participants',
+                          icon: Icons.people_outline_rounded,
+                          child: loadingA
+                              ? const Center(
+                                  child: SizedBox(
+                                    height: 36,
+                                    width: 36,
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                )
+                              : attendeesList.isEmpty
+                              ? Center(
+                                  child: Text(
                                     'No attendees recorded.',
                                     style: GoogleFonts.beVietnamPro(
                                       color: const Color(0xFF64748B),
                                     ),
-                                  )
-                                else ...[
-                                  ...attendeesList
-                                      .take(5)
-                                      .map(
-                                        (a) => Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            vertical: 4,
-                                          ),
-                                          child: _attendeeTile(a),
-                                        ),
-                                      ),
-                                  if (attendeesList.length > 5) ...[
-                                    const SizedBox(height: 4),
-                                    Align(
-                                      alignment: Alignment.centerLeft,
-                                      child: TextButton(
-                                        onPressed: () =>
-                                            _showAllParticipantsDialog(
-                                              event.title,
-                                              attendeesList,
-                                            ),
-                                        style: TextButton.styleFrom(
-                                          foregroundColor:
-                                              UpriseColors.primaryDark,
-                                          padding: EdgeInsets.zero,
-                                          minimumSize: Size.zero,
-                                          tapTargetSize:
-                                              MaterialTapTargetSize.shrinkWrap,
-                                        ),
-                                        child: Text(
-                                          'View all ${attendeesList.length} participants',
-                                          style: GoogleFonts.beVietnamPro(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ],
-                            ),
-                          );
-                        },
-                      ),
+                                  ),
+                                )
+                              : Scrollbar(
+                                  child: ListView.separated(
+                                    padding: EdgeInsets.zero,
+                                    itemCount: attendeesList.length,
+                                    separatorBuilder: (_, __) =>
+                                        const SizedBox(height: 8),
+                                    itemBuilder: (_, index) =>
+                                        _attendeeTile(attendeesList[index]),
+                                  ),
+                                ),
+                        );
+                      },
                     );
 
                     // Evaluation / Feedback
-                    final feedbackBlock = Padding(
-                      padding: const EdgeInsets.all(18),
-                      child: FutureBuilder<List<Map<String, dynamic>>>(
+                    final feedbackBlock = FutureBuilder<List<Map<String, dynamic>>>(
                         future: _loadEventFeedbacks(event.id),
                         builder: (context, snap) {
                           final loadingF =
@@ -4612,34 +4581,32 @@ class _ReportsManagementState extends State<ReportsManagement>
                             if (starCounts.containsKey(r))
                               starCounts[r] = starCounts[r]! + 1;
                           }
-                          // Flat: this is a section of the detail view's one
-                          // container now, not a card of its own.
-                          return SizedBox(
-                            width: double.infinity,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                _sectionLabel(
-                                  'Evaluation & Feedback',
-                                  icon: Icons.reviews_rounded,
-                                ),
-                                const SizedBox(height: 8),
-                                if (loadingF)
-                                  const Center(
+                          return _detailScrollPanel(
+                            title: 'Evaluation & Feedback',
+                            icon: Icons.reviews_rounded,
+                            child: loadingF
+                                ? const Center(
                                     child: SizedBox(
                                       height: 36,
                                       width: 36,
                                       child: CircularProgressIndicator(),
                                     ),
                                   )
-                                else if (feedbacks.isEmpty)
-                                  Text(
-                                    'No feedback recorded.',
-                                    style: GoogleFonts.beVietnamPro(
-                                      color: const Color(0xFF64748B),
+                                : feedbacks.isEmpty
+                                ? Center(
+                                    child: Text(
+                                      'No feedback recorded.',
+                                      style: GoogleFonts.beVietnamPro(
+                                        color: const Color(0xFF64748B),
+                                      ),
                                     ),
                                   )
-                                else ...[
+                                : Scrollbar(
+                                    child: SingleChildScrollView(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
                                   Row(
                                     children: [
                                       Text(
@@ -4735,7 +4702,6 @@ class _ReportsManagementState extends State<ReportsManagement>
                                   // Recent comments
                                   Column(
                                     children: feedbacks
-                                        .take(3)
                                         .map(
                                           (f) => Padding(
                                             padding: const EdgeInsets.symmetric(
@@ -4746,40 +4712,13 @@ class _ReportsManagementState extends State<ReportsManagement>
                                         )
                                         .toList(),
                                   ),
-                                  if (feedbacks.length > 3) ...[
-                                    const SizedBox(height: 4),
-                                    Align(
-                                      alignment: Alignment.centerLeft,
-                                      child: TextButton(
-                                        onPressed: () => _showAllFeedbackDialog(
-                                          event.title,
-                                          feedbacks,
-                                        ),
-                                        style: TextButton.styleFrom(
-                                          foregroundColor:
-                                              UpriseColors.primaryDark,
-                                          padding: EdgeInsets.zero,
-                                          minimumSize: Size.zero,
-                                          tapTargetSize:
-                                              MaterialTapTargetSize.shrinkWrap,
-                                        ),
-                                        child: Text(
-                                          'View all ${feedbacks.length} feedback',
-                                          style: GoogleFonts.beVietnamPro(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
+                                        ],
                                       ),
                                     ),
-                                  ],
-                                ],
-                              ],
-                            ),
+                                  ),
                           );
                         },
-                      ),
-                    );
+                      );
 
                     // stretch, not the default center: _boxDivider is a
                     // height-1 Container with no width of its own, so a
@@ -4787,31 +4726,11 @@ class _ReportsManagementState extends State<ReportsManagement>
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // Attendance beside the properties grid. IntrinsicHeight
-                        // is load-bearing, not decoration: this sits in a
-                        // SingleChildScrollView, so a stretch Row would
-                        // otherwise be handed an infinite height to stretch to.
-                        // _buildEventPropertiesSection already uses the same
-                        // pairing for its own meta rows.
-                        if (twoCol)
-                          IntrinsicHeight(
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Expanded(flex: 1, child: attendanceBlock),
-                                _vBoxDivider(),
-                                Expanded(
-                                  flex: 2,
-                                  child: _buildEventPropertiesSection(event),
-                                ),
-                              ],
-                            ),
-                          )
-                        else ...[
-                          _buildEventPropertiesSection(event),
-                          _boxDivider(),
-                          attendanceBlock,
-                        ],
+                        // Event information stays together at the top;
+                        // attendance is its own summary card directly below.
+                        _buildEventPropertiesSection(event),
+                        _boxDivider(),
+                        attendanceBlock,
                         _boxDivider(),
                         // Participants beside evaluation & feedback. Both
                         // FutureBuilders are still siblings built in the same
@@ -5219,6 +5138,36 @@ class _ReportsManagementState extends State<ReportsManagement>
       icon: Icons.reviews_rounded,
       count: feedbacks.length,
       itemBuilder: (context, i) => _feedbackTile(feedbacks[i]),
+    );
+  }
+
+  /// Fixed-height detail panel: long participant and feedback lists scroll
+  /// inside their own clean container without pushing the rest of the report
+  /// details down the page.
+  Widget _detailScrollPanel({
+    required String title,
+    required IconData icon,
+    required Widget child,
+  }) {
+    return Container(
+      height: 320,
+      margin: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFAFBFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE8ECF0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionLabel(title, icon: icon),
+          const SizedBox(height: 10),
+          const Divider(height: 1, color: Color(0xFFE8ECF0)),
+          const SizedBox(height: 12),
+          Expanded(child: child),
+        ],
+      ),
     );
   }
 

@@ -42,74 +42,104 @@ class OrgModalShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Container(
         width: width,
         constraints: BoxConstraints(
           maxHeight: MediaQuery.of(context).size.height * maxHeightFraction,
         ),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x330F172A),
+              blurRadius: 32,
+              offset: Offset(0, 14),
+            ),
+          ],
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
-              decoration: BoxDecoration(
-                color: accentColor,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(18),
-                ),
+              padding: const EdgeInsets.fromLTRB(28, 14, 28, 24),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
               ),
-              child: Row(
+              child: Stack(
                 children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withAlpha(38),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(icon, color: Colors.white, size: 18),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
+                  Padding(
+                    padding: const EdgeInsets.only(top: 22),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        Container(
+                          width: 64,
+                          height: 64,
+                          decoration: BoxDecoration(
+                            color: accentColor.withAlpha(24),
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: accentColor.withAlpha(28),
+                                blurRadius: 20,
+                                spreadRadius: 4,
+                              ),
+                            ],
+                          ),
+                          child: Icon(icon, color: accentColor, size: 30),
+                        ),
+                        const SizedBox(height: 16),
                         Text(
                           title,
+                          textAlign: TextAlign.center,
                           style: GoogleFonts.beVietnamPro(
-                            fontSize: 17,
+                            fontSize: 20,
                             fontWeight: FontWeight.w700,
-                            color: Colors.white,
+                            color: const Color(0xFF1A202C),
                           ),
-                          maxLines: 1,
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        if (subtitleWidget != null)
-                          subtitleWidget!
-                        else if (subtitle != null && subtitle!.isNotEmpty)
+                        if (subtitleWidget != null) ...[
+                          const SizedBox(height: 6),
+                          subtitleWidget!,
+                        ] else if (subtitle != null && subtitle!.isNotEmpty) ...[
+                          const SizedBox(height: 6),
                           Text(
                             subtitle!,
+                            textAlign: TextAlign.center,
                             style: GoogleFonts.beVietnamPro(
-                              fontSize: 12,
-                              color: Colors.white.withAlpha(179),
+                              fontSize: 13,
+                              height: 1.45,
+                              color: const Color(0xFF64748B),
                             ),
-                            maxLines: 1,
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
+                        ],
                       ],
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.close_rounded,
-                      color: Colors.white,
-                      size: 20,
+                  Positioned(
+                    top: 0,
+                    right: -8,
+                    child: IconButton(
+                      tooltip: 'Close',
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Color(0xFF64748B),
+                        size: 20,
+                      ),
+                      onPressed: closeEnabled
+                          ? (onClose ?? () => Navigator.pop(context))
+                          : null,
                     ),
-                    onPressed: closeEnabled
-                        ? (onClose ?? () => Navigator.pop(context))
-                        : null,
                   ),
                 ],
               ),
@@ -120,7 +150,7 @@ class OrgModalShell extends StatelessWidget {
             // the footer. Content taller than maxHeightFraction still gets
             // capped and scrolls exactly as before.
             Flexible(
-              child: Container(color: const Color(0xFFF8F9FB), child: body),
+              child: Container(color: Colors.white, child: body),
             ),
             if (footerActions != null && footerActions!.isNotEmpty)
               Container(
@@ -129,7 +159,7 @@ class OrgModalShell extends StatelessWidget {
                   border: Border(top: BorderSide(color: Color(0xFFE8ECF0))),
                   color: Colors.white,
                   borderRadius: BorderRadius.vertical(
-                    bottom: Radius.circular(18),
+                    bottom: Radius.circular(20),
                   ),
                 ),
                 child: Row(

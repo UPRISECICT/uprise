@@ -78,3 +78,26 @@ ThemeData appTheme = ThemeData(
     ),
   ),
 );
+
+// Applied only by the web Admin and Org routes in RoleRouter. Keeping this
+// separate from [appTheme] preserves the existing mobile dialog UI.
+final DialogThemeData upriseWebDialogTheme = DialogThemeData(
+  alignment: Alignment.center,
+  barrierColor: const Color(0x990F172A),
+  backgroundColor: UpriseColors.white,
+  surfaceTintColor: Colors.transparent,
+  elevation: 18,
+  shadowColor: const Color(0x330F172A),
+  insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+  titleTextStyle: GoogleFonts.beVietnamPro(
+    fontSize: 20,
+    fontWeight: FontWeight.w700,
+    color: UpriseColors.charcoal,
+  ),
+  contentTextStyle: GoogleFonts.beVietnamPro(
+    fontSize: 14,
+    height: 1.5,
+    color: UpriseColors.darkGray,
+  ),
+);

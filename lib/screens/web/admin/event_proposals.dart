@@ -959,7 +959,7 @@ class _EventProposalsState extends State<EventProposals> {
                           onTap: () => _confirmSetStatus(
                             docId,
                             data['title'] ?? 'this event',
-                            'pending',
+                            'restore',
                           ),
                         ),
                     ],
@@ -1124,13 +1124,14 @@ class _EventProposalsState extends State<EventProposals> {
         body: 'Are you sure you want to archive "$title"?',
         btnLabel: 'Archive',
       ),
-      'pending': _ConfirmStyle(
+      'restore': _ConfirmStyle(
         icon: Icons.restore_rounded,
         iconBg: const Color(0xFFFFFBEB),
         iconColor: const Color(0xFFFB923C),
         btnColor: const Color(0xFFFB923C),
         heading: 'Restore Proposal',
-        body: 'Restore "$title" from the archive back to pending review?',
+        body:
+            'Restore "$title" from the archive to its previous decision status?',
         btnLabel: 'Restore',
       ),
     };
@@ -1751,26 +1752,14 @@ class _EventProposalsState extends State<EventProposals> {
         );
       }
       if (_isMounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Proposal rejected. Reason sent to organization.'),
-            backgroundColor: const Color(0xFFDC2626),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
+        AppToast.error(
+          context,
+          'Proposal rejected. Reason sent to organization.',
         );
       }
     } catch (e) {
       if (_isMounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: AdminColors.error,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        AppToast.error(context, 'Error: $e');
       }
     }
   }
@@ -1785,61 +1774,82 @@ class _EventProposalsState extends State<EventProposals> {
       final docRef = FirebaseFirestore.instance
           .collection('event_proposals')
           .doc(docId);
-      final orgId = (await docRef.get()).data()?['orgId']?.toString() ?? '';
+      final proposalSnapshot = await docRef.get();
+      final proposalData = proposalSnapshot.data() ?? <String, dynamic>{};
+      final orgId = proposalData['orgId']?.toString() ?? '';
+      final previousStatus = proposalData['status']?.toString().toLowerCase();
+
+      // Archive is a temporary visibility state, not a new review decision.
+      // Keep the decision that was already made so Restore can return the
+      // proposal to it instead of sending it back to Pending.
+      final savedStatus = proposalData['statusBeforeArchive']
+          ?.toString()
+          .toLowerCase();
+      const restorableStatuses = {'pending', 'approved', 'rejected', 'for_review'};
+      final inferredLegacyStatus =
+          (proposalData['publishedEventId'] ?? '').toString().isNotEmpty
+          ? 'approved'
+          : (proposalData['adminFeedback'] ?? '').toString().trim().isNotEmpty
+          ? 'for_review'
+          : 'pending';
+      final effectiveStatus = newStatus == 'restore'
+          ? (restorableStatuses.contains(savedStatus)
+                ? savedStatus!
+                : inferredLegacyStatus)
+          : newStatus;
+
       await docRef.update({
-        'status': newStatus,
+        'status': effectiveStatus,
         'reviewedAt': FieldValue.serverTimestamp(),
         'reviewedBy': FirebaseAuth.instance.currentUser?.uid ?? '',
+        if (newStatus == 'archived' &&
+            previousStatus != null &&
+            previousStatus != 'archived')
+          'statusBeforeArchive': previousStatus,
+        if (newStatus == 'restore') 'statusBeforeArchive': FieldValue.delete(),
         if (extraFields != null) ...extraFields,
       });
       await activity_log.ActivityLogger.log(
-        action: '${newStatus.toUpperCase()} proposal: $title',
+        action: '${newStatus == 'restore' ? 'RESTORED TO $effectiveStatus' : newStatus.toUpperCase()} proposal: $title',
         module: 'Event Management',
-        severity: (newStatus == 'rejected' || newStatus == 'archived')
+        severity: (effectiveStatus == 'rejected' || newStatus == 'archived')
             ? 'warning'
             : 'info',
-        details: {'proposalId': docId, 'title': title},
+        details: {
+          'proposalId': docId,
+          'title': title,
+          'status': effectiveStatus,
+        },
       );
       if (orgId.isNotEmpty &&
-          (newStatus == 'approved' || newStatus == 'rejected')) {
+          (effectiveStatus == 'approved' || effectiveStatus == 'rejected') &&
+          newStatus != 'restore') {
         NotificationService.sendToOrgMembers(
           orgId: orgId,
-          title: newStatus == 'approved'
+          title: effectiveStatus == 'approved'
               ? 'Proposal approved'
               : 'Proposal rejected',
-          body: newStatus == 'approved'
+          body: effectiveStatus == 'approved'
               ? 'Your event proposal "$title" was approved. You can now publish it.'
               : 'Your event proposal "$title" was rejected.',
           type: 'proposal_status',
         );
       }
       if (_isMounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Proposal ${newStatus[0].toUpperCase()}${newStatus.substring(1)}',
-            ),
-            backgroundColor: newStatus == 'approved'
-                ? const Color(0xFF059669)
-                : newStatus == 'rejected'
-                ? const Color(0xFFDC2626)
-                : const Color(0xFF6B7280),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        );
+        final message = newStatus == 'restore'
+            ? 'Proposal restored to ${effectiveStatus == 'for_review' ? 'Needs Revision' : effectiveStatus[0].toUpperCase() + effectiveStatus.substring(1)}'
+            : 'Proposal ${effectiveStatus[0].toUpperCase()}${effectiveStatus.substring(1)}';
+        if (effectiveStatus == 'approved' && newStatus != 'restore') {
+          AppToast.success(context, message);
+        } else if (effectiveStatus == 'rejected' && newStatus != 'restore') {
+          AppToast.error(context, message);
+        } else {
+          AppToast.info(context, message);
+        }
       }
     } catch (e) {
       if (_isMounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: AdminColors.error,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        AppToast.error(context, 'Error: $e');
       }
     }
   }
@@ -1875,26 +1885,11 @@ class _EventProposalsState extends State<EventProposals> {
         );
       }
       if (_isMounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Revision request sent to organization'),
-            backgroundColor: const Color(0xFF7C3AED),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        );
+        AppToast.info(context, 'Revision request sent to organization');
       }
     } catch (e) {
       if (_isMounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: AdminColors.error,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        AppToast.error(context, 'Error: $e');
       }
     }
   }
@@ -2767,7 +2762,7 @@ class _EventProposalsState extends State<EventProposals> {
                               _confirmSetStatus(
                                 docId,
                                 data['title'] ?? 'this event',
-                                'pending',
+                                'restore',
                               );
                             },
                             icon: const Icon(Icons.restore_rounded, size: 15),

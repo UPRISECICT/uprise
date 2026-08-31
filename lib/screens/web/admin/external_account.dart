@@ -1888,47 +1888,126 @@ class _ExternalAccountState extends State<ExternalAccount> {
     required String confirmLabel,
     required Color confirmColor,
   }) async {
+    final actionIcon = switch (confirmLabel) {
+      'Approve' || 'Approve All' => Icons.check_rounded,
+      'Reject' => Icons.close_rounded,
+      'Archive' => Icons.archive_outlined,
+      'Restore' => Icons.restore_rounded,
+      _ => Icons.info_outline_rounded,
+    };
     final confirmed = await showDialog<bool>(
       context: context,
-      barrierColor: Colors.black54,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
-          title,
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-            color: const Color(0xFF1A202C),
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+        child: Container(
+          width: 480,
+          padding: const EdgeInsets.fromLTRB(28, 14, 28, 28),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x330F172A),
+                blurRadius: 32,
+                offset: Offset(0, 14),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Align(
+                alignment: Alignment.centerRight,
+                child: IconButton(
+                  tooltip: 'Close',
+                  onPressed: () => Navigator.pop(ctx, false),
+                  icon: const Icon(
+                    Icons.close_rounded,
+                    color: Color(0xFF64748B),
+                  ),
+                ),
+              ),
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: confirmColor.withAlpha(24),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: confirmColor.withAlpha(28),
+                      blurRadius: 20,
+                      spreadRadius: 4,
+                    ),
+                  ],
+                ),
+                child: Icon(actionIcon, color: confirmColor, size: 30),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF1A202C),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  height: 1.5,
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF475569),
+                        side: const BorderSide(color: Color(0xFFE2E6EA)),
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: Text('Cancel', style: GoogleFonts.beVietnamPro()),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: confirmColor,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: Text(
+                        confirmLabel,
+                        style: GoogleFonts.beVietnamPro(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
-        content: Text(
-          message,
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 14,
-            color: const Color(0xFF64748B),
-            height: 1.5,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(
-              'Cancel',
-              style: GoogleFonts.beVietnamPro(color: const Color(0xFF374151)),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: confirmColor,
-              foregroundColor: Colors.white,
-            ),
-            child: Text(
-              confirmLabel,
-              style: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
       ),
     );
     return confirmed == true;

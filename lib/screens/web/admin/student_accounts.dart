@@ -20,6 +20,8 @@ import 'export_excel.dart';
 import '../../../theme/admin_theme.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../widgets/stat_cards.dart';
+import '../../../widgets/app_toast.dart';
+import '../../../widgets/app_confirmation_dialog.dart';
 import '../../../utils/file_validation.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1326,20 +1328,14 @@ class _StudentAccountsState extends State<StudentAccounts> {
       severity: 'info',
     );
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            sent
-                ? 'Credentials resent to $email.'
-                : 'Credentials queued but sending failed for $email.',
-          ),
-          backgroundColor: sent
-              ? const Color(0xFF059669)
-              : const Color(0xFFF97316),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      );
+      final message = sent
+          ? 'Credentials resent to $email.'
+          : 'Credentials queued but sending failed for $email.';
+      if (sent) {
+        AppToast.success(context, message);
+      } else {
+        AppToast.warning(context, message);
+      }
     }
   }
 
@@ -1347,120 +1343,24 @@ class _StudentAccountsState extends State<StudentAccounts> {
   void _confirmArchiveStudent(String docId, String name, bool isArchived) {
     showDialog(
       context: context,
-      barrierColor: Colors.black54,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Container(
-          width: 420,
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: isArchived
-                          ? const Color(0xFFECFDF5)
-                          : const Color(0xFFFEF2F2),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(
-                      isArchived
-                          ? Icons.restore_rounded
-                          : Icons.archive_rounded,
-                      color: isArchived
-                          ? const Color(0xFF059669)
-                          : const Color(0xFFDC2626),
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Text(
-                    isArchived
-                        ? 'Restore Student Account'
-                        : 'Archive Student Account',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF1A202C),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Text(
-                isArchived
-                    ? 'Are you sure you want to restore "$name"? The student will be able to log in again.'
-                    : 'Are you sure you want to archive "$name"? The student will no longer be able to log in.',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 14,
-                  color: const Color(0xFF64748B),
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  OutlinedButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFFE2E6EA)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
-                    child: Text(
-                      'Cancel',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        color: const Color(0xFF374151),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  ElevatedButton(
-                    onPressed: () async {
-                      Navigator.pop(ctx);
-                      await _archiveRestoreStudent(docId, isArchived, name);
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isArchived
-                          ? const Color(0xFF059669)
-                          : const Color(0xFFDC2626),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
-                    child: Text(
-                      isArchived ? 'Restore' : 'Archive',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+      builder: (_) => AppConfirmationDialog(
+        title: isArchived
+            ? 'Restore Student Account'
+            : 'Archive Student Account',
+        message: isArchived
+            ? 'Are you sure you want to restore "$name"? The student will be able to log in again.'
+            : 'Are you sure you want to archive "$name"? The student will no longer be able to log in.',
+        confirmLabel: isArchived ? 'Restore' : 'Archive',
+        accentColor: isArchived
+            ? const Color(0xFF059669)
+            : const Color(0xFFDC2626),
+        icon: isArchived ? Icons.restore_rounded : Icons.archive_rounded,
       ),
-    );
+    ).then((confirmed) {
+      if (confirmed == true) {
+        _archiveRestoreStudent(docId, isArchived, name);
+      }
+    });
   }
 
   Future<void> _archiveRestoreStudent(
@@ -1504,29 +1404,16 @@ class _StudentAccountsState extends State<StudentAccounts> {
       );
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Student account ${isArchived ? 'restored' : 'archived'}',
-            ),
-            backgroundColor: isArchived
-                ? const Color(0xFF059669)
-                : const Color(0xFF6B7280),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        );
+        final message = 'Student account ${isArchived ? 'restored' : 'archived'}';
+        if (isArchived) {
+          AppToast.success(context, message);
+        } else {
+          AppToast.info(context, message);
+        }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: AdminColors.error,
-          ),
-        );
+        AppToast.error(context, 'Error: $e');
       }
     }
   }
@@ -1599,16 +1486,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
     final bytes = excel.encode();
     if (bytes == null) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Could not generate the template file.'),
-            backgroundColor: AdminColors.error,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        );
+        AppToast.error(context, 'Could not generate the template file.');
       }
       return;
     }
@@ -1620,14 +1498,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
           'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Template downloaded.'),
-          backgroundColor: const Color(0xFF059669),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      );
+      AppToast.success(context, 'Template downloaded.');
     }
   }
 
@@ -2156,23 +2027,9 @@ class _StudentAccountsState extends State<StudentAccounts> {
                                       () {
                                         if (mounted) {
                                           Navigator.pop(ctx);
-                                          ScaffoldMessenger.of(
+                                          AppToast.success(
                                             context,
-                                          ).showSnackBar(
-                                            SnackBar(
-                                              content: Text(
-                                                '$success students imported successfully.',
-                                              ),
-                                              backgroundColor: const Color(
-                                                0xFF059669,
-                                              ),
-                                              behavior:
-                                                  SnackBarBehavior.floating,
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(8),
-                                              ),
-                                            ),
+                                            '$success students imported successfully.',
                                           );
                                         }
                                       },
@@ -2550,21 +2407,9 @@ class _StudentAccountsState extends State<StudentAccounts> {
                                   });
                                   if (mounted) {
                                     Navigator.pop(ctx);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          'Student account created for ${nameCtrl.text.trim()}. Credentials sent.',
-                                        ),
-                                        backgroundColor: const Color(
-                                          0xFF059669,
-                                        ),
-                                        behavior: SnackBarBehavior.floating,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
-                                        ),
-                                      ),
+                                    AppToast.success(
+                                      context,
+                                      'Student account created for ${nameCtrl.text.trim()}. Credentials sent.',
                                     );
                                   }
                                 } catch (e) {
@@ -3106,15 +2951,7 @@ class _ExportStudentsButton extends StatelessWidget {
       }
 
       if (docs.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('No data to export.'),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        );
+        AppToast.warning(context, 'No data to export.');
         return;
       }
 
@@ -3183,14 +3020,7 @@ class _ExportStudentsButton extends StatelessWidget {
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Export failed: $e'),
-          backgroundColor: AdminColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      );
+      AppToast.error(context, 'Export failed: $e');
     }
   }
 }

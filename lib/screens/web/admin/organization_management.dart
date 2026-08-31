@@ -20,6 +20,7 @@ import 'package:intl/intl.dart';
 import '../../../theme/admin_theme.dart';
 import '../../../utils/file_validation.dart';
 import '../../../widgets/anchored_dropdown.dart';
+import '../../../widgets/app_toast.dart';
 import '../../../widgets/stat_cards.dart';
 
 // ============ GLOBAL CONTEXT FOR SNACKBAR ============
@@ -1361,19 +1362,9 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
             },
           );
           setState(() {});
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                '${org.name} has been ${isArchived ? 'restored' : 'archived'}',
-              ),
-              backgroundColor: isArchived
-                  ? const Color(0xFF059669)
-                  : AdminColors.primaryDark,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
+          AppToast.success(
+            context,
+            '${org.name} has been ${isArchived ? 'restored' : 'archived'}',
           );
         },
       ),

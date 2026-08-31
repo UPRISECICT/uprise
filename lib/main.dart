@@ -60,6 +60,16 @@ class MyApp extends StatelessWidget {
       child: MaterialApp(
         title: 'UPRISE',
         theme: appTheme,
+        builder: (context, child) {
+          // This sits above the root Navigator, so the shared web dialog
+          // theme also reaches screens opened through Navigator.push.
+          // Mobile keeps its current dialog presentation unchanged.
+          if (!kIsWeb || child == null) return child ?? const SizedBox();
+          return Theme(
+            data: Theme.of(context).copyWith(dialogTheme: upriseWebDialogTheme),
+            child: child,
+          );
+        },
         debugShowCheckedModeBanner: false,
         home: const RoleRouter(), // ✅ Always start here
       ),

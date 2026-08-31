@@ -2090,7 +2090,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
       message:
           'Archive the request from "${req.userName}"? You can restore it later from the Archived filter.',
       confirmLabel: 'Archive',
-      confirmColor: const Color(0xFF6B7280),
+      confirmColor: const Color(0xFFDC2626),
     );
     if (!ok) return;
     try {

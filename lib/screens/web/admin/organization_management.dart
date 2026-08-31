@@ -21,6 +21,7 @@ import '../../../theme/admin_theme.dart';
 import '../../../utils/file_validation.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/app_toast.dart';
+import '../../../widgets/app_confirmation_dialog.dart';
 import '../../../widgets/stat_cards.dart';
 
 // ============ GLOBAL CONTEXT FOR SNACKBAR ============
@@ -1298,7 +1299,7 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
         confirmLabel: isArchived ? 'Restore' : 'Archive',
         confirmColor: isArchived
             ? const Color(0xFF059669)
-            : AdminColors.primaryDark,
+            : const Color(0xFFDC2626),
         icon: isArchived ? Icons.restore_rounded : Icons.archive_rounded,
         onConfirm: () async {
           await FirebaseFirestore.instance
@@ -1872,104 +1873,14 @@ class _ConfirmDialog extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Container(
-        width: 420,
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: confirmColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(icon, color: confirmColor, size: 20),
-                ),
-                const SizedBox(width: 14),
-                Text(
-                  title,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF1A202C),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              message,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 14,
-                color: const Color(0xFF64748B),
-                height: 1.5,
-              ),
-            ),
-            const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                OutlinedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Color(0xFFE2E6EA)),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 11,
-                    ),
-                  ),
-                  child: Text(
-                    'Cancel',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 13,
-                      color: const Color(0xFF374151),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                ElevatedButton(
-                  onPressed: () async {
-                    Navigator.pop(context);
-                    await onConfirm();
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: confirmColor,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 11,
-                    ),
-                  ),
-                  child: Text(
-                    confirmLabel,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => AppConfirmationDialog(
+    title: title,
+    message: message,
+    confirmLabel: confirmLabel,
+    accentColor: confirmColor,
+    icon: icon,
+    onConfirm: onConfirm,
+  );
 }
 
 class _ViewOrganizationDialog extends StatelessWidget {

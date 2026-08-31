@@ -22,6 +22,7 @@ import '../../../utils/file_validation.dart';
 import '../../../widgets/admin_stat_cards_row.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/app_toast.dart';
+import '../../../widgets/app_confirmation_dialog.dart';
 
 // Strips a near-white background from an imported signature photo/scan so it
 // overlays cleanly on a document instead of showing as an opaque white box.
@@ -136,99 +137,12 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
   }) async {
     final result = await showDialog<bool>(
       context: context,
-      barrierColor: Colors.black54,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Container(
-          width: 420,
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: iconBg,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(icon, color: iconColor, size: 20),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Text(
-                      heading,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF1A202C),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Text(
-                body,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 14,
-                  color: const Color(0xFF64748B),
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  OutlinedButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF374151),
-                      side: const BorderSide(color: Color(0xFFE2E6EA)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
-                    child: Text(
-                      'Cancel',
-                      style: GoogleFonts.beVietnamPro(fontSize: 13),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  ElevatedButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: actionColor,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
-                    child: Text(
-                      actionLabel,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+      builder: (_) => AppConfirmationDialog(
+        title: heading,
+        message: body,
+        confirmLabel: actionLabel,
+        accentColor: actionColor,
+        icon: icon,
       ),
     );
     return result == true;
@@ -1184,13 +1098,13 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
   ) async {
     final confirm = await _showActionConfirm(
       icon: Icons.archive_outlined,
-      iconBg: const Color(0xFFF3F4F6),
-      iconColor: const Color(0xFF6B7280),
+      iconBg: const Color(0xFFFEF2F2),
+      iconColor: AdminColors.error,
       heading: 'Archive Request',
       body:
           'Archive request from "$orgName" about "$subject"? You can still view it in the archived section.',
       actionLabel: 'Archive',
-      actionColor: AdminColors.warning,
+      actionColor: AdminColors.error,
     );
 
     if (!confirm) return;

@@ -17,6 +17,7 @@ import '../../../services/notification_service.dart';
 import '../../../theme/admin_theme.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/app_toast.dart';
+import '../../../widgets/app_confirmation_dialog.dart';
 import '../../../widgets/admin_stat_cards_row.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1117,9 +1118,9 @@ class _EventProposalsState extends State<EventProposals> {
       // Removed 'rejected' from here – we handle rejection separately with reason
       'archived': _ConfirmStyle(
         icon: Icons.archive_outlined,
-        iconBg: const Color(0xFFF3F4F6),
-        iconColor: const Color(0xFF6B7280),
-        btnColor: const Color(0xFF6B7280),
+        iconBg: const Color(0xFFFEF2F2),
+        iconColor: const Color(0xFFDC2626),
+        btnColor: const Color(0xFFDC2626),
         heading: 'Archive Proposal',
         body: 'Are you sure you want to archive "$title"?',
         btnLabel: 'Archive',
@@ -1139,102 +1140,13 @@ class _EventProposalsState extends State<EventProposals> {
 
     showDialog(
       context: context,
-      barrierColor: Colors.black54,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Container(
-          width: 420,
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: s.iconBg,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(s.icon, color: s.iconColor, size: 20),
-                  ),
-                  const SizedBox(width: 14),
-                  Text(
-                    s.heading,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF1A202C),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Text(
-                s.body,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 14,
-                  color: const Color(0xFF64748B),
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  OutlinedButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFFE2E6EA)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
-                    child: Text(
-                      'Cancel',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        color: const Color(0xFF374151),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  ElevatedButton(
-                    onPressed: () async {
-                      Navigator.pop(ctx);
-                      await _setStatus(docId, title, newStatus);
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: s.btnColor,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
-                    child: Text(
-                      s.btnLabel,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+      builder: (_) => AppConfirmationDialog(
+        title: s.heading,
+        message: s.body,
+        confirmLabel: s.btnLabel,
+        accentColor: s.btnColor,
+        icon: s.icon,
+        onConfirm: () => _setStatus(docId, title, newStatus),
       ),
     );
   }

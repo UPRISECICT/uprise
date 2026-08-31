@@ -11,6 +11,7 @@ class AppConfirmationDialog extends StatelessWidget {
   final String confirmLabel;
   final Color accentColor;
   final IconData icon;
+  final Future<void> Function()? onConfirm;
 
   const AppConfirmationDialog({
     super.key,
@@ -19,6 +20,7 @@ class AppConfirmationDialog extends StatelessWidget {
     required this.confirmLabel,
     required this.accentColor,
     required this.icon,
+    this.onConfirm,
   });
 
   @override
@@ -111,7 +113,10 @@ class AppConfirmationDialog extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: () => Navigator.pop(context, true),
+                    onPressed: () async {
+                      Navigator.pop(context, true);
+                      await onConfirm?.call();
+                    },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: accentColor,
                       foregroundColor: Colors.white,

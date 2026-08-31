@@ -16,6 +16,7 @@ import '../../../utils/platform_file_utils.dart'
     as platform_file_utils; // adjust path if needed
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/stat_cards.dart';
+import '../../../widgets/app_confirmation_dialog.dart';
 import '../../../services/notification_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1181,7 +1182,7 @@ class _ReportsManagementState extends State<ReportsManagement>
         message:
             'Are you sure you want to archive "${report.eventTitle}" from ${report.orgName}?',
         confirmLabel: 'Archive',
-        destructive: false,
+        destructive: true,
       ),
     );
     if (confirm != true) return;
@@ -1330,7 +1331,7 @@ class _ReportsManagementState extends State<ReportsManagement>
         message:
             'Archive "${event.title}" from ${event.orgName}? It will no longer show up as an active event.',
         confirmLabel: 'Archive',
-        destructive: false,
+        destructive: true,
       ),
     );
     if (confirm != true) return;
@@ -6724,110 +6725,16 @@ class _ConfirmDialog extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => Dialog(
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-    child: Container(
-      width: 420,
-      padding: const EdgeInsets.all(28),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: destructive
-                      ? const Color(0xFFFEF2F2)
-                      : UpriseColors.primaryLight,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  destructive
-                      ? Icons.delete_outline_rounded
-                      : Icons.check_circle_outline_rounded,
-                  color: destructive
-                      ? const Color(0xFFDC2626)
-                      : UpriseColors.primaryDark,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Text(
-                title,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF1A202C),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            message,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 14,
-              color: const Color(0xFF64748B),
-              height: 1.5,
-            ),
-          ),
-          const SizedBox(height: 24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              OutlinedButton(
-                onPressed: () => Navigator.pop(context, false),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Color(0xFFE2E6EA)),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 11,
-                  ),
-                ),
-                child: Text(
-                  'Cancel',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    color: const Color(0xFF374151),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: destructive
-                      ? const Color(0xFFDC2626)
-                      : UpriseColors.primaryDark,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 11,
-                  ),
-                ),
-                child: Text(
-                  confirmLabel,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    ),
+  Widget build(BuildContext context) => AppConfirmationDialog(
+    title: title,
+    message: message,
+    confirmLabel: confirmLabel,
+    accentColor: destructive
+        ? const Color(0xFFDC2626)
+        : const Color(0xFF059669),
+    icon: destructive
+        ? Icons.archive_outlined
+        : Icons.check_circle_outline_rounded,
   );
 }
 

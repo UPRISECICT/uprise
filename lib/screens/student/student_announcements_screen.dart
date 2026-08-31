@@ -13,6 +13,8 @@ import 'package:share_plus/share_plus.dart';
 import 'package:uprise/models/event_model.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../widgets/student/student_app_bar.dart';
+import '../../widgets/common/announcement_filter_bar.dart';
+import '../../widgets/common/image_viewer.dart';
 import '../../widgets/student/app_image.dart';
 import 'student_events_screen.dart';
 
@@ -269,6 +271,8 @@ class _StudentAnnouncementsScreenState
   final String? _userId = FirebaseAuth.instance.currentUser?.uid;
   bool _orgsLoaded = false;
 
+  AnnouncementFilters _filters = const AnnouncementFilters();
+
   late final Stream<QuerySnapshot> _announcementsStream = FirebaseFirestore
       .instance
       .collection('announcements')
@@ -289,6 +293,47 @@ class _StudentAnnouncementsScreenState
       });
     }
   }
+
+  /// Shown when the feed has posts but none survive the active filters —
+  /// deliberately different from the "No announcements yet" state, which means
+  /// there is nothing to read at all.
+  Widget _noMatchesState() => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.search_off_rounded, size: 48, color: Colors.grey.shade400),
+          const SizedBox(height: 14),
+          const Text(
+            'No matching announcements',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Try a different keyword, organization,\nor category.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.grey.shade600,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 14),
+          TextButton(
+            onPressed: () =>
+                setState(() => _filters = const AnnouncementFilters()),
+            style: TextButton.styleFrom(foregroundColor: AppColors.primaryDark),
+            child: const Text('Clear filters'),
+          ),
+        ],
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -329,12 +374,22 @@ class _StudentAnnouncementsScreenState
             );
           }
 
-          final docs = (snapshot.data?.docs ?? []).where((d) {
+          // Audience gate first, then the user's filters — the dropdown
+          // options are built from what's already visible, so a student is
+          // never offered an org or category they can't actually see.
+          final visible = (snapshot.data?.docs ?? []).where((d) {
             final data = d.data() as Map<String, dynamic>;
             return shouldShowAnnouncementToStudent(data);
           }).toList();
 
-          if (docs.isEmpty) {
+          final visibleMaps = visible
+              .map((d) => d.data() as Map<String, dynamic>)
+              .toList();
+          final docs = visible
+              .where((d) => _filters.matches(d.data() as Map<String, dynamic>))
+              .toList();
+
+          if (visible.isEmpty) {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
@@ -384,13 +439,33 @@ class _StudentAnnouncementsScreenState
           // profile, so this feed treats every post the same.
           final items = docs.map(AnnouncementData.fromFirestore).toList();
 
-          return ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            itemCount: items.length,
-            itemBuilder: (context, index) {
-              final ann = items[index];
-              return _AnnouncementCard(ann: ann);
-            },
+          return Column(
+            children: [
+              AnnouncementFilterBar(
+                filters: _filters,
+                onChanged: (f) => setState(() => _filters = f),
+                orgOptions: announcementOrgOptions(visibleMaps),
+                categoryOptions: announcementCategoryOptions(visibleMaps),
+                resultCount: items.length,
+              ),
+              Expanded(
+                child: items.isEmpty
+                    // Distinct from "no announcements yet" above: there are
+                    // posts, they just don't match what was typed or picked.
+                    ? _noMatchesState()
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
+                        itemCount: items.length,
+                        itemBuilder: (context, index) {
+                          final ann = items[index];
+                          return _AnnouncementCard(ann: ann);
+                        },
+                      ),
+              ),
+            ],
           );
         },
       ),
@@ -781,18 +856,32 @@ class _AnnouncementCardState extends State<_AnnouncementCard> {
                       ),
 
                     // ── Photo — shown in full, never cropped or covered ──
+                    // Tappable: the card caps the photo at 420px, so a tall
+                    // image still needs the fullscreen viewer to be read.
                     if (ann.imageUrl.isNotEmpty) ...[
                       const SizedBox(height: 12),
-                      Container(
-                        width: double.infinity,
-                        constraints: const BoxConstraints(maxHeight: 420),
-                        color: const Color(0xFFF8F9FB),
-                        child: AppImage.provider(ann.imageUrl) != null
-                            ? Image(
-                                image: AppImage.provider(ann.imageUrl)!,
-                                width: double.infinity,
-                                fit: BoxFit.contain,
-                                errorBuilder: (_, __, ___) => Container(
+                      expandableImage(
+                        context: context,
+                        source: ann.imageUrl,
+                        child: Container(
+                          width: double.infinity,
+                          constraints: const BoxConstraints(maxHeight: 420),
+                          color: const Color(0xFFF8F9FB),
+                          child: AppImage.provider(ann.imageUrl) != null
+                              ? Image(
+                                  image: AppImage.provider(ann.imageUrl)!,
+                                  width: double.infinity,
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (_, __, ___) => Container(
+                                    height: 200,
+                                    color: const Color(0xFFF8F9FB),
+                                    child: Icon(
+                                      Icons.broken_image_outlined,
+                                      color: Colors.grey.shade400,
+                                    ),
+                                  ),
+                                )
+                              : Container(
                                   height: 200,
                                   color: const Color(0xFFF8F9FB),
                                   child: Icon(
@@ -800,15 +889,7 @@ class _AnnouncementCardState extends State<_AnnouncementCard> {
                                     color: Colors.grey.shade400,
                                   ),
                                 ),
-                              )
-                            : Container(
-                                height: 200,
-                                color: const Color(0xFFF8F9FB),
-                                child: Icon(
-                                  Icons.broken_image_outlined,
-                                  color: Colors.grey.shade400,
-                                ),
-                              ),
+                        ),
                       ),
                     ],
 
@@ -921,15 +1002,46 @@ class AnnouncementDetailScreen extends StatelessWidget {
               onPressed: () => Navigator.pop(context),
             ),
             flexibleSpace: FlexibleSpaceBar(
-              background: Stack(
-                fit: StackFit.expand,
-                children: [
-                  (ann.imageUrl.isNotEmpty &&
-                          AppImage.provider(ann.imageUrl) != null)
-                      ? Image(
-                          image: AppImage.provider(ann.imageUrl)!,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(
+              // Tappable: the hero crops with BoxFit.cover, so the whole
+              // picture is only visible in the fullscreen viewer.
+              //
+              // The handler wraps the entire Stack rather than just the image.
+              // The scrim and badges layered over it are Containers with a
+              // BoxDecoration, and BoxDecoration.hitTest returns true for a
+              // plain rectangle — so as siblings painted above the image they
+              // swallowed every tap. An ancestor still receives what a child
+              // absorbs, so hanging the gesture above the Stack makes the
+              // whole hero tappable instead of fighting each overlay.
+              background: expandableImage(
+                context: context,
+                source: ann.imageUrl,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    (ann.imageUrl.isNotEmpty &&
+                            AppImage.provider(ann.imageUrl) != null)
+                        ? Image(
+                            image: AppImage.provider(ann.imageUrl)!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    AppColors.primaryDark,
+                                    AppColors.primaryDark.withOpacity(0.7),
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.image_outlined,
+                                size: 80,
+                                color: Colors.white,
+                              ),
+                            ),
+                          )
+                        : Container(
                             decoration: BoxDecoration(
                               gradient: LinearGradient(
                                 colors: [
@@ -946,133 +1058,122 @@ class AnnouncementDetailScreen extends StatelessWidget {
                               color: Colors.white,
                             ),
                           ),
-                        )
-                      : Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                AppColors.primaryDark,
-                                AppColors.primaryDark.withOpacity(0.7),
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                          ),
-                          child: const Icon(
-                            Icons.image_outlined,
-                            size: 80,
-                            color: Colors.white,
+
+                    // IgnorePointer: this scrim and the badge below it are
+                    // decoration, but a Container with a decoration is opaque to
+                    // hit-testing, so they were swallowing every tap meant for
+                    // the image underneath and the hero never opened.
+                    IgnorePointer(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.transparent,
+                              Colors.black.withOpacity(0.4),
+                            ],
                           ),
                         ),
-
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.black.withOpacity(0.4),
-                        ],
                       ),
                     ),
-                  ),
 
-                  // ── Tag Badge ──
-                  Positioned(
-                    bottom: 20,
-                    left: 20,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.95),
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.2),
-                            blurRadius: 10,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 6,
-                            height: 6,
-                            decoration: BoxDecoration(
-                              color: AppColors.primaryDark,
-                              shape: BoxShape.circle,
+                    // ── Tag Badge ──
+                    Positioned(
+                      bottom: 20,
+                      left: 20,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.95),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.2),
+                              blurRadius: 10,
+                              offset: const Offset(0, 2),
                             ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            ann.tag,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.primaryDark,
-                              letterSpacing: 0.5,
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: AppColors.primaryDark,
+                                shape: BoxShape.circle,
+                              ),
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 6),
+                            Text(
+                              ann.tag,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.primaryDark,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
 
-                  // ── Date on Image ──
-                  Positioned(
-                    bottom: 20,
-                    right: 20,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.5),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.calendar_today_rounded,
-                            size: 12,
-                            color: Colors.white,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            ann.date,
-                            style: const TextStyle(
-                              fontSize: 11,
+                    // ── Date on Image ──
+                    Positioned(
+                      bottom: 20,
+                      right: 20,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.calendar_today_rounded,
+                              size: 12,
                               color: Colors.white,
-                              fontWeight: FontWeight.w500,
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          const Icon(
-                            Icons.access_time_rounded,
-                            size: 12,
-                            color: Colors.white,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            ann.time,
-                            style: const TextStyle(
-                              fontSize: 11,
+                            const SizedBox(width: 6),
+                            Text(
+                              ann.date,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Colors.white,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            const Icon(
+                              Icons.access_time_rounded,
+                              size: 12,
                               color: Colors.white,
-                              fontWeight: FontWeight.w500,
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 6),
+                            Text(
+                              ann.time,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Colors.white,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

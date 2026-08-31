@@ -13,9 +13,11 @@ import '../../widgets/common/error_state.dart';
 import '../../widgets/common/event_badges.dart';
 import '../../widgets/common/event_browsing.dart';
 import '../../widgets/common/event_card.dart';
+import '../../widgets/common/image_viewer.dart';
 import '../../widgets/common/loading_widget.dart' show SkeletonLoader;
 import '../../widgets/student/app_colors.dart';
 import '../../widgets/student/app_image.dart';
+import '../../widgets/student/event_image.dart';
 import '../../widgets/student/student_app_bar.dart';
 
 // Shared by both the browse-list filter (which just hides events a guest
@@ -819,10 +821,22 @@ class _GuestVisibilityNotice extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────
 // Banner widget — uses org logo or fallback gradient
 // ─────────────────────────────────────────────────────────────
+/// The detail screen's hero. Renders the event's real banner when it has one,
+/// falling back to the org-coloured initial.
+///
+/// It used to render *only* the coloured initial and never read the banner at
+/// all — the same gap the note on [FirestoreEvent.imageUrl] describes for the
+/// cards, left behind here. EventImage does the decoding (including the
+/// authenticated Firebase Storage fetch) and makes the hero tappable.
 class _EventBanner extends StatelessWidget {
   final String orgName;
+  final String imageUrl;
   final double height;
-  const _EventBanner({required this.orgName, required this.height});
+  const _EventBanner({
+    required this.orgName,
+    this.imageUrl = '',
+    required this.height,
+  });
 
   Color _bgColor() {
     final hash = orgName.hashCode.abs();
@@ -841,6 +855,16 @@ class _EventBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (imageUrl.isNotEmpty) {
+      return EventImage(
+        imageUrl: imageUrl,
+        height: height,
+        width: double.infinity,
+        fit: BoxFit.cover,
+        showLoadingIndicator: true,
+        expandable: true,
+      );
+    }
     return Container(
       height: height,
       width: double.infinity,
@@ -1152,61 +1176,75 @@ class _GuestEventDetailScreenState extends State<GuestEventDetailScreen> {
                   ),
                 ),
                 flexibleSpace: FlexibleSpaceBar(
-                  background: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      _EventBanner(orgName: event.orgName, height: 250),
-                      Container(
-                        decoration: const BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [Color(0x44000000), Color(0xCC000000)],
+                  // Tap-to-expand hangs off the whole Stack, not the banner
+                  // alone: the scrim and title block layered over it are
+                  // Containers with a BoxDecoration, and BoxDecoration.hitTest
+                  // returns true for a plain rectangle, so as siblings painted
+                  // above the banner they swallowed the tap. An ancestor still
+                  // receives what a child absorbs.
+                  background: expandableImage(
+                    context: context,
+                    source: event.imageUrl,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        _EventBanner(
+                          orgName: event.orgName,
+                          imageUrl: event.imageUrl,
+                          height: 250,
+                        ),
+                        Container(
+                          decoration: const BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [Color(0x44000000), Color(0xCC000000)],
+                            ),
                           ),
                         ),
-                      ),
-                      Positioned(
-                        bottom: 16,
-                        left: 16,
-                        right: 16,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
-                              children: [
-                                CategoryBadge(category: event.category),
-                                if (event.audience
-                                    .split(',')
-                                    .map((s) => s.trim())
-                                    .contains('CICT Only')) ...[
-                                  const SizedBox(width: 6),
-                                  _AudienceBadge(audience: event.audience),
+                        Positioned(
+                          bottom: 16,
+                          left: 16,
+                          right: 16,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                children: [
+                                  CategoryBadge(category: event.category),
+                                  if (event.audience
+                                      .split(',')
+                                      .map((s) => s.trim())
+                                      .contains('CICT Only')) ...[
+                                    const SizedBox(width: 6),
+                                    _AudienceBadge(audience: event.audience),
+                                  ],
                                 ],
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              event.title,
-                              style: const TextStyle(
-                                fontSize: 26,
-                                fontWeight: FontWeight.w900,
-                                color: Colors.white,
                               ),
-                            ),
-                            Text(
-                              event.orgName.toUpperCase(),
-                              style: const TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white60,
-                                letterSpacing: 1.4,
+                              const SizedBox(height: 6),
+                              Text(
+                                event.title,
+                                style: const TextStyle(
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.w900,
+                                  color: Colors.white,
+                                ),
                               ),
-                            ),
-                          ],
+                              Text(
+                                event.orgName.toUpperCase(),
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white60,
+                                  letterSpacing: 1.4,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),

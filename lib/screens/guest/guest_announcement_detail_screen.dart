@@ -17,6 +17,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../../widgets/student/app_colors.dart';
+import '../../widgets/common/image_viewer.dart';
 import '../../widgets/student/app_image.dart';
 import '../../widgets/student/student_app_bar.dart';
 
@@ -103,12 +104,18 @@ class _Banner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AppImage(
+    // Tappable: the banner crops to 230px with BoxFit.cover, so the whole
+    // picture is only visible in the fullscreen viewer.
+    return expandableImage(
+      context: context,
       source: imageSource,
-      width: double.infinity,
-      height: 230,
-      fit: BoxFit.cover,
-      placeholder: _placeholder(),
+      child: AppImage(
+        source: imageSource,
+        width: double.infinity,
+        height: 230,
+        fit: BoxFit.cover,
+        placeholder: _placeholder(),
+      ),
     );
   }
 

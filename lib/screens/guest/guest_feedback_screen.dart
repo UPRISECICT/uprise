@@ -26,6 +26,8 @@ import 'package:intl/intl.dart';
 
 import 'guest_auth_service.dart';
 import '../../services/certificate_auto_issue_service.dart';
+import '../../utils/feedback_helper.dart';
+import '../../widgets/common/review_identity.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../widgets/student/student_app_bar.dart';
 
@@ -52,6 +54,9 @@ class _AttendedEvent {
   bool   feedbackDone = false;
   String feedbackId   = '';
 
+  /// The submitted review itself, for the My Reviews tab. Null until rated.
+  Map<String, dynamic>? review;
+
   _AttendedEvent({
     required this.eventId,
     required this.title,
@@ -71,10 +76,14 @@ class GuestFeedbackScreen extends StatefulWidget {
   State<GuestFeedbackScreen> createState() => _GuestFeedbackScreenState();
 }
 
-class _GuestFeedbackScreenState extends State<GuestFeedbackScreen> {
+class _GuestFeedbackScreenState extends State<GuestFeedbackScreen>
+    with SingleTickerProviderStateMixin {
   final List<_AttendedEvent> _events = [];
   bool _loading = true;
   String? _error;
+
+  late final TabController _tabController =
+      TabController(length: 2, vsync: this);
 
   String get _email => GuestAuthService().email ?? '';
 
@@ -82,6 +91,12 @@ class _GuestFeedbackScreenState extends State<GuestFeedbackScreen> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -125,15 +140,30 @@ class _GuestFeedbackScreenState extends State<GuestFeedbackScreen> {
           .where((id) => id.isNotEmpty)
           .toSet();
 
-      // 4. Check existing feedback
-      final feedbackSnap = await FirebaseFirestore.instance
-          .collection('feedback')
-          .where('guestEmail', isEqualTo: _email)
-          .get();
-      final feedbackMap = <String, String>{
-        for (final d in feedbackSnap.docs)
-          ((d.data())['eventId'] as String? ?? ''): d.id
-      };
+      // 4. Existing feedback, from BOTH collections — this form dual-writes,
+      // and reading only `feedback` would miss a review submitted through any
+      // other path. The review body (not just its id) is kept so the My
+      // Reviews tab can render the rating and comment without a second read.
+      final feedbackSnaps = await Future.wait([
+        FirebaseFirestore.instance
+            .collection('feedback')
+            .where('guestEmail', isEqualTo: _email)
+            .get(),
+        FirebaseFirestore.instance
+            .collection('event_feedback')
+            .where('guestEmail', isEqualTo: _email)
+            .get(),
+      ]);
+      final feedbackMap = <String, String>{};
+      final reviewMap = <String, Map<String, dynamic>>{};
+      for (final snap in feedbackSnaps) {
+        for (final d in snap.docs) {
+          final eventId = (d.data())['eventId'] as String? ?? '';
+          if (eventId.isEmpty) continue;
+          feedbackMap[eventId] = d.id;
+          reviewMap[eventId] = Map<String, dynamic>.from(d.data());
+        }
+      }
 
       final list = <_AttendedEvent>[];
       for (final doc in eventDocs) {
@@ -151,6 +181,7 @@ class _GuestFeedbackScreenState extends State<GuestFeedbackScreen> {
         ev.attended     = attendedIds.contains(doc.id);
         ev.feedbackDone = feedbackMap.containsKey(doc.id);
         ev.feedbackId   = feedbackMap[doc.id] ?? '';
+        ev.review       = reviewMap[doc.id];
         list.add(ev);
       }
 
@@ -174,18 +205,29 @@ class _GuestFeedbackScreenState extends State<GuestFeedbackScreen> {
       builder: (_) => _FeedbackFormSheet(
         event:    ev,
         email:    _email,
+        // Reload rather than just flipping the flag: the event moves to the
+        // My Reviews tab, which needs the review body the reload fetches.
         onSubmit: () {
           setState(() => ev.feedbackDone = true);
+          _load();
         },
       ),
     );
   }
 
+  /// Not yet reviewed. Events the guest registered for but never attended stay
+  /// here too — the card renders them as "Not Attended" and isn't tappable.
+  List<_AttendedEvent> get _toRate =>
+      _events.where((e) => !e.feedbackDone).toList();
+
+  List<_AttendedEvent> get _reviewed =>
+      _events.where((e) => e.feedbackDone).toList();
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _kBg,
-      appBar: const StudentAppBar(title: 'Event Feedback'),
+      appBar: const StudentAppBar(title: 'My Reviews'),
       body: _loading
           ? const Center(
               child: CircularProgressIndicator(color: _kOrange))
@@ -193,26 +235,257 @@ class _GuestFeedbackScreenState extends State<GuestFeedbackScreen> {
               ? _ErrorView(message: _error!, onRetry: _load)
               : _events.isEmpty
                   ? _EmptyView()
-                  : RefreshIndicator(
-                      onRefresh: _load,
-                      color: _kOrange,
-                      child: ListView(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
-                        children: [
-                          _InfoBanner(),
-                          const SizedBox(height: 16),
-                          ..._events.map((e) => Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: _FeedbackEventCard(
-                              event:  e,
-                              onTap:  e.attended && !e.feedbackDone
-                                  ? () => _openFeedbackForm(e)
-                                  : null,
-                            ),
-                          )),
-                        ],
-                      ),
+                  : Column(
+                      children: [
+                        _statsHeader(),
+                        Container(
+                          color: Colors.white,
+                          child: TabBar(
+                            controller: _tabController,
+                            labelColor: _kOrange,
+                            unselectedLabelColor: Colors.grey.shade600,
+                            indicatorColor: _kOrange,
+                            indicatorWeight: 2.5,
+                            labelStyle: GoogleFonts.beVietnamPro(
+                                fontSize: 14, fontWeight: FontWeight.w700),
+                            unselectedLabelStyle: GoogleFonts.beVietnamPro(
+                                fontSize: 14, fontWeight: FontWeight.w500),
+                            tabs: [
+                              Tab(text: 'To Rate (${_toRate.length})'),
+                              Tab(text: 'My Reviews (${_reviewed.length})'),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: TabBarView(
+                            controller: _tabController,
+                            children: [_toRateTab(), _myReviewsTab()],
+                          ),
+                        ),
+                      ],
                     ),
+    );
+  }
+
+  Widget _statsHeader() => Container(
+    color: Colors.white,
+    padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+    child: Row(
+      children: [
+        _stat('${_events.length}', 'Registered'),
+        _statDivider(),
+        _stat('${_reviewed.length}', 'Reviewed'),
+        _statDivider(),
+        _stat('${_toRate.length}', 'To Rate'),
+      ],
+    ),
+  );
+
+  Widget _stat(String value, String label) => Expanded(
+    child: Column(
+      children: [
+        Text(value,
+            style: GoogleFonts.beVietnamPro(
+                fontSize: 19,
+                fontWeight: FontWeight.w800,
+                color: Colors.black87)),
+        const SizedBox(height: 2),
+        Text(label,
+            style: GoogleFonts.beVietnamPro(
+                fontSize: 11.5, color: Colors.grey.shade600)),
+      ],
+    ),
+  );
+
+  Widget _statDivider() =>
+      Container(width: 1, height: 30, color: const Color(0xFFE8ECF0));
+
+  Widget _toRateTab() {
+    if (_toRate.isEmpty) {
+      return _tabEmpty(
+        Icons.check_circle_outline_rounded,
+        'Nothing left to rate',
+        'You\'ve reviewed every event you attended. Thank you!',
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _load,
+      color: _kOrange,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
+        children: [
+          _InfoBanner(),
+          const SizedBox(height: 16),
+          ..._toRate.map((e) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _FeedbackEventCard(
+                  event: e,
+                  onTap: e.attended && !e.feedbackDone
+                      ? () => _openFeedbackForm(e)
+                      : null,
+                ),
+              )),
+        ],
+      ),
+    );
+  }
+
+  Widget _myReviewsTab() {
+    if (_reviewed.isEmpty) {
+      return _tabEmpty(
+        Icons.rate_review_outlined,
+        'No reviews yet',
+        'Ratings and comments you submit will be kept here.',
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _load,
+      color: _kOrange,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
+        children: _reviewed
+            .map((e) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _SubmittedReviewCard(event: e),
+                ))
+            .toList(),
+      ),
+    );
+  }
+
+  Widget _tabEmpty(IconData icon, String title, String subtitle) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 64, color: Colors.grey.shade400),
+          const SizedBox(height: 16),
+          Text(title,
+              style: GoogleFonts.beVietnamPro(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.grey.shade700)),
+          const SizedBox(height: 8),
+          Text(subtitle,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.beVietnamPro(
+                  fontSize: 13, color: Colors.grey.shade500, height: 1.5)),
+        ],
+      ),
+    ),
+  );
+}
+
+/// One submitted review in the guest's My Reviews tab. Mirrors the student
+/// screen's card: identity line, stars, comment, then the event it belongs to.
+class _SubmittedReviewCard extends StatelessWidget {
+  final _AttendedEvent event;
+  const _SubmittedReviewCard({required this.event});
+
+  @override
+  Widget build(BuildContext context) {
+    final review = event.review ?? const <String, dynamic>{};
+    // Guest reviews store the headline score under `overallRating` in the
+    // legacy collection and `rating` in event_feedback.
+    final rating = ((review['rating'] ?? review['overallRating']) as num?)
+            ?.toInt() ??
+        0;
+    final comment = (review['comment'] ?? '').toString().trim();
+    final submitted = FeedbackHelper.submittedAt(review);
+    final anonymous = reviewIsAnonymous(review);
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE8ECF0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 13,
+                backgroundColor: const Color(0xFFF0F2F5),
+                child: Icon(
+                  anonymous
+                      ? Icons.visibility_off_outlined
+                      : Icons.person_outline_rounded,
+                  size: 15,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  // Own history — shown unmasked; the masking is for other
+                  // people's eyes.
+                  reviewerDisplayName(review, isOwnReview: true),
+                  style: GoogleFonts.beVietnamPro(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87),
+                ),
+              ),
+              if (submitted != null)
+                Text(
+                  DateFormat('dd-MM-yyyy HH:mm').format(submitted),
+                  style: GoogleFonts.beVietnamPro(
+                      fontSize: 11, color: Colors.grey.shade500),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              for (var i = 1; i <= 5; i++)
+                Icon(Icons.star_rounded,
+                    size: 18,
+                    color: i <= rating
+                        ? const Color(0xFFF59E0B)
+                        : Colors.grey.shade300),
+            ],
+          ),
+          if (comment.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(comment,
+                style: GoogleFonts.beVietnamPro(
+                    fontSize: 13, height: 1.5, color: Colors.black87)),
+          ],
+          const SizedBox(height: 12),
+          const Divider(height: 1, color: Color(0xFFF0F2F5)),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Icon(Icons.event_rounded, size: 16, color: Colors.grey.shade500),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(event.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.beVietnamPro(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.black87)),
+                    if (event.orgName.isNotEmpty)
+                      Text(event.orgName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.beVietnamPro(
+                              fontSize: 11.5, color: Colors.grey.shade600)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -511,6 +784,9 @@ class _FeedbackFormSheetState extends State<_FeedbackFormSheet> {
   final  _commentCtrl  = TextEditingController();
   bool   _isLoading    = false;
   bool   _submitted    = false;
+  // Defaults off, matching the student forms — a guest who wants privacy opts
+  // in, the same way a student does.
+  bool   _isAnonymous  = false;
 
   static const _questions = [
     'How would you rate the overall event?',
@@ -558,6 +834,13 @@ class _FeedbackFormSheetState extends State<_FeedbackFormSheet> {
         return;
       }
 
+      // authorName only when the guest opted in to attribution — an anonymous
+      // review stores no name at all, so there is nothing for a display bug to
+      // leak later.
+      final authorName = _isAnonymous
+          ? ''
+          : (GuestAuthService().fullName ?? '').trim();
+
       await FirebaseFirestore.instance.collection('feedback').add({
         'guestEmail'      : widget.email,
         'eventId'         : widget.event.eventId,
@@ -565,6 +848,8 @@ class _FeedbackFormSheetState extends State<_FeedbackFormSheet> {
         'overallRating'   : _rating,
         'questionRatings' : _questionRatings,
         'comment'         : _commentCtrl.text.trim(),
+        'isAnonymous'     : _isAnonymous,
+        if (authorName.isNotEmpty) 'authorName': authorName,
         'submittedAt'     : FieldValue.serverTimestamp(),
         'type'            : 'guest',
       });
@@ -575,11 +860,16 @@ class _FeedbackFormSheetState extends State<_FeedbackFormSheet> {
       await FirebaseFirestore.instance.collection('event_feedback').add({
         'eventId'     : widget.event.eventId,
         'eventTitle'  : widget.event.title,
+        // eventName as well: it's the field event_feedback uses everywhere
+        // else, and the reviews history reads it.
+        'eventName'   : widget.event.title,
         'guestEmail'  : widget.email,
         'isGuest'     : true,
         'rating'      : _rating,
         'questionRatings': _questionRatings,
         'comment'     : _commentCtrl.text.trim(),
+        'isAnonymous' : _isAnonymous,
+        if (authorName.isNotEmpty) 'authorName': authorName,
         'submittedAt' : FieldValue.serverTimestamp(),
       });
 
@@ -764,6 +1054,16 @@ class _FeedbackFormSheetState extends State<_FeedbackFormSheet> {
                                   color: _kOrange, width: 1.5),
                             ),
                           ),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // This form had no anonymity control at all — guests
+                        // get the same choice students do.
+                        AnonymityToggle(
+                          value: _isAnonymous,
+                          onChanged: (v) =>
+                              setState(() => _isAnonymous = v),
                         ),
 
                         const SizedBox(height: 24),

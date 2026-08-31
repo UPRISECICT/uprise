@@ -13,6 +13,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
+import '../../widgets/common/image_viewer.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../services/notification_service.dart';
 import '../../services/activity_logger.dart' as activity_log;
@@ -273,42 +274,9 @@ void _showMessageActions(
   );
 }
 
-// Full-size, pinch-to-zoom image viewer — tapping a photo message used to do
-// nothing, the thumbnail was the only way to see it.
-void _showImagePreview(BuildContext context, String imageBase64) {
-  showDialog(
-    context: context,
-    barrierColor: Colors.black87,
-    builder: (ctx) => Stack(
-      children: [
-        Positioned.fill(
-          child: GestureDetector(
-            onTap: () => Navigator.pop(ctx),
-            child: InteractiveViewer(
-              minScale: 0.5,
-              maxScale: 4,
-              child: Center(
-                child: Image(image: _imageProviderFromBase64(imageBase64)),
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          top: 24,
-          right: 24,
-          child: IconButton(
-            icon: const Icon(
-              Icons.close_rounded,
-              color: Colors.white,
-              size: 28,
-            ),
-            onPressed: () => Navigator.pop(ctx),
-          ),
-        ),
-      ],
-    ),
-  );
-}
+// The pinch-to-zoom viewer that used to live here is now
+// widgets/common/image_viewer.dart's showFullscreenImage — announcement images
+// and event banners needed the same thing, so there is one copy for all of them.
 
 String _conversationId(String orgId, String studentId) => '${orgId}_$studentId';
 
@@ -1250,7 +1218,7 @@ class _MessageBubble extends StatelessWidget {
                       ),
                     if (hasImage)
                       GestureDetector(
-                        onTap: () => _showImagePreview(context, imageBase64!),
+                        onTap: () => showFullscreenImage(context, imageBase64!),
                         child: Image(
                           image: _imageProviderFromBase64(imageBase64!),
                           width: 220,

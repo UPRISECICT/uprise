@@ -16,6 +16,8 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:open_file/open_file.dart';
 import 'package:uprise/models/event_model.dart';
 import '../../widgets/student/event_image.dart';
+import '../../utils/feedback_helper.dart';
+import '../../widgets/common/review_identity.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../widgets/common/loading_widget.dart' show SkeletonLoader;
 import '../../widgets/common/calendar_month.dart';
@@ -2540,6 +2542,15 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     }
     setState(() => _submittingFeedback = true);
     try {
+      // authorName only when the reviewer opted in to attribution — an
+      // anonymous review stores no name at all, so there is nothing for a
+      // display bug to leak later. FieldValue.delete() on the anonymous path
+      // clears a name left behind by an earlier attributed submission, since
+      // this write merges into an existing doc.
+      final authorName = _isAnonymous
+          ? ''
+          : await FeedbackHelper.currentStudentReviewerName();
+
       final data = {
         'eventId': widget.event.id,
         'eventName': widget.event.title,
@@ -2549,6 +2560,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         'comment': _feedbackCtrl.text.trim(),
         'userId': user.uid,
         'isAnonymous': _isAnonymous,
+        'authorName': authorName.isNotEmpty
+            ? authorName
+            : FieldValue.delete(),
         'submittedAt': FieldValue.serverTimestamp(),
       };
       final feedbackCol = FirebaseFirestore.instance.collection(
@@ -2878,59 +2892,14 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.grey.shade300),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Anonymous Feedback',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        _isAnonymous
-                            ? 'The organization won\'t see your name.'
-                            : 'The organization can see who submitted this.',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Text(
-                  _isAnonymous ? 'ON' : 'OFF',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: _isAnonymous
-                        ? AppColors.primaryDark
-                        : Colors.grey.shade500,
-                  ),
-                ),
-                Switch(
-                  value: _isAnonymous,
-                  activeColor: AppColors.primaryDark,
-                  onChanged: _feedbackSubmitted
-                      ? null
-                      : (v) => setState(() => _isAnonymous = v),
-                ),
-              ],
-            ),
+          // The treatment this block used to spell out inline is now the
+          // shared AnonymityToggle, so all four submit paths present the
+          // identical control.
+          AnonymityToggle(
+            value: _isAnonymous,
+            onChanged: _feedbackSubmitted
+                ? null
+                : (v) => setState(() => _isAnonymous = v),
           ),
           if (!_feedbackSubmitted) ...[
             const SizedBox(height: 10),
@@ -3695,12 +3664,16 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // expandable only here, not on the list cards: a card's whole
+            // surface already navigates to this screen, so a tap handler on
+            // its banner would swallow that instead of opening the event.
             EventImage(
               imageUrl: widget.event.imageUrl,
               height: 220,
               width: double.infinity,
               fit: BoxFit.cover,
               showLoadingIndicator: true,
+              expandable: true,
             ),
             Padding(
               padding: const EdgeInsets.all(16),

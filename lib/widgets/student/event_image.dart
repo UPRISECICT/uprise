@@ -5,12 +5,22 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 
+import '../common/image_viewer.dart';
+
 class EventImage extends StatefulWidget {
   final String imageUrl;
   final double? height;
   final double? width;
   final BoxFit fit;
   final bool showLoadingIndicator;
+
+  /// Whether tapping the banner opens it full-screen.
+  ///
+  /// Off by default so the admin report screens, which render this inside
+  /// their own layouts, keep behaving as they did. The mobile card and detail
+  /// call sites opt in — they crop with BoxFit.cover, so the full picture is
+  /// otherwise unreachable.
+  final bool expandable;
 
   const EventImage({
     super.key,
@@ -19,6 +29,7 @@ class EventImage extends StatefulWidget {
     this.width,
     this.fit = BoxFit.cover,
     this.showLoadingIndicator = true,
+    this.expandable = false,
   });
 
   @override
@@ -118,12 +129,19 @@ class _EventImageState extends State<EventImage> {
         }
 
         if (snapshot.hasData && snapshot.data != null) {
-          return Image(
+          final image = Image(
             image: snapshot.data!,
             height: widget.height,
             width: widget.width,
             fit: widget.fit,
             errorBuilder: (_, __, ___) => _placeholder(),
+          );
+          // Only a resolved image is tappable — a placeholder has nothing to
+          // open, so the gesture stays off in every other branch below.
+          if (!widget.expandable) return image;
+          return GestureDetector(
+            onTap: () => showFullscreenImage(context, widget.imageUrl),
+            child: image,
           );
         }
 

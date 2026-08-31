@@ -5,7 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import '../../utils/feedback_helper.dart';
+import '../../widgets/common/review_identity.dart';
 import '../../widgets/student/app_colors.dart';
+import '../../widgets/student/event_image.dart';
 import '../../services/certificate_auto_issue_service.dart';
 
 class StudentFeedbackScreen extends StatefulWidget {
@@ -15,14 +18,26 @@ class StudentFeedbackScreen extends StatefulWidget {
   State<StudentFeedbackScreen> createState() => _StudentFeedbackScreenState();
 }
 
-class _StudentFeedbackScreenState extends State<StudentFeedbackScreen> {
+class _StudentFeedbackScreenState extends State<StudentFeedbackScreen>
+    with SingleTickerProviderStateMixin {
   List<Map<String, dynamic>> _events = [];
   bool _isLoading = true;
+
+  late final TabController _tabController = TabController(
+    length: 2,
+    vsync: this,
+  );
 
   @override
   void initState() {
     super.initState();
     _loadEvents();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadEvents() async {
@@ -43,16 +58,11 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen> {
           .where('studentId', isEqualTo: user.uid)
           .get();
 
-      // Get existing feedback
-      final feedbackSnap = await FirebaseFirestore.instance
-          .collection('event_feedback')
-          .where('userId', isEqualTo: user.uid)
-          .get();
-
-      final ratedEventIds = feedbackSnap.docs
-          .map((doc) => doc.data()['eventId']?.toString())
-          .whereType<String>()
-          .toSet();
+      // Both feedback collections, not just event_feedback: the "rate this
+      // event" notification wrote to the legacy `feedback` one for a long
+      // time, so reading only the newer collection showed most students an
+      // empty review history and re-offered events they'd already rated.
+      final myFeedback = await FeedbackHelper.loadMyFeedback(user.uid);
 
       // Build the list of events
       final List<Map<String, dynamic>> events = [];
@@ -68,21 +78,29 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen> {
         if (!eventDoc.exists) continue;
 
         final eventData = eventDoc.data() as Map<String, dynamic>;
+        final review = myFeedback[eventRef.id];
 
         events.add({
           'eventId': eventRef.id,
           'eventName': eventData['title'] ?? 'Event',
           'organization': eventData['orgName'] ?? '',
           'orgId': eventData['orgId'] ?? '',
-          'rated': ratedEventIds.contains(eventRef.id),
+          'bannerUrl': (eventData['bannerUrl'] ?? '').toString(),
+          'rated': review != null,
+          'review': review,
         });
       }
 
-      // Sort: unrated events first
+      // Most recently reviewed first within My Reviews; To Rate keeps the
+      // attendance order it came back in.
       events.sort((a, b) {
-        if (a['rated'] == true && b['rated'] == false) return 1;
-        if (a['rated'] == false && b['rated'] == true) return -1;
-        return 0;
+        final ra = a['review'] as Map<String, dynamic>?;
+        final rb = b['review'] as Map<String, dynamic>?;
+        if (ra == null || rb == null) return 0;
+        final da = FeedbackHelper.submittedAt(ra);
+        final db = FeedbackHelper.submittedAt(rb);
+        if (da == null || db == null) return 0;
+        return db.compareTo(da);
       });
 
       setState(() {
@@ -105,6 +123,13 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen> {
     if (user == null) return;
 
     try {
+      // authorName only when the reviewer opted in to attribution — an
+      // anonymous review stores no name at all, so there is nothing for a
+      // display bug to leak later.
+      final authorName = isAnonymous
+          ? ''
+          : await FeedbackHelper.currentStudentReviewerName();
+
       await FirebaseFirestore.instance.collection('event_feedback').add({
         'eventId': event['eventId'],
         'eventName': event['eventName'],
@@ -114,6 +139,7 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen> {
         'comment': comment.trim(),
         'userId': user.uid,
         'isAnonymous': isAnonymous,
+        if (authorName.isNotEmpty) 'authorName': authorName,
         'submittedAt': FieldValue.serverTimestamp(),
       });
 
@@ -146,8 +172,13 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen> {
     }
   }
 
-  void _showFeedbackDialog(Map<String, dynamic> event) {
-    int selectedRating = 0;
+  void _showFeedbackDialog(
+    Map<String, dynamic> event, {
+    int initialRating = 0,
+  }) {
+    // Preset when the caller came from the card's inline star row, so tapping
+    // 4 stars opens the form already showing 4.
+    int selectedRating = initialRating;
     final commentController = TextEditingController();
     bool isSubmitting = false;
     bool isAnonymous = false;
@@ -241,35 +272,11 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen> {
                   ),
                   const SizedBox(height: 8),
 
-                  // Anonymous toggle
-                  InkWell(
-                    borderRadius: BorderRadius.circular(8),
-                    onTap: () => setSheetState(() {
-                      isAnonymous = !isAnonymous;
-                    }),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 6),
-                      child: Row(
-                        children: [
-                          Checkbox(
-                            value: isAnonymous,
-                            activeColor: AppColors.primaryDark,
-                            onChanged: (v) => setSheetState(() {
-                              isAnonymous = v ?? false;
-                            }),
-                          ),
-                          Expanded(
-                            child: Text(
-                              'Submit anonymously (your name won\'t be shown to the organization)',
-                              style: TextStyle(
-                                fontSize: 12.5,
-                                color: Colors.grey.shade700,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                  // Anonymous toggle — the shared Switch, so this form and the
+                  // event-details one present the same control.
+                  AnonymityToggle(
+                    value: isAnonymous,
+                    onChanged: (v) => setSheetState(() => isAnonymous = v),
                   ),
                   const SizedBox(height: 8),
 
@@ -331,11 +338,18 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen> {
     );
   }
 
+  List<Map<String, dynamic>> get _toRate =>
+      _events.where((e) => e['rated'] != true).toList();
+
+  List<Map<String, dynamic>> get _reviewed =>
+      _events.where((e) => e['rated'] == true).toList();
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F6F8),
       appBar: AppBar(
-        title: const Text('Event Feedback'),
+        title: const Text('My Reviews'),
         backgroundColor: Colors.white,
         elevation: 0,
         foregroundColor: Colors.black87,
@@ -347,136 +361,365 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen> {
           ? const Center(
               child: CircularProgressIndicator(color: AppColors.primaryDark),
             )
-          : _events.isEmpty
-          ? _buildEmptyState()
-          : RefreshIndicator(
-              onRefresh: _loadEvents,
-              color: AppColors.primaryDark,
-              child: ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: _events.length,
-                itemBuilder: (context, index) {
-                  final event = _events[index];
-                  final isRated = event['rated'] == true;
-
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFFE8ECF0)),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.04),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
+          : Column(
+              children: [
+                _statsHeader(),
+                Container(
+                  color: Colors.white,
+                  child: TabBar(
+                    controller: _tabController,
+                    labelColor: AppColors.primaryDark,
+                    unselectedLabelColor: Colors.grey.shade600,
+                    indicatorColor: AppColors.primaryDark,
+                    indicatorWeight: 2.5,
+                    labelStyle: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
                     ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                event['eventName'] ?? 'Event',
-                                style: const TextStyle(
-                                  fontSize: 14.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.black87,
-                                ),
-                              ),
-                              if (event['organization'] != null &&
-                                  event['organization'].isNotEmpty)
-                                Text(
-                                  event['organization'],
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey.shade600,
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        if (isRated)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFECFDF5),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Text(
-                              '✅ Done',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF059669),
-                              ),
-                            ),
-                          )
-                        else
-                          ElevatedButton(
-                            onPressed: () => _showFeedbackDialog(event),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primaryDark,
-                              foregroundColor: Colors.white,
-                              elevation: 0,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 10,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                            child: const Text(
-                              'Evaluate',
-                              style: TextStyle(
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                      ],
+                    unselectedLabelStyle: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
                     ),
-                  );
-                },
-              ),
+                    tabs: [
+                      Tab(text: 'To Rate (${_toRate.length})'),
+                      Tab(text: 'My Reviews (${_reviewed.length})'),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [_toRateTab(), _myReviewsTab()],
+                  ),
+                ),
+              ],
             ),
     );
   }
 
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+  /// Attended / reviewed / pending counts, the row of figures the screen leads
+  /// with in the reference design.
+  Widget _statsHeader() {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      child: Row(
         children: [
-          Icon(Icons.feedback_outlined, size: 80, color: Colors.grey.shade400),
-          const SizedBox(height: 16),
-          Text(
-            'No events to evaluate',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: Colors.grey.shade600,
-            ),
+          _stat('${_events.length}', 'Attended'),
+          _statDivider(),
+          _stat('${_reviewed.length}', 'Reviewed'),
+          _statDivider(),
+          _stat('${_toRate.length}', 'To Rate'),
+        ],
+      ),
+    );
+  }
+
+  Widget _stat(String value, String label) => Expanded(
+    child: Column(
+      children: [
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 19,
+            fontWeight: FontWeight.w800,
+            color: Colors.black87,
           ),
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 40),
-            child: Text(
-              'Once you attend an event, it will appear here for feedback.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+        ),
+      ],
+    ),
+  );
+
+  Widget _statDivider() =>
+      Container(width: 1, height: 30, color: const Color(0xFFE8ECF0));
+
+  Widget _toRateTab() {
+    if (_toRate.isEmpty) {
+      return _emptyState(
+        icon: Icons.check_circle_outline_rounded,
+        title: 'Nothing left to rate',
+        subtitle: _events.isEmpty
+            ? 'Once you attend an event, it will appear here for feedback.'
+            : 'You\'ve reviewed every event you attended. Thank you!',
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _loadEvents,
+      color: AppColors.primaryDark,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: _toRate.length,
+        itemBuilder: (context, index) => _toRateCard(_toRate[index]),
+      ),
+    );
+  }
+
+  Widget _myReviewsTab() {
+    if (_reviewed.isEmpty) {
+      return _emptyState(
+        icon: Icons.rate_review_outlined,
+        title: 'No reviews yet',
+        subtitle: 'Ratings and comments you submit will be kept here.',
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _loadEvents,
+      color: AppColors.primaryDark,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: _reviewed.length,
+        itemBuilder: (context, index) => _reviewCard(_reviewed[index]),
+      ),
+    );
+  }
+
+  BoxDecoration get _cardDecoration => BoxDecoration(
+    color: Colors.white,
+    borderRadius: BorderRadius.circular(14),
+    border: Border.all(color: const Color(0xFFE8ECF0)),
+  );
+
+  Widget _toRateCard(Map<String, dynamic> event) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: _cardDecoration,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _eventHeader(event),
+          const SizedBox(height: 12),
+          const Divider(height: 1, color: Color(0xFFF0F2F5)),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Text(
+                'Rate this event',
+                style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600),
+              ),
+              const Spacer(),
+              // Tapping a star opens the form with that rating preselected,
+              // the way the reference design's inline star row behaves.
+              for (var i = 1; i <= 5; i++)
+                GestureDetector(
+                  onTap: () => _showFeedbackDialog(event, initialRating: i),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    child: Icon(
+                      Icons.star_rounded,
+                      size: 26,
+                      color: Colors.grey.shade300,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () => _showFeedbackDialog(event),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryDark,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(vertical: 11),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text(
+                'Review',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+              ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _reviewCard(Map<String, dynamic> event) {
+    final review = event['review'] as Map<String, dynamic>? ?? {};
+    final rating = (review['rating'] as num?)?.toInt() ?? 0;
+    final comment = (review['comment'] ?? '').toString().trim();
+    final submitted = FeedbackHelper.submittedAt(review);
+    final anonymous = reviewIsAnonymous(review);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: _cardDecoration,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Identity line: the reader is looking at their own history, so
+          // their name shows unmasked — the masking is for other people's
+          // eyes. An anonymous review still says so, so they can tell which
+          // way they submitted it.
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 13,
+                backgroundColor: const Color(0xFFF0F2F5),
+                child: Icon(
+                  anonymous
+                      ? Icons.visibility_off_outlined
+                      : Icons.person_outline_rounded,
+                  size: 15,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  reviewerDisplayName(review, isOwnReview: true),
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
+                ),
+              ),
+              if (submitted != null)
+                Text(
+                  DateFormat('dd-MM-yyyy HH:mm').format(submitted),
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              for (var i = 1; i <= 5; i++)
+                Icon(
+                  Icons.star_rounded,
+                  size: 18,
+                  color: i <= rating
+                      ? const Color(0xFFF59E0B)
+                      : Colors.grey.shade300,
+                ),
+            ],
+          ),
+          if (comment.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              comment,
+              style: const TextStyle(
+                fontSize: 13,
+                height: 1.5,
+                color: Colors.black87,
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          const Divider(height: 1, color: Color(0xFFF0F2F5)),
+          const SizedBox(height: 10),
+          _eventHeader(event, compact: true),
+        ],
+      ),
+    );
+  }
+
+  /// The event a card refers to — banner thumbnail, title and organization.
+  Widget _eventHeader(Map<String, dynamic> event, {bool compact = false}) {
+    final banner = (event['bannerUrl'] ?? '').toString();
+    final org = (event['organization'] ?? '').toString();
+    final side = compact ? 36.0 : 52.0;
+
+    return Row(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: SizedBox(
+            width: side,
+            height: side,
+            child: banner.isEmpty
+                ? Container(
+                    color: const Color(0xFFF0F2F5),
+                    child: Icon(
+                      Icons.event_rounded,
+                      size: compact ? 18 : 24,
+                      color: Colors.grey.shade400,
+                    ),
+                  )
+                : EventImage(
+                    imageUrl: banner,
+                    width: side,
+                    height: side,
+                    fit: BoxFit.cover,
+                    showLoadingIndicator: false,
+                    expandable: true,
+                  ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                (event['eventName'] ?? 'Event').toString(),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: compact ? 12.5 : 14,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black87,
+                ),
+              ),
+              if (org.isNotEmpty)
+                Text(
+                  org,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _emptyState({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 64, color: Colors.grey.shade400),
+            const SizedBox(height: 16),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: Colors.grey.shade700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.grey.shade500,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

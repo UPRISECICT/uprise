@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../../utils/feedback_helper.dart';
+import '../../widgets/common/review_identity.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../widgets/student/student_app_bar.dart';
 import '../../widgets/common/loading_widget.dart';
@@ -600,6 +602,7 @@ class _EventFeedbackWrapperState extends State<_EventFeedbackWrapper> {
   int _rating = 0;
   final TextEditingController _feedbackCtrl = TextEditingController();
   bool _feedbackSubmitted = false;
+  bool _isAnonymous = false;
   bool _checkingFeedback = true;
   bool _submittingFeedback = false;
 
@@ -623,10 +626,15 @@ class _EventFeedbackWrapperState extends State<_EventFeedbackWrapper> {
     }
     try {
       final docId = '${user.uid}_${widget.eventId}';
-      final doc = await FirebaseFirestore.instance
-          .collection('feedback')
-          .doc(docId)
-          .get();
+      final db = FirebaseFirestore.instance;
+      // Both collections: this screen used to write to the legacy `feedback`
+      // one, so a student's earlier review for this event may still live
+      // there. event_feedback wins when both exist — it has the fuller shape.
+      final results = await Future.wait([
+        db.collection('feedback').doc(docId).get(),
+        db.collection('event_feedback').doc(docId).get(),
+      ]);
+      final doc = results[1].exists ? results[1] : results[0];
       if (mounted) {
         setState(() {
           if (doc.exists) {
@@ -634,6 +642,7 @@ class _EventFeedbackWrapperState extends State<_EventFeedbackWrapper> {
             _feedbackSubmitted = true;
             _rating = (d['rating'] ?? 0) as int;
             _feedbackCtrl.text = (d['comment'] ?? '').toString();
+            _isAnonymous = d['isAnonymous'] == true;
           }
           _checkingFeedback = false;
         });
@@ -675,14 +684,34 @@ class _EventFeedbackWrapperState extends State<_EventFeedbackWrapper> {
     setState(() => _submittingFeedback = true);
     try {
       final docId = '${user.uid}_${widget.eventId}';
-      await FirebaseFirestore.instance.collection('feedback').doc(docId).set({
-        'userId': user.uid,
-        'eventId': widget.eventId,
-        'eventTitle': widget.eventTitle,
-        'rating': _rating,
-        'comment': _feedbackCtrl.text.trim(),
-        'submittedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      // authorName only when the reviewer opted in to attribution; delete
+      // clears one left by an earlier attributed submission, since this merges.
+      final authorName = _isAnonymous
+          ? ''
+          : await FeedbackHelper.currentStudentReviewerName();
+
+      // event_feedback, not the legacy `feedback` this used to write to: it is
+      // the collection the other three submit paths use and the one that
+      // carries isAnonymous. Same deterministic docId, so a re-submission
+      // still overwrites rather than piling up duplicates.
+      await FirebaseFirestore.instance
+          .collection('event_feedback')
+          .doc(docId)
+          .set({
+            'userId': user.uid,
+            'eventId': widget.eventId,
+            'eventName': widget.eventTitle,
+            // Kept alongside eventName so anything still reading the legacy
+            // field name off this document keeps working.
+            'eventTitle': widget.eventTitle,
+            'rating': _rating,
+            'comment': _feedbackCtrl.text.trim(),
+            'isAnonymous': _isAnonymous,
+            'authorName': authorName.isNotEmpty
+                ? authorName
+                : FieldValue.delete(),
+            'submittedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
       if (mounted) {
         setState(() {
           _feedbackSubmitted = true;
@@ -908,6 +937,16 @@ class _EventFeedbackWrapperState extends State<_EventFeedbackWrapper> {
                           ),
                         ),
                       ),
+                    ),
+                    const SizedBox(height: 12),
+                    // This form had no anonymity control at all, while the
+                    // other submit paths did — and it is the one most students
+                    // actually use.
+                    AnonymityToggle(
+                      value: _isAnonymous,
+                      onChanged: _feedbackSubmitted
+                          ? null
+                          : (v) => setState(() => _isAnonymous = v),
                     ),
                     if (!_feedbackSubmitted) ...[
                       const SizedBox(height: 14),

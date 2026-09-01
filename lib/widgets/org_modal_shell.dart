@@ -21,6 +21,12 @@ class OrgModalShell extends StatelessWidget {
   final List<Widget>? footerActions;
   final double width;
   final double maxHeightFraction;
+  /// Optional full-width header color for workflows that need a stronger
+  /// visual identity than the default white modal header.
+  final Color? headerColor;
+  /// Uses a shorter, left-aligned icon/title header. Useful for multi-step
+  /// workflows where preserving vertical room for the form matters.
+  final bool compactHeader;
   final VoidCallback? onClose;
   final bool closeEnabled;
 
@@ -35,9 +41,81 @@ class OrgModalShell extends StatelessWidget {
     this.footerActions,
     this.width = 540,
     this.maxHeightFraction = 0.85,
+    this.headerColor,
+    this.compactHeader = false,
     this.onClose,
     this.closeEnabled = true,
   });
+
+  Widget _buildCompactHeader(BuildContext context) {
+    final isColored = headerColor != null;
+    return Row(
+      children: [
+        Container(
+          width: 46,
+          height: 46,
+          decoration: BoxDecoration(
+            color: isColored
+                ? Colors.white.withAlpha(34)
+                : accentColor.withAlpha(24),
+            borderRadius: BorderRadius.circular(13),
+          ),
+          child: Icon(
+            icon,
+            color: isColored ? Colors.white : accentColor,
+            size: 24,
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 19,
+                  fontWeight: FontWeight.w700,
+                  color: isColored ? Colors.white : const Color(0xFF1A202C),
+                ),
+              ),
+              if (subtitleWidget != null) ...[
+                const SizedBox(height: 4),
+                subtitleWidget!,
+              ] else if (subtitle != null && subtitle!.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  subtitle!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 12,
+                    color: isColored
+                        ? Colors.white.withAlpha(210)
+                        : const Color(0xFF64748B),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        IconButton(
+          tooltip: 'Close',
+          icon: Icon(
+            Icons.close_rounded,
+            color: isColored ? Colors.white : const Color(0xFF64748B),
+            size: 21,
+          ),
+          onPressed: closeEnabled
+              ? (onClose ?? () => Navigator.pop(context))
+              : null,
+        ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -66,12 +144,15 @@ class OrgModalShell extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
+              width: double.infinity,
               padding: const EdgeInsets.fromLTRB(28, 14, 28, 24),
-              decoration: const BoxDecoration(
-                color: Colors.white,
+              decoration: BoxDecoration(
+                color: headerColor ?? Colors.white,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
               ),
-              child: Stack(
+              child: compactHeader
+                  ? _buildCompactHeader(context)
+                  : Stack(
                 children: [
                   Padding(
                     padding: const EdgeInsets.only(top: 22),
@@ -82,17 +163,27 @@ class OrgModalShell extends StatelessWidget {
                           width: 64,
                           height: 64,
                           decoration: BoxDecoration(
-                            color: accentColor.withAlpha(24),
+                            color: headerColor == null
+                                ? accentColor.withAlpha(24)
+                                : Colors.white.withAlpha(34),
                             shape: BoxShape.circle,
                             boxShadow: [
                               BoxShadow(
-                                color: accentColor.withAlpha(28),
+                              color: headerColor == null
+                                  ? accentColor.withAlpha(28)
+                                  : Colors.black.withAlpha(22),
                                 blurRadius: 20,
                                 spreadRadius: 4,
                               ),
                             ],
                           ),
-                          child: Icon(icon, color: accentColor, size: 30),
+                          child: Icon(
+                            icon,
+                            color: headerColor == null
+                                ? accentColor
+                                : Colors.white,
+                            size: 30,
+                          ),
                         ),
                         const SizedBox(height: 16),
                         Text(
@@ -101,7 +192,9 @@ class OrgModalShell extends StatelessWidget {
                           style: GoogleFonts.beVietnamPro(
                             fontSize: 20,
                             fontWeight: FontWeight.w700,
-                            color: const Color(0xFF1A202C),
+                            color: headerColor == null
+                                ? const Color(0xFF1A202C)
+                                : Colors.white,
                           ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
@@ -117,7 +210,9 @@ class OrgModalShell extends StatelessWidget {
                             style: GoogleFonts.beVietnamPro(
                               fontSize: 13,
                               height: 1.45,
-                              color: const Color(0xFF64748B),
+                                color: headerColor == null
+                                    ? const Color(0xFF64748B)
+                                    : Colors.white.withAlpha(210),
                             ),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
@@ -131,9 +226,11 @@ class OrgModalShell extends StatelessWidget {
                     right: -8,
                     child: IconButton(
                       tooltip: 'Close',
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.close_rounded,
-                        color: Color(0xFF64748B),
+                        color: headerColor == null
+                            ? const Color(0xFF64748B)
+                            : Colors.white,
                         size: 20,
                       ),
                       onPressed: closeEnabled

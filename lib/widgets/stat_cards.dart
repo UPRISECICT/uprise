@@ -7,9 +7,8 @@
 // same card (15 classes literally named `_StatCard`, plus 5 differently
 // named ones and 4 function builders). They had drifted into two families:
 // an admin "Row" variant (icon | label / value / subtitle) and an org
-// "Column" variant (icon + big number, label underneath, with a selected
-// state). Both are preserved here: admin call sites opt into [adminLayout],
-// while organization pages retain their established vertical composition.
+// "Column" variant (icon + big number, label underneath). The horizontal
+// layout is now the shared default for Admin and Organization web screens.
 //
 // The companion rule this file exists to enforce: **a page shows at most
 // four cards.** Counts beyond that are secondary, and secondary counts
@@ -55,9 +54,7 @@ class StatCard extends StatelessWidget {
   final IconData icon;
   final Color color;
   final bool selected;
-  /// Uses the compact admin arrangement: icon at left, label over value.
-  /// Kept opt-in because org pages use the same component with a different
-  /// established summary-card composition.
+  /// Uses the shared web arrangement: icon at left, label over value.
   final bool adminLayout;
   final VoidCallback? onTap;
 
@@ -70,7 +67,7 @@ class StatCard extends StatelessWidget {
     this.stream,
     this.subtitle,
     this.selected = false,
-    this.adminLayout = false,
+    this.adminLayout = true,
     this.onTap,
   }) : assert(
          value != null || stream != null,

@@ -15,6 +15,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../theme/org_theme.dart' as theme;
+import '../../../widgets/app_confirmation_dialog.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design Tokens — mirrors StudentAccounts exactly
@@ -657,22 +658,57 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
   // actually makes the feed feel like Facebook. Resolved once on load;
   // stays null (falling back to initials) if the org has none set.
   String? _orgLogoUrl;
+  String _orgDisplayName = 'Organization';
 
   @override
   void initState() {
     super.initState();
-    _loadOrgLogo();
+    _loadOrganizationProfile();
   }
 
-  Future<void> _loadOrgLogo() async {
+  Future<void> _loadOrganizationProfile() async {
     try {
       final doc = await FirebaseFirestore.instance
           .collection('organizations')
           .doc(widget.orgId)
           .get();
-      final url = (doc.data()?['logoUrl'] as String?)?.trim();
-      if (mounted && url != null && url.isNotEmpty) {
-        setState(() => _orgLogoUrl = url);
+      final data = doc.data() ?? <String, dynamic>{};
+      final shortName = (data['shortName'] as String?)?.trim();
+      final name = (data['name'] as String?)?.trim();
+      final logoUrl = (data['logoUrl'] as String?)?.trim();
+      final savedCategories = (data['announcementCategories'] as List? ?? [])
+          .map((value) => value.toString().trim())
+          .where((value) => value.isNotEmpty);
+      // Categories created before persistence was added only exist on their
+      // posts. Include them once here so they immediately become reusable.
+      final existingPosts = await FirebaseFirestore.instance
+          .collection('announcements')
+          .where('orgId', isEqualTo: widget.orgId)
+          .get();
+      final postCategories = existingPosts.docs
+          .map((doc) => (doc.data()['category'] ?? '').toString().trim())
+          .where((value) => value.isNotEmpty);
+      if (mounted) {
+        setState(() {
+          if (shortName != null && shortName.isNotEmpty) {
+            _orgDisplayName = shortName;
+          } else if (name != null && name.isNotEmpty) {
+            _orgDisplayName = name;
+          }
+          if (logoUrl != null && logoUrl.isNotEmpty) {
+            _orgLogoUrl = logoUrl;
+          }
+          for (final category in [...savedCategories, ...postCategories]) {
+            if (!_customCategories.any(
+              (existing) => existing.toLowerCase() == category.toLowerCase(),
+            )) {
+              _customCategories.add(category);
+            }
+          }
+          _customCategories.sort(
+            (a, b) => a.toLowerCase().compareTo(b.toLowerCase()),
+          );
+        });
       }
     } catch (_) {
       // Logo is a nice-to-have here — silently fall back to initials.
@@ -870,6 +906,36 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
       }
     } catch (e) {
       if (mounted) _snack('Error: $e', isError: true);
+    }
+  }
+
+  Future<void> _deleteAnnouncement(AnnouncementModel announcement) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AppConfirmationDialog(
+        title: 'Delete Announcement',
+        message:
+            'Delete "${announcement.title}" permanently? It will be removed from the organization and mobile feeds.',
+        confirmLabel: 'Delete',
+        accentColor: _C.error,
+        icon: Icons.delete_outline_rounded,
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('announcements')
+          .doc(announcement.id)
+          .delete();
+      await activity_log.ActivityLogger.log(
+        action: 'delete_announcement',
+        module: 'announcements',
+        details: {'orgId': widget.orgId, 'announcementId': announcement.id},
+      );
+      if (mounted) _snack('Announcement deleted');
+    } catch (error) {
+      if (mounted) _snack('Could not delete announcement: $error', isError: true);
     }
   }
 
@@ -1138,12 +1204,39 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
         ),
       ),
     );
-    if (result != null &&
-        result.isNotEmpty &&
-        !_allCategories.contains(result)) {
-      setState(() => _customCategories.add(result));
+    final category = result?.trim();
+    if (category == null || category.isEmpty) return null;
+
+    final duplicate = _allCategories.where(
+      (existing) => existing.toLowerCase() == category.toLowerCase(),
+    );
+    if (duplicate.isNotEmpty) return duplicate.first;
+
+    try {
+      // Store the category on the organization document so it is available
+      // after reloads, future sessions, and on any officer account for this
+      // same organization.
+      await FirebaseFirestore.instance
+          .collection('organizations')
+          .doc(widget.orgId)
+          .set({
+            'announcementCategories': FieldValue.arrayUnion([category]),
+          }, SetOptions(merge: true));
+      if (mounted) {
+        setState(() {
+          _customCategories.add(category);
+          _customCategories.sort(
+            (a, b) => a.toLowerCase().compareTo(b.toLowerCase()),
+          );
+        });
+      }
+      return category;
+    } catch (error) {
+      if (mounted) {
+        _snack('Could not save category: $error', isError: true);
+      }
+      return null;
     }
-    return (result != null && result.isNotEmpty) ? result : null;
   }
 
   // ── Pinned panel (wide layout) ──────────────────────────────────────────────
@@ -1497,8 +1590,10 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
               (ctx, i) => _PostCard(
                 announcement: items[i],
                 orgLogoUrl: _orgLogoUrl,
+                organizationName: _orgDisplayName,
                 onEdit: () => _showAnnouncementDialog(existing: items[i]),
                 onArchive: () => _toggleArchive(items[i]),
+                onDelete: () => _deleteAnnouncement(items[i]),
                 onTogglePin: () => _togglePin(items[i], allAnnouncements),
               ),
               childCount: items.length,
@@ -1881,10 +1976,7 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
     // Same author name the published post will actually show — reused for
     // the compose box's header row so that header reads as "this is who
     // you're posting as," not a placeholder.
-    final authorName =
-        FirebaseAuth.instance.currentUser?.displayName ??
-        FirebaseAuth.instance.currentUser?.email ??
-        'You';
+    final authorName = _orgDisplayName;
 
     showDialog(
       context: context,
@@ -2160,11 +2252,8 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                   // started flush left, so the two never actually lined up.
                   Container(
                     padding: const EdgeInsets.fromLTRB(24, 18, 16, 18),
-                    decoration: BoxDecoration(
-                      color: _C.primaryDark.withAlpha(12),
-                      border: const Border(
-                        bottom: BorderSide(color: _C.borderSoft),
-                      ),
+                    decoration: const BoxDecoration(
+                      color: _C.primaryDark,
                       borderRadius: const BorderRadius.vertical(
                         top: Radius.circular(18),
                       ),
@@ -2177,14 +2266,14 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                             style: GoogleFonts.beVietnamPro(
                               fontSize: 17,
                               fontWeight: FontWeight.w800,
-                              color: _C.charcoal,
+                              color: Colors.white,
                             ),
                           ),
                         ),
                         IconButton(
                           icon: const Icon(
                             Icons.close_rounded,
-                            color: _C.darkGray,
+                            color: Colors.white,
                             size: 20,
                           ),
                           tooltip: 'Close',
@@ -3068,15 +3157,7 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                                   try {
                                     final user =
                                         FirebaseAuth.instance.currentUser!;
-                                    final userDoc = await FirebaseFirestore
-                                        .instance
-                                        .collection('users')
-                                        .doc(user.uid)
-                                        .get();
-                                    final authorName =
-                                        userDoc.data()?['name'] ??
-                                        user.email ??
-                                        'Unknown';
+                                    final authorName = _orgDisplayName;
 
                                     Timestamp? scheduledTs;
                                     if (isScheduled &&
@@ -3524,15 +3605,19 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
 class _PostCard extends StatefulWidget {
   final AnnouncementModel announcement;
   final String? orgLogoUrl;
+  final String? organizationName;
   final VoidCallback onEdit;
   final VoidCallback onArchive;
+  final VoidCallback onDelete;
   final VoidCallback onTogglePin;
 
   const _PostCard({
     required this.announcement,
     this.orgLogoUrl,
+    this.organizationName,
     required this.onEdit,
     required this.onArchive,
+    required this.onDelete,
     required this.onTogglePin,
   });
 
@@ -3558,6 +3643,10 @@ class _PostCardState extends State<_PostCard> {
   @override
   Widget build(BuildContext context) {
     final a = widget.announcement;
+    final organizationName = widget.organizationName?.trim();
+    final displayName = organizationName != null && organizationName.isNotEmpty
+        ? organizationName
+        : a.authorName;
     // base64Decode throws synchronously for malformed data — Image.memory's
     // own errorBuilder only ever catches decode/paint failures *after* this
     // point, so a bad string here used to take the whole card down with it
@@ -3649,7 +3738,7 @@ class _PostCardState extends State<_PostCard> {
                 // circular like every profile photo on a real feed.
                 _orgCircleAvatar(
                   size: 42,
-                  fallbackLabel: a.authorName,
+                  fallbackLabel: displayName,
                   logoUrl: widget.orgLogoUrl,
                 ),
                 const SizedBox(width: 12),
@@ -3659,7 +3748,7 @@ class _PostCardState extends State<_PostCard> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        a.authorName,
+                        displayName,
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
@@ -3743,6 +3832,7 @@ class _PostCardState extends State<_PostCard> {
                   onSelected: (v) {
                     if (v == 'edit') widget.onEdit();
                     if (v == 'archive') widget.onArchive();
+                    if (v == 'delete') widget.onDelete();
                     if (v == 'pin') widget.onTogglePin();
                   },
                   icon: const Icon(
@@ -3808,6 +3898,27 @@ class _PostCardState extends State<_PostCard> {
                             style: GoogleFonts.beVietnamPro(
                               fontSize: 13,
                               color: _C.darkGray,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuDivider(),
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.delete_outline_rounded,
+                            size: 15,
+                            color: _C.error,
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            'Delete',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13,
+                              color: _C.error,
                             ),
                           ),
                         ],
@@ -4128,6 +4239,7 @@ Widget debugPostCardForTest(AnnouncementModel a) {
     announcement: a,
     onEdit: () {},
     onArchive: () {},
+    onDelete: () {},
     onTogglePin: () {},
   );
 }

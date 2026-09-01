@@ -19,6 +19,7 @@ import '../../../services/notification_service.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../utils/profanity_filter.dart';
 import '../../../theme/org_theme.dart' as theme;
+import '../../../widgets/app_confirmation_dialog.dart';
 import 'export_util.dart';
 
 class _C {
@@ -1322,6 +1323,9 @@ class _ChatThreadState extends State<_ChatThread> {
   final TextEditingController _textCtrl = TextEditingController();
   final ScrollController _scrollCtrl = ScrollController();
   bool _sending = false;
+  String? _pendingImageBase64;
+  String? _pendingFileBase64;
+  String? _pendingFileName;
   // Set via the long-press "Reply" action; cleared on send or by the X on
   // the reply preview bar above the input.
   Map<String, dynamic>? _replyingTo;
@@ -1329,6 +1333,8 @@ class _ChatThreadState extends State<_ChatThread> {
   String get _studentName =>
       (widget.conversation['studentName'] ?? 'Student').toString();
   String get _studentId => (widget.conversation['studentId'] ?? '').toString();
+  bool get _hasPendingAttachment =>
+      _pendingImageBase64 != null || _pendingFileBase64 != null;
 
   @override
   void dispose() {
@@ -1369,6 +1375,7 @@ class _ChatThreadState extends State<_ChatThread> {
     final previewText = text.isNotEmpty
         ? text
         : (imageBase64 != null ? 'Sent an image' : 'Sent a file: $fileName');
+    var sent = false;
     try {
       await ref.collection('messages').add({
         'senderId': user?.uid ?? '',
@@ -1399,6 +1406,7 @@ class _ChatThreadState extends State<_ChatThread> {
           orgName: widget.orgName,
         );
       }
+      sent = true;
       if (_scrollCtrl.hasClients) {
         _scrollCtrl.animateTo(
           0,
@@ -1414,8 +1422,47 @@ class _ChatThreadState extends State<_ChatThread> {
         ).showSnackBar(SnackBar(content: Text('Message failed to send: $e')));
       }
     } finally {
-      if (mounted) setState(() => _sending = false);
+      if (mounted) {
+        setState(() {
+          _sending = false;
+          if (sent) {
+            _pendingImageBase64 = null;
+            _pendingFileBase64 = null;
+            _pendingFileName = null;
+          }
+        });
+      }
     }
+  }
+
+  Future<void> _confirmAndSend() async {
+    if (_textCtrl.text.trim().isEmpty && !_hasPendingAttachment) return;
+
+    if (_hasPendingAttachment) {
+      final attachmentLabel = _pendingImageBase64 != null &&
+              _pendingFileBase64 != null
+          ? 'image and file'
+          : _pendingImageBase64 != null
+          ? 'image'
+          : 'file';
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (_) => AppConfirmationDialog(
+          title: 'Send Attachment',
+          message: 'Send this $attachmentLabel to $_studentName?',
+          confirmLabel: 'Send',
+          accentColor: _C.primaryDark,
+          icon: Icons.send_rounded,
+        ),
+      );
+      if (confirmed != true) return;
+    }
+
+    await _sendMessage(
+      imageBase64: _pendingImageBase64,
+      fileBase64: _pendingFileBase64,
+      fileName: _pendingFileName,
+    );
   }
 
   Future<void> _toggleBlock(bool currentlyBlocked) async {
@@ -1534,7 +1581,7 @@ class _ChatThreadState extends State<_ChatThread> {
         return;
       }
       final b64 = 'data:image/jpeg;base64,${base64Encode(bytes)}';
-      await _sendMessage(imageBase64: b64);
+      if (mounted) setState(() => _pendingImageBase64 = b64);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -1567,7 +1614,12 @@ class _ChatThreadState extends State<_ChatThread> {
       }
       final mime = _mimeTypeFromFileName(file.name);
       final b64 = 'data:$mime;base64,${base64Encode(bytes)}';
-      await _sendMessage(fileBase64: b64, fileName: file.name);
+      if (mounted) {
+        setState(() {
+          _pendingFileBase64 = b64;
+          _pendingFileName = file.name;
+        });
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -1770,19 +1822,10 @@ class _ChatThreadState extends State<_ChatThread> {
                       time: ts != null ? DateFormat('h:mm a').format(ts) : '',
                       replyToText: replyToText,
                       replyToSenderName: replyToSenderName,
-                      onReport: isOrg
-                          ? null
-                          : () => showReportMessageDialog(
-                              context,
-                              conversationId: widget.conversationId,
-                              messageId: doc.id,
-                              messageText: text,
-                              reporterRole: 'org',
-                              reportedUserId: (data['senderId'] ?? '')
-                                  .toString(),
-                              reportedUserRole: 'student',
-                              orgId: widget.orgId,
-                            ),
+                      // Reporting has no moderation workflow on the Org
+                      // side yet, so it is intentionally not exposed as a
+                      // dead action in the message menu.
+                      onReport: null,
                       onDelete: isOrg
                           ? () => _confirmDeleteMessage(doc.id)
                           : null,
@@ -1842,6 +1885,103 @@ class _ChatThreadState extends State<_ChatThread> {
               ],
             ),
           ),
+        if (_hasPendingAttachment)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+            color: _C.white,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (_pendingImageBase64 != null)
+                  Container(
+                    height: 46,
+                    padding: const EdgeInsets.only(left: 4, right: 2),
+                    decoration: BoxDecoration(
+                      color: _C.surface,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: _C.border),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(5),
+                          child: Image(
+                            image: _imageProviderFromBase64(
+                              _pendingImageBase64!,
+                            ),
+                            width: 36,
+                            height: 36,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Image ready to send',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 11.5,
+                            color: _C.darkGray,
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Remove image',
+                          onPressed: _sending
+                              ? null
+                              : () => setState(
+                                  () => _pendingImageBase64 = null,
+                                ),
+                          icon: const Icon(Icons.close_rounded, size: 16),
+                        ),
+                      ],
+                    ),
+                  ),
+                if (_pendingFileBase64 != null)
+                  Container(
+                    height: 46,
+                    padding: const EdgeInsets.only(left: 10, right: 2),
+                    decoration: BoxDecoration(
+                      color: _C.surface,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: _C.border),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.attach_file_rounded,
+                          size: 17,
+                          color: _C.primaryDark,
+                        ),
+                        const SizedBox(width: 6),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 180),
+                          child: Text(
+                            _pendingFileName ?? 'File ready to send',
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 11.5,
+                              color: _C.darkGray,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Remove file',
+                          onPressed: _sending
+                              ? null
+                              : () => setState(() {
+                                  _pendingFileBase64 = null;
+                                  _pendingFileName = null;
+                                }),
+                          icon: const Icon(Icons.close_rounded, size: 16),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
@@ -1875,7 +2015,7 @@ class _ChatThreadState extends State<_ChatThread> {
                   minLines: 1,
                   maxLines: 4,
                   textInputAction: TextInputAction.send,
-                  onSubmitted: (_) => _sendMessage(),
+                  onSubmitted: (_) => _confirmAndSend(),
                   style: GoogleFonts.beVietnamPro(fontSize: 13.5),
                   decoration: InputDecoration(
                     hintText: 'Message $_studentName…',
@@ -1898,7 +2038,7 @@ class _ChatThreadState extends State<_ChatThread> {
               ),
               const SizedBox(width: 8),
               IconButton(
-                onPressed: _sending ? null : () => _sendMessage(),
+                onPressed: _sending ? null : _confirmAndSend,
                 style: IconButton.styleFrom(
                   backgroundColor: _C.primaryDark,
                   disabledBackgroundColor: _C.primaryDark.withAlpha(120),

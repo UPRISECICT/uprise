@@ -11,6 +11,7 @@
 
 import 'dart:async';
 import '../../../widgets/stat_cards.dart';
+import '../../../widgets/app_confirmation_dialog.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -1502,112 +1503,13 @@ class _OrgDashboardState extends State<OrgDashboard> {
   void _confirmLogout() {
     showDialog(
       context: context,
-      barrierColor: Colors.black54,
-      builder: (ctx) => Dialog(
-        // Was unset — Dialog falls back to Flutter's default Material
-        // surface color, which skews purple/lavender on this app's
-        // unseeded theme.
-        backgroundColor: OrgColors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(_DS.radiusLg),
-        ),
-        child: Container(
-          width: 420,
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: OrgColors.errorBg,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.logout_rounded,
-                      color: OrgColors.error,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Text(
-                    'Confirm Logout',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: OrgColors.charcoal,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Text(
-                'Are you sure you want to sign out from the organization portal?',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 14,
-                  color: OrgColors.darkGray,
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  OutlinedButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: OrgColors.borderSoft),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(_DS.radiusSm),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
-                    child: Text(
-                      'Cancel',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        color: OrgColors.textMid,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  ElevatedButton(
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      _logout();
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: OrgColors.error,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(_DS.radiusSm),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
-                    child: Text(
-                      'Sign Out',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+      builder: (_) => AppConfirmationDialog(
+        title: 'Confirm Logout',
+        message: 'Are you sure you want to sign out from the organization portal?',
+        confirmLabel: 'Sign Out',
+        accentColor: OrgColors.error,
+        icon: Icons.logout_rounded,
+        onConfirm: _logout,
       ),
     );
   }
@@ -3247,7 +3149,6 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                   isEven: i.isEven,
                   onTap: () => _showDetailDialog(
                     title: rows[i]['title'] as String,
-                    accentColor: OrgColors.primaryDark,
                     categoryColorOf: (c) => CategoryColors.getFg(c),
                     actionLabel: 'Open in Events & Schedules',
                     navigateToTabIndex: 2, // OrgEventsScheduleScreen
@@ -3358,7 +3259,6 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                   isEven: i.isEven,
                   onTap: () => _showDetailDialog(
                     title: rows[i]['title'] as String,
-                    accentColor: OrgColors.warning,
                     categoryColorOf: (c) => CategoryColors.getFg(c),
                     actionLabel: 'Open in Event Proposals',
                     navigateToTabIndex: 1, // OrgEventProposalsScreen
@@ -3477,7 +3377,6 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                   isEven: i.isEven,
                   onTap: () => _showDetailDialog(
                     title: rows[i]['title'] as String,
-                    accentColor: OrgColors.accent,
                     fields: [
                       MapEntry('Date', _fmtDate(rows[i]['date'] as DateTime?)),
                       MapEntry(
@@ -3580,7 +3479,6 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                   isEven: i.isEven,
                   onTap: () => _showDetailDialog(
                     title: rows[i]['name'] as String,
-                    accentColor: const Color(0xFF6366F1),
                     categoryColorOf: (c) => _merchCategoryBadgeColor(c),
                     actionLabel: 'Open in Merchandise Catalog',
                     navigateToTabIndex: 12, // OrgMerchandiseScreen
@@ -3909,7 +3807,6 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
   void _showDetailDialog({
     required String title,
     required List<MapEntry<String, String>> fields,
-    Color accentColor = OrgColors.primaryDark,
     Color Function(String category)? categoryColorOf,
     String? actionLabel,
     int? navigateToTabIndex,
@@ -3938,8 +3835,8 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
         ),
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxWidth: 720,
-            maxHeight: MediaQuery.of(ctx).size.height * 0.85,
+            maxWidth: 460,
+            maxHeight: 560,
           ),
           child: Container(
             clipBehavior: Clip.antiAlias,
@@ -3953,29 +3850,21 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // ── HEADER ──
-                // Plain white with a hairline rule rather than a tinted color
-                // strip: at this width the tint read as a colored banner
-                // competing with the content instead of framing it.
+                // Use the Organization portal's deep-orange brand header,
+                // equivalent to the Admin modal's dark-navy treatment.
                 Container(
-                  padding: const EdgeInsets.fromLTRB(28, 22, 20, 20),
-                  decoration: const BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(color: Color(0xFFF1F5F9)),
-                    ),
-                  ),
+                  padding: const EdgeInsets.fromLTRB(24, 20, 16, 18),
+                  decoration: const BoxDecoration(color: OrgColors.primaryDark),
                   child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.only(top: 3),
-                          child: Text(
-                            title,
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w700,
-                              color: OrgColors.charcoal,
-                            ),
+                        child: Text(
+                          title,
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
                           ),
                         ),
                       ),
@@ -3990,13 +3879,13 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                               width: 28,
                               height: 28,
                               decoration: BoxDecoration(
-                                color: OrgColors.lightGray,
+                                color: Colors.white.withAlpha(31),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: const Icon(
                                 Icons.close_rounded,
                                 size: 16,
-                                color: OrgColors.darkGray,
+                                color: Colors.white,
                               ),
                             ),
                           ),
@@ -4008,12 +3897,12 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                 // ── BODY ──
                 Flexible(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+                    padding: const EdgeInsets.fromLTRB(24, 18, 24, 4),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         for (var i = 0; i < rows.length; i++) ...[
-                          if (i > 0) const SizedBox(height: 12),
+                          if (i > 0) const SizedBox(height: 10),
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -4022,13 +3911,13 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                               // and an empty gutter, so the left column stays
                               // aligned all the way down.
                               if (rows[i].length > 1) ...[
-                                const SizedBox(width: 14),
+                                const SizedBox(width: 10),
                                 Expanded(child: cellFor(rows[i][1])),
                               ] else if (!_fullWidthDetailKeys.contains(
                                     rows[i].first.key,
                                   ) &&
                                   rows[i].first.value.length <= 90) ...[
-                                const SizedBox(width: 14),
+                                const SizedBox(width: 10),
                                 const Expanded(child: SizedBox.shrink()),
                               ],
                             ],
@@ -4040,7 +3929,7 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                 ),
                 // ── FOOTER ──
                 Container(
-                  padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
+                  padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
                   decoration: const BoxDecoration(
                     border: Border(top: BorderSide(color: Color(0xFFF1F5F9))),
                   ),
@@ -4049,25 +3938,21 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                     children: [
                       if (actionLabel != null &&
                           navigateToTabIndex != null) ...[
-                        TextButton(
+                        TextButton.icon(
                           onPressed: () {
                             Navigator.pop(ctx);
                             widget.onNavigateToTab?.call(navigateToTabIndex);
                           },
-                          style: TextButton.styleFrom(
-                            foregroundColor: accentColor,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
-                            ),
-                          ),
-                          child: Text(
+                          icon: const Icon(Icons.arrow_forward_rounded, size: 15),
+                          label: Text(
                             actionLabel,
                             style: GoogleFonts.beVietnamPro(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
-                              color: accentColor,
                             ),
+                          ),
+                          style: TextButton.styleFrom(
+                            foregroundColor: OrgColors.primaryDark,
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -4075,10 +3960,10 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                       ElevatedButton(
                         onPressed: () => Navigator.pop(ctx),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: accentColor,
+                          backgroundColor: OrgColors.primaryDark,
                           elevation: 0,
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 22,
+                            horizontal: 20,
                             vertical: 12,
                           ),
                           shape: RoundedRectangleBorder(

@@ -1,6 +1,5 @@
 // ignore_for_file: unused_field, duplicate_ignore, use_build_context_synchronously, deprecated_member_use
 import 'dart:convert';
-import '../../../models/adviser_rank.dart';
 import '../../../widgets/stat_cards.dart';
 import 'dart:async';
 import '../../../utils/platform_file_utils.dart' as platform_file_utils;
@@ -48,13 +47,6 @@ Future<String> _getUserName(String uid) async {
   return uid; // fallback to UID
 }
 
-bool _isImageAttachment(Map<String, dynamic> data) {
-  final name = data['attachmentName'] as String?;
-  if (name == null) return false;
-  final ext = name.split('.').last.toLowerCase();
-  return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].contains(ext);
-}
-
 Widget _buildImageFromBase64(
   String base64, {
   double? width,
@@ -74,7 +66,6 @@ Widget _buildImageFromBase64(
     return const SizedBox.shrink();
   }
 }
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3054,69 +3045,13 @@ class _LiveTrackerModalState extends State<_LiveTrackerModal> {
     VoidCallback? onTap,
     bool isSelected = false,
   }) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(_DS.radiusMd),
-            border: Border.all(
-              color: isSelected ? color : const Color(0xFFE2E6EA),
-              width: isSelected ? 1.5 : 1,
-            ),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: color.withAlpha(46),
-                      blurRadius: 16,
-                      offset: const Offset(0, 4),
-                    ),
-                  ]
-                : _DS.cardShadow,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: color.withAlpha(26),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    alignment: Alignment.center,
-                    child: Icon(icon, color: color, size: 20),
-                  ),
-                  Text(
-                    value,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF1A202C),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                label,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF64748B),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return StatCard(
+      label: label,
+      value: value,
+      icon: icon,
+      color: color,
+      selected: isSelected,
+      onTap: onTap,
     );
   }
 }
@@ -3214,19 +3149,7 @@ class _SubmitProposalModal extends StatefulWidget {
 
 class _SubmitProposalModalState extends State<_SubmitProposalModal> {
   final _formKey = GlobalKey<FormState>();
-  // Adviser endorsement, read from the organization record. The adviser
-  // has no account to sign with, so what is captured is the org attesting
-  // that the endorsement happened offline, plus a snapshot of who the
-  // adviser was at the time — a later adviser change must not silently
-  // rewrite the history of an already-submitted proposal.
-  bool _endorsedByAdviser = false;
-  final _endorsementRemarksCtrl = TextEditingController();
-  String _adviserName = '';
-  String _adviserRank = '';
-  bool _adviserLoaded = false;
-
-  // Which wizard step is showing. All three stay mounted (see
-  // _buildWizardBody) — this only drives the IndexedStack index.
+  // Current step in the proposal workflow.
   int _step = 0;
   final _titleCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
@@ -3251,7 +3174,8 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
   // comma-joined string in the same 'audience' field so every existing
   // reader across admin/org/guest screens (which all treat it as a plain
   // String) keeps working unchanged.
-  final Set<String> _selectedAudiences = {'Public'};
+  // New proposals must explicitly choose their intended audience.
+  final Set<String> _selectedAudiences = {};
   String _schoolYear = SchoolYearUtil.currentSchoolYear();
   String _semester = SchoolYearUtil.currentSemester();
   bool _isSubmitting = false;
@@ -3290,7 +3214,6 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
   @override
   void initState() {
     super.initState();
-    _loadAdviser();
     final e = widget.existing;
     if (e != null) {
       _titleCtrl.text = e['title'] ?? '';
@@ -3308,8 +3231,6 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
       _attachmentBase64 = e['attachmentBase64'];
       _attachmentName = e['attachmentName'];
       _attachmentSize = e['attachmentSize'];
-      _endorsedByAdviser = e['endorsedByAdviser'] == true;
-      _endorsementRemarksCtrl.text = (e['endorsementRemarks'] ?? '').toString();
       if (e['date'] is Timestamp) {
         _selectedDate = (e['date'] as Timestamp).toDate();
         _dateCtrl.text = DateFormat('MM/dd/yyyy').format(_selectedDate!);
@@ -3317,7 +3238,7 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
       final cat = e['category'] ?? 'Workshop';
       _category = _categories.contains(cat) ? cat : 'Workshop';
       _otherCategoryCtrl.text = e['otherCategory'] ?? '';
-      final rawAudience = (e['audience'] ?? 'Public').toString();
+      final rawAudience = (e['audience'] ?? '').toString();
       final parsed = rawAudience
           .split(',')
           .map((s) => s.trim())
@@ -3354,109 +3275,11 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
     _startTimeCtrl.dispose();
     _endTimeCtrl.dispose();
     _otherCategoryCtrl.dispose();
-    _endorsementRemarksCtrl.dispose();
     _capacityCtrl.dispose();
     super.dispose();
   }
 
   // ── Image upload ──────────────────────────────────────────────────
-  /// Pulls the adviser off the organization record so the org confirms a
-  /// real name rather than typing one. Silent on failure: an org with no
-  /// adviser on file must still be able to submit a proposal.
-  Future<void> _loadAdviser() async {
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('organizations')
-          .doc(widget.orgId)
-          .get();
-      final d = doc.data();
-      if (!mounted || d == null) return;
-      setState(() {
-        _adviserName = (d['adviserName'] ?? '').toString();
-        _adviserRank = (d['adviserTitle'] ?? '').toString();
-        _adviserLoaded = true;
-      });
-    } catch (_) {
-      if (mounted) setState(() => _adviserLoaded = true);
-    }
-  }
-
-  Widget _buildEndorsementSection() {
-    final hasAdviser = _adviserName.trim().isNotEmpty;
-    return OrgModalSection(
-      title: 'Adviser Endorsement',
-      icon: Icons.verified_user_outlined,
-      accentColor: UpriseColors.primaryDark,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (!_adviserLoaded)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: SizedBox(
-                height: 18,
-                width: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            )
-          else if (!hasAdviser)
-            Text(
-              'No adviser is on file for this organization. You can still '
-              'submit — ask the admin office to add one so future proposals '
-              'can carry an endorsement.',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 12,
-                color: const Color(0xFF9AA5B4),
-                height: 1.5,
-              ),
-            )
-          else ...[
-            Text(
-              _adviserName,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 13.5,
-                fontWeight: FontWeight.w600,
-                color: const Color(0xFF1A202C),
-              ),
-            ),
-            Text(
-              AdviserRank.byId(_adviserRank).label,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 12,
-                color: const Color(0xFF64748B),
-              ),
-            ),
-            const SizedBox(height: 10),
-            CheckboxListTile(
-              contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-              dense: true,
-              value: _endorsedByAdviser,
-              onChanged: (v) => setState(() => _endorsedByAdviser = v ?? false),
-              title: Text(
-                'This proposal has been endorsed by our adviser',
-                style: GoogleFonts.beVietnamPro(fontSize: 13),
-              ),
-            ),
-            if (_endorsedByAdviser) ...[
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _endorsementRemarksCtrl,
-                maxLines: 2,
-                style: GoogleFonts.beVietnamPro(fontSize: 13),
-                decoration: _orgEventProposalsInputDecoration(
-                  'Endorsement remarks (optional)',
-                  hint: 'Anything the adviser asked to be noted',
-                  icon: Icons.notes_rounded,
-                ),
-              ),
-            ],
-          ],
-        ],
-      ),
-    );
-  }
-
   Future<void> _pickImage() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.image,
@@ -3687,13 +3510,6 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
         'issuesCertificate': _issuesCertificate,
         // Snapshot, not a live reference: whoever the adviser was when the
         // endorsement was given is who the record must keep naming.
-        'endorsedByAdviser': _endorsedByAdviser,
-        'endorsedAt': _endorsedByAdviser ? FieldValue.serverTimestamp() : null,
-        'endorsementRemarks': _endorsedByAdviser
-            ? _endorsementRemarksCtrl.text.trim()
-            : '',
-        'endorsedAdviserName': _endorsedByAdviser ? _adviserName : '',
-        'endorsedAdviserRank': _endorsedByAdviser ? _adviserRank : '',
         // Dedicated image
         'imageBase64': _imageBase64,
         'imageName': _imageName,
@@ -3785,22 +3601,6 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
           proposalId: ref.id,
           action: ProposalReviewAction.submitted,
         );
-        // Makes the 'Adviser Endorsement' audit module real — it was a
-        // filter option with nothing behind it until now.
-        if (_endorsedByAdviser) {
-          await activity_log.ActivityLogger.log(
-            action:
-                'Adviser endorsement recorded for proposal: '
-                '${payload['title']}',
-            module: 'Adviser Endorsement',
-            details: {
-              'orgId': widget.orgId,
-              'proposalId': ref.id,
-              'adviserName': _adviserName,
-              'adviserRank': _adviserRank,
-            },
-          );
-        }
         _notifyAdminsOfProposal(
           title: payload['title'] as String,
           verb: 'submitted',
@@ -3885,9 +3685,7 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
           return;
         }
         if (selected) {
-          if (_selectedAudiences.length > 1) {
-            _selectedAudiences.remove(a);
-          }
+          _selectedAudiences.remove(a);
         } else {
           _selectedAudiences.add(a);
         }
@@ -3963,6 +3761,8 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
     final isEdit = widget.editDocId != null;
     return OrgModalShell(
       accentColor: UpriseColors.primaryDark,
+      headerColor: UpriseColors.primaryDark,
+      compactHeader: true,
       icon: isEdit ? Icons.edit_rounded : Icons.description_outlined,
       title: isEdit ? 'Edit Event Proposal' : 'Submit Event Proposal',
       width: 640,
@@ -4075,22 +3875,27 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
       children: [
         _buildStepHeader(),
         Flexible(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-            child: Form(
+          child: _step == 2
+              ? SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+                  child: _buildProposalForm(),
+                )
+              : Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+                  child: _buildProposalForm(),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProposalForm() {
+    return Form(
               key: _formKey,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  IndexedStack(
-                    index: _step,
-                    sizing: StackFit.loose,
-                    children: [
-                      _buildStepDetails(),
-                      _buildStepSchedule(),
-                      _buildStepAttachments(),
-                    ],
-                  ),
+                  _buildCurrentStep(),
                   if (_errorMsg != null) ...[
                     const SizedBox(height: 14),
                     Container(
@@ -4123,11 +3928,18 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
                   ],
                 ],
               ),
-            ),
-          ),
-        ),
-      ],
     );
+  }
+
+  Widget _buildCurrentStep() {
+    switch (_step) {
+      case 1:
+        return _buildStepSchedule();
+      case 2:
+        return _buildStepAttachments();
+      default:
+        return _buildStepDetails();
+    }
   }
 
   Widget _buildStepHeader() {
@@ -4532,9 +4344,6 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
           accentColor: UpriseColors.primaryDark,
           child: _buildAttachmentArea(),
         ),
-        const SizedBox(height: 20),
-        _buildEndorsementSection(),
-        const SizedBox(height: 20),
         _buildReviewSummary(),
       ],
     );
@@ -4553,10 +4362,10 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
       MapEntry('Date', _dateCtrl.text.trim()),
       MapEntry(
         'Time',
-        _startTimeCtrl.text.trim() + ' - ' + _endTimeCtrl.text.trim(),
+        '${_startTimeCtrl.text.trim()} - ${_endTimeCtrl.text.trim()}',
       ),
       MapEntry('Location', _locCtrl.text.trim()),
-      MapEntry('School year', _schoolYear + ' - ' + _semester),
+      MapEntry('School year', '$_schoolYear - $_semester'),
       MapEntry(
         'Capacity',
         _capacityCtrl.text.trim().isEmpty
@@ -4564,10 +4373,6 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
             : _capacityCtrl.text.trim(),
       ),
       MapEntry('Certificates', _issuesCertificate ? 'Yes' : 'No'),
-      MapEntry(
-        'Adviser endorsement',
-        _endorsedByAdviser ? 'Endorsed by $_adviserName' : 'Not endorsed',
-      ),
     ];
 
     return OrgModalSection(
@@ -5104,12 +4909,6 @@ class _ViewProposalModal extends StatelessWidget {
   String _fmt(dynamic ts) {
     if (ts == null) return '—';
     if (ts is Timestamp) return DateFormat('MMMM dd, yyyy').format(ts.toDate());
-    return ts.toString();
-  }
-
-  String _fmtTime(dynamic ts) {
-    if (ts == null) return '—';
-    if (ts is Timestamp) return DateFormat('h:mm a').format(ts.toDate());
     return ts.toString();
   }
 
@@ -5786,67 +5585,3 @@ class _ViewProposalModal extends StatelessWidget {
   }
 }
 
-// ─── Helper: Info Grid ─────────────────────────────────────────────
-class _InfoGrid extends StatelessWidget {
-  final List<Widget> children;
-  const _InfoGrid({required this.children});
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 16,
-      runSpacing: 12,
-      children: children.map((child) {
-        return SizedBox(
-          width: (MediaQuery.of(context).size.width - 24 * 2 - 16) / 2,
-          child: child,
-        );
-      }).toList(),
-    );
-  }
-}
-
-// ─── Helper: Info Item ─────────────────────────────────────────────
-class _InfoItem extends StatelessWidget {
-  final String label;
-  final String value;
-  final IconData icon;
-  const _InfoItem({
-    required this.label,
-    required this.value,
-    required this.icon,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(icon, size: 13, color: const Color(0xFF9AA5B4)),
-            const SizedBox(width: 5),
-            Text(
-              label,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: const Color(0xFF64748B),
-                letterSpacing: 0.4,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-            color: const Color(0xFF1A202C),
-          ),
-        ),
-      ],
-    );
-  }
-}

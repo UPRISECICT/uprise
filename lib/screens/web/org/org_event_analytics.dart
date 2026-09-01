@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../theme/org_theme.dart';
 import '../../../widgets/admin_export_button.dart';
+import '../../../widgets/stat_cards.dart';
 import 'export_util.dart';
 import 'export_pdf.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -859,13 +860,8 @@ class _KpiStatsRow extends StatelessWidget {
     );
   }
 
-  // Matches org_dashboard.dart's own stat card exactly (44×44 icon badge
-  // top-left, big number top-right in the same row, label below) instead
-  // of this screen's own smaller icon-stacked-above-value layout — that's
-  // the reference "this looks good" style the rest of the portal already
-  // uses, so this stat row should read as the same family, not a
-  // one-off. Now tappable — jumps to the chart section with more detail
-  // on that metric instead of just sitting there as a static number.
+  // Uses the shared Organization/Admin summary-card layout while retaining
+  // the existing tap action for each metric.
   Widget _kpiCard(
     String label,
     String value,
@@ -873,57 +869,12 @@ class _KpiStatsRow extends StatelessWidget {
     Color color,
     VoidCallback? onTap,
   ) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: _C.white,
-            borderRadius: BorderRadius.circular(_DS.radiusMd),
-            border: Border.all(color: _C.border.withAlpha(128)),
-            boxShadow: _DS.cardShadow,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: color.withAlpha(26),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    alignment: Alignment.center,
-                    child: Icon(icon, color: color, size: 20),
-                  ),
-                  Text(
-                    value,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
-                      color: _C.charcoal,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Text(
-                label,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                  color: _C.muted,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return StatCard(
+      label: label,
+      value: value,
+      icon: icon,
+      color: color,
+      onTap: onTap,
     );
   }
 }

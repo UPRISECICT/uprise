@@ -781,16 +781,8 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    Expanded(
-                      child: HomeQuickAction(
-                        icon: Icons.explore_outlined,
-                        label: 'Events',
-                        onTap: () {
-                          Navigator.pop(sheetContext);
-                          _switchTab(1, eventsSubTab: 0);
-                        },
-                      ),
-                    ),
+                    // No "Events" tile here — Events is a top-level nav tab,
+                    // so a shortcut to it would just duplicate the bar below.
                     Expanded(
                       child: HomeQuickAction(
                         icon: Icons.event_available_outlined,

@@ -486,7 +486,7 @@ class _StudentOrganizationsDetailsScreenState
                             Tab(text: 'About'),
                             Tab(text: 'Events'),
                             Tab(text: 'Announcements'),
-                            Tab(text: 'Shop'),
+                            Tab(text: 'Merch'),
                           ],
                         ),
                       ),

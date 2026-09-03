@@ -1349,18 +1349,11 @@ class _StudentIdCard extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          Container(
+                          Image.asset(
+                            'assets/images/logo.png',
                             width: 22,
                             height: 22,
-                            decoration: const BoxDecoration(
-                              color: kOrange,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.local_fire_department,
-                              color: Colors.white,
-                              size: 13,
-                            ),
+                            fit: BoxFit.contain,
                           ),
                           const SizedBox(width: 6),
                           const Text(
@@ -2380,40 +2373,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ],
                           ),
                         ),
-                        Container(
-                          decoration: BoxDecoration(
-                            color: kOrange.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: IconButton(
-                            icon: const Icon(Icons.edit_outlined, size: 20),
-                            color: kOrange,
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => EditProfileScreen(
-                                    profile: widget.profile,
-                                  ),
-                                ),
-                              );
-                            },
-                            padding: const EdgeInsets.all(8),
-                            constraints: const BoxConstraints(
-                              minWidth: 36,
-                              minHeight: 36,
-                            ),
-                          ),
-                        ),
                       ],
                     ),
                   ),
                 ),
 
                 // ── Account Settings ──
-                // No profile entry here: Personal Information lives on the
-                // profile page, and it's read-only, so a "settings" entry
-                // for it would be misleading.
+                // No profile entry here, and no edit affordance on the card
+                // above: Personal Information lives on the profile page, and
+                // it's read-only, so a "settings" entry for it would be
+                // misleading and a pencil icon doubly so.
                 _buildSectionHeader('ACCOUNT SETTINGS'),
                 _buildSettingsTile(
                   icon: Icons.notifications_none_rounded,

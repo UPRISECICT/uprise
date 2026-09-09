@@ -15,6 +15,7 @@ import '../../../theme/admin_theme.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/admin_stat_cards_row.dart';
 import '../../../widgets/app_confirmation_dialog.dart';
+import '../../../widgets/app_toast.dart';
 
 // Helper for image handling
 //
@@ -1058,8 +1059,12 @@ class _AdviserRolesState extends State<AdviserRoles> {
     final position =
         (data['adviserPosition'] ?? data['adviserRank'] ?? 'Faculty')
             .toString();
-    final archived = data['archived'] == true;
-    final orgId = data['orgId'] ?? '';
+    final orgId = (data['orgId'] ?? '').toString();
+    // Keep the action UI in sync with the Archived filter: a role is
+    // effectively archived when either the role itself or its organization
+    // is archived.
+    final archived =
+        data['archived'] == true || _archivedOrgIds.contains(orgId);
 
     final org = _orgs.firstWhere(
       (o) => o.id == orgId,
@@ -1353,11 +1358,15 @@ class _AdviserRolesState extends State<AdviserRoles> {
   // ── View dialog with photos ────────────────────────────────────────────────
   void _showViewDialog(Map<String, dynamic> data, String docId) {
     final rank = data['adviserRank'] ?? 'Instructor';
-    final archived = data['archived'] == true;
+    final orgId = (data['orgId'] ?? '').toString();
+    // Match the table/filter classification so an archived record never
+    // presents an Archive confirmation while its action is Restore.
+    final archived =
+        data['archived'] == true || _archivedOrgIds.contains(orgId);
     final orgName = data['orgName'] ?? '—';
     final orgTag = data['orgTag'] ?? '';
     final org = _orgs.firstWhere(
-      (o) => o.id == (data['orgId'] ?? ''),
+      (o) => o.id == orgId,
       orElse: () =>
           const OrgModel(id: '', name: '', abbrev: '', tag: '', logoUrl: ''),
     );
@@ -1937,19 +1946,9 @@ class _AdviserRolesState extends State<AdviserRoles> {
               // user returns to the list quickly. Refresh meta data in the
               // background without awaiting so the list updates when ready.
               if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      isEdit
-                          ? 'Adviser role updated.'
-                          : 'Adviser role assigned.',
-                    ),
-                    backgroundColor: const Color(0xFF059669),
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
+                AppToast.success(
+                  context,
+                  isEdit ? 'Adviser role updated.' : 'Adviser role assigned.',
                 );
               }
 
@@ -1959,19 +1958,9 @@ class _AdviserRolesState extends State<AdviserRoles> {
               // Trigger a local UI refresh immediately and show feedback.
               if (mounted) {
                 setState(() {});
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      isEdit
-                          ? 'Adviser role updated.'
-                          : 'Adviser role assigned.',
-                    ),
-                    backgroundColor: const Color(0xFF059669),
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
+                AppToast.success(
+                  context,
+                  isEdit ? 'Adviser role updated.' : 'Adviser role assigned.',
                 );
               }
 
@@ -2482,16 +2471,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
         );
         _loadMeta();
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Record archived.'),
-              backgroundColor: const Color(0xFF64748B),
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-          );
+          AppToast.success(context, 'Record archived.');
         }
       },
     );
@@ -2504,16 +2484,10 @@ class _AdviserRolesState extends State<AdviserRoles> {
     // still isn't.
     final orgIsActive = _orgs.any((o) => o.id == orgId);
     if (!orgIsActive) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '"$orgName" is archived — restore the organization first '
-            'before restoring its adviser.',
-          ),
-          backgroundColor: const Color(0xFF6B7280),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
+      AppToast.warning(
+        context,
+        '"$orgName" is archived — restore the organization first '
+        'before restoring its adviser.',
       );
       return;
     }
@@ -2537,16 +2511,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
         );
         _loadMeta();
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Record restored.'),
-              backgroundColor: const Color(0xFF059669),
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-          );
+          AppToast.success(context, 'Record restored.');
         }
       },
     );
@@ -2591,15 +2556,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
       final docs = _docsForExport;
       if (docs.isEmpty) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('No data to export.'),
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-          );
+          AppToast.info(context, 'No data to export.');
         }
         return;
       }
@@ -2652,16 +2609,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
       await AdminExportUtil.saveBytes(bytes, name, mimeType: xlsxMimeType);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Export failed: $e'),
-            backgroundColor: AdminColors.error,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        );
+        AppToast.error(context, 'Export failed: $e');
       }
     }
   }
@@ -2671,43 +2619,13 @@ class _AdviserRolesState extends State<AdviserRoles> {
       final docs = _docsForExport;
       if (docs.isEmpty) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('No data to export.'),
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-          );
+          AppToast.info(context, 'No data to export.');
         }
         return;
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Row(
-              children: [
-                SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                ),
-                SizedBox(width: 12),
-                Text('Generating PDF…'),
-              ],
-            ),
-            duration: const Duration(seconds: 6),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        );
+        AppToast.info(context, 'Generating PDF…');
       }
       // Lets the snackbar above actually paint before the synchronous
       // PDF table build/encode work below blocks the UI thread — otherwise
@@ -2754,21 +2672,9 @@ class _AdviserRolesState extends State<AdviserRoles> {
         'adviser_roles_$now.pdf',
         mimeType: 'application/pdf',
       );
-      if (mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Export failed: $e'),
-            backgroundColor: AdminColors.error,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        );
+        AppToast.error(context, 'Export failed: $e');
       }
     }
   }

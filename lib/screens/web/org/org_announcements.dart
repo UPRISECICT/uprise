@@ -16,6 +16,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../theme/org_theme.dart' as theme;
 import '../../../widgets/app_confirmation_dialog.dart';
+import '../../../widgets/app_toast.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design Tokens — mirrors StudentAccounts exactly
@@ -753,34 +754,11 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
   }
 
   void _snack(String msg, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(
-              isError ? Icons.error_outline : Icons.check_circle_outline,
-              color: Colors.white,
-              size: 16,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                msg,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: isError ? _C.error : _C.success,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(_DS.radiusSm),
-        ),
-      ),
-    );
+    if (isError) {
+      AppToast.error(context, msg);
+    } else {
+      AppToast.success(context, msg);
+    }
   }
 
   // Replaces the old hard-delete flow — announcements are soft-removed via
@@ -789,108 +767,21 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
   // post's content and history for good.
   Future<void> _toggleArchive(AnnouncementModel a) async {
     final archiving = !a.isArchived;
-    if (archiving) {
-      final confirm = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => Dialog(
-          // Was unset — Dialog falls back to Flutter's default Material
-          // surface color, which skews purple/lavender on this app's
-          // unseeded theme.
-          backgroundColor: _C.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(_DS.radiusLg),
-          ),
-          child: Container(
-            width: 420,
-            padding: const EdgeInsets.all(28),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: _C.warningBg,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(
-                        Icons.archive_outlined,
-                        color: _C.warning,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Text(
-                        'Archive Announcement',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                          color: _C.charcoal,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  'Archive "${a.title}"? It\'ll be hidden from the feed, but you can restore it anytime from the archive view.',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 14,
-                    color: _C.darkGray,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    OutlinedButton(
-                      onPressed: () => Navigator.pop(ctx, false),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: _C.borderSoft),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: Text(
-                        'Cancel',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 13,
-                          color: _C.textMid,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    ElevatedButton(
-                      onPressed: () => Navigator.pop(ctx, true),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _C.warning,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: Text(
-                        'Archive',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-      if (confirm != true) return;
-    }
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AppConfirmationDialog(
+        title: archiving ? 'Archive Announcement' : 'Restore Announcement',
+        message: archiving
+            ? 'Archive "${a.title}"? It will be hidden from the feed, but you can restore it anytime from the archive view.'
+            : 'Restore "${a.title}"? It will appear in the announcement feed again.',
+        confirmLabel: archiving ? 'Archive' : 'Restore',
+        accentColor: archiving ? _C.warning : _C.success,
+        icon: archiving
+            ? Icons.archive_outlined
+            : Icons.restore_rounded,
+      ),
+    );
+    if (confirm != true) return;
     try {
       await FirebaseFirestore.instance
           .collection('announcements')

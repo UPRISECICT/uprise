@@ -10,6 +10,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../theme/org_theme.dart';
+import '../../../widgets/app_toast.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens (mirrors merchandise & student accounts)
@@ -360,12 +361,7 @@ class _NotificationsTabState extends State<_NotificationsTab> {
       }, SetOptions(merge: true));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: UpriseColors.error,
-          ),
-        );
+        AppToast.error(context, 'Error: $e');
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -617,33 +613,18 @@ class _SecurityTabState extends State<_SecurityTab> {
       if (mounted) {
         _newEmailCtrl.clear();
         _emailPasswordCtrl.clear();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Verification link sent to $newEmail. Your login email '
-              'updates once you confirm it there.',
-            ),
-            backgroundColor: UpriseColors.success,
-          ),
+        AppToast.success(
+          context,
+          'Verification link sent to $newEmail. Your login email updates once you confirm it there.',
         );
       }
     } on FirebaseAuthException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_authErrorMessage(e)),
-            backgroundColor: UpriseColors.error,
-          ),
-        );
+        AppToast.error(context, _authErrorMessage(e));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: UpriseColors.error,
-          ),
-        );
+        AppToast.error(context, 'Error: $e');
       }
     } finally {
       if (mounted) setState(() => _isChangingEmail = false);
@@ -669,24 +650,14 @@ class _SecurityTabState extends State<_SecurityTab> {
         details: {'orgId': widget.orgId},
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Password updated successfully'),
-            backgroundColor: UpriseColors.success,
-          ),
-        );
+        AppToast.success(context, 'Password updated successfully');
         _currentPasswordCtrl.clear();
         _newPasswordCtrl.clear();
         _confirmPasswordCtrl.clear();
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.toString()}'),
-            backgroundColor: UpriseColors.error,
-          ),
-        );
+        AppToast.error(context, 'Error: ${e.toString()}');
       }
     } finally {
       if (mounted) setState(() => _isUpdating = false);

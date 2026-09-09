@@ -579,6 +579,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
   }) {
     final status = (data['status'] ?? 'pending').toString();
     final isArchived = data['isArchived'] == true;
+    final canArchive = status == 'approved' || status == 'rejected';
     final timestamp = data['timestamp'] as Timestamp?;
     final date = timestamp != null
         ? DateFormat('MMM dd, yyyy').format(timestamp.toDate())
@@ -793,7 +794,8 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                         ),
                       ],
 
-                      // Archive/Restore button - always visible for all statuses
+                      // Archive is available only after an admin decision.
+                      // Restore remains available for archived records.
                       const SizedBox(width: 6),
                       isArchived
                           ? _ActionIconButton(
@@ -808,13 +810,18 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                             )
                           : _ActionIconButton(
                               icon: Icons.archive_outlined,
-                              tooltip: 'Archive',
+                              tooltip: canArchive
+                                  ? 'Archive'
+                                  : 'Archive available after a decision',
                               color: const Color(0xFF6B7280),
-                              onTap: () => _archiveRequest(
-                                docId,
-                                data['orgName'] ?? 'Request',
-                                subject,
-                              ),
+                              enabled: canArchive,
+                              onTap: canArchive
+                                  ? () => _archiveRequest(
+                                      docId,
+                                      data['orgName'] ?? 'Request',
+                                      subject,
+                                    )
+                                  : null,
                             ),
                     ],
                   ),
@@ -1096,6 +1103,18 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     String orgName,
     String subject,
   ) async {
+    final request = await FirestoreCollections.letterRequests.doc(docId).get();
+    final status = (request.data() as Map<String, dynamic>?)?['status']?.toString().toLowerCase();
+    if (status != 'approved' && status != 'rejected') {
+      if (mounted) {
+        AppToast.warning(
+          context,
+          'Decide on this request before archiving it.',
+        );
+      }
+      return;
+    }
+
     final confirm = await _showActionConfirm(
       icon: Icons.archive_outlined,
       iconBg: const Color(0xFFFEF2F2),
@@ -3564,13 +3583,15 @@ class _ExportButton extends StatelessWidget {
 class _ActionIconButton extends StatelessWidget {
   final IconData icon;
   final String tooltip;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final Color color;
+  final bool enabled;
   const _ActionIconButton({
     required this.icon,
     required this.tooltip,
     required this.onTap,
     required this.color,
+    this.enabled = true,
   });
 
   @override
@@ -3579,15 +3600,19 @@ class _ActionIconButton extends StatelessWidget {
       message: tooltip,
       waitDuration: const Duration(milliseconds: 400),
       child: InkWell(
-        onTap: onTap,
+        onTap: enabled ? onTap : null,
         borderRadius: BorderRadius.circular(8),
         child: Container(
           padding: const EdgeInsets.all(7),
           decoration: BoxDecoration(
-            color: color.withAlpha(26),
+            color: (enabled ? color : const Color(0xFF94A3B8)).withAlpha(26),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(icon, size: 14, color: color),
+          child: Icon(
+            icon,
+            size: 14,
+            color: enabled ? color : const Color(0xFF94A3B8),
+          ),
         ),
       ),
     );

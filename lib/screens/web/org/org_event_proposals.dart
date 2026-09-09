@@ -19,6 +19,8 @@ import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/org_action_icon_button.dart';
 import '../../../widgets/org_attachment_preview.dart';
 import '../../../widgets/org_modal_shell.dart';
+import '../../../widgets/app_confirmation_dialog.dart';
+import '../../../widgets/app_toast.dart';
 import 'export_util.dart';
 import 'export_pdf.dart';
 import '../../../theme/org_theme.dart';
@@ -543,114 +545,14 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
   void _confirmArchive(String docId, String title) {
     showDialog(
       context: context,
-      barrierColor: Colors.black54,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        // No explicit background on this Container let Flutter's default
-        // (unseeded, purple-leaning) Material surface color bleed through —
-        // same root cause fixed in the Announcements composer and the
-        // dashboard's detail modal.
-        child: Container(
-          width: 420,
-          padding: const EdgeInsets.all(28),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF3F4F6),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.archive_outlined,
-                      color: Color(0xFF6B7280),
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Text(
-                    'Archive Proposal',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF1A202C),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Are you sure you want to archive "$title"? You can still view it in the archived filter. This action can be reversed.',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 14,
-                  color: const Color(0xFF64748B),
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  OutlinedButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFFE2E6EA)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
-                    child: Text(
-                      'Cancel',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        color: const Color(0xFF374151),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  ElevatedButton(
-                    onPressed: () async {
-                      Navigator.pop(ctx);
-                      await _archiveProposal(docId, title);
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF6B7280),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
-                    child: Text(
-                      'Archive',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+      builder: (_) => AppConfirmationDialog(
+        title: 'Archive Proposal',
+        message:
+            'Archive "$title"? You can still view and restore it from the archived filter.',
+        confirmLabel: 'Archive',
+        accentColor: const Color(0xFFF59E0B),
+        icon: Icons.archive_outlined,
+        onConfirm: () => _archiveProposal(docId, title),
       ),
     );
   }
@@ -671,29 +573,11 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
         details: {'orgId': widget.orgId, 'proposalId': docId, 'title': title},
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Proposal "$title" has been archived'),
-            backgroundColor: const Color(0xFF6B7280),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        );
+        AppToast.success(context, 'Proposal "$title" has been archived');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Archive failed: $e'),
-            backgroundColor: UpriseColors.error,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        );
+        AppToast.error(context, 'Archive failed: $e');
       }
     }
   }
@@ -3358,14 +3242,7 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
 
   void _showError(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        backgroundColor: UpriseColors.error,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
+    AppToast.error(context, msg);
   }
 
   // Parses a "h:mm a" string (e.g. "9:00 AM", from TimeOfDay.format) into

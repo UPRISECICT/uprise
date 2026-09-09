@@ -16,6 +16,7 @@ import '../../../widgets/certificate_preview.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/org_action_icon_button.dart';
 import '../../../widgets/org_modal_shell.dart';
+import '../../../widgets/app_toast.dart';
 
 // ─── STATUS SUMMARY ITEM ──────────────────────────────────────
 // One inline "Label 12" pair, not a card. Four stacked label-over-number
@@ -1586,17 +1587,9 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
 
   void _showToast(String msg, {bool isError = false}) {
     if (!mounted) return;
-    // Add a small delay to avoid Navigator conflicts
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(msg, style: GoogleFonts.beVietnamPro()),
-          backgroundColor: isError ? UpriseColors.error : UpriseColors.success,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      );
+      isError ? AppToast.error(context, msg) : AppToast.success(context, msg);
     });
   }
 

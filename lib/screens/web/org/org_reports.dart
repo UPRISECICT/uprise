@@ -24,6 +24,7 @@ import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/org_action_icon_button.dart';
 import '../../../widgets/org_attachment_preview.dart';
 import '../../../widgets/org_modal_shell.dart';
+import '../../../widgets/app_toast.dart';
 import '../../../widgets/stat_cards.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1540,20 +1541,7 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
 
   void _snack(String msg, {bool error = false}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          msg,
-          style: GoogleFonts.beVietnamPro(color: Colors.white),
-        ),
-        backgroundColor: error
-            ? const Color(0xFFDC2626)
-            : const Color(0xFF059669),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        margin: const EdgeInsets.all(16),
-      ),
-    );
+    error ? AppToast.error(context, msg) : AppToast.success(context, msg);
   }
 
   Future<bool?> _confirm({
@@ -2654,19 +2642,7 @@ class _ReportModalState extends State<_ReportModal> {
 
   void _snack(String msg, {bool error = false}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          msg,
-          style: GoogleFonts.beVietnamPro(color: Colors.white),
-        ),
-        backgroundColor: error
-            ? const Color(0xFFDC2626)
-            : const Color(0xFF059669),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
+    error ? AppToast.error(context, msg) : AppToast.success(context, msg);
   }
 
   // True when this modal was opened via the overdue-report "Upload now"

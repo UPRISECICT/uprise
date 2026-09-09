@@ -19,6 +19,7 @@ import '../../../widgets/admin_export_button.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/org_action_icon_button.dart';
 import '../../../widgets/org_modal_shell.dart';
+import '../../../widgets/app_toast.dart';
 import 'export_pdf.dart';
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../services/notification_service.dart';
@@ -216,43 +217,7 @@ Widget _attBadge(String status) {
 }
 
 void _toast(BuildContext ctx, String msg, {bool error = false}) {
-  ScaffoldMessenger.of(ctx)
-    ..clearSnackBars()
-    ..showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(
-              error
-                  ? Icons.error_outline_rounded
-                  : Icons.check_circle_outline_rounded,
-              color: Colors.white,
-              size: 16,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                msg,
-                style: GoogleFonts.beVietnamPro(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: error
-            ? const Color(0xFFDC2626)
-            : const Color(0xFF059669),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(_DS.radiusSm),
-        ),
-        margin: const EdgeInsets.all(16),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      ),
-    );
+  error ? AppToast.error(ctx, msg) : AppToast.success(ctx, msg);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

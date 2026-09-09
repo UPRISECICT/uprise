@@ -30,6 +30,7 @@ import '../../../theme/org_theme.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/org_modal_shell.dart';
 import '../../../widgets/admin_export_button.dart';
+import '../../../widgets/app_toast.dart';
 import '../../../utils/social_link_util.dart';
 import 'export_util.dart';
 import 'export_pdf.dart';
@@ -842,34 +843,7 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
 
   void _snack(String msg, {bool isError = false}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(
-              isError ? Icons.error_outline : Icons.check_circle_outline,
-              color: Colors.white,
-              size: 16,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                msg,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: isError ? _C.error : _C.success,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(_DS.radiusSm),
-        ),
-      ),
-    );
+    isError ? AppToast.error(context, msg) : AppToast.success(context, msg);
   }
 
   void _openEditProfile() {
@@ -3846,14 +3820,9 @@ class _HierarchyTreeState extends State<_HierarchyTree> {
     // create a cycle; that restructure belongs in the "Reports To" picker.
     if (a.parentId == b.id || b.parentId == a.id) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text(
-              "Can't swap a position with its own direct report — use "
-              '"Reports To" in the edit form instead.',
-            ),
-            backgroundColor: _C.error,
-          ),
+        AppToast.error(
+          context,
+          "Can't swap a position with its own direct report — use \"Reports To\" in the edit form instead.",
         );
       }
       return;
@@ -3910,12 +3879,7 @@ class _HierarchyTreeState extends State<_HierarchyTree> {
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Export failed: $e'),
-            backgroundColor: _C.error,
-          ),
-        );
+        AppToast.error(context, 'Export failed: $e');
       }
     } finally {
       if (mounted) setState(() => _isExporting = false);
@@ -4669,19 +4633,7 @@ class _EditOrgProfileSheetState extends State<_EditOrgProfileSheet> {
 
   void _snack(String msg, {bool isError = false}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          msg,
-          style: GoogleFonts.beVietnamPro(fontSize: 13, color: Colors.white),
-        ),
-        backgroundColor: isError ? _C.error : _C.success,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(_DS.radiusSm),
-        ),
-      ),
-    );
+    isError ? AppToast.error(context, msg) : AppToast.success(context, msg);
   }
 
   // 'Student Adviser' used to be a selectable type here, but it's really an
@@ -5447,19 +5399,7 @@ class _AddAdviserDialogState extends State<_AddAdviserDialog> {
 
   void _snack(String msg, {bool isError = false}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          msg,
-          style: GoogleFonts.beVietnamPro(fontSize: 13, color: Colors.white),
-        ),
-        backgroundColor: isError ? _C.error : _C.success,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(_DS.radiusSm),
-        ),
-      ),
-    );
+    isError ? AppToast.error(context, msg) : AppToast.success(context, msg);
   }
 
   Future<void> _save() async {
@@ -5989,19 +5929,7 @@ class _OfficerModalState extends State<_OfficerModal> {
 
   void _snack(String msg, {bool isError = false}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          msg,
-          style: GoogleFonts.beVietnamPro(fontSize: 13, color: Colors.white),
-        ),
-        backgroundColor: isError ? _C.error : _C.success,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(_DS.radiusSm),
-        ),
-      ),
-    );
+    isError ? AppToast.error(context, msg) : AppToast.success(context, msg);
   }
 
   @override

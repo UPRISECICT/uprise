@@ -735,6 +735,7 @@ class _EventProposalsState extends State<EventProposals> {
     required bool isLast,
   }) {
     final status = (data['status'] ?? 'pending') as String;
+    final canArchive = status == 'approved' || status == 'rejected';
     final isPublished = (data['publishedEventId'] ?? '').toString().isNotEmpty;
     final dateStr = _formatDate(data['date']);
     final orgId = data['orgId'] ?? '';
@@ -944,13 +945,18 @@ class _EventProposalsState extends State<EventProposals> {
                       if (status != 'archived')
                         _ActionIconButton(
                           icon: Icons.archive_outlined,
-                          tooltip: 'Archive',
+                          tooltip: canArchive
+                              ? 'Archive'
+                              : 'Archive available after a decision',
                           color: const Color(0xFF6B7280),
-                          onTap: () => _confirmSetStatus(
-                            docId,
-                            data['title'] ?? 'this event',
-                            'archived',
-                          ),
+                          enabled: canArchive,
+                          onTap: canArchive
+                              ? () => _confirmSetStatus(
+                                  docId,
+                                  data['title'] ?? 'this event',
+                                  'archived',
+                                )
+                              : null,
                         ),
                       if (status == 'archived')
                         _ActionIconButton(
@@ -1088,6 +1094,23 @@ class _EventProposalsState extends State<EventProposals> {
   // ── Actions ───────────────────────────────────────────────────────
 
   void _confirmSetStatus(String docId, String title, String newStatus) async {
+    if (newStatus == 'archived') {
+      final proposal = await FirebaseFirestore.instance
+          .collection('event_proposals')
+          .doc(docId)
+          .get();
+      final currentStatus = proposal.data()?['status']?.toString().toLowerCase();
+      if (currentStatus != 'approved' && currentStatus != 'rejected') {
+        if (_isMounted) {
+          AppToast.warning(
+            context,
+            'Decide on this proposal before archiving it.',
+          );
+        }
+        return;
+      }
+    }
+
     // Certificate-issuing proposals get a dedicated approval flow that
     // authorizes which admin signatory(ies) the org may use on this event's
     // certificates — plain approvals (or non-certificate events) keep the
@@ -1960,6 +1983,7 @@ class _EventProposalsState extends State<EventProposals> {
   // ── View Detail Dialog – with dedicated image preview ──
   void _showProposalDetailDialog(String docId, Map<String, dynamic> data) {
     final status = (data['status'] ?? 'pending') as String;
+    final canArchive = status == 'approved' || status == 'rejected';
     final isPublished = (data['publishedEventId'] ?? '').toString().isNotEmpty;
     final hasImage =
         data['imageBase64'] != null &&
@@ -2643,14 +2667,16 @@ class _EventProposalsState extends State<EventProposals> {
                         ],
                         if (status != 'archived')
                           OutlinedButton.icon(
-                            onPressed: () {
-                              Navigator.pop(ctx);
-                              _confirmSetStatus(
-                                docId,
-                                data['title'] ?? 'this event',
-                                'archived',
-                              );
-                            },
+                            onPressed: canArchive
+                                ? () {
+                                    Navigator.pop(ctx);
+                                    _confirmSetStatus(
+                                      docId,
+                                      data['title'] ?? 'this event',
+                                      'archived',
+                                    );
+                                  }
+                                : null,
                             icon: const Icon(Icons.archive_outlined, size: 15),
                             label: Text(
                               'Archive',
@@ -3402,13 +3428,15 @@ class _ExportProposalsButton extends StatelessWidget {
 class _ActionIconButton extends StatelessWidget {
   final IconData icon;
   final String tooltip;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final Color color;
+  final bool enabled;
   const _ActionIconButton({
     required this.icon,
     required this.tooltip,
     required this.onTap,
     required this.color,
+    this.enabled = true,
   });
 
   @override
@@ -3417,15 +3445,19 @@ class _ActionIconButton extends StatelessWidget {
       message: tooltip,
       waitDuration: const Duration(milliseconds: 400),
       child: InkWell(
-        onTap: onTap,
+        onTap: enabled ? onTap : null,
         borderRadius: BorderRadius.circular(8),
         child: Container(
           padding: const EdgeInsets.all(7),
           decoration: BoxDecoration(
-            color: color.withAlpha(26),
+            color: (enabled ? color : const Color(0xFF94A3B8)).withAlpha(26),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(icon, size: 14, color: color),
+          child: Icon(
+            icon,
+            size: 14,
+            color: enabled ? color : const Color(0xFF94A3B8),
+          ),
         ),
       ),
     );

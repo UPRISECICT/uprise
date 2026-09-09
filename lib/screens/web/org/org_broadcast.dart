@@ -1486,29 +1486,13 @@ class _ChatThreadState extends State<_ChatThread> {
   Future<void> _confirmDeleteMessage(String messageId) async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(
-          'Delete message?',
-          style: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w700),
-        ),
-        content: Text(
-          'This removes it for both you and $_studentName. This can\'t be undone.',
-          style: GoogleFonts.beVietnamPro(fontSize: 13),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFDC2626),
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Delete'),
-          ),
-        ],
+      builder: (_) => AppConfirmationDialog(
+        title: 'Delete Message',
+        message:
+            'Delete this message for both you and $_studentName? This cannot be undone.',
+        confirmLabel: 'Delete',
+        accentColor: const Color(0xFFDC2626),
+        icon: Icons.delete_outline_rounded,
       ),
     );
     if (confirm != true) return;

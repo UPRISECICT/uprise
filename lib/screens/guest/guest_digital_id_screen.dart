@@ -354,15 +354,11 @@ class _DigitalIdCard extends StatelessWidget {
                       // UPRISE branding
                       Row(
                         children: [
-                          Container(
-                            width: 22, height: 22,
-                            decoration: const BoxDecoration(
-                                color: _kOrange,
-                                shape: BoxShape.circle),
-                            child: const Icon(
-                                Icons.local_fire_department,
-                                color: Colors.white,
-                                size: 13),
+                          Image.asset(
+                            'assets/images/logo.png',
+                            width: 22,
+                            height: 22,
+                            fit: BoxFit.contain,
                           ),
                           const SizedBox(width: 6),
                           Text('UPRISE',

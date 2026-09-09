@@ -1,44 +1,38 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-// Shared nav bar + footer + color palette for the admin marketing site
-// (Home / Features / About / Help). Kept in one file so all sections can
-// never visually drift apart.
-//
-// Palette mirrors the REAL admin portal scheme documented in
-// lib/theme/admin_theme.dart and used verbatim in admin_login.dart: gray is
-// the structural primary (backgrounds, icons, borders), blue carries
-// interactive/actionable elements (links, CTAs), and orange is reserved as
-// a single sparing accent — not spread across every icon/badge.
-class AdminSiteColors {
-  static const Color primary = Color(0xFF1E293B); // slate-800, structural
-  static const Color primaryLight = Color(0xFF475569);
-  static const Color blue = Color(0xFF2563EB); // interactive/CTA
-  static const Color blueDeep = Color(0xFF1E40AF);
-  static const Color orange = Color(0xFFF97316); // sparing accent only
-  static const Color navy = Color(0xFF0F172A);
-  static const Color ink = Color(0xFF111827);
+// Shared nav bar + footer + color palette for the org marketing site
+// (Home / Features / About / Help) — the exact structural mirror of the
+// admin portal's own marketing site (admin_site_chrome.dart), so the two
+// feel like the same product family. Only the palette and the copy differ:
+// org is warm/orange-forward (matches OrganizationLogin's cream page and
+// the real UPRISE brand mark) instead of admin's cool slate/blue.
+class OrgSiteColors {
+  static const Color accent = Color(0xFFF97316);
+  static const Color accentDeep = Color(0xFFEA580C);
+  static const Color slateDark = Color(0xFF1E1B16); // structural, nav/ink
+  static const Color slateMid = Color(0xFF6B7280);
+  static const Color navy = Color(0xFF0B1120);
+  static const Color ink = Color(0xFF1E1B16);
   static const Color inkSoft = Color(0xFF6B7280);
   static const Color inkFaint = Color(0xFFAEB4C4);
-  static const Color bg = Color(0xFFF8FAFC);
-  static const Color border = Color(0xFFE2E8F0);
-  // Semantic — matches AdminColors.success (admin_theme.dart) exactly, used
-  // only for the live-status pulse, not as a design accent.
+  static const Color bg = Color(0xFFFAFAF9);
+  static const Color border = Color(0xFFE7E2DC);
+  // Semantic — pulse dot only, not a design accent.
   static const Color success = Color(0xFF10B981);
 }
 
-enum AdminSiteSection { home, features, about, help }
+enum OrgSiteSection { home, features, about, help }
 
-// Faint dot-grid texture — the one "tech dashboard" motif reused behind the
-// hero and the dark researcher band, always at low alpha so it reads as
-// texture, not decoration.
-class DotGridBackground extends StatelessWidget {
+// Faint dot-grid texture — reused behind every section for the same
+// "abstract background" identity throughout the site.
+class OrgDotGridBackground extends StatelessWidget {
   final Color dotColor;
   final double spacing;
   final double dotRadius;
 
-  const DotGridBackground({
-    this.dotColor = AdminSiteColors.border,
+  const OrgDotGridBackground({
+    this.dotColor = OrgSiteColors.border,
     this.spacing = 26,
     this.dotRadius = 1.4,
     super.key,
@@ -48,7 +42,7 @@ class DotGridBackground extends StatelessWidget {
   Widget build(BuildContext context) {
     return IgnorePointer(
       child: CustomPaint(
-        painter: _DotGridPainter(
+        painter: _OrgDotGridPainter(
           color: dotColor,
           spacing: spacing,
           dotRadius: dotRadius,
@@ -59,12 +53,12 @@ class DotGridBackground extends StatelessWidget {
   }
 }
 
-class _DotGridPainter extends CustomPainter {
+class _OrgDotGridPainter extends CustomPainter {
   final Color color;
   final double spacing;
   final double dotRadius;
 
-  _DotGridPainter({
+  _OrgDotGridPainter({
     required this.color,
     required this.spacing,
     required this.dotRadius,
@@ -81,25 +75,22 @@ class _DotGridPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _DotGridPainter oldDelegate) =>
+  bool shouldRepaint(covariant _OrgDotGridPainter oldDelegate) =>
       oldDelegate.color != color ||
       oldDelegate.spacing != spacing ||
       oldDelegate.dotRadius != dotRadius;
 }
 
 // A single rotated, rounded-capsule gradient bar — the "abstract diagonal
-// streak" motif from the reference landing pages the site's background
-// was redone around, translated into brand colors instead of copying a
-// dark neon palette directly. Public (not the hero's private helper
-// anymore) so every section of the marketing site can share the same
-// background language instead of the hero being the only "designed" one.
-class DiagonalStreak extends StatelessWidget {
+// streak" motif, in org's own warm two-tone orange instead of admin's
+// orange/blue pairing (org's design language has no blue in it).
+class OrgDiagonalStreak extends StatelessWidget {
   final double width;
   final double height;
   final double angle;
   final List<Color> colors;
 
-  const DiagonalStreak({
+  const OrgDiagonalStreak({
     required this.width,
     required this.height,
     required this.angle,
@@ -130,16 +121,13 @@ class DiagonalStreak extends StatelessWidget {
 }
 
 // Drop-in background for any marketing-site section — dot-grid texture
-// plus four diagonal streaks fanned across the corners, so every section
-// (not just the hero) carries the same abstract-background identity.
-// `dark` swaps the streaks to a slightly higher-alpha mix appropriate for
-// a navy section (the Researchers band) instead of the low-alpha mix
-// tuned for text sitting on a near-white background everywhere else.
-class AbstractSectionBackdrop extends StatelessWidget {
+// plus four diagonal streaks fanned across the corners. `dark` swaps to a
+// higher-alpha mix appropriate for the navy footer / orange CTA bands.
+class OrgAbstractBackdrop extends StatelessWidget {
   final Widget child;
   final bool dark;
 
-  const AbstractSectionBackdrop({
+  const OrgAbstractBackdrop({
     required this.child,
     this.dark = false,
     super.key,
@@ -147,65 +135,60 @@ class AbstractSectionBackdrop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final blue = dark
-        ? const [Color(0x552563EB), Color(0x002563EB)]
-        : const [Color(0x332563EB), Color(0x002563EB)];
-    final orange = dark
-        ? const [Color(0x44F97316), Color(0x00F97316)]
-        : const [Color(0x26F97316), Color(0x00F97316)];
-    // Clipped here (not left to each call site to remember) — the streaks
-    // are deliberately positioned with negative offsets so they bleed
-    // toward the section's own edge, and forgetting to clip at even one
-    // of the many call sites would let a streak spill into the section
-    // next to it.
+    final warm = dark
+        ? const [Color(0x55F97316), Color(0x00F97316)]
+        : const [Color(0x30F97316), Color(0x00F97316)];
+    final deep = dark
+        ? const [Color(0x55EA580C), Color(0x00EA580C)]
+        : const [Color(0x22EA580C), Color(0x00EA580C)];
     return ClipRect(
       child: Stack(
         children: [
           Positioned.fill(
-            child: DotGridBackground(
+            child: OrgDotGridBackground(
               dotColor: dark
                   ? Colors.white.withAlpha(16)
-                  : AdminSiteColors.border,
+                  : OrgSiteColors.border,
             ),
           ),
           Positioned(
             top: -30,
             right: 80,
-            child: DiagonalStreak(
+            child: OrgDiagonalStreak(
               width: 240,
               height: 24,
               angle: -0.55,
-              colors: blue,
+              colors: warm,
             ),
           ),
           Positioned(
             top: 60,
             right: -70,
-            child: DiagonalStreak(
+            child: OrgDiagonalStreak(
               width: 190,
               height: 18,
               angle: -0.55,
-              colors: orange,
+              colors: deep,
             ),
           ),
           Positioned(
             bottom: -20,
             left: -60,
-            child: DiagonalStreak(
+            child: OrgDiagonalStreak(
               width: 220,
               height: 22,
               angle: -0.5,
-              colors: blue,
+              colors: warm,
             ),
           ),
           Positioned(
             bottom: 50,
             left: 100,
-            child: DiagonalStreak(
+            child: OrgDiagonalStreak(
               width: 160,
               height: 16,
               angle: -0.5,
-              colors: orange,
+              colors: deep,
             ),
           ),
           child,
@@ -215,18 +198,14 @@ class AbstractSectionBackdrop extends StatelessWidget {
   }
 }
 
-// A gradient blend between two adjacent sections' background colors,
-// dropped in as its own item in a page's Column between two Containers of
-// different solid colors — without it, every section reads as its own
-// disconnected box stacked on the next, with a hard line where one ends
-// and the other begins. This is what actually makes scrolling feel like
-// moving through one continuous page instead of flipping through cards.
-class SectionSeam extends StatelessWidget {
+// A gradient blend between two adjacent sections' background colors — the
+// "connected page" seam, same as admin's.
+class OrgSectionSeam extends StatelessWidget {
   final Color from;
   final Color to;
   final double height;
 
-  const SectionSeam({
+  const OrgSectionSeam({
     required this.from,
     required this.to,
     this.height = 56,
@@ -250,17 +229,13 @@ class SectionSeam extends StatelessWidget {
   }
 }
 
-// A single glowing gradient thread running the full height of a page's
-// scrollable content, sitting in the side gutter outside the centered
-// content column — a literal, exaggerated "this is all one page" spine
-// tying the hero all the way down to the footer, regardless of how many
-// differently-colored bands it passes behind. Meant to be the last child
-// of a Stack wrapping the page's Column, positioned so it stretches to
-// match the Column's own height.
-class PageSpine extends StatelessWidget {
+// A glowing gradient thread running the full height of the page's
+// scrollable content — same literal "this is all one page" spine as admin,
+// in org's own orange.
+class OrgPageSpine extends StatelessWidget {
   final double left;
 
-  const PageSpine({this.left = 10, super.key});
+  const OrgPageSpine({this.left = 10, super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -277,16 +252,16 @@ class PageSpine extends StatelessWidget {
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                AdminSiteColors.orange,
-                AdminSiteColors.blue,
-                AdminSiteColors.orange,
-                AdminSiteColors.blue,
-                AdminSiteColors.orange,
+                OrgSiteColors.accent,
+                OrgSiteColors.accentDeep,
+                OrgSiteColors.accent,
+                OrgSiteColors.accentDeep,
+                OrgSiteColors.accent,
               ],
             ),
             boxShadow: [
               BoxShadow(
-                color: AdminSiteColors.blue.withAlpha(90),
+                color: OrgSiteColors.accent.withAlpha(90),
                 blurRadius: 14,
                 spreadRadius: 1,
               ),
@@ -298,23 +273,22 @@ class PageSpine extends StatelessWidget {
   }
 }
 
-// Pulsing "system online" indicator — genuinely on-theme for an admin
-// console rather than arbitrary decoration.
-class LiveStatusBadge extends StatefulWidget {
+// Pulsing "system online" indicator — matches admin's LiveStatusBadge.
+class OrgLiveStatusBadge extends StatefulWidget {
   final String label;
   final bool dark;
 
-  const LiveStatusBadge({
+  const OrgLiveStatusBadge({
     this.label = 'All Systems Operational',
     this.dark = false,
     super.key,
   });
 
   @override
-  State<LiveStatusBadge> createState() => _LiveStatusBadgeState();
+  State<OrgLiveStatusBadge> createState() => _OrgLiveStatusBadgeState();
 }
 
-class _LiveStatusBadgeState extends State<LiveStatusBadge>
+class _OrgLiveStatusBadgeState extends State<OrgLiveStatusBadge>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
 
@@ -343,7 +317,7 @@ class _LiveStatusBadgeState extends State<LiveStatusBadge>
         border: Border.all(
           color: widget.dark
               ? Colors.white.withAlpha(30)
-              : AdminSiteColors.border,
+              : OrgSiteColors.border,
         ),
       ),
       child: Row(
@@ -356,10 +330,10 @@ class _LiveStatusBadgeState extends State<LiveStatusBadge>
               height: 7,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: AdminSiteColors.success,
+                color: OrgSiteColors.success,
                 boxShadow: [
                   BoxShadow(
-                    color: AdminSiteColors.success.withAlpha(
+                    color: OrgSiteColors.success.withAlpha(
                       (90 * _ctrl.value).round() + 40,
                     ),
                     blurRadius: 5 + 5 * _ctrl.value,
@@ -375,7 +349,7 @@ class _LiveStatusBadgeState extends State<LiveStatusBadge>
             style: GoogleFonts.beVietnamPro(
               fontSize: 11,
               fontWeight: FontWeight.w700,
-              color: widget.dark ? Colors.white : AdminSiteColors.ink,
+              color: widget.dark ? Colors.white : OrgSiteColors.ink,
               letterSpacing: 0.2,
             ),
           ),
@@ -386,14 +360,13 @@ class _LiveStatusBadgeState extends State<LiveStatusBadge>
 }
 
 // Nav bar is persistent chrome — Home/Features/About/Help swap the content
-// area below it in place (AnimatedSwitcher), never a page transition, so
-// "clicking a link" always feels like toggling a tab on the same page.
-class AdminSiteNavBar extends StatelessWidget {
-  final AdminSiteSection current;
-  final ValueChanged<AdminSiteSection> onSelect;
+// area below it in place (AnimatedSwitcher), never a page transition.
+class OrgSiteNavBar extends StatelessWidget {
+  final OrgSiteSection current;
+  final ValueChanged<OrgSiteSection> onSelect;
   final VoidCallback onLogin;
 
-  const AdminSiteNavBar({
+  const OrgSiteNavBar({
     required this.current,
     required this.onSelect,
     required this.onLogin,
@@ -405,14 +378,13 @@ class AdminSiteNavBar extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // A signature brand strip — a flat white bar with nothing but a
-        // shadow read as generic; this one line makes the page identifiable
-        // at a glance, even in a screenshot with no logo visible.
+        // Same brand strip as admin's nav — a signature line identifying
+        // the page even before the logo registers.
         Container(
           height: 3,
           decoration: const BoxDecoration(
             gradient: LinearGradient(
-              colors: [AdminSiteColors.orange, AdminSiteColors.blue],
+              colors: [OrgSiteColors.accent, OrgSiteColors.accentDeep],
             ),
           ),
         ),
@@ -431,11 +403,6 @@ class AdminSiteNavBar extends StatelessWidget {
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 1180),
-              // Decisions are driven by the width actually available to
-              // this row (post-padding, post-1180-cap) rather than raw
-              // screen width — that mismatch is exactly what let the pill
-              // claim more room than existed and clip/overflow at
-              // mid-range widths.
               child: LayoutBuilder(
                 builder: (_, c) {
                   final showChip = c.maxWidth >= 640;
@@ -462,29 +429,29 @@ class AdminSiteNavBar extends StatelessWidget {
       cursor: SystemMouseCursors.click,
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
-        onTap: () => onSelect(AdminSiteSection.home),
+        onTap: () => onSelect(OrgSiteSection.home),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _GlowLogo(
-                child: Image.asset(
-                  'assets/images/logo.png',
+              Image.asset(
+                'assets/images/logo.png',
+                width: 34,
+                height: 34,
+                errorBuilder: (_, __, ___) => Container(
                   width: 34,
                   height: 34,
-                  errorBuilder: (_, __, ___) => Container(
-                    width: 34,
-                    height: 34,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AdminSiteColors.primary,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [OrgSiteColors.accentDeep, OrgSiteColors.accent],
                     ),
-                    child: const Icon(
-                      Icons.shield_rounded,
-                      color: Colors.white,
-                      size: 17,
-                    ),
+                  ),
+                  child: const Icon(
+                    Icons.domain_rounded,
+                    color: Colors.white,
+                    size: 17,
                   ),
                 ),
               ),
@@ -494,7 +461,7 @@ class AdminSiteNavBar extends StatelessWidget {
                 style: GoogleFonts.beVietnamPro(
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
-                  color: AdminSiteColors.ink,
+                  color: OrgSiteColors.ink,
                   letterSpacing: 1.0,
                 ),
               ),
@@ -506,15 +473,15 @@ class AdminSiteNavBar extends StatelessWidget {
                     vertical: 3,
                   ),
                   decoration: BoxDecoration(
-                    color: AdminSiteColors.primary.withAlpha(16),
+                    color: OrgSiteColors.accentDeep.withAlpha(16),
                     borderRadius: BorderRadius.circular(100),
                   ),
                   child: Text(
-                    'ADMIN PORTAL',
+                    'ORGANIZATION PORTAL',
                     style: GoogleFonts.beVietnamPro(
                       fontSize: 9,
                       fontWeight: FontWeight.w700,
-                      color: AdminSiteColors.primary,
+                      color: OrgSiteColors.accentDeep,
                       letterSpacing: 1.0,
                     ),
                   ),
@@ -531,9 +498,9 @@ class AdminSiteNavBar extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: AdminSiteColors.bg,
+        color: OrgSiteColors.bg,
         borderRadius: BorderRadius.circular(100),
-        border: Border.all(color: AdminSiteColors.border),
+        border: Border.all(color: OrgSiteColors.border),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -541,26 +508,26 @@ class AdminSiteNavBar extends StatelessWidget {
           _NavPillItem(
             label: 'Home',
             icon: Icons.dashboard_rounded,
-            active: current == AdminSiteSection.home,
-            onTap: () => onSelect(AdminSiteSection.home),
+            active: current == OrgSiteSection.home,
+            onTap: () => onSelect(OrgSiteSection.home),
           ),
           _NavPillItem(
             label: 'Features',
             icon: Icons.grid_view_rounded,
-            active: current == AdminSiteSection.features,
-            onTap: () => onSelect(AdminSiteSection.features),
+            active: current == OrgSiteSection.features,
+            onTap: () => onSelect(OrgSiteSection.features),
           ),
           _NavPillItem(
             label: 'About',
             icon: Icons.info_outline_rounded,
-            active: current == AdminSiteSection.about,
-            onTap: () => onSelect(AdminSiteSection.about),
+            active: current == OrgSiteSection.about,
+            onTap: () => onSelect(OrgSiteSection.about),
           ),
           _NavPillItem(
             label: 'Help',
             icon: Icons.help_outline_rounded,
-            active: current == AdminSiteSection.help,
-            onTap: () => onSelect(AdminSiteSection.help),
+            active: current == OrgSiteSection.help,
+            onTap: () => onSelect(OrgSiteSection.help),
           ),
         ],
       ),
@@ -568,15 +535,12 @@ class AdminSiteNavBar extends StatelessWidget {
   }
 
   Widget _loginButton() {
-    // A gradient fill (via Ink, since ElevatedButton.styleFrom only takes a
-    // flat backgroundColor) instead of solid blue — a small bit of depth on
-    // the one button every visitor is meant to actually click.
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
         boxShadow: [
           BoxShadow(
-            color: AdminSiteColors.blue.withAlpha(60),
+            color: OrgSiteColors.accentDeep.withAlpha(60),
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),
@@ -590,7 +554,7 @@ class AdminSiteNavBar extends StatelessWidget {
             gradient: const LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [AdminSiteColors.blue, AdminSiteColors.blueDeep],
+              colors: [OrgSiteColors.accentDeep, OrgSiteColors.accent],
             ),
             borderRadius: BorderRadius.circular(10),
           ),
@@ -600,7 +564,7 @@ class AdminSiteNavBar extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
               child: Text(
-                'Admin Login',
+                'Org Login',
                 style: GoogleFonts.beVietnamPro(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
@@ -655,17 +619,14 @@ class _NavPillItemState extends State<_NavPillItem> {
                 ? const LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [
-                      AdminSiteColors.primary,
-                      AdminSiteColors.primaryLight,
-                    ],
+                    colors: [OrgSiteColors.accentDeep, OrgSiteColors.accent],
                   )
                 : null,
             borderRadius: BorderRadius.circular(100),
             boxShadow: widget.active
                 ? [
                     BoxShadow(
-                      color: AdminSiteColors.primary.withAlpha(70),
+                      color: OrgSiteColors.accentDeep.withAlpha(70),
                       blurRadius: 14,
                       offset: const Offset(0, 5),
                     ),
@@ -673,7 +634,7 @@ class _NavPillItemState extends State<_NavPillItem> {
                 : (_hovering
                       ? [
                           BoxShadow(
-                            color: AdminSiteColors.ink.withAlpha(15),
+                            color: OrgSiteColors.ink.withAlpha(15),
                             blurRadius: 8,
                             offset: const Offset(0, 2),
                           ),
@@ -686,7 +647,7 @@ class _NavPillItemState extends State<_NavPillItem> {
               Icon(
                 widget.icon,
                 size: 14,
-                color: widget.active ? Colors.white : AdminSiteColors.inkSoft,
+                color: widget.active ? Colors.white : OrgSiteColors.inkSoft,
               ),
               const SizedBox(width: 6),
               Text(
@@ -694,7 +655,7 @@ class _NavPillItemState extends State<_NavPillItem> {
                 style: GoogleFonts.beVietnamPro(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: widget.active ? Colors.white : AdminSiteColors.inkSoft,
+                  color: widget.active ? Colors.white : OrgSiteColors.inkSoft,
                 ),
               ),
             ],
@@ -705,55 +666,11 @@ class _NavPillItemState extends State<_NavPillItem> {
   }
 }
 
-// Subtle hover lift + glow on the wordmark logo — a small "alive" touch on
-// the one element present on every page.
-class _GlowLogo extends StatefulWidget {
-  final Widget child;
-
-  const _GlowLogo({required this.child});
-
-  @override
-  State<_GlowLogo> createState() => _GlowLogoState();
-}
-
-class _GlowLogoState extends State<_GlowLogo> {
-  bool _hovering = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hovering = true),
-      onExit: (_) => setState(() => _hovering = false),
-      child: AnimatedScale(
-        scale: _hovering ? 1.12 : 1.0,
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOut,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            boxShadow: _hovering
-                ? [
-                    BoxShadow(
-                      color: AdminSiteColors.blue.withAlpha(90),
-                      blurRadius: 16,
-                      spreadRadius: 1,
-                    ),
-                  ]
-                : [],
-          ),
-          child: widget.child,
-        ),
-      ),
-    );
-  }
-}
-
-class AdminSiteFooter extends StatelessWidget {
-  final ValueChanged<AdminSiteSection> onSelect;
+class OrgSiteFooter extends StatelessWidget {
+  final ValueChanged<OrgSiteSection> onSelect;
   final VoidCallback onTerms;
 
-  const AdminSiteFooter({
+  const OrgSiteFooter({
     required this.onSelect,
     required this.onTerms,
     super.key,
@@ -763,7 +680,7 @@ class AdminSiteFooter extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      color: AdminSiteColors.navy,
+      color: OrgSiteColors.navy,
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
       child: Center(
         child: ConstrainedBox(
@@ -774,7 +691,7 @@ class AdminSiteFooter extends StatelessWidget {
               final brand = MouseRegion(
                 cursor: SystemMouseCursors.click,
                 child: InkWell(
-                  onTap: () => onSelect(AdminSiteSection.home),
+                  onTap: () => onSelect(OrgSiteSection.home),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -787,10 +704,15 @@ class AdminSiteFooter extends StatelessWidget {
                           height: 26,
                           decoration: const BoxDecoration(
                             shape: BoxShape.circle,
-                            color: AdminSiteColors.primaryLight,
+                            gradient: LinearGradient(
+                              colors: [
+                                OrgSiteColors.accentDeep,
+                                OrgSiteColors.accent,
+                              ],
+                            ),
                           ),
                           child: const Icon(
-                            Icons.shield_rounded,
+                            Icons.domain_rounded,
                             color: Colors.white,
                             size: 14,
                           ),
@@ -813,33 +735,28 @@ class AdminSiteFooter extends StatelessWidget {
               final links = Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  for (final l in [
-                    ('About', () => onSelect(AdminSiteSection.about)),
-                    ('Help', () => onSelect(AdminSiteSection.help)),
-                    ('Terms & Privacy', onTerms),
-                  ])
-                    TextButton(
-                      onPressed: l.$2,
-                      style: TextButton.styleFrom(
-                        foregroundColor: AdminSiteColors.inkFaint,
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                      ),
-                      child: Text(
-                        l.$1,
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                        ),
+                  TextButton(
+                    onPressed: onTerms,
+                    style: TextButton.styleFrom(
+                      foregroundColor: OrgSiteColors.inkFaint,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    child: Text(
+                      'Terms & Privacy',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
+                  ),
                 ],
               );
               final copyright = Text(
-                '© ${DateTime.now().year} UPRISE · Bulacan State University',
+                '© ${DateTime.now().year} UPRISE Organization Portal',
                 textAlign: wide ? TextAlign.right : TextAlign.left,
                 style: GoogleFonts.beVietnamPro(
                   fontSize: 11.5,
-                  color: AdminSiteColors.inkFaint,
+                  color: OrgSiteColors.inkFaint,
                   height: 1.5,
                 ),
               );

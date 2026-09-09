@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../widgets/student/app_colors.dart';
+import '../../widgets/common/action_tile.dart';
 import '../../widgets/common/announcement_filter_bar.dart';
 import '../../widgets/common/image_viewer.dart';
 import '../../widgets/student/app_image.dart';
@@ -160,18 +161,10 @@ class _GuestAnnouncementsScreenState extends State<GuestAnnouncementsScreen> {
                           return Container(
                             margin: const EdgeInsets.only(bottom: 18),
 
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(18),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withAlpha(13),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-
+                            // Same borderless card token the student
+                            // announcements list uses; radius stays 18 to
+                            // keep this screen's existing geometry.
+                            decoration: kCardDecoration(radius: 18),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [

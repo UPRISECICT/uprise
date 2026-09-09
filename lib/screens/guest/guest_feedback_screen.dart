@@ -85,7 +85,11 @@ class _GuestFeedbackScreenState extends State<GuestFeedbackScreen>
   late final TabController _tabController =
       TabController(length: 2, vsync: this);
 
-  String get _email => GuestAuthService().email ?? '';
+  // Lowercased to match the write side: org_attendance_qr.dart lowercases
+  // guestEmail on every attendance write, and every other guest screen that
+  // queries by email (guest_participated_events_screen.dart, guest_events_
+  // screen.dart's registered-ids stream) already does the same on read.
+  String get _email => (GuestAuthService().email ?? '').toLowerCase();
 
   @override
   void initState() {

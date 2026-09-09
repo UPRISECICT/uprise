@@ -148,8 +148,9 @@ class _StudentOrganizationsScreenState extends State<StudentOrganizationsScreen>
   String? _feedKey;
   Future<List<_FeedItem>>? _feedFuture;
 
-  // Merchandise backs the "Media" pill. Fetched lazily so the default feed
-  // path costs nothing extra for students who never open that tab.
+  // Merchandise backs the "Merch" pill (the _FeedFilter member is still
+  // named `media`). Fetched lazily so the default feed path costs nothing
+  // extra for students who never open that tab.
   String? _mediaKey;
   Future<List<QueryDocumentSnapshot>>? _mediaFuture;
 
@@ -562,7 +563,8 @@ class _StudentOrganizationsScreenState extends State<StudentOrganizationsScreen>
     );
   }
 
-  /// "Media" is the campus merchandise catalogue, shown as an image grid.
+  /// The "Merch" pill: the campus merchandise catalogue, shown as an image
+  /// grid. Named `media` throughout for historical reasons.
   Widget _buildMediaSliver(String? myOrgId) {
     return FutureBuilder<List<QueryDocumentSnapshot>>(
       future: _getMedia(myOrgId),
@@ -1388,7 +1390,7 @@ class _FeedFilterPills extends StatelessWidget {
     (_FeedFilter.all, 'All'),
     (_FeedFilter.events, 'Events'),
     (_FeedFilter.announcements, 'Announcements'),
-    (_FeedFilter.media, 'Media'),
+    (_FeedFilter.media, 'Merch'),
   ];
 
   @override

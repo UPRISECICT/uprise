@@ -1206,6 +1206,10 @@ class RegistrationScreenState extends State<RegistrationScreen>
         );
         return;
       }
+      if (_phoneCtrl.text.trim().length < 11) {
+        _snack('Please enter an 11-digit mobile number.');
+        return;
+      }
     }
     if (_currentStep == 1) {
       if (_reasonCtrl.text.trim().isEmpty) {
@@ -1563,10 +1567,13 @@ class _PersonalStep extends StatelessWidget {
             _Field(
               label: 'Phone Number',
               controller: phoneCtrl,
-              hint: '+63 9XX XXX XXXX',
+              hint: '09XXXXXXXXX',
               icon: Icons.phone_outlined,
               keyboardType: TextInputType.phone,
-              isRequired: false,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(11),
+              ],
             ),
           ],
         ),
@@ -2368,6 +2375,7 @@ class _Field extends StatelessWidget {
   final TextInputType? keyboardType;
   final int maxLines;
   final bool isRequired;
+  final List<TextInputFormatter>? inputFormatters;
 
   const _Field({
     required this.label,
@@ -2377,6 +2385,7 @@ class _Field extends StatelessWidget {
     this.keyboardType,
     this.maxLines = 1,
     this.isRequired = true,
+    this.inputFormatters,
   });
 
   @override
@@ -2406,6 +2415,7 @@ class _Field extends StatelessWidget {
           controller: controller,
           keyboardType: keyboardType,
           maxLines: maxLines,
+          inputFormatters: inputFormatters,
           style: GoogleFonts.beVietnamPro(fontSize: 14, color: Colors.black87),
           decoration: InputDecoration(
             hintText: hint,

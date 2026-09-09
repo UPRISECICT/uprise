@@ -4,27 +4,27 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import 'admin_site_chrome.dart';
+import 'org_site_chrome.dart';
 
-// About content — one continuous narrative (system → researchers → client
-// → organizations), not a stack of uniform bordered cards: a dark
-// full-bleed band for the team and a plain pull-quote for the client are
-// the two deliberate visual breaks that give the page rhythm.
-class AdminAboutContent extends StatefulWidget {
-  final ValueChanged<AdminSiteSection> onSelect;
+// Structural mirror of the admin portal's About page (admin_about_page.dart)
+// — same one-continuous-narrative shape (system → researchers → institution
+// → organizations), same dark full-bleed team band and plain pull-quote
+// break. Only the palette and copy are org-specific.
+class OrgAboutContent extends StatefulWidget {
+  final ValueChanged<OrgSiteSection> onSelect;
   final VoidCallback onTerms;
 
-  const AdminAboutContent({
+  const OrgAboutContent({
     required this.onSelect,
     required this.onTerms,
     super.key,
   });
 
   @override
-  State<AdminAboutContent> createState() => _AdminAboutContentState();
+  State<OrgAboutContent> createState() => _OrgAboutContentState();
 }
 
-class _AdminAboutContentState extends State<AdminAboutContent> {
+class _OrgAboutContentState extends State<OrgAboutContent> {
   late final Future<List<_OrgSummary>> _orgsFuture = _loadOrgs();
 
   Future<List<_OrgSummary>> _loadOrgs() async {
@@ -60,27 +60,24 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _buildHeader(),
-              const SectionSeam(from: Colors.white, to: AdminSiteColors.bg),
+              const OrgSectionSeam(from: Colors.white, to: OrgSiteColors.bg),
               _buildSystem(),
-              const SectionSeam(from: AdminSiteColors.bg, to: Colors.white),
+              const OrgSectionSeam(from: OrgSiteColors.bg, to: Colors.white),
               _buildComparison(),
-              const SectionSeam(from: Colors.white, to: AdminSiteColors.navy),
+              const OrgSectionSeam(from: Colors.white, to: OrgSiteColors.navy),
               _buildResearchers(),
-              const SectionSeam(
-                from: AdminSiteColors.navy,
-                to: AdminSiteColors.bg,
+              const OrgSectionSeam(
+                from: OrgSiteColors.navy,
+                to: OrgSiteColors.bg,
               ),
-              _buildClient(),
-              const SectionSeam(from: AdminSiteColors.bg, to: Colors.white),
+              _buildInstitution(),
+              const OrgSectionSeam(from: OrgSiteColors.bg, to: Colors.white),
               _buildOrgWall(),
-              const SectionSeam(from: Colors.white, to: AdminSiteColors.navy),
-              AdminSiteFooter(
-                onSelect: widget.onSelect,
-                onTerms: widget.onTerms,
-              ),
+              const OrgSectionSeam(from: Colors.white, to: OrgSiteColors.navy),
+              OrgSiteFooter(onSelect: widget.onSelect, onTerms: widget.onTerms),
             ],
           ),
-          const PageSpine(),
+          const OrgPageSpine(),
         ],
       ),
     );
@@ -90,7 +87,7 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
   Widget _buildHeader() {
     return Container(
       color: Colors.white,
-      child: AbstractSectionBackdrop(
+      child: OrgAbstractBackdrop(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 48, 24, 48),
           child: Center(
@@ -104,28 +101,28 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
                       vertical: 5,
                     ),
                     decoration: BoxDecoration(
-                      color: AdminSiteColors.primary.withAlpha(14),
+                      color: OrgSiteColors.accentDeep.withAlpha(14),
                       borderRadius: BorderRadius.circular(100),
-                      border: Border.all(color: AdminSiteColors.border),
+                      border: Border.all(color: OrgSiteColors.border),
                     ),
                     child: Text(
                       'ABOUT UPRISE',
                       style: GoogleFonts.beVietnamPro(
                         fontSize: 10.5,
                         fontWeight: FontWeight.w700,
-                        color: AdminSiteColors.primary,
+                        color: OrgSiteColors.accentDeep,
                         letterSpacing: 0.8,
                       ),
                     ),
                   ),
                   const SizedBox(height: 18),
                   Text(
-                    'Built for CICT, from the ground up',
+                    'Built for your organization, from the ground up',
                     textAlign: TextAlign.center,
                     style: GoogleFonts.beVietnamPro(
                       fontSize: 34,
                       fontWeight: FontWeight.w800,
-                      color: AdminSiteColors.ink,
+                      color: OrgSiteColors.ink,
                       letterSpacing: -0.6,
                     ),
                   ),
@@ -136,7 +133,7 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
                     textAlign: TextAlign.center,
                     style: GoogleFonts.beVietnamPro(
                       fontSize: 15,
-                      color: AdminSiteColors.inkSoft,
+                      color: OrgSiteColors.inkSoft,
                       height: 1.6,
                     ),
                   ),
@@ -154,9 +151,9 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
     const points = [
       (
         'One backend, three tailored front ends',
-        'Admins and org officers get the web console; students and guests '
-            'get the mobile app — all reading and writing the same live '
-            'Firebase data, never out of sync.',
+        'Officers get this web console; your members and guests get the '
+            'mobile app — all reading and writing the same live Firebase '
+            'data, never out of sync.',
       ),
       (
         'Role-based access, enforced end to end',
@@ -165,14 +162,14 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
       ),
       (
         'Nothing happens off the record',
-        'Approvals, account changes, and report submissions are all '
-            'written to a permanent, admin-visible activity log.',
+        'Every proposal, certificate, and report your organization '
+            'submits is written to a permanent activity log.',
       ),
     ];
 
     return Container(
-      color: AdminSiteColors.bg,
-      child: AbstractSectionBackdrop(
+      color: OrgSiteColors.bg,
+      child: OrgAbstractBackdrop(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 64),
           child: Center(
@@ -191,7 +188,7 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 26,
                           fontWeight: FontWeight.w800,
-                          color: AdminSiteColors.ink,
+                          color: OrgSiteColors.ink,
                           letterSpacing: -0.4,
                         ),
                       ),
@@ -207,7 +204,7 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
                                 style: GoogleFonts.beVietnamPro(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w800,
-                                  color: AdminSiteColors.blue,
+                                  color: OrgSiteColors.accentDeep,
                                 ),
                               ),
                               const SizedBox(width: 16),
@@ -220,7 +217,7 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
                                       style: GoogleFonts.beVietnamPro(
                                         fontSize: 14.5,
                                         fontWeight: FontWeight.w700,
-                                        color: AdminSiteColors.ink,
+                                        color: OrgSiteColors.ink,
                                       ),
                                     ),
                                     const SizedBox(height: 4),
@@ -228,7 +225,7 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
                                       points[i].$2,
                                       style: GoogleFonts.beVietnamPro(
                                         fontSize: 12.5,
-                                        color: AdminSiteColors.inkSoft,
+                                        color: OrgSiteColors.inkSoft,
                                         height: 1.55,
                                       ),
                                     ),
@@ -269,27 +266,30 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
       style: GoogleFonts.beVietnamPro(
         fontSize: 11.5,
         fontWeight: FontWeight.w700,
-        color: AdminSiteColors.blue,
+        color: OrgSiteColors.accentDeep,
         letterSpacing: 1.4,
       ),
     );
   }
 
-  // ── WHAT UPRISE REPLACES (plain spec-sheet list, no chip boxes) ────
+  // ── WHAT UPRISE REPLACES ────────────────────────────────────────────
   Widget _buildComparison() {
     const rows = [
       ('Paper event forms', 'In-app proposal → approval flow'),
       (
-        'Scattered enrollment spreadsheets',
-        'One roster, imported and provisioned in bulk',
+        'Manual attendance sheets',
+        'QR & webinar check-in with live rotating codes',
       ),
-      ('Email chains for status updates', 'Real-time in-app notifications'),
-      ('No record of who did what', 'Full, timestamped activity log'),
+      (
+        'Printed certificates, no proof',
+        'Digital certificates, publicly verifiable',
+      ),
+      ('Emailed financial reports', 'In-app submission with deadline tracking'),
     ];
 
     return Container(
       color: Colors.white,
-      child: AbstractSectionBackdrop(
+      child: OrgAbstractBackdrop(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 64),
           child: Center(
@@ -305,7 +305,7 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
                     style: GoogleFonts.beVietnamPro(
                       fontSize: 22,
                       fontWeight: FontWeight.w800,
-                      color: AdminSiteColors.ink,
+                      color: OrgSiteColors.ink,
                       letterSpacing: -0.4,
                     ),
                   ),
@@ -318,9 +318,9 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
                           rows[i].$1,
                           style: GoogleFonts.beVietnamPro(
                             fontSize: 13.5,
-                            color: AdminSiteColors.inkFaint,
+                            color: OrgSiteColors.inkFaint,
                             decoration: TextDecoration.lineThrough,
-                            decorationColor: AdminSiteColors.inkFaint,
+                            decorationColor: OrgSiteColors.inkFaint,
                           ),
                         );
                         final after = Text(
@@ -329,7 +329,7 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
                           style: GoogleFonts.beVietnamPro(
                             fontSize: 13.5,
                             fontWeight: FontWeight.w700,
-                            color: AdminSiteColors.ink,
+                            color: OrgSiteColors.ink,
                           ),
                         );
                         return Padding(
@@ -345,7 +345,7 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
                                       child: Icon(
                                         Icons.arrow_forward_rounded,
                                         size: 16,
-                                        color: AdminSiteColors.blue,
+                                        color: OrgSiteColors.accentDeep,
                                       ),
                                     ),
                                     Expanded(child: after),
@@ -363,7 +363,7 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
                       },
                     ),
                     if (i != rows.length - 1)
-                      const Divider(height: 1, color: AdminSiteColors.border),
+                      const Divider(height: 1, color: OrgSiteColors.border),
                   ],
                 ],
               ),
@@ -406,8 +406,8 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
 
     return Container(
       width: double.infinity,
-      color: AdminSiteColors.navy,
-      child: AbstractSectionBackdrop(
+      color: OrgSiteColors.navy,
+      child: OrgAbstractBackdrop(
         dark: true,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 72),
@@ -421,7 +421,7 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
                     style: GoogleFonts.beVietnamPro(
                       fontSize: 11.5,
                       fontWeight: FontWeight.w700,
-                      color: AdminSiteColors.orange,
+                      color: OrgSiteColors.accent,
                       letterSpacing: 1.4,
                     ),
                   ),
@@ -459,11 +459,11 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
     );
   }
 
-  // ── THE CLIENT — plain pull-quote, no card chrome ──────────────────
-  Widget _buildClient() {
+  // ── THE INSTITUTION — plain pull-quote, no card chrome ─────────────
+  Widget _buildInstitution() {
     return Container(
-      color: AdminSiteColors.bg,
-      child: AbstractSectionBackdrop(
+      color: OrgSiteColors.bg,
+      child: OrgAbstractBackdrop(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 72),
           child: Center(
@@ -471,9 +471,6 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
               constraints: const BoxConstraints(maxWidth: 760),
               child: Column(
                 children: [
-                  // The client's own emblem, front and center — this section
-                  // was pure text with nothing to visually anchor "the
-                  // client" it's describing.
                   Container(
                     width: 92,
                     height: 92,
@@ -483,7 +480,7 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: AdminSiteColors.ink.withAlpha(20),
+                          color: OrgSiteColors.ink.withAlpha(20),
                           blurRadius: 20,
                           offset: const Offset(0, 8),
                         ),
@@ -492,46 +489,46 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
                     child: Image.asset(
                       'assets/images/cict_logo.png',
                       fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => Icon(
+                      errorBuilder: (_, __, ___) => const Icon(
                         Icons.school_rounded,
-                        color: AdminSiteColors.blue,
+                        color: OrgSiteColors.accentDeep,
                         size: 36,
                       ),
                     ),
                   ),
                   const SizedBox(height: 24),
                   Text(
-                    '03 · THE CLIENT',
+                    '03 · THE INSTITUTION',
                     style: GoogleFonts.beVietnamPro(
                       fontSize: 11.5,
                       fontWeight: FontWeight.w700,
-                      color: AdminSiteColors.blue,
+                      color: OrgSiteColors.accentDeep,
                       letterSpacing: 1.4,
                     ),
                   ),
                   const SizedBox(height: 20),
                   Text(
-                    'One office, every organization.',
+                    'One recognized organization among many.',
                     textAlign: TextAlign.center,
                     style: GoogleFonts.beVietnamPro(
                       fontSize: 28,
                       fontWeight: FontWeight.w800,
-                      color: AdminSiteColors.ink,
+                      color: OrgSiteColors.ink,
                       height: 1.3,
                       letterSpacing: -0.5,
                     ),
                   ),
                   const SizedBox(height: 18),
                   Text(
-                    'Bulacan State University\'s College of Information and '
-                    'Communications Technology is the client — a single '
-                    'central admin account coordinating every recognized '
-                    'student organization under one system, instead of each '
-                    'one running independently.',
+                    'Your organization operates under Bulacan State '
+                    'University\'s College of Information and '
+                    'Communications Technology — coordinated through a '
+                    'single admin office alongside every other recognized '
+                    'student organization on the system.',
                     textAlign: TextAlign.center,
                     style: GoogleFonts.beVietnamPro(
                       fontSize: 14.5,
-                      color: AdminSiteColors.inkSoft,
+                      color: OrgSiteColors.inkSoft,
                       height: 1.7,
                     ),
                   ),
@@ -548,7 +545,7 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
   Widget _buildOrgWall() {
     return Container(
       color: Colors.white,
-      child: AbstractSectionBackdrop(
+      child: OrgAbstractBackdrop(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 64),
           child: Center(
@@ -561,7 +558,7 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
                     style: GoogleFonts.beVietnamPro(
                       fontSize: 11.5,
                       fontWeight: FontWeight.w700,
-                      color: AdminSiteColors.blue,
+                      color: OrgSiteColors.accentDeep,
                       letterSpacing: 1.4,
                     ),
                   ),
@@ -572,7 +569,7 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
                     style: GoogleFonts.beVietnamPro(
                       fontSize: 22,
                       fontWeight: FontWeight.w800,
-                      color: AdminSiteColors.ink,
+                      color: OrgSiteColors.ink,
                       letterSpacing: -0.4,
                     ),
                   ),
@@ -584,7 +581,7 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
                         return const Padding(
                           padding: EdgeInsets.symmetric(vertical: 24),
                           child: CircularProgressIndicator(
-                            color: AdminSiteColors.blue,
+                            color: OrgSiteColors.accentDeep,
                           ),
                         );
                       }
@@ -594,7 +591,7 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
                           'No organizations are registered yet.',
                           style: GoogleFonts.beVietnamPro(
                             fontSize: 13,
-                            color: AdminSiteColors.inkSoft,
+                            color: OrgSiteColors.inkSoft,
                           ),
                         );
                       }
@@ -651,7 +648,7 @@ class _OrgBadge extends StatelessWidget {
             style: GoogleFonts.beVietnamPro(
               fontSize: 14,
               fontWeight: FontWeight.w700,
-              color: AdminSiteColors.ink,
+              color: OrgSiteColors.ink,
             ),
           ),
         ],
@@ -696,11 +693,9 @@ class _OrgBadge extends StatelessWidget {
       width: 92,
       height: 92,
       decoration: const BoxDecoration(
-        color: AdminSiteColors.bg,
+        color: OrgSiteColors.bg,
         shape: BoxShape.circle,
-        border: Border.fromBorderSide(
-          BorderSide(color: AdminSiteColors.border),
-        ),
+        border: Border.fromBorderSide(BorderSide(color: OrgSiteColors.border)),
       ),
       alignment: Alignment.center,
       child: Text(
@@ -708,15 +703,15 @@ class _OrgBadge extends StatelessWidget {
         style: GoogleFonts.beVietnamPro(
           fontSize: 30,
           fontWeight: FontWeight.w800,
-          color: AdminSiteColors.primary,
+          color: OrgSiteColors.accentDeep,
         ),
       ),
     );
   }
 }
 
-// Individual headshot placeholder + name/role — drop each person's photo in
-// at the given path and it replaces the placeholder automatically.
+// Individual headshot placeholder + name/role — same team as the admin
+// portal's About page (this is the same UPRISE, not a different product).
 class _ResearcherPhotoCard extends StatelessWidget {
   final String name;
   final String role;
@@ -783,7 +778,7 @@ class _ResearcherPhotoCard extends StatelessWidget {
   }
 }
 
-// Visual echoing the college's real role split (admin/org web console vs.
+// Visual echoing the real role split (org officer web console vs.
 // student/guest mobile app) converging on one Firebase backend.
 class _RoleDiagram extends StatelessWidget {
   const _RoleDiagram();
@@ -795,7 +790,7 @@ class _RoleDiagram extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AdminSiteColors.border),
+        border: Border.all(color: OrgSiteColors.border),
       ),
       child: Column(
         children: [
@@ -805,18 +800,18 @@ class _RoleDiagram extends StatelessWidget {
             alignment: WrapAlignment.center,
             children: [
               _RoleNode(
-                icon: Icons.admin_panel_settings_rounded,
-                label: 'Admin',
+                icon: Icons.domain_rounded,
+                label: 'Your Org',
                 sub: 'Web console',
               ),
               _RoleNode(
-                icon: Icons.groups_rounded,
-                label: 'Org Officers',
+                icon: Icons.admin_panel_settings_rounded,
+                label: 'CICT Admin',
                 sub: 'Web console',
               ),
               _RoleNode(
                 icon: Icons.school_rounded,
-                label: 'Students & Guests',
+                label: 'Members & Guests',
                 sub: 'Mobile app',
               ),
             ],
@@ -825,14 +820,14 @@ class _RoleDiagram extends StatelessWidget {
           const Icon(
             Icons.arrow_downward_rounded,
             size: 20,
-            color: AdminSiteColors.inkFaint,
+            color: OrgSiteColors.inkFaint,
           ),
           const SizedBox(height: 10),
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
             decoration: BoxDecoration(
-              color: AdminSiteColors.primary,
+              color: OrgSiteColors.slateDark,
               borderRadius: BorderRadius.circular(14),
             ),
             child: Row(
@@ -877,13 +872,13 @@ class _RoleNode extends StatelessWidget {
       width: 140,
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 10),
       decoration: BoxDecoration(
-        color: AdminSiteColors.bg,
+        color: OrgSiteColors.bg,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AdminSiteColors.border),
+        border: Border.all(color: OrgSiteColors.border),
       ),
       child: Column(
         children: [
-          Icon(icon, size: 22, color: AdminSiteColors.primary),
+          Icon(icon, size: 22, color: OrgSiteColors.accentDeep),
           const SizedBox(height: 8),
           Text(
             label,
@@ -891,7 +886,7 @@ class _RoleNode extends StatelessWidget {
             style: GoogleFonts.beVietnamPro(
               fontSize: 12.5,
               fontWeight: FontWeight.w700,
-              color: AdminSiteColors.ink,
+              color: OrgSiteColors.ink,
             ),
           ),
           const SizedBox(height: 2),
@@ -900,7 +895,7 @@ class _RoleNode extends StatelessWidget {
             textAlign: TextAlign.center,
             style: GoogleFonts.beVietnamPro(
               fontSize: 10.5,
-              color: AdminSiteColors.inkSoft,
+              color: OrgSiteColors.inkSoft,
             ),
           ),
         ],

@@ -3456,9 +3456,7 @@ class _DashboardHomeState extends State<DashboardHome> {
           ),
           tableHeader,
           if (isDesktop)
-            Expanded(
-              child: ListView(children: tableRows),
-            )
+            Expanded(child: ListView(children: tableRows))
           else
             ...tableRows,
         ],
@@ -3467,10 +3465,19 @@ class _DashboardHomeState extends State<DashboardHome> {
   }
 
   // ── Analytics overview — the default panel when no card is selected ──
+  // On desktop this sits inside the dashboard's Expanded content area (see
+  // build()), which gives it a fixed, viewport-dependent height — a bare
+  // Column here doesn't shrink or scroll, so on a slightly shorter window
+  // the chart card's natural height (padding + header + the chart's own
+  // 230px) can come out a few pixels taller than what's actually
+  // available, which renders as a hard "BOTTOM OVERFLOWED" banner instead
+  // of just scrolling the extra bit out of view.
   Widget _buildAnalyticsOverview(bool isMobile) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [_buildChartCard(isMobile)],
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [_buildChartCard(isMobile)],
+      ),
     );
   }
 
@@ -4764,6 +4771,12 @@ class _ActivityBarChart extends StatelessWidget {
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
+              // Default reservedSize (22) is just short of what a 6px top
+              // padding plus a fontSize-10 label actually needs — the gap
+              // was only ~3px, but fl_chart clips titles to a fixed box
+              // instead of growing it, so that shortfall rendered as a
+              // "BOTTOM OVERFLOWED" banner across the whole chart.
+              reservedSize: 28,
               getTitlesWidget: (v, _) {
                 final label = monthLabel(v.toInt());
                 final isSelected = label == selectedMonth;

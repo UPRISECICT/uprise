@@ -10,7 +10,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:image/image.dart' as img;
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../services/notification_service.dart';
 import '../../../services/proposal_review_log.dart';
@@ -66,6 +65,7 @@ Widget _buildImageFromBase64(
     return const SizedBox.shrink();
   }
 }
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1621,9 +1621,11 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
 
     return InkWell(
       hoverColor: const Color(0xFFF8F9FB),
-      onTap: (isPastEvent && isPublished)
-          ? () => _openLiveTrackerModal(data)
-          : () => _openViewModal(docId, data),
+      // Matches the row's own "View Details" action button — tapping the
+      // row used to jump straight to the attendance tracker for a past,
+      // published (i.e. approved) event, with no way to see the
+      // proposal's own info anymore once its date had passed.
+      onTap: () => _openViewModal(docId, data),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         decoration: BoxDecoration(
@@ -1755,10 +1757,16 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
                 alignment: Alignment.centerRight,
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    final onView = (isPastEvent && isPublished)
-                        ? () => _openLiveTrackerModal(data)
-                        : () => _openViewModal(docId, data);
-                    final viewIsAttendance = isPastEvent && isPublished;
+                    // Used to always reroute to the attendance/live-tracker
+                    // modal once an approved event was both past and
+                    // published, entirely replacing "View Details" — an
+                    // org could see attendance for a finished approved
+                    // event but never its own proposal info (schedule,
+                    // description, venue) again. View now always opens
+                    // the real details modal; participants/attendance
+                    // gets its own always-separate button below instead
+                    // of stealing View's slot.
+                    void onView() => _openViewModal(docId, data);
                     final onEdit = (!isPastEvent && status == 'pending')
                         ? () => _openEditModal(docId, data)
                         : null;
@@ -1772,7 +1780,11 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
                         (!isPastEvent && status == 'approved' && !isPublished)
                         ? () => _confirmPublish(docId, data)
                         : null;
-                    final onLiveTracker = (!isPastEvent && isPublished)
+                    // No longer gated on !isPastEvent — a published event
+                    // that already happened still has real participants
+                    // and attendance worth seeing, it's just no longer
+                    // "live".
+                    final onLiveTracker = isPublished
                         ? () => _openLiveTrackerModal(data)
                         : null;
                     final onArchive =
@@ -1796,7 +1808,7 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
                     if (!isWideView) {
                       return _ActionPopupButton(
                         onView: onView,
-                        viewIsAttendance: viewIsAttendance,
+                        isPastEvent: isPastEvent,
                         onEdit: onEdit,
                         onRevise: onRevise,
                         onFormBuilder: onFormBuilder,
@@ -1812,15 +1824,9 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
                       runSpacing: OrgTableStyle.actionIconGap,
                       children: [
                         OrgActionIconButton(
-                          icon: viewIsAttendance
-                              ? Icons.insights_outlined
-                              : Icons.visibility_outlined,
-                          tooltip: viewIsAttendance
-                              ? 'View Participants & Attendance'
-                              : 'View Details',
-                          color: viewIsAttendance
-                              ? const Color(0xFF059669)
-                              : const Color(0xFF3B82F6),
+                          icon: Icons.visibility_outlined,
+                          tooltip: 'View Details',
+                          color: const Color(0xFF3B82F6),
                           onTap: onView,
                         ),
                         if (onEdit != null)
@@ -1854,7 +1860,9 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
                         if (onLiveTracker != null)
                           OrgActionIconButton(
                             icon: Icons.insights_outlined,
-                            tooltip: 'Live Participants',
+                            tooltip: isPastEvent
+                                ? 'Participants & Attendance'
+                                : 'Live Participants',
                             color: const Color(0xFF059669),
                             onTap: onLiveTracker,
                           ),
@@ -2126,10 +2134,7 @@ class _ToolbarButton extends StatelessWidget {
 
 class _ActionPopupButton extends StatelessWidget {
   final VoidCallback onView;
-  // True when "View" has been rerouted to the participants/attendance
-  // tracker for a past, published event — swaps the icon/tooltip so the
-  // button doesn't silently do something different than it usually does.
-  final bool viewIsAttendance;
+  final bool isPastEvent;
   final VoidCallback? onEdit;
   final VoidCallback? onRevise;
   final VoidCallback? onFormBuilder;
@@ -2138,7 +2143,7 @@ class _ActionPopupButton extends StatelessWidget {
   final VoidCallback? onArchive;
   const _ActionPopupButton({
     required this.onView,
-    this.viewIsAttendance = false,
+    this.isPastEvent = false,
     this.onEdit,
     this.onRevise,
     this.onFormBuilder,
@@ -2173,11 +2178,9 @@ class _ActionPopupButton extends StatelessWidget {
       PopupMenuItem<VoidCallback>(
         value: onView,
         child: _menuRow(
-          viewIsAttendance
-              ? Icons.insights_outlined
-              : Icons.visibility_outlined,
-          viewIsAttendance ? const Color(0xFF059669) : const Color(0xFF3B82F6),
-          viewIsAttendance ? 'View Participants & Attendance' : 'View Details',
+          Icons.visibility_outlined,
+          const Color(0xFF3B82F6),
+          'View Details',
         ),
       ),
       if (onEdit != null)
@@ -2222,7 +2225,7 @@ class _ActionPopupButton extends StatelessWidget {
           child: _menuRow(
             Icons.insights_outlined,
             const Color(0xFF059669),
-            'Live Participants',
+            isPastEvent ? 'Participants & Attendance' : 'Live Participants',
           ),
         ),
       if (onArchive != null)
@@ -3891,43 +3894,43 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
 
   Widget _buildProposalForm() {
     return Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      key: _formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildCurrentStep(),
+          if (_errorMsg != null) ...[
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF2F2),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFFCA5A5)),
+              ),
+              child: Row(
                 children: [
-                  _buildCurrentStep(),
-                  if (_errorMsg != null) ...[
-                    const SizedBox(height: 14),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFEF2F2),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: const Color(0xFFFCA5A5)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.error_outline_rounded,
-                            size: 15,
-                            color: Color(0xFFDC2626),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _errorMsg!,
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 12,
-                                color: const Color(0xFF991B1B),
-                              ),
-                            ),
-                          ),
-                        ],
+                  const Icon(
+                    Icons.error_outline_rounded,
+                    size: 15,
+                    color: Color(0xFFDC2626),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _errorMsg!,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12,
+                        color: const Color(0xFF991B1B),
                       ),
                     ),
-                  ],
+                  ),
                 ],
               ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -5051,22 +5054,6 @@ class _ViewProposalModal extends StatelessWidget {
     final hasImage =
         data['imageBase64'] != null &&
         data['imageBase64'].toString().isNotEmpty;
-    // Decoded once so the left-side box can match the photo's own
-    // proportions (via AspectRatio below) instead of forcing every banner
-    // into one fixed box shape — that's what was leaving letterboxing gaps
-    // above/below or beside the image depending on how its ratio compared
-    // to the box's own. Falls back to a sensible 4:3 if decoding fails.
-    double imageAspectRatio = 4 / 3;
-    if (hasImage) {
-      try {
-        final decoded = img.decodeImage(
-          base64Decode(data['imageBase64'].toString()),
-        );
-        if (decoded != null && decoded.height > 0) {
-          imageAspectRatio = decoded.width / decoded.height;
-        }
-      } catch (_) {}
-    }
     final hasAttachment =
         data['attachmentBase64'] != null &&
         data['attachmentBase64'].toString().isNotEmpty;
@@ -5081,6 +5068,8 @@ class _ViewProposalModal extends StatelessWidget {
 
     return OrgModalShell(
       accentColor: UpriseColors.primaryDark,
+      headerColor: UpriseColors.primaryDark,
+      compactHeader: true,
       icon: Icons.event_note_rounded,
       title: data['title'] ?? 'Event Proposal',
       // Widened from 580 for the banner-left/details-right layout below —
@@ -5135,26 +5124,24 @@ class _ViewProposalModal extends StatelessWidget {
             if (hasImage) ...[
               Expanded(
                 flex: 4,
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    // Sized to the photo's own aspect ratio instead of a
-                    // fixed box — fills edge-to-edge with no letterboxing,
-                    // however tall or wide the original image actually is.
-                    child: AspectRatio(
-                      aspectRatio: imageAspectRatio,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8F9FB),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFFE2E6EA)),
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: _buildImageFromBase64(
-                          data['imageBase64']!,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  // Fills the whole column edge-to-edge regardless of the
+                  // source photo's own proportions — BoxFit.cover crops as
+                  // needed instead of shrinking the box to match the
+                  // image's ratio, which used to leave large dead-space
+                  // gaps above/below or beside an image whose ratio didn't
+                  // match this column's own tall, narrow shape.
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8F9FB),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFE2E6EA)),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: _buildImageFromBase64(
+                      data['imageBase64']!,
+                      fit: BoxFit.cover,
                     ),
                   ),
                 ),
@@ -5584,4 +5571,3 @@ class _ViewProposalModal extends StatelessWidget {
     }
   }
 }
-

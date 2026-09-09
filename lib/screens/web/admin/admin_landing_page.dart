@@ -160,19 +160,43 @@ class _HomeContent extends StatelessWidget {
         return false;
       },
       child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        // The spine sits in a Stack alongside the section Column — a
+        // separate widget outside any one section, so it visually threads
+        // through every color band underneath it instead of being clipped
+        // to whichever section happens to draw it.
+        child: Stack(
           children: [
-            _buildHero(context),
-            _RevealOnVisible(tick: scrollTick, child: _buildStatStrip()),
-            _RevealOnVisible(tick: scrollTick, child: _buildPullQuote()),
-            _RevealOnVisible(
-              tick: scrollTick,
-              child: _buildFeaturesPreview(context),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildHero(context),
+                const SectionSeam(from: AdminSiteColors.bg, to: Colors.white),
+                _RevealOnVisible(tick: scrollTick, child: _buildStatStrip()),
+                const SectionSeam(
+                  from: Colors.white,
+                  to: AdminSiteColors.primary,
+                ),
+                _RevealOnVisible(tick: scrollTick, child: _buildPullQuote()),
+                const SectionSeam(
+                  from: AdminSiteColors.primary,
+                  to: AdminSiteColors.bg,
+                ),
+                _RevealOnVisible(
+                  tick: scrollTick,
+                  child: _buildFeaturesPreview(context),
+                ),
+                const SectionSeam(from: AdminSiteColors.bg, to: Colors.white),
+                _RevealOnVisible(tick: scrollTick, child: _buildHowItWorks()),
+                const SectionSeam(from: Colors.white, to: AdminSiteColors.blue),
+                _RevealOnVisible(tick: scrollTick, child: _buildCtaBand()),
+                const SectionSeam(
+                  from: AdminSiteColors.blue,
+                  to: AdminSiteColors.navy,
+                ),
+                AdminSiteFooter(onSelect: onSelect, onTerms: onTerms),
+              ],
             ),
-            _RevealOnVisible(tick: scrollTick, child: _buildHowItWorks()),
-            _RevealOnVisible(tick: scrollTick, child: _buildCtaBand()),
-            AdminSiteFooter(onSelect: onSelect, onTerms: onTerms),
+            const PageSpine(),
           ],
         ),
       ),
@@ -184,11 +208,111 @@ class _HomeContent extends StatelessWidget {
     final viewportHeight = MediaQuery.of(context).size.height;
     return Container(
       constraints: BoxConstraints(minHeight: viewportHeight * 0.78),
-      color: AdminSiteColors.bg,
+      // Container's clipBehavior assertion requires an explicit decoration,
+      // not just `color` (which only becomes a decoration internally at
+      // build time, after that assertion already runs) — this crashed the
+      // whole page with "decoration != null || clipBehavior == Clip.none"
+      // the moment clipBehavior was added below.
+      decoration: const BoxDecoration(color: AdminSiteColors.bg),
+      // The abstract diagonal streaks below are sized loosely (some run
+      // past the corners on purpose, the way a poster bleeds off its own
+      // edge) — clip them to the hero's own bounds so that never leaks
+      // into the section above/below on a short viewport.
+      clipBehavior: Clip.hardEdge,
       child: _MouseSpotlight(
         child: Stack(
           children: [
+            // Abstract diagonal streaks, translated into the site's own
+            // light palette (low-alpha blue/orange fading to transparent)
+            // instead of copying a dark neon template wholesale — this is
+            // what actually turns the flat dotted field into a background
+            // with real motion and depth. The hero gets more of these than
+            // any other section (6 vs. the standard 4 in
+            // AbstractSectionBackdrop) since it's the one place meant to
+            // make the strongest first impression.
+            const Positioned(
+              top: -40,
+              right: 120,
+              child: DiagonalStreak(
+                width: 340,
+                height: 34,
+                angle: -0.55,
+                colors: [Color(0x332563EB), Color(0x002563EB)],
+              ),
+            ),
+            const Positioned(
+              top: 90,
+              right: -60,
+              child: DiagonalStreak(
+                width: 260,
+                height: 26,
+                angle: -0.55,
+                colors: [Color(0x26F97316), Color(0x00F97316)],
+              ),
+            ),
+            const Positioned(
+              top: -20,
+              right: 380,
+              child: DiagonalStreak(
+                width: 160,
+                height: 16,
+                angle: -0.55,
+                colors: [Color(0x1F2563EB), Color(0x002563EB)],
+              ),
+            ),
+            const Positioned(
+              bottom: 40,
+              left: -80,
+              child: DiagonalStreak(
+                width: 300,
+                height: 30,
+                angle: -0.5,
+                colors: [Color(0x2A2563EB), Color(0x002563EB)],
+              ),
+            ),
+            const Positioned(
+              bottom: -30,
+              left: 160,
+              child: DiagonalStreak(
+                width: 220,
+                height: 22,
+                angle: -0.5,
+                colors: [Color(0x1FF97316), Color(0x00F97316)],
+              ),
+            ),
+            const Positioned(
+              bottom: 140,
+              left: 40,
+              child: DiagonalStreak(
+                width: 140,
+                height: 14,
+                angle: -0.5,
+                colors: [Color(0x182563EB), Color(0x002563EB)],
+              ),
+            ),
             const Positioned.fill(child: DotGridBackground()),
+            // The right panel has its own warm glow behind the emblem —
+            // the left column had nothing to match it, which is what read
+            // as "empty" next to the much richer visual on the right.
+            Positioned(
+              top: -80,
+              left: -120,
+              child: IgnorePointer(
+                child: Container(
+                  width: 480,
+                  height: 480,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        AdminSiteColors.blue.withAlpha(20),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
               child: Center(
@@ -287,6 +411,12 @@ class _HomeContent extends StatelessWidget {
             letterSpacing: -1.0,
           ),
         ),
+        const SizedBox(height: 16),
+        // Echoes the orange accent rule under the CICT emblem's name on
+        // the right — a small, deliberate color rhyme tying the two
+        // halves of the hero together instead of them reading as two
+        // unrelated blocks side by side.
+        Container(width: 44, height: 3, color: AdminSiteColors.orange),
         const SizedBox(height: 18),
         Text(
           'Provision accounts, review organizations and events, oversee '
@@ -369,8 +499,12 @@ class _HomeContent extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 40),
+        // Real chip cards instead of a thin row of plain text — that row
+        // read as an afterthought and left the space beneath it looking
+        // bare; these carry actual visual weight and fill the column the
+        // way the CTA buttons above them do.
         Wrap(
-          spacing: 22,
+          spacing: 10,
           runSpacing: 10,
           children: [
             for (final c in const [
@@ -378,20 +512,38 @@ class _HomeContent extends StatelessWidget {
               ('Firebase-Secured Accounts', Icons.verified_user_rounded),
               ('Full Audit Trail', Icons.fact_check_rounded),
             ])
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(c.$2, size: 14, color: AdminSiteColors.primary),
-                  const SizedBox(width: 6),
-                  Text(
-                    c.$1,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AdminSiteColors.inkSoft,
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AdminSiteColors.border),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AdminSiteColors.ink.withAlpha(8),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
                     ),
-                  ),
-                ],
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(c.$2, size: 14, color: AdminSiteColors.primary),
+                    const SizedBox(width: 8),
+                    Text(
+                      c.$1,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AdminSiteColors.inkSoft,
+                      ),
+                    ),
+                  ],
+                ),
               ),
           ],
         ),
@@ -399,13 +551,18 @@ class _HomeContent extends StatelessWidget {
     );
   }
 
-  // Reserved for a real photo (campus, app-in-use, or org activity shot) —
-  // once one is dropped into assets/images/hero.jpg this becomes a real
-  // asymmetric photo panel instead of a placeholder. The floating badges
-  // are built to overlap a real photo's edges, not just decorate a void.
+  // No campus/app-activity photo exists to put here, so rather than leave
+  // a "photo goes here" stub forever, this panel makes CICT itself the
+  // hero image — the college is the system's origin (every admin, org,
+  // and event on UPRISE traces back to it), so its emblem earns center
+  // stage instead of a generic screenshot.
   Widget _heroVisual() {
     return AspectRatio(
-      aspectRatio: 4 / 5,
+      // Was 4/5 — with the internal content now centered rather than
+      // stretched across spaceBetween, that ratio left a visibly taller
+      // panel than the (now more compact) content needed, and pushed the
+      // bottom floating badge past typical viewport height.
+      aspectRatio: 4 / 4.3,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
@@ -413,9 +570,14 @@ class _HomeContent extends StatelessWidget {
             child: Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(28),
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [AdminSiteColors.blueDeep, AdminSiteColors.navy],
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: AdminSiteColors.blue.withAlpha(35),
+                    color: AdminSiteColors.blue.withAlpha(60),
                     blurRadius: 40,
                     offset: const Offset(0, 20),
                   ),
@@ -423,11 +585,7 @@ class _HomeContent extends StatelessWidget {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(28),
-                child: Image.asset(
-                  'assets/images/hero.jpg',
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _heroPlaceholder(),
-                ),
+                child: const _CictEmblemPanel(),
               ),
             ),
           ),
@@ -476,46 +634,6 @@ class _HomeContent extends StatelessWidget {
     );
   }
 
-  Widget _heroPlaceholder() {
-    return Container(
-      decoration: BoxDecoration(
-        color: AdminSiteColors.primary.withAlpha(10),
-        border: Border.all(
-          color: AdminSiteColors.primary.withAlpha(60),
-          width: 1.5,
-        ),
-      ),
-      alignment: Alignment.center,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.add_photo_alternate_outlined,
-            size: 40,
-            color: AdminSiteColors.primary.withAlpha(140),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Hero photo goes here',
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w700,
-              color: AdminSiteColors.inkSoft,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            'assets/images/hero.jpg',
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 10.5,
-              color: AdminSiteColors.inkFaint,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   // ── STAT STRIP ────────────────────────────────────────────────────
   Widget _buildStatStrip() {
     const stats = [
@@ -545,27 +663,31 @@ class _HomeContent extends StatelessWidget {
 
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 36),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1180),
-          child: Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            runSpacing: 24,
-            children: [
-              for (final s in stats)
-                SizedBox(
-                  width: 260,
-                  child: _StatCard(
-                    icon: s.$1,
-                    numericValue: s.$2 == null ? null : int.parse(s.$2!),
-                    staticValue: s.$2 == null ? s.$3 : null,
-                    suffix: s.$2 == null ? '' : s.$3,
-                    label: s.$4,
-                    sub: s.$5,
-                  ),
-                ),
-            ],
+      child: AbstractSectionBackdrop(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 36),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1180),
+              child: Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                runSpacing: 24,
+                children: [
+                  for (final s in stats)
+                    SizedBox(
+                      width: 260,
+                      child: _StatCard(
+                        icon: s.$1,
+                        numericValue: s.$2 == null ? null : int.parse(s.$2!),
+                        staticValue: s.$2 == null ? s.$3 : null,
+                        suffix: s.$2 == null ? '' : s.$3,
+                        label: s.$4,
+                        sub: s.$5,
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -579,43 +701,39 @@ class _HomeContent extends StatelessWidget {
   Widget _buildPullQuote() {
     return Container(
       color: AdminSiteColors.primary,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: DotGridBackground(dotColor: Colors.white.withAlpha(18)),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 56),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 780),
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.format_quote_rounded,
-                      color: Colors.white.withAlpha(90),
-                      size: 32,
+      child: AbstractSectionBackdrop(
+        dark: true,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 56),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 780),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.format_quote_rounded,
+                    color: Colors.white.withAlpha(90),
+                    size: 32,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Built to replace paper event forms and scattered '
+                    'spreadsheets with a single system of record — for '
+                    'every organization in the college.',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                      height: 1.5,
+                      letterSpacing: -0.2,
                     ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Built to replace paper event forms and scattered '
-                      'spreadsheets with a single system of record — for '
-                      'every organization in the college.',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                        height: 1.5,
-                        letterSpacing: -0.2,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -642,70 +760,74 @@ class _HomeContent extends StatelessWidget {
 
     return Container(
       color: AdminSiteColors.bg,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 64),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1180),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Text(
-                'FULL SYSTEM OVERSIGHT',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w700,
-                  color: AdminSiteColors.blue,
-                  letterSpacing: 1.4,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'One console, every administrative task',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w800,
-                  color: AdminSiteColors.ink,
-                  letterSpacing: -0.4,
-                ),
-              ),
-              const SizedBox(height: 40),
-              Wrap(
-                spacing: 20,
-                runSpacing: 20,
-                alignment: WrapAlignment.center,
+      child: AbstractSectionBackdrop(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 64),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1180),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  for (var i = 0; i < preview.length; i++)
-                    _FeatureCard(
-                      index: i + 1,
-                      icon: preview[i].$1,
-                      title: preview[i].$2,
-                      subtitle: preview[i].$3,
+                  Text(
+                    'FULL SYSTEM OVERSIGHT',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: AdminSiteColors.blue,
+                      letterSpacing: 1.4,
                     ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'One console, every administrative task',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: AdminSiteColors.ink,
+                      letterSpacing: -0.4,
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+                  Wrap(
+                    spacing: 20,
+                    runSpacing: 20,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      for (var i = 0; i < preview.length; i++)
+                        _FeatureCard(
+                          index: i + 1,
+                          icon: preview[i].$1,
+                          title: preview[i].$2,
+                          subtitle: preview[i].$3,
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 28),
+                  TextButton(
+                    onPressed: () => onSelect(AdminSiteSection.features),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AdminSiteColors.blue,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'See all 6 features',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.arrow_forward_rounded, size: 16),
+                      ],
+                    ),
+                  ),
                 ],
               ),
-              const SizedBox(height: 28),
-              TextButton(
-                onPressed: () => onSelect(AdminSiteSection.features),
-                style: TextButton.styleFrom(
-                  foregroundColor: AdminSiteColors.blue,
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'See all 6 features',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    const Icon(Icons.arrow_forward_rounded, size: 16),
-                  ],
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -734,50 +856,60 @@ class _HomeContent extends StatelessWidget {
 
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 64),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1180),
-          child: Column(
-            children: [
-              Text(
-                'How administrators use UPRISE',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 26,
-                  fontWeight: FontWeight.w800,
-                  color: AdminSiteColors.ink,
-                  letterSpacing: -0.4,
-                ),
+      child: AbstractSectionBackdrop(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 64),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1180),
+              child: Column(
+                children: [
+                  Text(
+                    'How administrators use UPRISE',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 26,
+                      fontWeight: FontWeight.w800,
+                      color: AdminSiteColors.ink,
+                      letterSpacing: -0.4,
+                    ),
+                  ),
+                  const SizedBox(height: 36),
+                  LayoutBuilder(
+                    builder: (_, c) {
+                      final wide = c.maxWidth >= 800;
+                      final cards = [
+                        for (final s in steps)
+                          SizedBox(
+                            width: wide
+                                ? (c.maxWidth - 48) / 3
+                                : double.infinity,
+                            child: _StepCard(
+                              number: s.$1,
+                              title: s.$2,
+                              body: s.$3,
+                            ),
+                          ),
+                      ];
+                      return wide
+                          ? Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: cards,
+                            )
+                          : Column(
+                              children: [
+                                for (final card in cards) ...[
+                                  card,
+                                  const SizedBox(height: 16),
+                                ],
+                              ],
+                            );
+                    },
+                  ),
+                ],
               ),
-              const SizedBox(height: 36),
-              LayoutBuilder(
-                builder: (_, c) {
-                  final wide = c.maxWidth >= 800;
-                  final cards = [
-                    for (final s in steps)
-                      SizedBox(
-                        width: wide ? (c.maxWidth - 48) / 3 : double.infinity,
-                        child: _StepCard(number: s.$1, title: s.$2, body: s.$3),
-                      ),
-                  ];
-                  return wide
-                      ? Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: cards,
-                        )
-                      : Column(
-                          children: [
-                            for (final card in cards) ...[
-                              card,
-                              const SizedBox(height: 16),
-                            ],
-                          ],
-                        );
-                },
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -789,67 +921,72 @@ class _HomeContent extends StatelessWidget {
     return Container(
       width: double.infinity,
       color: AdminSiteColors.blue,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 52),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 700),
-          child: Column(
-            children: [
-              Text(
-                'Ready to manage the system?',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                  letterSpacing: -0.3,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'Sign in with your administrator credentials.',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 14,
-                  color: Colors.white.withAlpha(230),
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(40),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: TextButton(
-                  onPressed: onLogin,
-                  style: TextButton.styleFrom(
-                    foregroundColor: AdminSiteColors.blueDeep,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 28,
-                      vertical: 16,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: Text(
-                    'Continue to Admin Login',
+      child: AbstractSectionBackdrop(
+        dark: true,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 52),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 700),
+              child: Column(
+                children: [
+                  Text(
+                    'Ready to manage the system?',
+                    textAlign: TextAlign.center,
                     style: GoogleFonts.beVietnamPro(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      letterSpacing: -0.3,
                     ),
                   ),
-                ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Sign in with your administrator credentials.',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 14,
+                      color: Colors.white.withAlpha(230),
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withAlpha(40),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: TextButton(
+                      onPressed: onLogin,
+                      style: TextButton.styleFrom(
+                        foregroundColor: AdminSiteColors.blueDeep,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 28,
+                          vertical: 16,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        'Continue to Admin Login',
+                        style: GoogleFonts.beVietnamPro(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -936,90 +1073,113 @@ class _FeaturesContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Stack(
         children: [
-          Container(
-            color: Colors.white,
-            padding: const EdgeInsets.fromLTRB(24, 48, 24, 48),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 760),
-                child: Column(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AdminSiteColors.primary.withAlpha(14),
-                        borderRadius: BorderRadius.circular(100),
-                        border: Border.all(color: AdminSiteColors.border),
-                      ),
-                      child: Text(
-                        'EVERYTHING IN THE CONSOLE',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w700,
-                          color: AdminSiteColors.primary,
-                          letterSpacing: 0.8,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                color: Colors.white,
+                child: AbstractSectionBackdrop(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 48, 24, 48),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 760),
+                        child: Column(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AdminSiteColors.primary.withAlpha(14),
+                                borderRadius: BorderRadius.circular(100),
+                                border: Border.all(
+                                  color: AdminSiteColors.border,
+                                ),
+                              ),
+                              child: Text(
+                                'EVERYTHING IN THE CONSOLE',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: AdminSiteColors.primary,
+                                  letterSpacing: 0.8,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            Text(
+                              'Six modules. One console.',
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 34,
+                                fontWeight: FontWeight.w800,
+                                color: AdminSiteColors.ink,
+                                letterSpacing: -0.6,
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            Text(
+                              'Everything an admin needs to run CICT\'s student '
+                              'portal, in detail.',
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 15,
+                                color: AdminSiteColors.inkSoft,
+                                height: 1.6,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                    const SizedBox(height: 18),
-                    Text(
-                      'Six modules. One console.',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 34,
-                        fontWeight: FontWeight.w800,
-                        color: AdminSiteColors.ink,
-                        letterSpacing: -0.6,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    Text(
-                      'Everything an admin needs to run CICT\'s student '
-                      'portal, in detail.',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 15,
-                        color: AdminSiteColors.inkSoft,
-                        height: 1.6,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ),
-          Container(
-            color: AdminSiteColors.bg,
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 980),
-                child: Column(
-                  children: [
-                    for (var i = 0; i < _features.length; i++)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 20),
-                        child: _FeatureDetailRow(
-                          index: i + 1,
-                          icon: _features[i].$1,
-                          title: _features[i].$2,
-                          description: _features[i].$3,
-                          bullets: _features[i].$4,
-                          reversed: i.isOdd,
+              const SectionSeam(from: Colors.white, to: AdminSiteColors.bg),
+              Container(
+                color: AdminSiteColors.bg,
+                child: AbstractSectionBackdrop(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 24,
+                    ),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 980),
+                        child: Column(
+                          children: [
+                            for (var i = 0; i < _features.length; i++)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 20),
+                                child: _FeatureDetailRow(
+                                  index: i + 1,
+                                  icon: _features[i].$1,
+                                  title: _features[i].$2,
+                                  description: _features[i].$3,
+                                  bullets: _features[i].$4,
+                                  reversed: i.isOdd,
+                                ),
+                              ),
+                          ],
                         ),
                       ),
-                  ],
+                    ),
+                  ),
                 ),
               ),
-            ),
+              const SectionSeam(
+                from: AdminSiteColors.bg,
+                to: AdminSiteColors.navy,
+              ),
+              AdminSiteFooter(onSelect: onSelect, onTerms: onTerms),
+            ],
           ),
-          AdminSiteFooter(onSelect: onSelect, onTerms: onTerms),
+          const PageSpine(),
         ],
       ),
     );
@@ -1590,6 +1750,259 @@ class _SpotlightPainter extends CustomPainter {
 
 // Continuous gentle up/down drift — makes the floating badges read as
 // "alive" instead of static decoration.
+// The hero visual's centerpiece — CICT's own emblem standing in for a
+// campus/app photo that doesn't exist, dressed as a real designed panel
+// (dot texture, radial glow, an expanding pulse ring behind the disc)
+// rather than a bare logo dropped on a gradient.
+class _CictEmblemPanel extends StatelessWidget {
+  const _CictEmblemPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        DotGridBackground(dotColor: Colors.white.withAlpha(18)),
+        Center(
+          child: Container(
+            width: 300,
+            height: 300,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [Color(0x33F97316), Colors.transparent],
+              ),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 34),
+          child: Column(
+            // A naturally centered flow, not spaceBetween — that pattern
+            // stretched three unrelated islands across the panel's full
+            // height with dead gradient between them. There's also no
+            // internal top label anymore (it used to sit right on top of
+            // the "Firebase Secured" floating badge outside this panel,
+            // reading as two competing pills instead of one clean corner).
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 170,
+                    height: 170,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        _PulseRing(
+                          size: 170,
+                          color: Colors.white.withAlpha(60),
+                        ),
+                        _PulseRing(
+                          size: 170,
+                          color: Colors.white.withAlpha(60),
+                          delay: const Duration(milliseconds: 1000),
+                        ),
+                        Container(
+                          width: 124,
+                          height: 124,
+                          padding: const EdgeInsets.all(17),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withAlpha(70),
+                                blurRadius: 24,
+                                offset: const Offset(0, 10),
+                              ),
+                            ],
+                          ),
+                          child: Image.asset(
+                            'assets/images/cict_logo.png',
+                            fit: BoxFit.contain,
+                            errorBuilder: (_, __, ___) => const Icon(
+                              Icons.school_rounded,
+                              color: AdminSiteColors.blueDeep,
+                              size: 46,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'COLLEGE OF INFORMATION AND\nCOMMUNICATIONS TECHNOLOGY',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      height: 1.5,
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    width: 36,
+                    height: 2,
+                    color: AdminSiteColors.orange,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Bulacan State University · Est. 2001',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white.withAlpha(160),
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 40),
+              // What CICT "hands down to" — makes the emblem the root of a
+              // small hierarchy instead of a logo floating with nothing
+              // connected to it.
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'ONE COLLEGE, THREE PORTALS',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white.withAlpha(130),
+                      letterSpacing: 1,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _PortalChip(
+                        icon: Icons.admin_panel_settings_rounded,
+                        label: 'Admin',
+                      ),
+                      const SizedBox(width: 10),
+                      _PortalChip(
+                        icon: Icons.groups_rounded,
+                        label: 'Organizations',
+                      ),
+                      const SizedBox(width: 10),
+                      _PortalChip(
+                        icon: Icons.school_rounded,
+                        label: 'Students',
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// One node in the "hands down to" row under the CICT emblem.
+class _PortalChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  const _PortalChip({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withAlpha(14),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white.withAlpha(35)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: Colors.white.withAlpha(220)),
+          const SizedBox(height: 5),
+          Text(
+            label,
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 9.5,
+              fontWeight: FontWeight.w600,
+              color: Colors.white.withAlpha(190),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// A single expanding-and-fading ring, looped — reads as a soft radar
+// pulse behind the emblem disc. Two instances staggered by `delay` (see
+// _CictEmblemPanel) keep a ring perpetually mid-expansion instead of a
+// visible reset gap between cycles.
+class _PulseRing extends StatefulWidget {
+  final double size;
+  final Color color;
+  final Duration delay;
+  const _PulseRing({
+    required this.size,
+    required this.color,
+    this.delay = Duration.zero,
+  });
+
+  @override
+  State<_PulseRing> createState() => _PulseRingState();
+}
+
+class _PulseRingState extends State<_PulseRing>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2000),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(widget.delay, () {
+      if (mounted) _ctrl.repeat();
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (_, __) {
+        final t = _ctrl.value;
+        return Opacity(
+          opacity: (1 - t).clamp(0.0, 1.0),
+          child: Container(
+            width: widget.size * (0.7 + t * 0.4),
+            height: widget.size * (0.7 + t * 0.4),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: widget.color, width: 1.5),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _Bobbing extends StatefulWidget {
   final Widget child;
   final Duration duration;

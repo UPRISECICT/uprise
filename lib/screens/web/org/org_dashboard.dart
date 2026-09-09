@@ -1505,7 +1505,8 @@ class _OrgDashboardState extends State<OrgDashboard> {
       context: context,
       builder: (_) => AppConfirmationDialog(
         title: 'Confirm Logout',
-        message: 'Are you sure you want to sign out from the organization portal?',
+        message:
+            'Are you sure you want to sign out from the organization portal?',
         confirmLabel: 'Sign Out',
         accentColor: OrgColors.error,
         icon: Icons.logout_rounded,
@@ -3834,10 +3835,7 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
           borderRadius: BorderRadius.circular(_DS.radiusLg),
         ),
         child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: 460,
-            maxHeight: 560,
-          ),
+          constraints: BoxConstraints(maxWidth: 460, maxHeight: 560),
           child: Container(
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
@@ -3943,7 +3941,10 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                             Navigator.pop(ctx);
                             widget.onNavigateToTab?.call(navigateToTabIndex);
                           },
-                          icon: const Icon(Icons.arrow_forward_rounded, size: 15),
+                          icon: const Icon(
+                            Icons.arrow_forward_rounded,
+                            size: 15,
+                          ),
                           label: Text(
                             actionLabel,
                             style: GoogleFonts.beVietnamPro(
@@ -4213,6 +4214,13 @@ class _ActivityBarChart extends StatelessWidget {
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
+              // Default reservedSize (22) is just short of what a 6px top
+              // padding plus a fontSize-10 label actually needs — fl_chart
+              // clips titles to a fixed box instead of growing it, so that
+              // shortfall rendered as a "BOTTOM OVERFLOWED" banner across
+              // the whole chart. Same bug, same fix as admin_dashboard.dart's
+              // identical chart.
+              reservedSize: 28,
               getTitlesWidget: (v, _) {
                 final label = monthLabel(v.toInt());
                 final isSelected = label == selectedMonth;

@@ -4,14 +4,15 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../widgets/shared/app_support.dart'
     show kSupportEmailPrimary, kSupportEmailSecondary;
-import 'admin_site_chrome.dart';
+import 'org_site_chrome.dart';
 
-// Help content — categorized FAQ + a contact card.
-class AdminHelpContent extends StatelessWidget {
-  final ValueChanged<AdminSiteSection> onSelect;
+// Structural mirror of the admin portal's Help page (admin_help_page.dart)
+// — same categorized-FAQ + contact-card shape, org-specific questions.
+class OrgHelpContent extends StatelessWidget {
+  final ValueChanged<OrgSiteSection> onSelect;
   final VoidCallback onTerms;
 
-  const AdminHelpContent({
+  const OrgHelpContent({
     required this.onSelect,
     required this.onTerms,
     super.key,
@@ -23,33 +24,39 @@ class AdminHelpContent extends StatelessWidget {
       Icons.rocket_launch_rounded,
       [
         (
-          'I forgot my admin password — what do I do?',
-          'Use "Forgot password" on the Admin Login screen to receive a '
+          'I forgot my organization account password — what do I do?',
+          'Use "Forgot password" on the Org Login screen to receive a '
               'reset link at your registered email address.',
         ),
         (
-          'How do I create student accounts in bulk?',
-          'From Student Accounts, click "Batch Import," download the '
-              'Excel template, fill in one row per student, and upload '
-              'it. Each student gets a temporary password emailed '
-              'automatically.',
+          'How do I complete my organization\'s profile?',
+          'Log in with the temporary password your CICT Admin issued you, '
+              'set a permanent password, then fill in your organization\'s '
+              'profile from the dashboard.',
         ),
       ],
     ),
     (
-      'Managing the System',
+      'Managing Your Organization',
       Icons.dashboard_customize_rounded,
       [
         (
-          'How do I approve an organization\'s event or proposal?',
-          'Open the relevant proposal from the admin dashboard — you '
-              'can approve, reject, or archive it, and the organization '
-              'is notified either way.',
+          'How do I submit an event proposal?',
+          'From Event Proposals, click "New Proposal," fill in the event '
+              'details, and submit — you\'ll see its approval status '
+              'update in real time.',
         ),
         (
-          'Where can I see a history of actions taken in the system?',
-          'The Activity Logs section keeps a full, timestamped audit '
-              'trail of every significant action across the portal.',
+          'How do I issue certificates after an event?',
+          'From Certificates, generate a batch for the event — only '
+              'attendees who\'ve submitted feedback are eligible, then '
+              'send certificates individually or all at once.',
+        ),
+        (
+          'How do I submit financial or accomplishment reports?',
+          'From Report Submissions, open the finished event and submit '
+              'each report before its deadline — overdue ones are flagged '
+              'automatically.',
         ),
       ],
     ),
@@ -76,7 +83,7 @@ class AdminHelpContent extends StatelessWidget {
             children: [
               Container(
                 color: Colors.white,
-                child: AbstractSectionBackdrop(
+                child: OrgAbstractBackdrop(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(24, 48, 24, 48),
                     child: Center(
@@ -90,18 +97,16 @@ class AdminHelpContent extends StatelessWidget {
                                 vertical: 5,
                               ),
                               decoration: BoxDecoration(
-                                color: AdminSiteColors.primary.withAlpha(14),
+                                color: OrgSiteColors.accentDeep.withAlpha(14),
                                 borderRadius: BorderRadius.circular(100),
-                                border: Border.all(
-                                  color: AdminSiteColors.border,
-                                ),
+                                border: Border.all(color: OrgSiteColors.border),
                               ),
                               child: Text(
                                 'SUPPORT',
                                 style: GoogleFonts.beVietnamPro(
                                   fontSize: 10.5,
                                   fontWeight: FontWeight.w700,
-                                  color: AdminSiteColors.primary,
+                                  color: OrgSiteColors.accentDeep,
                                   letterSpacing: 0.8,
                                 ),
                               ),
@@ -113,18 +118,18 @@ class AdminHelpContent extends StatelessWidget {
                               style: GoogleFonts.beVietnamPro(
                                 fontSize: 34,
                                 fontWeight: FontWeight.w800,
-                                color: AdminSiteColors.ink,
+                                color: OrgSiteColors.ink,
                                 letterSpacing: -0.6,
                               ),
                             ),
                             const SizedBox(height: 14),
                             Text(
-                              'Answers to what admins ask most — grouped by what '
-                              'you\'re trying to do.',
+                              'Answers to what organizations ask most — '
+                              'grouped by what you\'re trying to do.',
                               textAlign: TextAlign.center,
                               style: GoogleFonts.beVietnamPro(
                                 fontSize: 15,
-                                color: AdminSiteColors.inkSoft,
+                                color: OrgSiteColors.inkSoft,
                                 height: 1.6,
                               ),
                             ),
@@ -135,10 +140,10 @@ class AdminHelpContent extends StatelessWidget {
                   ),
                 ),
               ),
-              const SectionSeam(from: Colors.white, to: AdminSiteColors.bg),
+              const OrgSectionSeam(from: Colors.white, to: OrgSiteColors.bg),
               Container(
-                color: AdminSiteColors.bg,
-                child: AbstractSectionBackdrop(
+                color: OrgSiteColors.bg,
+                child: OrgAbstractBackdrop(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 24,
@@ -161,7 +166,7 @@ class AdminHelpContent extends StatelessWidget {
                                           width: 34,
                                           height: 34,
                                           decoration: BoxDecoration(
-                                            color: AdminSiteColors.primary
+                                            color: OrgSiteColors.accentDeep
                                                 .withAlpha(14),
                                             borderRadius: BorderRadius.circular(
                                               10,
@@ -170,7 +175,7 @@ class AdminHelpContent extends StatelessWidget {
                                           child: Icon(
                                             cat.$2,
                                             size: 17,
-                                            color: AdminSiteColors.primary,
+                                            color: OrgSiteColors.accentDeep,
                                           ),
                                         ),
                                         const SizedBox(width: 12),
@@ -179,7 +184,7 @@ class AdminHelpContent extends StatelessWidget {
                                           style: GoogleFonts.beVietnamPro(
                                             fontSize: 16,
                                             fontWeight: FontWeight.w800,
-                                            color: AdminSiteColors.ink,
+                                            color: OrgSiteColors.ink,
                                           ),
                                         ),
                                       ],
@@ -206,14 +211,14 @@ class AdminHelpContent extends StatelessWidget {
                   ),
                 ),
               ),
-              const SectionSeam(
-                from: AdminSiteColors.bg,
-                to: AdminSiteColors.navy,
+              const OrgSectionSeam(
+                from: OrgSiteColors.bg,
+                to: OrgSiteColors.navy,
               ),
-              AdminSiteFooter(onSelect: onSelect, onTerms: onTerms),
+              OrgSiteFooter(onSelect: onSelect, onTerms: onTerms),
             ],
           ),
-          const PageSpine(),
+          const OrgPageSpine(),
         ],
       ),
     );
@@ -224,7 +229,7 @@ class AdminHelpContent extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: AdminSiteColors.primary,
+        color: OrgSiteColors.slateDark,
         borderRadius: BorderRadius.circular(18),
       ),
       child: LayoutBuilder(
@@ -286,7 +291,7 @@ class AdminHelpContent extends StatelessWidget {
           Uri(
             scheme: 'mailto',
             path: email,
-            query: 'subject=UPRISE Admin Portal Support',
+            query: 'subject=UPRISE Org Portal Support',
           ),
         ),
         child: Container(
@@ -301,7 +306,7 @@ class AdminHelpContent extends StatelessWidget {
               const Icon(
                 Icons.mail_outline_rounded,
                 size: 15,
-                color: AdminSiteColors.primary,
+                color: OrgSiteColors.accentDeep,
               ),
               const SizedBox(width: 8),
               Text(
@@ -309,7 +314,7 @@ class AdminHelpContent extends StatelessWidget {
                 style: GoogleFonts.beVietnamPro(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w700,
-                  color: AdminSiteColors.primary,
+                  color: OrgSiteColors.accentDeep,
                 ),
               ),
             ],
@@ -339,7 +344,7 @@ class _FaqItemState extends State<_FaqItem> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AdminSiteColors.border),
+        border: Border.all(color: OrgSiteColors.border),
       ),
       child: Column(
         children: [
@@ -361,7 +366,7 @@ class _FaqItemState extends State<_FaqItem> {
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
-                          color: AdminSiteColors.ink,
+                          color: OrgSiteColors.ink,
                         ),
                       ),
                     ),
@@ -371,7 +376,7 @@ class _FaqItemState extends State<_FaqItem> {
                       duration: const Duration(milliseconds: 200),
                       child: const Icon(
                         Icons.keyboard_arrow_down_rounded,
-                        color: AdminSiteColors.primary,
+                        color: OrgSiteColors.accentDeep,
                       ),
                     ),
                   ],
@@ -389,7 +394,7 @@ class _FaqItemState extends State<_FaqItem> {
                   widget.answer,
                   style: GoogleFonts.beVietnamPro(
                     fontSize: 13,
-                    color: AdminSiteColors.inkSoft,
+                    color: OrgSiteColors.inkSoft,
                     height: 1.6,
                   ),
                 ),

@@ -21,6 +21,12 @@ class AppNotification {
   final String orgName;
   final Map<String, dynamic>? data;
 
+  /// Which portal surface this notification belongs to.
+  /// null / absent = student (backward-compatible default).
+  /// 'organization' = org portal.
+  /// 'admin' = admin dashboard.
+  final String? portal;
+
   const AppNotification({
     required this.id,
     required this.title,
@@ -31,6 +37,7 @@ class AppNotification {
     required this.orgId,
     required this.orgName,
     this.data,
+    this.portal,
   });
 
   factory AppNotification.fromFirestore(DocumentSnapshot doc) {
@@ -45,8 +52,23 @@ class AppNotification {
       orgId: data['orgId'] ?? '',
       orgName: data['orgName'] ?? 'Organization',
       data: data['data'] as Map<String, dynamic>?,
+      portal: data['portal'] as String?,
     );
   }
+
+  /// Whether this notification belongs to the student surface.
+  /// Notifications without a portal field are treated as student-facing
+  /// for backward compatibility with existing data.
+  bool get isStudentFacing =>
+      portal == null || portal == '' || portal == 'student';
+}
+
+/// Whether a raw notification doc is student-facing. Used by streams that
+/// operate on [QueryDocumentSnapshot] directly (e.g. the unread badge)
+/// instead of the parsed [AppNotification] model.
+bool _isStudentNotification(QueryDocumentSnapshot doc) {
+  final portal = (doc.data() as Map<String, dynamic>)['portal'];
+  return portal == null || portal == '' || portal == 'student';
 }
 
 class StudentNotificationsScreen extends StatefulWidget {
@@ -151,6 +173,9 @@ class _StudentNotificationsScreenState
 
       final batch = FirebaseFirestore.instance.batch();
       for (final doc in snapshot.docs) {
+        // Only mark student-facing notifications — leave org/admin ones
+        // untouched so the other portals' unread state isn't affected.
+        if (!_isStudentNotification(doc)) continue;
         batch.update(doc.reference, {'isRead': true});
       }
       await batch.commit();
@@ -259,7 +284,9 @@ class _StudentNotificationsScreenState
                 .where('isRead', isEqualTo: false)
                 .snapshots(),
             builder: (context, snap) {
-              final hasUnread = snap.hasData && snap.data!.docs.isNotEmpty;
+              // Only count student-facing unread notifications.
+              final hasUnread = snap.hasData &&
+                  snap.data!.docs.any(_isStudentNotification);
               if (!hasUnread) return const SizedBox.shrink();
               return TextButton(
                 onPressed: _markAllAsRead,
@@ -324,11 +351,20 @@ class _StudentNotificationsScreenState
           return _EmptyState();
         }
 
+        // Filter to student-facing notifications only — org-portal and
+        // admin-dashboard notifications are excluded so a student who is
+        // also an org member doesn't see org-level items here.
         final all =
             snapshot.data!.docs
                 .map((d) => AppNotification.fromFirestore(d))
+                .where((n) => n.isStudentFacing)
                 .toList()
               ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+        if (all.isEmpty) {
+          return _EmptyState();
+        }
+
         final visible = all.take(50).toList();
 
         final now = DateTime.now();

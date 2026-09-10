@@ -22,7 +22,16 @@ class NotificationService {
     }
   }
 
-  // Send a single notification to a specific user
+  // Send a single notification to a specific user.
+  //
+  // [portal] tags which surface the notification belongs to so each portal
+  // can filter to its own notifications. Values used today:
+  //   'student'      – student-facing (default when omitted / null)
+  //   'organization' – org-portal-facing
+  //   'admin'        – admin-dashboard-facing
+  // Existing documents without a portal field are treated as student-facing
+  // by the student screen's client-side filter, so backfilling old rows is
+  // not required.
   static Future<void> sendToUser({
     required String userId,
     required String title,
@@ -30,6 +39,7 @@ class NotificationService {
     String type = 'general',
     String orgId = '',
     String orgName = '',
+    String? portal,
     Map<String, dynamic>? data,
   }) async {
     if (!await _isEnabledFor(userId)) return;
@@ -43,6 +53,7 @@ class NotificationService {
       'isRead': false,
       'createdAt': FieldValue.serverTimestamp(),
       'data': data ?? {},
+      if (portal != null) 'portal': portal,
     });
   }
 
@@ -72,10 +83,12 @@ class NotificationService {
       type: type,
       orgId: orgId,
       data: data,
+      portal: 'organization',
     );
   }
 
-  // Send a notification to all members of an organization
+  // Send a notification to all members of an organization.
+  // Tagged portal: 'organization' so student screens can filter them out.
   static Future<void> sendToOrgMembers({
     required String orgId,
     required String title,
@@ -106,6 +119,7 @@ class NotificationService {
         'isRead': false,
         'createdAt': FieldValue.serverTimestamp(),
         'data': data ?? {},
+        'portal': 'organization',
       });
     }
     await batch.commit();
@@ -145,6 +159,7 @@ class NotificationService {
         'isRead': false,
         'createdAt': FieldValue.serverTimestamp(),
         'data': data ?? {},
+        'portal': 'admin',
       });
     }
     await batch.commit();

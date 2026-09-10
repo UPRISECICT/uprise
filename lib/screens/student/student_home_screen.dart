@@ -80,8 +80,18 @@ EventCardData homeCarouselData(EventModel e) => EventCardData(
 
 String _formatCarouselDateTime(DateTime dt) {
   const months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
   const wdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
@@ -516,409 +526,428 @@ class _HomeContentState extends State<_HomeContent> {
         ),
       ),
       body: Container(
-      color: AppColors.background,
-      child: CustomScrollView(
-        slivers: [
-          // App Bar with Logo
-          SliverAppBar(
-            floating: true,
-            backgroundColor: Colors.white,
-            elevation: 0,
-            scrolledUnderElevation: 0,
-            bottom: const PreferredSize(
-              preferredSize: Size.fromHeight(1),
-              child: Divider(height: 1, thickness: 1, color: _UiTokens.divider),
-            ),
-            title: Row(
-              children: [
-                Image.asset(
-                  'assets/images/logo.png',
-                  height: 44,
-                  width: 44,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => const Icon(
-                    Icons.school,
-                    color: AppColors.primaryDark,
-                    size: 38,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                const Text(
-                  'UPRISE',
-                  style: TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.6,
-                    color: AppColors.primaryDark,
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              IconButton(
-                icon: const Icon(
-                  Icons.shopping_bag_outlined,
-                  color: AppColors.primaryDark,
-                  size: 22,
-                ),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const StudentMerchandiseScreen(),
-                    ),
-                  );
-                },
-              ),
-              StreamBuilder<QuerySnapshot>(
-                stream: _unreadNotifStream,
-                builder: (context, snapshot) {
-                  final unreadCount = snapshot.hasData
-                      ? snapshot.data!.docs.length
-                      : 0;
-
-                  return Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      IconButton(
-                        icon: const Icon(
-                          Icons.notifications_outlined,
-                          color: AppColors.primaryDark,
-                          size: 22,
-                        ),
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) =>
-                                  const StudentNotificationsScreen(),
-                            ),
-                          );
-                        },
-                      ),
-                      if (unreadCount > 0)
-                        Positioned(
-                          top: 6,
-                          right: 6,
-                          child: Container(
-                            padding: const EdgeInsets.all(3.5),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFC0392B),
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: Colors.white,
-                                width: 1.5,
-                              ),
-                            ),
-                            constraints: const BoxConstraints(
-                              minWidth: 16,
-                              minHeight: 16,
-                            ),
-                            child: Center(
-                              child: Text(
-                                unreadCount > 9 ? '9+' : '$unreadCount',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  );
-                },
-              ),
-              const SizedBox(width: 6),
-            ],
-          ),
-
-          // Offline indicator
-          if (_isOffline)
-            SliverToBoxAdapter(
-              child: Container(
-                color: const Color(0xFFF6EEDD),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 8,
-                ),
-                child: const Row(
-                  children: [
-                    Icon(
-                      Icons.wifi_off_rounded,
-                      size: 14,
-                      color: Color(0xFF8A6D1F),
-                    ),
-                    SizedBox(width: 8),
-                    Text(
-                      'Offline — showing cached data',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF8A6D1F),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
+        color: AppColors.background,
+        child: CustomScrollView(
+          slivers: [
+            // App Bar with Logo
+            SliverAppBar(
+              floating: true,
+              backgroundColor: Colors.white,
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              bottom: const PreferredSize(
+                preferredSize: Size.fromHeight(1),
+                child: Divider(
+                  height: 1,
+                  thickness: 1,
+                  color: _UiTokens.divider,
                 ),
               ),
-            ),
-
-          // Welcome Section
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              title: Row(
                 children: [
-                  RichText(
-                    text: TextSpan(
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                        color: _UiTokens.headingText,
-                        height: 1.2,
-                      ),
-                      children: [
-                        const TextSpan(
-                          text: 'Good day, ',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w500,
-                            color: _UiTokens.mutedText,
-                          ),
-                        ),
-                        TextSpan(
-                          text: userName,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: _UiTokens.headingText,
-                          ),
-                        ),
-                      ],
+                  Image.asset(
+                    'assets/images/logo.png',
+                    height: 44,
+                    width: 44,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const Icon(
+                      Icons.school,
+                      color: AppColors.primaryDark,
+                      size: 38,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(width: 10),
                   const Text(
-                    'Here\'s what\'s happening on campus today.',
+                    'UPRISE',
                     style: TextStyle(
-                      fontSize: 12.5,
-                      color: _UiTokens.mutedText,
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.6,
+                      color: AppColors.primaryDark,
                     ),
                   ),
                 ],
               ),
-            ),
-          ),
-
-          // ── Countdown — my registered events, refetched via
-          //     refreshData() (see _countdownRefreshToken above) ─────
-          SliverToBoxAdapter(
-            child: PersonalOrNextEventCountdown(
-              key: ValueKey(_countdownRefreshToken),
-              fetchMyRegisteredEvents: FirebaseAuth.instance.currentUser != null
-                  ? _fetchRegisteredEvents
-                  : null,
-            ),
-          ),
-
-          // Organizations for you — horizontal browse row, replaces the old
-          // Quick Actions row (those 4 shortcuts now live behind the FAB).
-          SliverToBoxAdapter(
-            child: FutureBuilder<List<QueryDocumentSnapshot>>(
-              future: _orgsPreviewFuture,
-              builder: (context, orgSnap) {
-                final docs = orgSnap.data ?? [];
-                if (docs.isEmpty) return const SizedBox.shrink();
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
-                      child: SectionHeader(
-                        title: 'Organizations for you',
-                        actionLabel: 'View all',
-                        onAction: () => widget.onNavigateToTab(2),
+              actions: [
+                IconButton(
+                  icon: const Icon(
+                    Icons.shopping_bag_outlined,
+                    color: AppColors.primaryDark,
+                    size: 22,
+                  ),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const StudentMerchandiseScreen(),
                       ),
-                    ),
-                    OrgPreviewRail(
+                    );
+                  },
+                ),
+                StreamBuilder<QuerySnapshot>(
+                  stream: _unreadNotifStream,
+                  builder: (context, snapshot) {
+                    final unreadCount = snapshot.hasData
+                        ? snapshot.data!.docs.where((doc) {
+                            final portal =
+                                (doc.data() as Map<String, dynamic>)['portal'];
+                            return portal == null ||
+                                portal == '' ||
+                                portal == 'student';
+                          }).length
+                        : 0;
+
+                    return Stack(
+                      alignment: Alignment.center,
                       children: [
-                        for (final doc in docs)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 12),
-                            child: OrgPreviewCard(
-                              name:
-                                  ((doc.data()
-                                              as Map<String, dynamic>)['name'] ??
-                                          'Organization')
-                                      .toString(),
-                              logoUrl:
-                                  (doc.data()
-                                      as Map<String, dynamic>)['logoUrl']
-                                  as String?,
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      StudentOrganizationsDetailsScreen(
-                                        orgId: doc.id,
-                                      ),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.notifications_outlined,
+                            color: AppColors.primaryDark,
+                            size: 22,
+                          ),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    const StudentNotificationsScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                        if (unreadCount > 0)
+                          Positioned(
+                            top: 6,
+                            right: 6,
+                            child: Container(
+                              padding: const EdgeInsets.all(3.5),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFC0392B),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white,
+                                  width: 1.5,
+                                ),
+                              ),
+                              constraints: const BoxConstraints(
+                                minWidth: 16,
+                                minHeight: 16,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  unreadCount > 9 ? '9+' : '$unreadCount',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                       ],
+                    );
+                  },
+                ),
+                const SizedBox(width: 6),
+              ],
+            ),
+
+            // Offline indicator
+            if (_isOffline)
+              SliverToBoxAdapter(
+                child: Container(
+                  color: const Color(0xFFF6EEDD),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 8,
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(
+                        Icons.wifi_off_rounded,
+                        size: 14,
+                        color: Color(0xFF8A6D1F),
+                      ),
+                      SizedBox(width: 8),
+                      Text(
+                        'Offline — showing cached data',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF8A6D1F),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            // Welcome Section
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    RichText(
+                      text: TextSpan(
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                          color: _UiTokens.headingText,
+                          height: 1.2,
+                        ),
+                        children: [
+                          const TextSpan(
+                            text: 'Good day, ',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w500,
+                              color: _UiTokens.mutedText,
+                            ),
+                          ),
+                          TextSpan(
+                            text: userName,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: _UiTokens.headingText,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Here\'s what\'s happening on campus today.',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: _UiTokens.mutedText,
+                      ),
                     ),
                   ],
-                );
-              },
-            ),
-          ),
-
-          // Upcoming Events Section Header
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
-              child: SectionHeader(
-                title: 'Upcoming Events',
-                actionLabel: 'View all',
-                // Discover tab is index 0 within Events.
-                onAction: () => widget.onNavigateToTab(1, eventsSubTab: 0),
+                ),
               ),
             ),
-          ),
 
-          // Upcoming Events — swipeable one-card carousel with arrow nav.
-          SliverToBoxAdapter(
-            child: FutureBuilder<List<EventModel>>(
-              future: _upcomingEventsFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-                    child: SkeletonLoader(count: 2, height: 120),
-                  );
-                }
-
-                // Re-filter on every rebuild, not just on fetch: the future is
-                // built once in initState and this State is kept alive by the
-                // IndexedStack, so without this an event that ends while the
-                // app is open would linger on the carousel.
-                final events =
-                    snapshot.data
-                        ?.where((e) => e.timeStatus != EventTimeStatus.completed)
-                        .toList() ??
-                    const <EventModel>[];
-
-                if (snapshot.hasError || events.isEmpty) {
-                  // Collapses to nothing rather than an empty-state card —
-                  // matches the Merchandise preview below.
-                  return const SizedBox.shrink();
-                }
-
-                return Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
-                  child: UpcomingEventsCarousel(
-                    events: events.map(homeCarouselData).toList(),
-                    onTap: (i) => _navigateToEventDetail(events[i]),
-                  ),
-                );
-              },
+            // ── Countdown — my registered events, refetched via
+            //     refreshData() (see _countdownRefreshToken above) ─────
+            SliverToBoxAdapter(
+              child: PersonalOrNextEventCountdown(
+                key: ValueKey(_countdownRefreshToken),
+                fetchMyRegisteredEvents:
+                    FirebaseAuth.instance.currentUser != null
+                    ? _fetchRegisteredEvents
+                    : null,
+              ),
             ),
-          ),
 
-          // Announcements Section
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 26, 20, 10),
-              child: SectionHeader(
-                title: 'Announcements',
-                actionLabel: 'See all',
-                // Announcements is no longer a bottom-nav tab — this is
-                // Home's preview of it, so "See all" pushes the full
-                // announcements screen instead of jumping tabs.
-                onAction: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const StudentAnnouncementsScreen(),
+            // Organizations for you — horizontal browse row, replaces the old
+            // Quick Actions row (those 4 shortcuts now live behind the FAB).
+            SliverToBoxAdapter(
+              child: FutureBuilder<List<QueryDocumentSnapshot>>(
+                future: _orgsPreviewFuture,
+                builder: (context, orgSnap) {
+                  final docs = orgSnap.data ?? [];
+                  if (docs.isEmpty) return const SizedBox.shrink();
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
+                        child: SectionHeader(
+                          title: 'Organizations for you',
+                          actionLabel: 'View all',
+                          onAction: () => widget.onNavigateToTab(2),
+                        ),
+                      ),
+                      OrgPreviewRail(
+                        children: [
+                          for (final doc in docs)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 12),
+                              child: OrgPreviewCard(
+                                name:
+                                    ((doc.data()
+                                                as Map<
+                                                  String,
+                                                  dynamic
+                                                >)['name'] ??
+                                            'Organization')
+                                        .toString(),
+                                logoUrl:
+                                    (doc.data()
+                                            as Map<String, dynamic>)['logoUrl']
+                                        as String?,
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        StudentOrganizationsDetailsScreen(
+                                          orgId: doc.id,
+                                        ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+
+            // Upcoming Events Section Header
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
+                child: SectionHeader(
+                  title: 'Upcoming Events',
+                  actionLabel: 'View all',
+                  // Discover tab is index 0 within Events.
+                  onAction: () => widget.onNavigateToTab(1, eventsSubTab: 0),
+                ),
+              ),
+            ),
+
+            // Upcoming Events — swipeable one-card carousel with arrow nav.
+            SliverToBoxAdapter(
+              child: FutureBuilder<List<EventModel>>(
+                future: _upcomingEventsFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 4,
+                      ),
+                      child: SkeletonLoader(count: 2, height: 120),
+                    );
+                  }
+
+                  // Re-filter on every rebuild, not just on fetch: the future is
+                  // built once in initState and this State is kept alive by the
+                  // IndexedStack, so without this an event that ends while the
+                  // app is open would linger on the carousel.
+                  final events =
+                      snapshot.data
+                          ?.where(
+                            (e) => e.timeStatus != EventTimeStatus.completed,
+                          )
+                          .toList() ??
+                      const <EventModel>[];
+
+                  if (snapshot.hasError || events.isEmpty) {
+                    // Collapses to nothing rather than an empty-state card —
+                    // matches the Merchandise preview below.
+                    return const SizedBox.shrink();
+                  }
+
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
+                    child: UpcomingEventsCarousel(
+                      events: events.map(homeCarouselData).toList(),
+                      onTap: (i) => _navigateToEventDetail(events[i]),
+                    ),
+                  );
+                },
+              ),
+            ),
+
+            // Announcements Section
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 26, 20, 10),
+                child: SectionHeader(
+                  title: 'Announcements',
+                  actionLabel: 'See all',
+                  // Announcements is no longer a bottom-nav tab — this is
+                  // Home's preview of it, so "See all" pushes the full
+                  // announcements screen instead of jumping tabs.
+                  onAction: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const StudentAnnouncementsScreen(),
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
 
-          // Announcements Feed
-          SliverToBoxAdapter(
-            child: AnnouncementsFeed(
-              onTap: (announcementData) {
-                _navigateToAnnouncementDetail(announcementData);
-              },
+            // Announcements Feed
+            SliverToBoxAdapter(
+              child: AnnouncementsFeed(
+                onTap: (announcementData) {
+                  _navigateToAnnouncementDetail(announcementData);
+                },
+              ),
             ),
-          ),
 
-          // Merchandise preview — only for the student's own org, and only
-          // when that org actually has active products. Merch belongs to
-          // a specific organization, not a sitewide catalog, so this stays
-          // empty (and hidden) for students not in an org, or whose org
-          // hasn't listed anything.
-          SliverToBoxAdapter(
-            child: FutureBuilder<List<QueryDocumentSnapshot>>(
-              future: _merchPreviewFuture,
-              builder: (context, productSnap) {
-                final docs = productSnap.data ?? [];
-                if (docs.isEmpty) return const SizedBox.shrink();
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 26, 20, 10),
-                      child: SectionHeader(
-                        title: 'Merchandise',
-                        actionLabel: 'View all',
-                        onAction: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const StudentMerchandiseScreen(),
+            // Merchandise preview — only for the student's own org, and only
+            // when that org actually has active products. Merch belongs to
+            // a specific organization, not a sitewide catalog, so this stays
+            // empty (and hidden) for students not in an org, or whose org
+            // hasn't listed anything.
+            SliverToBoxAdapter(
+              child: FutureBuilder<List<QueryDocumentSnapshot>>(
+                future: _merchPreviewFuture,
+                builder: (context, productSnap) {
+                  final docs = productSnap.data ?? [];
+                  if (docs.isEmpty) return const SizedBox.shrink();
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 26, 20, 10),
+                        child: SectionHeader(
+                          title: 'Merchandise',
+                          actionLabel: 'View all',
+                          onAction: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const StudentMerchandiseScreen(),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    SizedBox(
-                      height: 168,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        itemCount: docs.length,
-                        itemBuilder: (context, index) {
-                          final data =
-                              docs[index].data() as Map<String, dynamic>;
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 12),
-                            child: MerchPreviewCard(
-                              name: (data['name'] ?? '').toString(),
-                              price: ((data['price'] ?? 0) as num).toDouble(),
-                              imageBase64: (data['imageBase64'] ?? '')
-                                  .toString(),
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      const StudentMerchandiseScreen(),
+                      SizedBox(
+                        height: 168,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          itemCount: docs.length,
+                          itemBuilder: (context, index) {
+                            final data =
+                                docs[index].data() as Map<String, dynamic>;
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 12),
+                              child: MerchPreviewCard(
+                                name: (data['name'] ?? '').toString(),
+                                price: ((data['price'] ?? 0) as num).toDouble(),
+                                imageBase64: (data['imageBase64'] ?? '')
+                                    .toString(),
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        const StudentMerchandiseScreen(),
+                                  ),
                                 ),
                               ),
-                            ),
-                          );
-                        },
+                            );
+                          },
+                        ),
                       ),
-                    ),
-                  ],
-                );
-              },
+                    ],
+                  );
+                },
+              ),
             ),
-          ),
 
-          const SliverToBoxAdapter(child: SizedBox(height: 84)),
-        ],
-      ),
+            const SliverToBoxAdapter(child: SizedBox(height: 84)),
+          ],
+        ),
       ),
     );
   }
@@ -969,8 +998,9 @@ class _HomeContentState extends State<_HomeContent> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) =>
-                                  PersonalIdentityScreen(profile: ProfileModel()),
+                              builder: (_) => PersonalIdentityScreen(
+                                profile: ProfileModel(),
+                              ),
                             ),
                           );
                         },

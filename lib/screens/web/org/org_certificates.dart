@@ -1051,9 +1051,18 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
             .toList();
         var batches = CertificateBatch.groupByEvent(allRecords);
 
-        if (_filterStatus != 'All') {
-          final key = _filterStatus.toLowerCase().replaceAll(' ', '_');
-          batches = batches.where((b) => b.batchStatus == key).toList();
+        // Archived batches are hidden from every other filter (including
+        // "All") and only surface when "Archived" is explicitly selected —
+        // same active/archived split as the reports page. Without this,
+        // an archived batch never actually left the default table view.
+        if (_filterStatus == 'Archived') {
+          batches = batches.where((b) => b.isArchived).toList();
+        } else {
+          batches = batches.where((b) => !b.isArchived).toList();
+          if (_filterStatus != 'All') {
+            final key = _filterStatus.toLowerCase().replaceAll(' ', '_');
+            batches = batches.where((b) => b.batchStatus == key).toList();
+          }
         }
         if (_statCardFilter != null) {
           batches = batches.where(_statCardFilter!).toList();

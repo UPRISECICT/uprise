@@ -282,41 +282,14 @@ InputDecoration _orgEventProposalsInputDecoration(
   String? hint,
   IconData? icon,
 }) {
-  // Required fields are labeled "Foo *" — the asterisk used to render in the
-  // same muted gray as the rest of the label and was easy to miss. Splitting
-  // it into its own red TextSpan (via `label:` instead of plain `labelText:`)
-  // makes it actually stand out.
-  final trimmed = label.trimRight();
-  final isRequired = trimmed.endsWith('*');
-  final baseLabel = isRequired
-      ? trimmed.substring(0, trimmed.length - 1).trimRight()
-      : label;
-
+  // A widget-based `label:` (RichText, to color just the "*" red) doesn't
+  // report correct intrinsic sizing to OutlineInputBorder's floating-label
+  // notch calculation — it left every required field's border broken or
+  // overlapping around the label instead of a clean gap. Plain labelText
+  // (a String) is what the notch math is actually built for, so the
+  // colored asterisk isn't worth the broken border.
   return InputDecoration(
-    labelText: isRequired ? null : label,
-    label: isRequired
-        ? RichText(
-            text: TextSpan(
-              children: [
-                TextSpan(
-                  text: baseLabel,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    color: const Color(0xFF64748B),
-                  ),
-                ),
-                TextSpan(
-                  text: ' *',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    color: UpriseColors.error,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          )
-        : null,
+    labelText: label,
     hintText: hint,
     // [icon] intentionally unused now — a generic prefixIcon on every field
     // (label text already says what it is) was clutter, not disambiguation.

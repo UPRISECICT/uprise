@@ -263,8 +263,9 @@ class _CalendarTabState extends State<CalendarTab>
   }
 
   void _showDaySheet(int day, List<EventModel> events) {
-    final label = DateFormat('EEEE, MMMM d, yyyy')
-        .format(DateTime(_currentMonth.year, _currentMonth.month, day));
+    final label = DateFormat(
+      'EEEE, MMMM d, yyyy',
+    ).format(DateTime(_currentMonth.year, _currentMonth.month, day));
 
     showModalBottomSheet(
       context: context,
@@ -387,14 +388,14 @@ class _CalendarTabState extends State<CalendarTab>
 
         final upcomingEvents = snap.hasData
             ? (snap.data!.docs
-                .map((d) => EventModel.fromFirestore(d))
-                .where(
-                  (e) => e.date.isAfter(
-                    DateTime.now().subtract(const Duration(days: 1)),
-                  ),
-                )
-                .toList()
-              ..sort((a, b) => a.date.compareTo(b.date)))
+                  .map((d) => EventModel.fromFirestore(d))
+                  .where(
+                    (e) => e.date.isAfter(
+                      DateTime.now().subtract(const Duration(days: 1)),
+                    ),
+                  )
+                  .toList()
+                ..sort((a, b) => a.date.compareTo(b.date)))
             : <EventModel>[];
 
         return SingleChildScrollView(
@@ -424,9 +425,7 @@ class _CalendarTabState extends State<CalendarTab>
                   ),
                 ),
                 child: MonthCalendarGrid<EventModel>(
-                  key: ValueKey(
-                    '${_currentMonth.year}-${_currentMonth.month}',
-                  ),
+                  key: ValueKey('${_currentMonth.year}-${_currentMonth.month}'),
                   currentMonth: _currentMonth,
                   byDay: byDay,
                   titleOf: (e) => e.title,
@@ -436,10 +435,7 @@ class _CalendarTabState extends State<CalendarTab>
               ),
               const SizedBox(height: 20),
               // Upcoming events
-              _UpcomingSection(
-                events: upcomingEvents,
-                onTap: _openDetail,
-              ),
+              _UpcomingSection(events: upcomingEvents, onTap: _openDetail),
             ],
           ),
         );
@@ -700,8 +696,7 @@ class _UpcomingTabState extends State<UpcomingTab>
                       }
                       return true;
                     },
-                  ).toList()
-                    ..sort(_latestFirst);
+                  ).toList()..sort(_latestFirst);
 
               body = Column(
                 key: const ValueKey('results'),
@@ -1006,7 +1001,8 @@ class _CategoryEventsScreenState extends State<_CategoryEventsScreen> {
                   optionRow(
                     label: 'Latest',
                     selected: pendingSort == _SortBy.latest,
-                    onTap: () => setSheetState(() => pendingSort = _SortBy.latest),
+                    onTap: () =>
+                        setSheetState(() => pendingSort = _SortBy.latest),
                   ),
                   optionRow(
                     label: 'Most Popular (Most registered event)',
@@ -1196,7 +1192,9 @@ class MyEventsTab extends StatefulWidget {
 enum _ViewFilter { all, active, attended }
 
 enum _RegStatus { upcoming, ongoing, completed }
+
 enum _DateBucket { today, thisWeek, thisMonth, custom }
+
 enum _SortBy { latest, mostPopular }
 
 // Activity status for My Events — distinct from _RegStatus (which is a
@@ -1592,10 +1590,7 @@ class _MyEventsTabState extends State<MyEventsTab>
           }
           switch (_viewFilter) {
             case _ViewFilter.active:
-              return _emptyState(
-                'No active events',
-                Icons.event_busy_outlined,
-              );
+              return _emptyState('No active events', Icons.event_busy_outlined);
             case _ViewFilter.attended:
               return _emptyState(
                 'No attended events yet',
@@ -1835,10 +1830,7 @@ class _UpcomingSection extends StatelessWidget {
   final List<EventModel> events;
   final void Function(EventModel) onTap;
 
-  const _UpcomingSection({
-    required this.events,
-    required this.onTap,
-  });
+  const _UpcomingSection({required this.events, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1907,10 +1899,7 @@ class _UpcomingSection extends StatelessWidget {
         ...upcoming.map(
           (e) => Padding(
             padding: const EdgeInsets.only(bottom: 10),
-            child: _CompactEventCard(
-              event: e,
-              onTap: () => onTap(e),
-            ),
+            child: _CompactEventCard(event: e, onTap: () => onTap(e)),
           ),
         ),
       ],
@@ -2056,7 +2045,6 @@ class _CompactEventCard extends StatelessWidget {
     );
   }
 }
-
 
 // ─── LIVE WEBINAR CODE BANNER (registered students, ongoing events) ────────
 // Streams the org-side rotating code (webinar_attendance_service.dart) so a
@@ -2560,9 +2548,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         'comment': _feedbackCtrl.text.trim(),
         'userId': user.uid,
         'isAnonymous': _isAnonymous,
-        'authorName': authorName.isNotEmpty
-            ? authorName
-            : FieldValue.delete(),
+        'authorName': authorName.isNotEmpty ? authorName : FieldValue.delete(),
         'submittedAt': FieldValue.serverTimestamp(),
       };
       final feedbackCol = FirebaseFirestore.instance.collection(
@@ -3139,7 +3125,12 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 
   Future<void> _registerForEvent() async {
-    if (widget.isPastEvent) {
+    // Was widget.isPastEvent (start-time-based) — that flipped true the
+    // instant an event started, rejecting registration during an ongoing
+    // event even though the Register button itself stays visible until
+    // _isEventReallyOver (end-time-based). Late joiners to an ongoing
+    // event are allowed; only a genuinely finished event blocks it.
+    if (_isEventReallyOver) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Cannot register for past events'),
@@ -3191,7 +3182,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         // read via tx.get()) now actually protects this check. A missing
         // field reads as 0 and self-initializes from here on.
         final capacity = (evData['capacity'] as num?)?.toInt();
-        final registeredCount = (evData['registeredCount'] as num?)?.toInt() ?? 0;
+        final registeredCount =
+            (evData['registeredCount'] as num?)?.toInt() ?? 0;
         if (capacity != null && registeredCount >= capacity) {
           throw Exception(
             'This event has reached its maximum capacity of $capacity and is no longer accepting registrations.',

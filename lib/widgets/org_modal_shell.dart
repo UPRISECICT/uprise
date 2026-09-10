@@ -21,9 +21,11 @@ class OrgModalShell extends StatelessWidget {
   final List<Widget>? footerActions;
   final double width;
   final double maxHeightFraction;
+
   /// Optional full-width header color for workflows that need a stronger
   /// visual identity than the default white modal header.
   final Color? headerColor;
+
   /// Uses a shorter, left-aligned icon/title header. Useful for multi-step
   /// workflows where preserving vertical room for the form matters.
   final bool compactHeader;
@@ -153,93 +155,100 @@ class OrgModalShell extends StatelessWidget {
               child: compactHeader
                   ? _buildCompactHeader(context)
                   : Stack(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(top: 22),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Container(
-                          width: 64,
-                          height: 64,
-                          decoration: BoxDecoration(
-                            color: headerColor == null
-                                ? accentColor.withAlpha(24)
-                                : Colors.white.withAlpha(34),
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                              color: headerColor == null
-                                  ? accentColor.withAlpha(28)
-                                  : Colors.black.withAlpha(22),
-                                blurRadius: 20,
-                                spreadRadius: 4,
+                        // Positioned.fill (not a bare Padding) so this is the
+                        // Stack's only sizing input and spans the header's full
+                        // width — otherwise Stack shrinks to fit this child's own
+                        // MainAxisSize.min Column, which is only as wide as the
+                        // title text, leaving the whole icon+title block stuck
+                        // at the Stack's default top-left instead of centered.
+                        Positioned.fill(
+                          top: 22,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 64,
+                                height: 64,
+                                decoration: BoxDecoration(
+                                  color: headerColor == null
+                                      ? accentColor.withAlpha(24)
+                                      : Colors.white.withAlpha(34),
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: headerColor == null
+                                          ? accentColor.withAlpha(28)
+                                          : Colors.black.withAlpha(22),
+                                      blurRadius: 20,
+                                      spreadRadius: 4,
+                                    ),
+                                  ],
+                                ),
+                                child: Icon(
+                                  icon,
+                                  color: headerColor == null
+                                      ? accentColor
+                                      : Colors.white,
+                                  size: 30,
+                                ),
                               ),
+                              const SizedBox(height: 16),
+                              Text(
+                                title,
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w700,
+                                  color: headerColor == null
+                                      ? const Color(0xFF1A202C)
+                                      : Colors.white,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              if (subtitleWidget != null) ...[
+                                const SizedBox(height: 6),
+                                subtitleWidget!,
+                              ] else if (subtitle != null &&
+                                  subtitle!.isNotEmpty) ...[
+                                const SizedBox(height: 6),
+                                Text(
+                                  subtitle!,
+                                  textAlign: TextAlign.center,
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 13,
+                                    height: 1.45,
+                                    color: headerColor == null
+                                        ? const Color(0xFF64748B)
+                                        : Colors.white.withAlpha(210),
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
                             ],
                           ),
-                          child: Icon(
-                            icon,
-                            color: headerColor == null
-                                ? accentColor
-                                : Colors.white,
-                            size: 30,
-                          ),
                         ),
-                        const SizedBox(height: 16),
-                        Text(
-                          title,
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                            color: headerColor == null
-                                ? const Color(0xFF1A202C)
-                                : Colors.white,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        if (subtitleWidget != null) ...[
-                          const SizedBox(height: 6),
-                          subtitleWidget!,
-                        ] else if (subtitle != null && subtitle!.isNotEmpty) ...[
-                          const SizedBox(height: 6),
-                          Text(
-                            subtitle!,
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 13,
-                              height: 1.45,
-                                color: headerColor == null
-                                    ? const Color(0xFF64748B)
-                                    : Colors.white.withAlpha(210),
+                        Positioned(
+                          top: 0,
+                          right: -8,
+                          child: IconButton(
+                            tooltip: 'Close',
+                            icon: Icon(
+                              Icons.close_rounded,
+                              color: headerColor == null
+                                  ? const Color(0xFF64748B)
+                                  : Colors.white,
+                              size: 20,
                             ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
+                            onPressed: closeEnabled
+                                ? (onClose ?? () => Navigator.pop(context))
+                                : null,
                           ),
-                        ],
+                        ),
                       ],
                     ),
-                  ),
-                  Positioned(
-                    top: 0,
-                    right: -8,
-                    child: IconButton(
-                      tooltip: 'Close',
-                      icon: Icon(
-                        Icons.close_rounded,
-                        color: headerColor == null
-                            ? const Color(0xFF64748B)
-                            : Colors.white,
-                        size: 20,
-                      ),
-                      onPressed: closeEnabled
-                          ? (onClose ?? () => Navigator.pop(context))
-                          : null,
-                    ),
-                  ),
-                ],
-              ),
             ),
             // Flexible (not Expanded) so a modal with short content — e.g.
             // a report with no attached transactions — shrinks to fit

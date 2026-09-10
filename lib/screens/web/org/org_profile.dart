@@ -568,43 +568,15 @@ Widget _sectionLabel(String title, {IconData? icon}) {
   );
 }
 
-// Required fields are labeled "Foo *" — the asterisk used to render in the
-// same muted gray as the rest of the label and was easy to miss. Splitting
-// it into its own red TextSpan (matching org_event_proposals.dart's
-// _orgEventProposalsInputDecoration / org_reports.dart's _DS.inputDecoration)
-// makes it actually stand out.
+// A widget-based `label:` (RichText, to color just the "*" red) doesn't
+// report correct intrinsic sizing to OutlineInputBorder's floating-label
+// notch calculation — it left every required field's border broken or
+// overlapping around the label instead of a clean gap. Plain labelText
+// (a String) is what the notch math is actually built for, so the colored
+// asterisk isn't worth the broken border.
 InputDecoration _inputDecoration(String label, {String? hint, IconData? icon}) {
-  final trimmed = label.trimRight();
-  final isRequired = trimmed.endsWith('*');
-  final baseLabel = isRequired
-      ? trimmed.substring(0, trimmed.length - 1).trimRight()
-      : label;
-
   return InputDecoration(
-    labelText: isRequired ? null : label,
-    label: isRequired
-        ? RichText(
-            text: TextSpan(
-              children: [
-                TextSpan(
-                  text: baseLabel,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    color: _C.darkGray,
-                  ),
-                ),
-                TextSpan(
-                  text: ' *',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    color: _C.error,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          )
-        : null,
+    labelText: label,
     hintText: hint,
     // Was a prefixIcon on every field regardless of [icon] — with ~20
     // fields across this screen's edit sheets that was a wall of

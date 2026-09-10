@@ -4518,16 +4518,75 @@ class _ReportsManagementState extends State<ReportsManagement>
                     // Participants stay contained when an event has a long
                     // attendance list, instead of making the entire detail
                     // page grow indefinitely.
-                    final participantsBlock = FutureBuilder<List<Map<String, dynamic>>>(
-                      future: _loadEventAttendeesList(event.id),
+                    final participantsBlock =
+                        FutureBuilder<List<Map<String, dynamic>>>(
+                          future: _loadEventAttendeesList(event.id),
+                          builder: (context, snap) {
+                            final loadingA =
+                                snap.connectionState == ConnectionState.waiting;
+                            final attendeesList = snap.data ?? [];
+                            return _detailScrollPanel(
+                              title: 'Participants',
+                              icon: Icons.people_outline_rounded,
+                              child: loadingA
+                                  ? const Center(
+                                      child: SizedBox(
+                                        height: 36,
+                                        width: 36,
+                                        child: CircularProgressIndicator(),
+                                      ),
+                                    )
+                                  : attendeesList.isEmpty
+                                  ? Center(
+                                      child: Text(
+                                        'No attendees recorded.',
+                                        style: GoogleFonts.beVietnamPro(
+                                          color: const Color(0xFF64748B),
+                                        ),
+                                      ),
+                                    )
+                                  : Scrollbar(
+                                      child: ListView.separated(
+                                        padding: EdgeInsets.zero,
+                                        itemCount: attendeesList.length,
+                                        separatorBuilder: (_, __) =>
+                                            const SizedBox(height: 8),
+                                        itemBuilder: (_, index) =>
+                                            _attendeeTile(attendeesList[index]),
+                                      ),
+                                    ),
+                            );
+                          },
+                        );
+
+                    // Evaluation / Feedback
+                    final feedbackBlock = FutureBuilder<List<Map<String, dynamic>>>(
+                      future: _loadEventFeedbacks(event.id),
                       builder: (context, snap) {
-                        final loadingA =
+                        final loadingF =
                             snap.connectionState == ConnectionState.waiting;
-                        final attendeesList = snap.data ?? [];
+                        final feedbacks = snap.data ?? [];
+                        final total = feedbacks.length;
+                        final avg = total == 0
+                            ? 0.0
+                            : (feedbacks.fold<double>(
+                                    0.0,
+                                    (s, f) =>
+                                        s +
+                                        ((f['rating'] as num?)?.toDouble() ??
+                                            0),
+                                  ) /
+                                  total);
+                        final starCounts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+                        for (final f in feedbacks) {
+                          final r = (f['rating'] as num?)?.toInt() ?? 0;
+                          if (starCounts.containsKey(r))
+                            starCounts[r] = starCounts[r]! + 1;
+                        }
                         return _detailScrollPanel(
-                          title: 'Participants',
-                          icon: Icons.people_outline_rounded,
-                          child: loadingA
+                          title: 'Evaluation & Feedback',
+                          icon: Icons.reviews_rounded,
+                          child: loadingF
                               ? const Center(
                                   child: SizedBox(
                                     height: 36,
@@ -4535,191 +4594,141 @@ class _ReportsManagementState extends State<ReportsManagement>
                                     child: CircularProgressIndicator(),
                                   ),
                                 )
-                              : attendeesList.isEmpty
+                              : feedbacks.isEmpty
                               ? Center(
                                   child: Text(
-                                    'No attendees recorded.',
+                                    'No feedback recorded.',
                                     style: GoogleFonts.beVietnamPro(
                                       color: const Color(0xFF64748B),
                                     ),
                                   ),
                                 )
                               : Scrollbar(
-                                  child: ListView.separated(
-                                    padding: EdgeInsets.zero,
-                                    itemCount: attendeesList.length,
-                                    separatorBuilder: (_, __) =>
-                                        const SizedBox(height: 8),
-                                    itemBuilder: (_, index) =>
-                                        _attendeeTile(attendeesList[index]),
+                                  child: SingleChildScrollView(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Text(
+                                              'Average Rating',
+                                              style: GoogleFonts.beVietnamPro(
+                                                fontSize: 12,
+                                                color: const Color(0xFF64748B),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 10),
+                                            Text(
+                                              avg.toStringAsFixed(1),
+                                              style: GoogleFonts.beVietnamPro(
+                                                fontSize: 22,
+                                                fontWeight: FontWeight.w800,
+                                                color: UpriseColors.primaryDark,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              'Â· $total feedbacks',
+                                              style: GoogleFonts.beVietnamPro(
+                                                color: const Color(0xFF64748B),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 12),
+                                        ...[5, 4, 3, 2, 1]
+                                            .map(
+                                              (star) => Padding(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      vertical: 4,
+                                                    ),
+                                                child: Row(
+                                                  children: [
+                                                    SizedBox(
+                                                      width: 18,
+                                                      child: Text(
+                                                        '$star',
+                                                        textAlign:
+                                                            TextAlign.right,
+                                                        style:
+                                                            GoogleFonts.beVietnamPro(
+                                                              fontSize: 12,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w600,
+                                                              color:
+                                                                  const Color(
+                                                                    0xFF374151,
+                                                                  ),
+                                                            ),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 4),
+                                                    Icon(
+                                                      Icons.star,
+                                                      size: 14,
+                                                      color: UpriseColors
+                                                          .primaryDark,
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    Expanded(
+                                                      child: LinearProgressIndicator(
+                                                        value: total == 0
+                                                            ? 0
+                                                            : (starCounts[star]! /
+                                                                  total),
+                                                        backgroundColor:
+                                                            const Color(
+                                                              0xFFE8ECF0,
+                                                            ),
+                                                        color: UpriseColors
+                                                            .primaryDark,
+                                                        minHeight: 8,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    SizedBox(
+                                                      width: 20,
+                                                      child: Text(
+                                                        '${starCounts[star]}',
+                                                        style:
+                                                            GoogleFonts.beVietnamPro(
+                                                              color:
+                                                                  const Color(
+                                                                    0xFF64748B,
+                                                                  ),
+                                                            ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            )
+                                            .toList(),
+                                        const SizedBox(height: 12),
+                                        // Recent comments
+                                        Column(
+                                          children: feedbacks
+                                              .map(
+                                                (f) => Padding(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        vertical: 6,
+                                                      ),
+                                                  child: _feedbackTile(f),
+                                                ),
+                                              )
+                                              .toList(),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                         );
                       },
                     );
-
-                    // Evaluation / Feedback
-                    final feedbackBlock = FutureBuilder<List<Map<String, dynamic>>>(
-                        future: _loadEventFeedbacks(event.id),
-                        builder: (context, snap) {
-                          final loadingF =
-                              snap.connectionState == ConnectionState.waiting;
-                          final feedbacks = snap.data ?? [];
-                          final total = feedbacks.length;
-                          final avg = total == 0
-                              ? 0.0
-                              : (feedbacks.fold<double>(
-                                      0.0,
-                                      (s, f) =>
-                                          s +
-                                          ((f['rating'] as num?)?.toDouble() ??
-                                              0),
-                                    ) /
-                                    total);
-                          final starCounts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
-                          for (final f in feedbacks) {
-                            final r = (f['rating'] as num?)?.toInt() ?? 0;
-                            if (starCounts.containsKey(r))
-                              starCounts[r] = starCounts[r]! + 1;
-                          }
-                          return _detailScrollPanel(
-                            title: 'Evaluation & Feedback',
-                            icon: Icons.reviews_rounded,
-                            child: loadingF
-                                ? const Center(
-                                    child: SizedBox(
-                                      height: 36,
-                                      width: 36,
-                                      child: CircularProgressIndicator(),
-                                    ),
-                                  )
-                                : feedbacks.isEmpty
-                                ? Center(
-                                    child: Text(
-                                      'No feedback recorded.',
-                                      style: GoogleFonts.beVietnamPro(
-                                        color: const Color(0xFF64748B),
-                                      ),
-                                    ),
-                                  )
-                                : Scrollbar(
-                                    child: SingleChildScrollView(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                  Row(
-                                    children: [
-                                      Text(
-                                        'Average Rating',
-                                        style: GoogleFonts.beVietnamPro(
-                                          fontSize: 12,
-                                          color: const Color(0xFF64748B),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Text(
-                                        avg.toStringAsFixed(1),
-                                        style: GoogleFonts.beVietnamPro(
-                                          fontSize: 22,
-                                          fontWeight: FontWeight.w800,
-                                          color: UpriseColors.primaryDark,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        '· $total feedbacks',
-                                        style: GoogleFonts.beVietnamPro(
-                                          color: const Color(0xFF64748B),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 12),
-                                  ...[5, 4, 3, 2, 1]
-                                      .map(
-                                        (star) => Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            vertical: 4,
-                                          ),
-                                          child: Row(
-                                            children: [
-                                              SizedBox(
-                                                width: 18,
-                                                child: Text(
-                                                  '$star',
-                                                  textAlign: TextAlign.right,
-                                                  style:
-                                                      GoogleFonts.beVietnamPro(
-                                                        fontSize: 12,
-                                                        fontWeight:
-                                                            FontWeight.w600,
-                                                        color: const Color(
-                                                          0xFF374151,
-                                                        ),
-                                                      ),
-                                                ),
-                                              ),
-                                              const SizedBox(width: 4),
-                                              Icon(
-                                                Icons.star,
-                                                size: 14,
-                                                color: UpriseColors.primaryDark,
-                                              ),
-                                              const SizedBox(width: 8),
-                                              Expanded(
-                                                child: LinearProgressIndicator(
-                                                  value: total == 0
-                                                      ? 0
-                                                      : (starCounts[star]! /
-                                                            total),
-                                                  backgroundColor: const Color(
-                                                    0xFFE8ECF0,
-                                                  ),
-                                                  color:
-                                                      UpriseColors.primaryDark,
-                                                  minHeight: 8,
-                                                ),
-                                              ),
-                                              const SizedBox(width: 8),
-                                              SizedBox(
-                                                width: 20,
-                                                child: Text(
-                                                  '${starCounts[star]}',
-                                                  style:
-                                                      GoogleFonts.beVietnamPro(
-                                                        color: const Color(
-                                                          0xFF64748B,
-                                                        ),
-                                                      ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      )
-                                      .toList(),
-                                  const SizedBox(height: 12),
-                                  // Recent comments
-                                  Column(
-                                    children: feedbacks
-                                        .map(
-                                          (f) => Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                              vertical: 6,
-                                            ),
-                                            child: _feedbackTile(f),
-                                          ),
-                                        )
-                                        .toList(),
-                                  ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                          );
-                        },
-                      );
 
                     // stretch, not the default center: _boxDivider is a
                     // height-1 Container with no width of its own, so a
@@ -4931,7 +4940,7 @@ class _ReportsManagementState extends State<ReportsManagement>
               ),
               const SizedBox(height: 2),
               Text(
-                '${email.isNotEmpty ? '$email · ' : ''}${status.toString().toUpperCase()}',
+                '${email.isNotEmpty ? '$email Â· ' : ''}${status.toString().toUpperCase()}',
                 style: GoogleFonts.beVietnamPro(
                   fontSize: 12,
                   color: const Color(0xFF64748B),
@@ -4966,7 +4975,7 @@ class _ReportsManagementState extends State<ReportsManagement>
             ),
             const SizedBox(width: 8),
             Text(
-              '· $rating★',
+              'Â· $rating★',
               style: GoogleFonts.beVietnamPro(
                 color: const Color(0xFF64748B),
                 fontSize: 12,
@@ -5637,7 +5646,7 @@ class _ReportsManagementState extends State<ReportsManagement>
     final term = [
       if (event.schoolYear.isNotEmpty) event.schoolYear,
       if (event.semester.isNotEmpty) event.semester,
-    ].join(' · ');
+    ].join(' Â· ');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

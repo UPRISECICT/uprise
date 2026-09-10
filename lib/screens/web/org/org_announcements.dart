@@ -105,25 +105,19 @@ class _DS {
     );
   }
 
-  // Required fields are labeled "Foo *" — the asterisk used to render in the
-  // same muted gray as the rest of the label and was easy to miss. Splitting
-  // it into its own red TextSpan (matching org_profile.dart's
-  // _inputDecoration / org_event_proposals.dart's
-  // _orgEventProposalsInputDecoration) makes it actually stand out.
+  // A widget-based `label:` (RichText, to color just the "*" red) doesn't
+  // report correct intrinsic sizing to OutlineInputBorder's floating-label
+  // notch calculation — it left every required field's border broken or
+  // overlapping around the label instead of a clean gap. Plain labelText
+  // (a String) is what the notch math is actually built for, so the
+  // colored asterisk isn't worth the broken border.
   static InputDecoration inputDecoration(
     String label, {
     String? hint,
     IconData? icon,
   }) {
-    final trimmed = label.trimRight();
-    final isRequired = trimmed.endsWith('*');
-    final baseLabel = isRequired
-        ? trimmed.substring(0, trimmed.length - 1).trimRight()
-        : label;
-
     return InputDecoration(
-      labelText: isRequired ? null : label,
-      label: isRequired ? requiredLabel(baseLabel) : null,
+      labelText: label,
       hintText: hint,
       // [icon] intentionally unused now — a generic prefixIcon on every
       // field (label text already says what it is) was clutter, not
@@ -159,31 +153,6 @@ class _DS {
       ),
     );
   }
-}
-
-// Shared by _DS.inputDecoration and the Category/Target Audience dropdowns
-// (which build their own InputDecoration directly instead of going through
-// _DS.inputDecoration) so every required-field asterisk in this modal is the
-// same red, regardless of which field type renders it.
-Widget requiredLabel(String text) {
-  return RichText(
-    text: TextSpan(
-      children: [
-        TextSpan(
-          text: text,
-          style: GoogleFonts.beVietnamPro(fontSize: 13, color: _C.darkGray),
-        ),
-        TextSpan(
-          text: ' *',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 13,
-            color: _C.error,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ],
-    ),
-  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -776,9 +745,7 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
             : 'Restore "${a.title}"? It will appear in the announcement feed again.',
         confirmLabel: archiving ? 'Archive' : 'Restore',
         accentColor: archiving ? _C.warning : _C.success,
-        icon: archiving
-            ? Icons.archive_outlined
-            : Icons.restore_rounded,
+        icon: archiving ? Icons.archive_outlined : Icons.restore_rounded,
       ),
     );
     if (confirm != true) return;
@@ -826,7 +793,8 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
       );
       if (mounted) _snack('Announcement deleted');
     } catch (error) {
-      if (mounted) _snack('Could not delete announcement: $error', isError: true);
+      if (mounted)
+        _snack('Could not delete announcement: $error', isError: true);
     }
   }
 
@@ -1953,9 +1921,7 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                             fontWeight: category == c
                                 ? FontWeight.w600
                                 : FontWeight.w400,
-                            color: category == c
-                                ? _C.primaryDark
-                                : _C.charcoal,
+                            color: category == c ? _C.primaryDark : _C.charcoal,
                           ),
                         ),
                       ],
@@ -2388,8 +2354,7 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                                   ),
                                 ),
                                 child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
                                       'Add to your post',
@@ -2507,11 +2472,10 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                                               ),
                                               child: Text(
                                                 state.errorText!,
-                                                style:
-                                                    GoogleFonts.beVietnamPro(
-                                                      fontSize: 11.5,
-                                                      color: _C.error,
-                                                    ),
+                                                style: GoogleFonts.beVietnamPro(
+                                                  fontSize: 11.5,
+                                                  color: _C.error,
+                                                ),
                                               ),
                                             )
                                           : const SizedBox.shrink(),
@@ -2648,75 +2612,68 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                                                 color: _C.borderSoft,
                                               ),
                                             ),
-                                            child:
-                                                DropdownButtonFormField<String>(
-                                                  value: linkedProposalId,
-                                                  isExpanded: true,
-                                                  decoration: InputDecoration(
-                                                    labelText:
-                                                        'Registration form (optional)',
-                                                    labelStyle:
+                                            child: DropdownButtonFormField<String>(
+                                              value: linkedProposalId,
+                                              isExpanded: true,
+                                              decoration: InputDecoration(
+                                                labelText:
+                                                    'Registration form (optional)',
+                                                labelStyle:
+                                                    GoogleFonts.beVietnamPro(
+                                                      fontSize: 13,
+                                                      color: _C.darkGray,
+                                                    ),
+                                                border: InputBorder.none,
+                                                contentPadding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 16,
+                                                      vertical: 14,
+                                                    ),
+                                              ),
+                                              items: [
+                                                DropdownMenuItem(
+                                                  value: null,
+                                                  child: Text(
+                                                    'None',
+                                                    style:
                                                         GoogleFonts.beVietnamPro(
                                                           fontSize: 13,
-                                                          color: _C.darkGray,
-                                                        ),
-                                                    border: InputBorder.none,
-                                                    contentPadding:
-                                                        const EdgeInsets.symmetric(
-                                                          horizontal: 16,
-                                                          vertical: 14,
                                                         ),
                                                   ),
-                                                  items: [
-                                                    DropdownMenuItem(
-                                                      value: null,
-                                                      child: Text(
-                                                        'None',
-                                                        style:
-                                                            GoogleFonts.beVietnamPro(
-                                                              fontSize: 13,
-                                                            ),
-                                                      ),
-                                                    ),
-                                                    ...events.map(
-                                                      (e) => DropdownMenuItem(
-                                                        value: e.proposalId,
-                                                        child: Text(
-                                                          e.title,
-                                                          style:
-                                                              GoogleFonts.beVietnamPro(
-                                                                fontSize: 13,
-                                                              ),
-                                                          overflow:
-                                                              TextOverflow
-                                                                  .ellipsis,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                  onChanged: (v) => setDlg(() {
-                                                    if (v == null) {
-                                                      linkedEventId = null;
-                                                      linkedProposalId = null;
-                                                      linkedEventTitle = null;
-                                                    } else {
-                                                      final ev = events
-                                                          .firstWhere(
-                                                            (e) =>
-                                                                e.proposalId ==
-                                                                v,
-                                                          );
-                                                      linkedEventId = ev.eventId;
-                                                      linkedProposalId =
-                                                          ev.proposalId;
-                                                      linkedEventTitle =
-                                                          ev.title;
-                                                      // Audience is auto-determined from the linked event.
-                                                      targetAudience =
-                                                          ev.audience;
-                                                    }
-                                                  }),
                                                 ),
+                                                ...events.map(
+                                                  (e) => DropdownMenuItem(
+                                                    value: e.proposalId,
+                                                    child: Text(
+                                                      e.title,
+                                                      style:
+                                                          GoogleFonts.beVietnamPro(
+                                                            fontSize: 13,
+                                                          ),
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                              onChanged: (v) => setDlg(() {
+                                                if (v == null) {
+                                                  linkedEventId = null;
+                                                  linkedProposalId = null;
+                                                  linkedEventTitle = null;
+                                                } else {
+                                                  final ev = events.firstWhere(
+                                                    (e) => e.proposalId == v,
+                                                  );
+                                                  linkedEventId = ev.eventId;
+                                                  linkedProposalId =
+                                                      ev.proposalId;
+                                                  linkedEventTitle = ev.title;
+                                                  // Audience is auto-determined from the linked event.
+                                                  targetAudience = ev.audience;
+                                                }
+                                              }),
+                                            ),
                                           );
                                         },
                                       ),
@@ -2732,10 +2689,9 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                                           ),
                                           decoration: BoxDecoration(
                                             color: _C.infoBg,
-                                            borderRadius:
-                                                BorderRadius.circular(
-                                                  _DS.radiusSm,
-                                                ),
+                                            borderRadius: BorderRadius.circular(
+                                              _DS.radiusSm,
+                                            ),
                                             border: Border.all(
                                               color: _C.info.withAlpha(64),
                                             ),
@@ -2800,57 +2756,54 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                                             Expanded(
                                               child: InkWell(
                                                 onTap: () async {
-                                                  final p =
-                                                      await showDatePicker(
-                                                        context: ctx,
-                                                        initialDate:
-                                                            DateTime.now(),
-                                                        firstDate:
-                                                            DateTime.now(),
-                                                        lastDate:
-                                                            DateTime.now().add(
-                                                              const Duration(
-                                                                days: 365,
-                                                              ),
-                                                            ),
-                                                        // Material 3's default seed skews
-                                                        // purple/indigo unless the scheme is
-                                                        // seeded from the brand color instead.
-                                                        builder: (context, child) {
-                                                          final baseTheme =
-                                                              Theme.of(context);
-                                                          final scheme =
-                                                              ColorScheme.fromSeed(
-                                                                seedColor: _C
-                                                                    .primaryDark,
-                                                                brightness:
-                                                                    Brightness
-                                                                        .light,
-                                                              ).copyWith(
-                                                                primary: _C
-                                                                    .primaryDark,
-                                                                onPrimary:
-                                                                    Colors.white,
-                                                                surface:
-                                                                    Colors.white,
-                                                                surfaceTint: Colors
-                                                                    .transparent,
-                                                              );
-                                                          return Theme(
-                                                            data: baseTheme.copyWith(
-                                                              colorScheme: scheme,
-                                                              textButtonTheme:
-                                                                  TextButtonThemeData(
-                                                                    style: TextButton.styleFrom(
-                                                                      foregroundColor:
-                                                                          _C.primaryDark,
-                                                                    ),
-                                                                  ),
-                                                            ),
-                                                            child: child!,
+                                                  final p = await showDatePicker(
+                                                    context: ctx,
+                                                    initialDate: DateTime.now(),
+                                                    firstDate: DateTime.now(),
+                                                    lastDate: DateTime.now()
+                                                        .add(
+                                                          const Duration(
+                                                            days: 365,
+                                                          ),
+                                                        ),
+                                                    // Material 3's default seed skews
+                                                    // purple/indigo unless the scheme is
+                                                    // seeded from the brand color instead.
+                                                    builder: (context, child) {
+                                                      final baseTheme =
+                                                          Theme.of(context);
+                                                      final scheme =
+                                                          ColorScheme.fromSeed(
+                                                            seedColor:
+                                                                _C.primaryDark,
+                                                            brightness:
+                                                                Brightness
+                                                                    .light,
+                                                          ).copyWith(
+                                                            primary:
+                                                                _C.primaryDark,
+                                                            onPrimary:
+                                                                Colors.white,
+                                                            surface:
+                                                                Colors.white,
+                                                            surfaceTint: Colors
+                                                                .transparent,
                                                           );
-                                                        },
+                                                      return Theme(
+                                                        data: baseTheme.copyWith(
+                                                          colorScheme: scheme,
+                                                          textButtonTheme:
+                                                              TextButtonThemeData(
+                                                                style: TextButton.styleFrom(
+                                                                  foregroundColor:
+                                                                      _C.primaryDark,
+                                                                ),
+                                                              ),
+                                                        ),
+                                                        child: child!,
                                                       );
+                                                    },
+                                                  );
                                                   if (p != null) {
                                                     setDlg(
                                                       () => scheduledDate = p,
@@ -2963,8 +2916,7 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                                   ),
                                 ),
 
-                              if (openPanel == null)
-                                const SizedBox(height: 8),
+                              if (openPanel == null) const SizedBox(height: 8),
                             ],
                           ),
                         ),

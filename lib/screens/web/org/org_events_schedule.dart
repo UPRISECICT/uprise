@@ -2008,19 +2008,18 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                         separatorBuilder: (_, __) => const SizedBox(height: 10),
                         itemBuilder: (_, i) {
                           final event = events[i];
-                          final isOwnedByCurrentOrg = event.orgId == widget.orgId;
+                          // Every org's event stays tappable here — the
+                          // overview dialog itself (_buildEventOverviewPage)
+                          // is what restricts another org's event down to
+                          // just the surface Details tab, so browsing "All
+                          // Events" can still show *what's* scheduled.
                           return _EventListTile(
                             event: event,
                             displayTime: resolvedTimes[event.id],
-                            // All Events is a calendar-discovery view. Another
-                            // organization's event may be listed here, but its
-                            // operational details must remain private.
-                            onTap: isOwnedByCurrentOrg
-                                ? () {
-                                    Navigator.pop(ctx);
-                                    _showEventDetailDialog(event);
-                                  }
-                                : null,
+                            onTap: () {
+                              Navigator.pop(ctx);
+                              _showEventDetailDialog(event);
+                            },
                           );
                         },
                       ),
@@ -2069,10 +2068,10 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
 
   // ─── NEW PROFESSIONAL EVENT DETAIL DIALOG ──────────────────────
   Future<void> _showEventDetailDialog(EventModel event) async {
-    // Keep the ownership rule enforced even if this method is reached from a
-    // future entry point instead of the calendar list tile.
-    if (event.orgId != widget.orgId) return;
-
+    // Every event is reachable from here regardless of owning org — the
+    // dialog itself (_buildEventOverviewPage) is what restricts another
+    // org's event down to just the surface Details tab, hiding
+    // Registration/Attendance/Feedback/Certificates/Finance/Report.
     // Fetch latest data from proposal (if available)
     var startTime = event.startTime;
     var endTime = event.endTime;
@@ -2111,10 +2110,17 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
     final startTime = _overviewStartTime;
     final endTime = _overviewEndTime;
     final guestSpeaker = _overviewGuestSpeaker;
+    // Registration/Attendance/Feedback/Certificates/Finance/Report are the
+    // hosting org's own operational data — the "All Events" tab lets an
+    // org browse every org's approved events for awareness, but that
+    // should only ever surface public event info (the Details tab), not
+    // another org's participant lists or financials. Only the event's own
+    // org gets every tab.
+    final isOwnEvent = event.orgId == widget.orgId;
     return Scaffold(
       backgroundColor: const Color(0xFFFBFCFE),
       body: DefaultTabController(
-        length: 7,
+        length: isOwnEvent ? 7 : 1,
         child: Column(
           children: [
             // ─── HEADER ──────────────────────────────────────────────
@@ -2272,14 +2278,16 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                           unselectedLabelStyle: GoogleFonts.beVietnamPro(
                             fontSize: 13,
                           ),
-                          tabs: const [
-                            Tab(text: 'Details'),
-                            Tab(text: 'Registration'),
-                            Tab(text: 'Attendance'),
-                            Tab(text: 'Feedback'),
-                            Tab(text: 'Certificates'),
-                            Tab(text: 'Finance'),
-                            Tab(text: 'Report'),
+                          tabs: [
+                            const Tab(text: 'Details'),
+                            if (isOwnEvent) ...const [
+                              Tab(text: 'Registration'),
+                              Tab(text: 'Attendance'),
+                              Tab(text: 'Feedback'),
+                              Tab(text: 'Certificates'),
+                              Tab(text: 'Finance'),
+                              Tab(text: 'Report'),
+                            ],
                           ],
                         ),
                       ),
@@ -2521,12 +2529,14 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                                 ],
                               ),
                             ),
-                            _RegistrationTab(event: event),
-                            _AttendanceTab(event: event),
-                            _FeedbackTab(event: event),
-                            _CertificatesTab(event: event),
-                            _FinanceTab(event: event),
-                            _ReportTab(event: event),
+                            if (isOwnEvent) ...[
+                              _RegistrationTab(event: event),
+                              _AttendanceTab(event: event),
+                              _FeedbackTab(event: event),
+                              _CertificatesTab(event: event),
+                              _FinanceTab(event: event),
+                              _ReportTab(event: event),
+                            ],
                           ],
                         ),
                       ),

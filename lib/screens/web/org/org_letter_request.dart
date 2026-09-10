@@ -46,35 +46,14 @@ class _DS {
     String? hint,
     IconData? icon,
   }) {
-    // Every call site already writes labels like 'Subject *' — the
-    // asterisk was just plain text in the same gray as the rest of the
-    // label, so nothing actually read as "required" at a glance. Splitting
-    // it into its own red TextSpan is a purely cosmetic fix; no call site
-    // needs to change.
-    final labelTextStyle = GoogleFonts.beVietnamPro(
-      fontSize: 13,
-      color: const Color(0xFF64748B),
-    );
-    final isRequired = label.endsWith(' *');
-    final baseLabel = isRequired ? label.substring(0, label.length - 2) : label;
+    // A widget-based `label:` (e.g. Text.rich, to color just the "*" red)
+    // doesn't report correct intrinsic sizing to OutlineInputBorder's
+    // floating-label notch calculation — it left every required field's
+    // border broken/overlapping around the label instead of a clean gap.
+    // Plain labelText (a String) is what the notch math is actually built
+    // for, so the colored asterisk isn't worth the broken border.
     return InputDecoration(
-      label: isRequired
-          ? Text.rich(
-              TextSpan(
-                text: baseLabel,
-                style: labelTextStyle,
-                children: [
-                  TextSpan(
-                    text: ' *',
-                    style: labelTextStyle.copyWith(
-                      color: const Color(0xFFDC2626),
-                    ),
-                  ),
-                ],
-              ),
-            )
-          : null,
-      labelText: isRequired ? null : label,
+      labelText: label,
       hintText: hint,
       // [icon] intentionally unused now — a generic prefixIcon on every
       // field (label text already says what it is) was clutter, not

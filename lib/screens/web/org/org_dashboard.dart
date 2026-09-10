@@ -1248,7 +1248,13 @@ class _OrgDashboardState extends State<OrgDashboard> {
           _unreadNotifications = all.where((n) => n['isRead'] == false).length;
         });
       }
-    } catch (_) {}
+    } catch (e) {
+      // Was a bare catch (_) {} — a missing composite index (userId +
+      // createdAt, required by the orderBy below) threw on every single
+      // call with zero visible trace anywhere, making a real backend
+      // failure look identical to "nothing was ever sent."
+      debugPrint('org_dashboard: failed to fetch notifications: $e');
+    }
   }
 
   void _showNotificationDropdown() {

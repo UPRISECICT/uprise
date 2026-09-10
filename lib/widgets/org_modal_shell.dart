@@ -156,78 +156,87 @@ class OrgModalShell extends StatelessWidget {
                   ? _buildCompactHeader(context)
                   : Stack(
                       children: [
-                        // Positioned.fill (not a bare Padding) so this is the
-                        // Stack's only sizing input and spans the header's full
-                        // width — otherwise Stack shrinks to fit this child's own
-                        // MainAxisSize.min Column, which is only as wide as the
-                        // title text, leaving the whole icon+title block stuck
-                        // at the Stack's default top-left instead of centered.
-                        Positioned.fill(
-                          top: 22,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: 64,
-                                height: 64,
-                                decoration: BoxDecoration(
-                                  color: headerColor == null
-                                      ? accentColor.withAlpha(24)
-                                      : Colors.white.withAlpha(34),
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: headerColor == null
-                                          ? accentColor.withAlpha(28)
-                                          : Colors.black.withAlpha(22),
-                                      blurRadius: 20,
-                                      spreadRadius: 4,
-                                    ),
-                                  ],
+                        // Must stay a genuine non-Positioned Stack child —
+                        // if every child here were Positioned (as an
+                        // earlier attempt at this had it), Stack has no
+                        // child left to size itself from and falls back to
+                        // constraints.biggest, which is unbounded height
+                        // since the header Container has no fixed height
+                        // of its own. SizedBox(width: double.infinity)
+                        // instead just stretches this child to the header's
+                        // full (finite) width — the actual fix for the
+                        // icon+title block being only as wide as the title
+                        // text and stuck at the Stack's top-left — while
+                        // leaving height untouched and safely intrinsic.
+                        Padding(
+                          padding: const EdgeInsets.only(top: 22),
+                          child: SizedBox(
+                            width: double.infinity,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 64,
+                                  height: 64,
+                                  decoration: BoxDecoration(
+                                    color: headerColor == null
+                                        ? accentColor.withAlpha(24)
+                                        : Colors.white.withAlpha(34),
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: headerColor == null
+                                            ? accentColor.withAlpha(28)
+                                            : Colors.black.withAlpha(22),
+                                        blurRadius: 20,
+                                        spreadRadius: 4,
+                                      ),
+                                    ],
+                                  ),
+                                  child: Icon(
+                                    icon,
+                                    color: headerColor == null
+                                        ? accentColor
+                                        : Colors.white,
+                                    size: 30,
+                                  ),
                                 ),
-                                child: Icon(
-                                  icon,
-                                  color: headerColor == null
-                                      ? accentColor
-                                      : Colors.white,
-                                  size: 30,
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                title,
-                                textAlign: TextAlign.center,
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w700,
-                                  color: headerColor == null
-                                      ? const Color(0xFF1A202C)
-                                      : Colors.white,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              if (subtitleWidget != null) ...[
-                                const SizedBox(height: 6),
-                                subtitleWidget!,
-                              ] else if (subtitle != null &&
-                                  subtitle!.isNotEmpty) ...[
-                                const SizedBox(height: 6),
+                                const SizedBox(height: 16),
                                 Text(
-                                  subtitle!,
+                                  title,
                                   textAlign: TextAlign.center,
                                   style: GoogleFonts.beVietnamPro(
-                                    fontSize: 13,
-                                    height: 1.45,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w700,
                                     color: headerColor == null
-                                        ? const Color(0xFF64748B)
-                                        : Colors.white.withAlpha(210),
+                                        ? const Color(0xFF1A202C)
+                                        : Colors.white,
                                   ),
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                 ),
+                                if (subtitleWidget != null) ...[
+                                  const SizedBox(height: 6),
+                                  subtitleWidget!,
+                                ] else if (subtitle != null &&
+                                    subtitle!.isNotEmpty) ...[
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    subtitle!,
+                                    textAlign: TextAlign.center,
+                                    style: GoogleFonts.beVietnamPro(
+                                      fontSize: 13,
+                                      height: 1.45,
+                                      color: headerColor == null
+                                          ? const Color(0xFF64748B)
+                                          : Colors.white.withAlpha(210),
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
                               ],
-                            ],
+                            ),
                           ),
                         ),
                         Positioned(

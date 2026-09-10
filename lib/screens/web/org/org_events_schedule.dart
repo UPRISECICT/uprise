@@ -2006,14 +2006,23 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                         padding: const EdgeInsets.all(20),
                         itemCount: events.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 10),
-                        itemBuilder: (_, i) => _EventListTile(
-                          event: events[i],
-                          displayTime: resolvedTimes[events[i].id],
-                          onTap: () {
-                            Navigator.pop(ctx);
-                            _showEventDetailDialog(events[i]);
-                          },
-                        ),
+                        itemBuilder: (_, i) {
+                          final event = events[i];
+                          final isOwnedByCurrentOrg = event.orgId == widget.orgId;
+                          return _EventListTile(
+                            event: event,
+                            displayTime: resolvedTimes[event.id],
+                            // All Events is a calendar-discovery view. Another
+                            // organization's event may be listed here, but its
+                            // operational details must remain private.
+                            onTap: isOwnedByCurrentOrg
+                                ? () {
+                                    Navigator.pop(ctx);
+                                    _showEventDetailDialog(event);
+                                  }
+                                : null,
+                          );
+                        },
                       ),
               ),
               Container(
@@ -2060,6 +2069,10 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
 
   // ─── NEW PROFESSIONAL EVENT DETAIL DIALOG ──────────────────────
   Future<void> _showEventDetailDialog(EventModel event) async {
+    // Keep the ownership rule enforced even if this method is reached from a
+    // future entry point instead of the calendar list tile.
+    if (event.orgId != widget.orgId) return;
+
     // Fetch latest data from proposal (if available)
     var startTime = event.startTime;
     var endTime = event.endTime;
@@ -2734,7 +2747,7 @@ class _ToggleTab extends StatelessWidget {
 class _EventListTile extends StatelessWidget {
   final EventModel event;
   final String? displayTime;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   const _EventListTile({
     required this.event,
     this.displayTime,

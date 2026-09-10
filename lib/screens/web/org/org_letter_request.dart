@@ -174,7 +174,6 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
   int _currentPage = 1;
   static const int _pageSize = 10;
 
-  Map<String, dynamic>? _orgProfile;
   String _orgName = '';
   String _orgEmail = '';
   String _orgLogoUrl = '';
@@ -199,7 +198,6 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
           .get();
       if (doc.exists) {
         setState(() {
-          _orgProfile = doc.data();
           _orgName = doc.data()?['name'] ?? 'Organization';
           _orgEmail = doc.data()?['email'] ?? '';
           _orgLogoUrl = doc.data()?['logoUrl'] ?? '';
@@ -248,12 +246,7 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
     return StreamBuilder<QuerySnapshot>(
       stream: _requestsStream,
       builder: (context, snapshot) {
-        int total = 0,
-            pending = 0,
-            approved = 0,
-            rejected = 0,
-            revision = 0,
-            resubmitted = 0;
+        int total = 0, pending = 0, approved = 0, rejected = 0;
         if (snapshot.hasData) {
           for (final doc in snapshot.data!.docs) {
             total++;
@@ -261,8 +254,6 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
             if (status == 'pending') pending++;
             if (status == 'approved') approved++;
             if (status == 'rejected') rejected++;
-            if (status == 'revision') revision++;
-            if (status == 'resubmitted') resubmitted++;
           }
         }
         void selectStatus(String status) => setState(() {
@@ -325,31 +316,7 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
             horizontalPadding,
             0,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              StatCardsRow(cards: cards, isMobile: isMobile, gap: 12),
-              const SizedBox(height: 14),
-              StatStrip(
-                items: [
-                  StatStripItem.count(
-                    label: 'Needs revision',
-                    count: revision,
-                    color: const Color(0xFF2563EB),
-                    selected: _statusFilter == 'Needs Revision',
-                    onTap: () => selectStatus('Needs Revision'),
-                  ),
-                  StatStripItem.count(
-                    label: 'Resubmitted',
-                    count: resubmitted,
-                    color: const Color(0xFF7C3AED),
-                    selected: _statusFilter == 'Resubmitted',
-                    onTap: () => selectStatus('Resubmitted'),
-                  ),
-                ],
-              ),
-            ],
-          ),
+          child: StatCardsRow(cards: cards, isMobile: isMobile, gap: 12),
         );
       },
     );
@@ -853,10 +820,12 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
 
   // ── Dialogs ───────────────────────────────────────────────────────
   Future<void> _openNewRequestModal() async {
-    if (_orgProfile == null) {
-      _showSnack('Loading organization info…');
-      return;
-    }
+    // Used to bail out with just a snackbar if _loadOrgProfile() (an
+    // initState fetch) hadn't resolved yet — but the modal only actually
+    // needs _orgName/_orgEmail/_orgLogoUrl (all default to '' already),
+    // not the raw _orgProfile map itself. If that fetch was ever slow to
+    // finish, or failed and got silently swallowed, "New Request" did
+    // nothing but show a snackbar, forever, with no way to proceed.
     await showDialog(
       context: context,
       barrierDismissible: false,

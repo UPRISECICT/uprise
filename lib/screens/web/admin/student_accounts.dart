@@ -722,6 +722,13 @@ class _StudentAccountsState extends State<StudentAccounts> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
+                        _ActionIconButton(
+                          icon: Icons.edit_outlined,
+                          tooltip: 'Edit Student Details',
+                          color: const Color(0xFF2563EB),
+                          onTap: () => _showEditStudentDialog(docId, data),
+                        ),
+                        const SizedBox(width: 4),
                         if (!isArchived) ...[
                           _ActionIconButton(
                             icon: Icons.email_outlined,
@@ -1460,7 +1467,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
     // leading zeros or switching to scientific notation).
     const exampleRow = [
       '2023100467',
-      'Juan Dela Cruz',
+      'Dela Cruz, Juan',
       'BSIT',
       '3',
       '4H-G1',
@@ -1762,7 +1769,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
-                                  'Required columns (in order):\nStudent ID · Full Name · Course · Year Level · Section · Email\n\nStudent ID: 10 digits, no dash (e.g. 2023100467). Section: 4H-G1 format.\n\nEmail must be the school\'s Microsoft account (e.g. 2023100467@ms.bulsu.edu.ph — outlook.com, hotmail.com, live.com, and msn.com also accepted) — other domains will be skipped.',
+                                  'Required columns (in order):\nStudent ID · Full Name · Course · Year Level · Section · Email\n\nFull Name: use Last Name, First Name Middle Initial (e.g. San Jose, Claudine Joy S.). This preserves multi-word last names on mobile.\n\nStudent ID: 10 digits, no dash (e.g. 2023100467). Section: 4H-G1 format.\n\nEmail must be the school\'s Microsoft account (e.g. 2023100467@ms.bulsu.edu.ph — outlook.com, hotmail.com, live.com, and msn.com also accepted) — other domains will be skipped.',
                                   style: GoogleFonts.beVietnamPro(
                                     fontSize: 12,
                                     color: const Color(0xFF1D4ED8),
@@ -2072,6 +2079,291 @@ class _StudentAccountsState extends State<StudentAccounts> {
                             horizontal: 20,
                             vertical: 11,
                           ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Edit Student Dialog ──────────────────────────────────────────
+  void _showEditStudentDialog(String docId, Map<String, dynamic> data) {
+    final formKey = GlobalKey<FormState>();
+    final fullName = (data['fullName'] ?? '').toString().trim();
+    var firstName = (data['firstName'] ?? '').toString().trim();
+    var middleName = (data['middleName'] ?? '').toString().trim();
+    var lastName = (data['lastName'] ?? '').toString().trim();
+
+    // Older records only have fullName. Use a best-effort prefill, while the
+    // editable fields let the admin correct multi-word surnames explicitly.
+    if (firstName.isEmpty && lastName.isEmpty && fullName.isNotEmpty) {
+      final parts = fullName.split(RegExp(r'\s+'));
+      lastName = parts.last;
+      if (parts.length > 2 && RegExp(r'^[A-Za-z]{1,3}\.?$').hasMatch(parts[parts.length - 2])) {
+        middleName = parts[parts.length - 2];
+        firstName = parts.sublist(0, parts.length - 2).join(' ');
+      } else {
+        firstName = parts.length > 1 ? parts.sublist(0, parts.length - 1).join(' ') : '';
+      }
+    }
+
+    final firstNameCtrl = TextEditingController(text: firstName);
+    final middleNameCtrl = TextEditingController(text: middleName);
+    final lastNameCtrl = TextEditingController(text: lastName);
+    final idCtrl = TextEditingController(text: (data['studentId'] ?? '').toString());
+    final sectionCtrl = TextEditingController(text: (data['section'] ?? '').toString());
+    final email = (data['email'] ?? '').toString();
+    const courses = ['BSIT', 'BSIS', 'BLIS'];
+    const yearLevels = ['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year'];
+    var course = courses.contains(data['course']) ? data['course'] as String : 'BSIT';
+    var yearLevel = yearLevels.contains(data['yearLevel'])
+        ? data['yearLevel'] as String
+        : '1st Year';
+    var isSaving = false;
+    String? errorMessage;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black54,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => Dialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          child: SizedBox(
+            width: 580,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 16, 20),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        AdminColors.primaryDark,
+                        AdminColors.primaryDark.withAlpha(225),
+                      ],
+                    ),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withAlpha(38),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.edit_outlined, color: Colors.white, size: 19),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Text(
+                          'Edit Student Details',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Close',
+                        onPressed: isSaving ? null : () => Navigator.pop(ctx),
+                        icon: const Icon(Icons.close_rounded, color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(24),
+                    child: Form(
+                      key: formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _sectionLabel('Personal Information', icon: Icons.person_outline),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                flex: 2,
+                                child: TextFormField(
+                                  controller: firstNameCtrl,
+                                  decoration: _DS.inputDecoration('First Name', required: true),
+                                  validator: (value) => value == null || value.trim().isEmpty ? 'Required' : null,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: TextFormField(
+                                  controller: middleNameCtrl,
+                                  decoration: _DS.inputDecoration('Middle Initial / Name'),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: lastNameCtrl,
+                            decoration: _DS.inputDecoration('Last Name', required: true),
+                            validator: (value) => value == null || value.trim().isEmpty ? 'Required' : null,
+                          ),
+                          const SizedBox(height: 20),
+                          _sectionLabel('Academic Information', icon: Icons.school_outlined),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextFormField(
+                                  controller: idCtrl,
+                                  decoration: _DS.inputDecoration('Student ID', required: true),
+                                  validator: _validateStudentId,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: TextFormField(
+                                  controller: sectionCtrl,
+                                  decoration: _DS.inputDecoration('Section', hint: 'e.g., 4H-G1'),
+                                  validator: _validateSection,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: DropdownButtonFormField<String>(
+                                  value: course,
+                                  decoration: _DS.inputDecoration('Course', required: true),
+                                  items: courses.map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(),
+                                  onChanged: (value) => setDialogState(() => course = value!),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: DropdownButtonFormField<String>(
+                                  value: yearLevel,
+                                  decoration: _DS.inputDecoration('Year Level', required: true),
+                                  items: yearLevels.map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(),
+                                  onChanged: (value) => setDialogState(() => yearLevel = value!),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                          _sectionLabel('Account Email', icon: Icons.email_outlined),
+                          const SizedBox(height: 8),
+                          TextFormField(
+                            initialValue: email,
+                            readOnly: true,
+                            decoration: _DS.inputDecoration('Login Email', icon: Icons.lock_outline),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Login email is read-only here to keep Firebase Authentication secure.',
+                            style: GoogleFonts.beVietnamPro(fontSize: 11, color: const Color(0xFF64748B)),
+                          ),
+                          if (errorMessage != null) ...[
+                            const SizedBox(height: 16),
+                            Text(
+                              errorMessage!,
+                              style: GoogleFonts.beVietnamPro(fontSize: 12, color: AdminColors.error),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF8F9FB),
+                    border: Border(top: BorderSide(color: Color(0xFFE8ECF0))),
+                    borderRadius: BorderRadius.vertical(bottom: Radius.circular(18)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      OutlinedButton(
+                        onPressed: isSaving ? null : () => Navigator.pop(ctx),
+                        child: const Text('Cancel'),
+                      ),
+                      const SizedBox(width: 12),
+                      ElevatedButton.icon(
+                        onPressed: isSaving
+                            ? null
+                            : () async {
+                                if (!formKey.currentState!.validate()) return;
+                                setDialogState(() {
+                                  isSaving = true;
+                                  errorMessage = null;
+                                });
+                                final first = firstNameCtrl.text.trim();
+                                final middle = middleNameCtrl.text.trim();
+                                final last = lastNameCtrl.text.trim();
+                                final updatedFullName = [first, middle, last]
+                                    .where((part) => part.isNotEmpty)
+                                    .join(' ');
+                                try {
+                                  final batch = FirebaseFirestore.instance.batch();
+                                  final updates = <String, dynamic>{
+                                    'firstName': first,
+                                    'middleName': middle,
+                                    'lastName': last,
+                                    'fullName': updatedFullName,
+                                    'studentId': idCtrl.text.trim(),
+                                    'course': course,
+                                    'yearLevel': yearLevel,
+                                    'section': sectionCtrl.text.trim(),
+                                    'updatedAt': FieldValue.serverTimestamp(),
+                                  };
+                                  batch.update(
+                                    FirebaseFirestore.instance.collection('students').doc(docId),
+                                    updates,
+                                  );
+                                  batch.set(
+                                    FirebaseFirestore.instance.collection('users').doc(docId),
+                                    updates,
+                                    SetOptions(merge: true),
+                                  );
+                                  await batch.commit();
+                                  await activity_log.ActivityLogger.log(
+                                    action: 'Updated student account: ${idCtrl.text.trim()} ($updatedFullName)',
+                                    module: 'User Directory',
+                                    severity: 'info',
+                                    details: {'studentDocId': docId},
+                                  );
+                                  if (!mounted) return;
+                                  Navigator.pop(ctx);
+                                  AppToast.success(context, 'Student details updated.');
+                                } catch (error) {
+                                  setDialogState(() {
+                                    isSaving = false;
+                                    errorMessage = 'Could not save changes: $error';
+                                  });
+                                }
+                              },
+                        icon: isSaving
+                            ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            : const Icon(Icons.save_outlined, size: 16),
+                        label: Text(isSaving ? 'Saving...' : 'Save Changes'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AdminColors.primaryDark,
+                          foregroundColor: Colors.white,
                         ),
                       ),
                     ],
@@ -2474,6 +2766,9 @@ class _StudentAccountsState extends State<StudentAccounts> {
     final email = student['email']!;
     final studentId = student['studentId']!;
     final fullName = student['fullName']!;
+    final firstName = student['firstName'] ?? '';
+    final middleName = student['middleName'] ?? '';
+    final lastName = student['lastName'] ?? '';
     final password = _generatePassword();
 
     FirebaseApp secondaryApp;
@@ -2511,6 +2806,9 @@ class _StudentAccountsState extends State<StudentAccounts> {
     batch.set(FirebaseFirestore.instance.collection('students').doc(uid), {
       'studentId': studentId,
       'fullName': fullName,
+      'firstName': firstName,
+      'middleName': middleName,
+      'lastName': lastName,
       'course': student['course'],
       'yearLevel': student['yearLevel'],
       'section': student['section'] ?? '', // NEW
@@ -2526,6 +2824,9 @@ class _StudentAccountsState extends State<StudentAccounts> {
       'uid': uid,
       'email': email,
       'fullName': fullName,
+      'firstName': firstName,
+      'middleName': middleName,
+      'lastName': lastName,
       'role': 'student',
       'mustChangePassword': true,
       'createdAt': FieldValue.serverTimestamp(),
@@ -2619,10 +2920,61 @@ class _StudentAccountsState extends State<StudentAccounts> {
   Map<String, String> _rowToStudentMap(List<dynamic> values) {
     String cell(int i) =>
         (i < values.length ? values[i]?.toString().trim() : null) ?? '';
+    ({String firstName, String middleName, String lastName, String fullName})
+    parseRosterName(String value) {
+      final comma = value.indexOf(',');
+      // Registrar rosters use "Last, First Middle" while the app displays
+      // names as "First Middle Last". A comma is essential here: it is what
+      // lets us preserve multi-word surnames such as "San Jose" accurately.
+      if (comma > 0 &&
+          comma < value.length - 1 &&
+          value.indexOf(',', comma + 1) == -1) {
+        final lastName = value.substring(0, comma).trim();
+        final givenParts = value
+            .substring(comma + 1)
+            .trim()
+            .split(RegExp(r'\s+'))
+            .where((part) => part.isNotEmpty)
+            .toList();
+        if (lastName.isNotEmpty && givenParts.isNotEmpty) {
+          // A trailing short token is a middle initial: D., P, SJ., and DG.
+          // Everything before it remains part of the student's first name.
+          final hasMiddleInitial =
+              givenParts.length > 1 &&
+              RegExp(r'^[A-Za-z]{1,3}\.?$').hasMatch(givenParts.last);
+          final middleName = hasMiddleInitial ? givenParts.removeLast() : '';
+          final firstName = givenParts.join(' ');
+          return (
+            firstName: firstName,
+            middleName: middleName,
+            lastName: lastName,
+            fullName: [firstName, middleName, lastName]
+                .where((part) => part.isNotEmpty)
+                .join(' '),
+          );
+        }
+      }
+
+      // Keep previously supported non-comma names importable. Their name
+      // parts intentionally stay blank rather than guessing at a potentially
+      // multi-word surname; the roster convention above is the reliable way
+      // to populate mobile's separate First/Middle/Last fields.
+      return (
+        firstName: '',
+        middleName: '',
+        lastName: '',
+        fullName: value,
+      );
+    }
+
     final hasSection = values.length >= 6;
+    final name = parseRosterName(cell(1));
     return {
       'studentId': cell(0),
-      'fullName': cell(1),
+      'firstName': name.firstName,
+      'middleName': name.middleName,
+      'lastName': name.lastName,
+      'fullName': name.fullName,
       'course': _normalizeCourse(cell(2)),
       'yearLevel': cell(3),
       'section': hasSection ? cell(4) : '',
@@ -2662,7 +3014,10 @@ class _StudentAccountsState extends State<StudentAccounts> {
       if (s['fullName']!.isEmpty) {
         reasons.add('missing Full Name');
       } else if (!_fullNamePattern.hasMatch(s['fullName']!)) {
-        reasons.add('Full Name "${s['fullName']}" needs a first and last name');
+        reasons.add(
+          'Full Name "${s['fullName']}" needs a first and last name '
+          '(for example, "First Last" or "Last, First M.")',
+        );
       }
 
       final section = s['section']!;
@@ -2752,8 +3107,13 @@ class _StudentAccountsState extends State<StudentAccounts> {
   // No dash — the school's actual student number format is a plain
   // 10-digit number (e.g. 2023100467), not 2021-00001.
   static final RegExp _studentIdPattern = RegExp(r'^[0-9]{10}$');
+  // Accept both the regular display format ("Ralph Anthony Arellano") and
+  // the registrar roster format ("Arellano, Ralph Anthony D."). The name
+  // after the comma only needs a first name; a middle name/initial is
+  // optional. This also tolerates a missing space after the comma in an
+  // imported spreadsheet (for example, "Garrucho,Steven G.").
   static final RegExp _fullNamePattern = RegExp(
-    r"^[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'.-]*(?: [A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'.-]*)+$",
+    r"^(?:[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'.-]*(?: [A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'.-]*)+|[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'.-]*(?: [A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'.-]*)*, ?[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'.-]*(?: [A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'.-]*)*)$",
   );
   // Previously `^[0-9][A-Za-z0-9-]{1,9}$` — loose enough to accept almost
   // any digit+junk string. The school's actual section format is a year

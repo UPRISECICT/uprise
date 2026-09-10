@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -485,6 +486,10 @@ class _ReportsManagementState extends State<ReportsManagement>
   List<AdminReport> _accomplishmentReports = [];
   bool _loadingFinancial = true;
   bool _loadingAccomplishment = true;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+  _financialReportsSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+  _accomplishmentReportsSubscription;
 
   // Keep these for submission tracker tab
   List<OrgSubmission> _financialSubs = [];
@@ -513,13 +518,28 @@ class _ReportsManagementState extends State<ReportsManagement>
     AdminExportPdf.warmUp();
     _loadOrganizations();
     _loadSubmissionData();
-    _loadFinancialReports();
-    _loadAccomplishmentReports();
+    _watchReports();
     _loadEvents();
+  }
+
+  /// Keep the admin's Financial and Accomplishment tabs in sync with reports
+  /// submitted by organizations, without requiring a browser refresh.
+  void _watchReports() {
+    final reports = FirebaseFirestore.instance.collection('reports');
+    _financialReportsSubscription = reports
+        .where('type', isEqualTo: 'financial')
+        .snapshots()
+        .listen((_) => _loadFinancialReports());
+    _accomplishmentReportsSubscription = reports
+        .where('type', isEqualTo: 'accomplishment')
+        .snapshots()
+        .listen((_) => _loadAccomplishmentReports());
   }
 
   @override
   void dispose() {
+    _financialReportsSubscription?.cancel();
+    _accomplishmentReportsSubscription?.cancel();
     _tabController.dispose();
     _eventSearchController.dispose();
     _reportSearchController.dispose();

@@ -1134,9 +1134,7 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
       ),
       child: Row(
         children: [
-          Expanded(flex: 2, child: _headerCell('REPORT ID')),
-          const SizedBox(width: 16),
-          Expanded(flex: 3, child: _headerCell('EVENT')),
+          Expanded(flex: 4, child: _headerCell('EVENT')),
           const SizedBox(width: 16),
           Expanded(flex: 2, child: _headerCell('TYPE')),
           const SizedBox(width: 16),
@@ -1178,23 +1176,9 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
         ),
         child: Row(
           children: [
-            // Report ID
-            Expanded(
-              flex: 2,
-              child: Text(
-                report.reportId,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: _DS.primary,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            const SizedBox(width: 16),
             // EVENT (Title + Description)
             Expanded(
-              flex: 3,
+              flex: 4,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,

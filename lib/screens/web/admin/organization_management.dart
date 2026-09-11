@@ -1014,6 +1014,13 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
                     ),
                     const SizedBox(width: 6),
                     _ActionIconButton(
+                      icon: Icons.mail_outline_rounded,
+                      tooltip: 'Resend Credentials',
+                      onTap: () => _resendOrgCredentials(org),
+                      color: const Color(0xFF3B82F6),
+                    ),
+                    const SizedBox(width: 6),
+                    _ActionIconButton(
                       icon: org.status == 'archived'
                           ? Icons.restore_rounded
                           : Icons.archive_outlined,
@@ -1154,6 +1161,13 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
                       tooltip: 'Edit',
                       onTap: () => _showEditOrganizationDialog(org),
                       color: AdminColors.primaryDark,
+                    ),
+                    const SizedBox(width: 6),
+                    _ActionIconButton(
+                      icon: Icons.mail_outline_rounded,
+                      tooltip: 'Resend Credentials',
+                      onTap: () => _resendOrgCredentials(org),
+                      color: const Color(0xFF3B82F6),
                     ),
                     const SizedBox(width: 6),
                     _ActionIconButton(
@@ -1373,6 +1387,58 @@ class _OrganizationManagementState extends State<OrganizationManagement> {
   }
 
   String _formatDate(DateTime d) => DateFormat('MMM d, yyyy').format(d);
+
+  // The temporary password generated at creation is never persisted
+  // anywhere (not in Firestore, not recoverable from Firebase Auth), so
+  // there's no original password to literally "resend" once it's gone —
+  // doing that would need a way to reset another user's Firebase Auth
+  // password, which the client SDK can't do without either already
+  // knowing their current password or a privileged (Admin SDK) backend
+  // call, neither of which exists here. Firebase's own password-reset
+  // email is the one thing that both requires no backend work and
+  // actually lets the org regain access on their own.
+  void _resendOrgCredentials(Organization org) {
+    if (org.orgEmail.isEmpty) {
+      AppToast.error(context, 'This organization has no login email on file.');
+      return;
+    }
+    showDialog(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (ctx) => _ConfirmDialog(
+        title: 'Resend Credentials',
+        message:
+            'Send a password reset link to ${org.orgEmail}? "${org.name}" '
+            'can use it to set a new password and sign in — the original '
+            'temporary password can\'t be recovered or resent as-is.',
+        confirmLabel: 'Send Reset Link',
+        confirmColor: AdminColors.primaryDark,
+        icon: Icons.email_outlined,
+        onConfirm: () async {
+          try {
+            await FirebaseAuth.instance.sendPasswordResetEmail(
+              email: org.orgEmail,
+            );
+            await ActivityLogger.log(
+              action: 'Sent password reset link to organization: ${org.name}',
+              module: 'Organizations',
+              details: {'orgId': org.id},
+            );
+            if (mounted) {
+              AppToast.success(
+                context,
+                'Password reset link sent to ${org.orgEmail}.',
+              );
+            }
+          } catch (e) {
+            if (mounted) {
+              AppToast.error(context, 'Failed to send reset link: $e');
+            }
+          }
+        },
+      ),
+    );
+  }
 }
 
 // ============ FILTER DROPDOWN ============
@@ -3396,11 +3462,57 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
     return 'UPR-${List.generate(6, (_) => chars[random.nextInt(chars.length)]).join()}';
   }
 
+  // Tries the primary EmailJS service (an Outlook-connected account) first;
+  // if that fails for any reason, falls back to a second, Gmail-connected
+  // EmailJS service instead of giving up outright — the two providers have
+  // turned out not to be equally reliable, and org credentials silently
+  // never arriving left a brand-new org with no way to log in at all.
   Future<bool> _sendCredentialsEmail({
     required String toEmail,
     required String orgName,
     required String recipientName,
     required String password,
+  }) async {
+    final sentViaOutlook = await _sendViaEmailJs(
+      serviceId: 'service_s3ke8zd',
+      templateId: 'template_t92k1um',
+      userId: 'tmx47wQJmb1uMNUpr',
+      templateParams: {
+        'to_email': toEmail,
+        'to_name': recipientName,
+        'password': password,
+        'org_name': orgName,
+      },
+      providerLabel: 'Outlook',
+    );
+    if (sentViaOutlook) return true;
+
+    // This template's "To Email" field is bound to `email`, not `to_email`
+    // — confirmed directly against the EmailJS API (a bare `to_email` came
+    // back "The recipients address is empty"). Verified working end to
+    // end with a real test send before this was wired in.
+    return _sendViaEmailJs(
+      serviceId: 'service_cgdjlm5',
+      templateId: 'template_kdsfyjs',
+      userId: 'cl9z5tEh4AUvA9GK5',
+      accessToken: '2GCrrwv2PACwEAtjCQxml',
+      templateParams: {
+        'email': toEmail,
+        'name': recipientName,
+        'password': password,
+        'org_name': orgName,
+      },
+      providerLabel: 'Gmail',
+    );
+  }
+
+  Future<bool> _sendViaEmailJs({
+    required String serviceId,
+    required String templateId,
+    required String userId,
+    required Map<String, String> templateParams,
+    required String providerLabel,
+    String? accessToken,
   }) async {
     try {
       final response = await http.post(
@@ -3410,27 +3522,32 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
           'origin': 'http://localhost',
         },
         body: jsonEncode({
-          'service_id': 'service_s3ke8zd',
-          'template_id': 'template_t92k1um',
-          'user_id': 'tmx47wQJmb1uMNUpr',
-          'template_params': {
-            'to_email': toEmail,
-            'to_name': recipientName,
-            'password': password,
-            'org_name': orgName,
-          },
+          'service_id': serviceId,
+          'template_id': templateId,
+          'user_id': userId,
+          if (accessToken != null) 'accessToken': accessToken,
+          'template_params': templateParams,
         }),
       );
 
       if (response.statusCode == 200) {
-        debugPrint('✅ Organization credentials email sent to $toEmail');
+        debugPrint(
+          '✅ Organization credentials email sent via $providerLabel to '
+          '${templateParams['to_email']}',
+        );
         return true;
       }
 
-      debugPrint('❌ EmailJS error ${response.statusCode}: ${response.body}');
+      debugPrint(
+        '❌ EmailJS ($providerLabel) error ${response.statusCode}: '
+        '${response.body}',
+      );
       return false;
     } catch (e) {
-      debugPrint('❌ Failed to send organization credentials email: $e');
+      debugPrint(
+        '❌ Failed to send organization credentials email via '
+        '$providerLabel: $e',
+      );
       return false;
     }
   }
@@ -3596,16 +3713,6 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
       }
 
       final account = createdAccounts.first;
-      _sendCredentialsEmail(
-        toEmail: account['email']!,
-        orgName: orgName,
-        recipientName: orgName,
-        password: account['password']!,
-      ).then((sent) {
-        if (!sent) {
-          debugPrint('⚠️ Failed to send credentials email to $orgEmail');
-        }
-      });
 
       await ActivityLogger.log(
         action: 'Created new organization: $orgName',
@@ -3613,21 +3720,62 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
       );
 
       widget.onCreated();
+      // Captured before popping — ScaffoldMessengerState belongs to the
+      // ancestor Scaffold (the admin page behind this dialog), not to this
+      // dialog's own widget, so it stays valid for the follow-up snackbar
+      // below even after this dialog is closed and disposed.
+      final messenger = mounted ? ScaffoldMessenger.of(context) : null;
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
+      }
+      messenger?.showSnackBar(
+        SnackBar(
+          content: Text(
+            'Organization "$orgName" created! Sending credentials to $orgEmail…',
+          ),
+          backgroundColor: const Color(0xFF059669),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+
+      // Was fire-and-forget with only a debugPrint on failure — invisible
+      // outside a dev console, and since the generated password is never
+      // shown anywhere else in the UI, a silently-failed send left the org
+      // with no way to actually learn its own login credentials. Now
+      // awaited, with the password surfaced directly in the error toast as
+      // a manual fallback.
+      final sent = await _sendCredentialsEmail(
+        toEmail: account['email']!,
+        orgName: orgName,
+        recipientName: orgName,
+        password: account['password']!,
+      );
+      if (!sent) {
+        debugPrint('⚠️ Failed to send credentials email to $orgEmail');
+        messenger?.showSnackBar(
           SnackBar(
             content: Text(
-              'Organization "$orgName" created! Credentials are being sent to $orgEmail.',
+              'Credentials email to $orgEmail failed to send. Share this '
+              'temporary password with them manually: ${account['password']}',
             ),
-            backgroundColor: const Color(0xFF059669),
+            backgroundColor: AdminColors.error,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
             ),
-            duration: const Duration(seconds: 5),
+            duration: const Duration(seconds: 15),
+            action: SnackBarAction(
+              label: 'Copy',
+              textColor: Colors.white,
+              onPressed: () =>
+                  Clipboard.setData(ClipboardData(text: account['password']!)),
+            ),
           ),
         );
+      } else {
+        debugPrint('✅ Organization credentials email sent to $orgEmail');
       }
     } catch (e) {
       _showError('Error: $e');

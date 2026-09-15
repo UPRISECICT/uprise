@@ -1983,6 +1983,12 @@ class _EventProposalsState extends State<EventProposals> {
   // ── View Detail Dialog – with dedicated image preview ──
   void _showProposalDetailDialog(String docId, Map<String, dynamic> data) {
     final status = (data['status'] ?? 'pending') as String;
+    final statusAccent = switch (status.toLowerCase()) {
+      'approved' => const Color(0xFF059669),
+      'rejected' => const Color(0xFFDC2626),
+      'for_review' => AdminColors.info,
+      _ => const Color(0xFFFB923C),
+    };
     final canArchive = status == 'approved' || status == 'rejected';
     final isPublished = (data['publishedEventId'] ?? '').toString().isNotEmpty;
     final hasImage =
@@ -2047,10 +2053,30 @@ class _EventProposalsState extends State<EventProposals> {
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(18),
                   ),
+                  border: Border(bottom: BorderSide(color: statusAccent, width: 3)),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: statusAccent.withAlpha(38),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        status.toLowerCase() == 'approved'
+                            ? Icons.verified_rounded
+                            : status.toLowerCase() == 'rejected'
+                            ? Icons.cancel_rounded
+                            : Icons.event_note_rounded,
+                        color: Colors.white,
+                        size: 21,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2763,13 +2789,25 @@ class _EventProposalsState extends State<EventProposals> {
     IconData icon, {
     Color? valueColor,
   }) {
-    final accent = valueColor ?? const Color(0xFF64748B);
+    final accent = valueColor ??
+        switch (label) {
+          'Category' => const Color(0xFFF97316),
+          'Audience' => const Color(0xFF7C3AED),
+          'Date' => const Color(0xFF2563EB),
+          'Time' => const Color(0xFF4F46E5),
+          'School Year' => const Color(0xFF059669),
+          'Semester' => const Color(0xFF0F766E),
+          'Location' => const Color(0xFFDB2777),
+          'Submitted By' => const Color(0xFF0891B2),
+          'Submitted At' => const Color(0xFF6366F1),
+          _ => const Color(0xFF64748B),
+        };
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8F9FB),
+        color: accent.withAlpha(10),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFEEF1F4)),
+        border: Border.all(color: accent.withAlpha(48)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

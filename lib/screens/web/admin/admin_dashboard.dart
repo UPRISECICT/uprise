@@ -59,6 +59,8 @@ class _DS {
   static const double radiusMd = 12;
   static const double radiusLg = 16;
   static const double radiusPill = 100;
+  static const Color textPrimary = Color(0xFF1E293B);
+  static const Color textSecondary = Color(0xFF64748B);
 
   static final List<BoxShadow> cardShadow = [
     BoxShadow(
@@ -1597,6 +1599,7 @@ class _DashboardHomeState extends State<DashboardHome> {
   // (Events, Pending Proposals, Overdue Reports) so switching between them
   // doesn't re-fetch names for orgs already resolved this session.
   final Map<String, String> _dashboardOrgShortNameCache = {};
+  final Map<String, String> _dashboardOrgLogoCache = {};
 
   Future<void> _ensureOrgShortNames(Iterable<String> orgIds) async {
     final missing = orgIds
@@ -1616,10 +1619,13 @@ class _DashboardHomeState extends State<DashboardHome> {
         for (final doc in snap.docs) {
           _dashboardOrgShortNameCache[doc.id] =
               (doc.data()['shortName'] as String?) ?? '';
+          _dashboardOrgLogoCache[doc.id] =
+              (doc.data()['logoUrl'] as String?) ?? '';
         }
       } catch (_) {}
       for (final id in batch) {
         _dashboardOrgShortNameCache.putIfAbsent(id, () => '');
+        _dashboardOrgLogoCache.putIfAbsent(id, () => '');
       }
     }
     if (mounted) setState(() {});
@@ -1797,6 +1803,10 @@ class _DashboardHomeState extends State<DashboardHome> {
         for (final doc in orgsSnap.docs)
           doc.id: (doc.data()['shortName'] as String?) ?? '',
       };
+      final orgLogos = {
+        for (final doc in orgsSnap.docs)
+          doc.id: (doc.data()['logoUrl'] as String?) ?? '',
+      };
 
       var total = 0;
       final byOrg = <String, int>{};
@@ -1805,6 +1815,7 @@ class _DashboardHomeState extends State<DashboardHome> {
         final orgId = entry.key;
         final orgName = orgNames[orgId] ?? 'Organization';
         final orgShortName = orgShortNames[orgId] ?? '';
+        final orgLogoUrl = orgLogos[orgId] ?? '';
         for (final ev in entry.value) {
           final eventId = ev['eventId'] as String;
           final eventDate = ev['eventDate'] as DateTime;
@@ -1823,6 +1834,7 @@ class _DashboardHomeState extends State<DashboardHome> {
                   orgId: orgId,
                   orgName: orgName,
                   orgShortName: orgShortName,
+                  orgLogoUrl: orgLogoUrl,
                   eventTitle: eventTitle,
                   type: type,
                   deadline: deadline,
@@ -2922,7 +2934,7 @@ class _DashboardHomeState extends State<DashboardHome> {
             style: GoogleFonts.beVietnamPro(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: const Color(0xFF9AA5B4),
+              color: _DS.textPrimary,
             ),
           ),
         ),
@@ -2954,7 +2966,7 @@ class _DashboardHomeState extends State<DashboardHome> {
     Color(0xFF4F46E5),
   ];
 
-  Widget _orgAvatar(String name) {
+  Widget _orgAvatar(String name, {String logoUrl = ''}) {
     final trimmed = name.trim();
     final initials = trimmed.isEmpty
         ? '?'
@@ -2965,7 +2977,7 @@ class _DashboardHomeState extends State<DashboardHome> {
               .join();
     final color =
         _avatarPalette[trimmed.hashCode.abs() % _avatarPalette.length];
-    return Container(
+    final fallback = Container(
       width: 32,
       height: 32,
       alignment: Alignment.center,
@@ -2981,6 +2993,19 @@ class _DashboardHomeState extends State<DashboardHome> {
           color: color,
         ),
       ),
+    );
+    if (logoUrl.trim().isEmpty) return fallback;
+
+    final image = logoUrl.startsWith('data:')
+        ? _base64OrgLogo(logoUrl)
+        : Image.network(
+            logoUrl,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => fallback,
+          );
+    if (image == null) return fallback;
+    return ClipOval(
+      child: SizedBox(width: 32, height: 32, child: image),
     );
   }
 
@@ -3263,6 +3288,583 @@ class _DashboardHomeState extends State<DashboardHome> {
     }
     return widgets;
   }
+
+  // A dedicated, compact detail view for the Organization Standings table.
+  // The statistics and ranking data stay exactly the same; only their
+  // presentation differs from the generic dashboard detail dialog.
+  void _showOrganizationStandingDialog({
+    required _OrgPerformance organization,
+    required int rank,
+  }) {
+    final medal = _rankMedalColors[rank] ??
+        const [Color(0xFF64748B), Color(0xFFE2E8F0)];
+    showDialog(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(_DS.radiusLg),
+        ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 500),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(24, 20, 14, 20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      UpriseColors.primaryDark,
+                      UpriseColors.primaryDark.withAlpha(225),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(_DS.radiusLg),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    _orgAvatar(
+                      organization.orgName,
+                      logoUrl: organization.logoUrl,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            organization.orgName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                          Text(
+                            'Organization standing',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 12,
+                              color: Colors.white70,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Close',
+                      onPressed: () => Navigator.pop(ctx),
+                      icon: const Icon(Icons.close_rounded),
+                      color: Colors.white70,
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 18),
+                child: Column(
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: medal[0].withAlpha(90),
+                        borderRadius: BorderRadius.circular(_DS.radiusMd),
+                        border: Border.all(color: medal[1].withAlpha(70)),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: medal[1],
+                              shape: BoxShape.circle,
+                            ),
+                            child: Text(
+                              '#$rank',
+                              style: GoogleFonts.beVietnamPro(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 13),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  rank == 1
+                                      ? 'Top organization'
+                                      : 'Ranked organization',
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: _DS.textPrimary,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Ranked by proposal activity.',
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 11,
+                                    color: _DS.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _standingMetric(
+                            'Proposals',
+                            organization.proposals,
+                            Icons.description_outlined,
+                            UpriseColors.primaryDark,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _standingMetric(
+                            'Approved events',
+                            organization.approvedEvents,
+                            Icons.check_circle_outline_rounded,
+                            UpriseColors.success,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _standingMetric(
+                            'Pending proposals',
+                            organization.pendingProposals,
+                            Icons.hourglass_bottom_rounded,
+                            const Color(0xFFF59E0B),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _standingMetric(
+                            'Merch items',
+                            organization.merchItems,
+                            Icons.inventory_2_outlined,
+                            const Color(0xFF7C3AED),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
+                decoration: const BoxDecoration(
+                  border: Border(top: BorderSide(color: Color(0xFFF1F5F9))),
+                ),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: UpriseColors.primaryDark,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 22,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(_DS.radiusSm),
+                      ),
+                    ),
+                    child: Text(
+                      'Close',
+                      style: GoogleFonts.beVietnamPro(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget? _base64OrgLogo(String dataUrl) {
+    try {
+      return Image.memory(
+        base64Decode(dataUrl.split(',').last),
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Widget _orgTableIdentity({
+    required String name,
+    required String orgId,
+    String? shortName,
+    String? logoUrl,
+  }) {
+    final label = (shortName ?? _dashboardOrgShortNameCache[orgId] ?? '')
+            .trim()
+            .isNotEmpty
+        ? (shortName ?? _dashboardOrgShortNameCache[orgId]!).trim()
+        : name;
+    return Row(
+      children: [
+        _orgAvatar(
+          name,
+          logoUrl: logoUrl ?? _dashboardOrgLogoCache[orgId] ?? '',
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Tooltip(
+            message: name,
+            child: _cellText(label, bold: true),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _standingMetric(String label, int value, IconData icon, Color color) =>
+      Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(_DS.radiusMd),
+          border: Border.all(color: const Color(0xFFE8ECF0)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: color.withAlpha(25),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, size: 18, color: color),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: _DS.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '$value',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: _DS.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+
+  void _showDashboardRecordDialog({
+    required String kind,
+    required String title,
+    required String organizationName,
+    required String organizationId,
+    required List<MapEntry<String, String>> fields,
+    String logoUrl = '',
+    String? actionLabel,
+    int? navigateToTabIndex,
+  }) {
+    final config = switch (kind) {
+      'Event' => (Icons.event_available_rounded, UpriseColors.info, 'Event details'),
+      'Pending Proposal' => (
+        Icons.pending_actions_rounded,
+        const Color(0xFFF59E0B),
+        'Awaiting review',
+      ),
+      _ => (Icons.warning_amber_rounded, UpriseColors.error, 'Report follow-up'),
+    };
+    final compact = fields.where((field) => _isCompactField(field.value)).toList();
+    final long = fields.where((field) => !_isCompactField(field.value)).toList();
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(_DS.radiusLg),
+        ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 540, maxHeight: 620),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(24, 18, 12, 18),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      UpriseColors.primaryDark,
+                      UpriseColors.primaryDark.withAlpha(225),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(_DS.radiusLg),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    _orgAvatar(
+                      organizationName,
+                      logoUrl: logoUrl.isNotEmpty
+                          ? logoUrl
+                          : _dashboardOrgLogoCache[organizationId] ?? '',
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                          Text(
+                            organizationName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 12,
+                              color: Colors.white70,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Close',
+                      onPressed: () => Navigator.pop(ctx),
+                      icon: const Icon(Icons.close_rounded),
+                      color: Colors.white70,
+                    ),
+                  ],
+                ),
+              ),
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(15),
+                        decoration: BoxDecoration(
+                          color: config.$2.withAlpha(20),
+                          borderRadius: BorderRadius.circular(_DS.radiusMd),
+                          border: Border.all(color: config.$2.withAlpha(70)),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 42,
+                              height: 42,
+                              decoration: BoxDecoration(
+                                color: config.$2.withAlpha(30),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Icon(config.$1, color: config.$2, size: 22),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    config.$3,
+                                    style: GoogleFonts.beVietnamPro(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                      color: _DS.textPrimary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    kind == 'Pending Proposal'
+                                        ? 'Review the submitted information below.'
+                                        : 'View the available record information below.',
+                                    style: GoogleFonts.beVietnamPro(
+                                      fontSize: 11,
+                                      color: _DS.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      for (var i = 0; i < compact.length; i += 2)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: _dashboardDetailCard(
+                                  compact[i].key,
+                                  compact[i].value,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: i + 1 < compact.length
+                                    ? _dashboardDetailCard(
+                                        compact[i + 1].key,
+                                        compact[i + 1].value,
+                                      )
+                                    : const SizedBox.shrink(),
+                              ),
+                            ],
+                          ),
+                        ),
+                      for (final field in long)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _dashboardDetailCard(field.key, field.value),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
+                decoration: const BoxDecoration(
+                  border: Border(top: BorderSide(color: Color(0xFFF1F5F9))),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (actionLabel != null && navigateToTabIndex != null)
+                      TextButton.icon(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          widget.onNavigateToTab?.call(navigateToTabIndex);
+                        },
+                        icon: Icon(Icons.arrow_forward_rounded, color: config.$2, size: 16),
+                        label: Text(actionLabel),
+                        style: TextButton.styleFrom(foregroundColor: config.$2),
+                      ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: UpriseColors.primaryDark,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(_DS.radiusSm),
+                        ),
+                      ),
+                      child: Text(
+                        'Close',
+                        style: GoogleFonts.beVietnamPro(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _dashboardDetailCard(String label, String value) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(13),
+    decoration: BoxDecoration(
+      color: const Color(0xFFF8FAFC),
+      borderRadius: BorderRadius.circular(_DS.radiusMd),
+      border: Border.all(color: const Color(0xFFE8ECF0)),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label.toUpperCase(),
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            letterSpacing: .5,
+            color: _DS.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          value,
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            height: 1.35,
+            color: _DS.textPrimary,
+          ),
+        ),
+      ],
+    ),
+  );
 
   // Generic detail dialog: a title, a list of label/value rows, and an
   // optional "jump to the real screen" button for actions this dashboard
@@ -3570,24 +4172,18 @@ class _DashboardHomeState extends State<DashboardHome> {
                   isLast: i == items.length - 1,
                   alternate: i.isOdd,
                   highlight: i == 0,
-                  onTap: () => _showDetailDialog(
-                    title: items[i].orgName,
-                    fields: [
-                      MapEntry('Rank', '#${i + 1}'),
-                      MapEntry('Proposals', '${items[i].proposals}'),
-                      MapEntry('Approved Events', '${items[i].approvedEvents}'),
-                      MapEntry(
-                        'Pending Proposals',
-                        '${items[i].pendingProposals}',
-                      ),
-                      MapEntry('Merch Items', '${items[i].merchItems}'),
-                    ],
+                  onTap: () => _showOrganizationStandingDialog(
+                    organization: items[i],
+                    rank: i + 1,
                   ),
                   cells: [
                     _rankBadge(i + 1),
                     Row(
                       children: [
-                        _orgAvatar(items[i].orgName),
+                        _orgAvatar(
+                          items[i].orgName,
+                          logoUrl: items[i].logoUrl,
+                        ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Tooltip(
@@ -3687,8 +4283,8 @@ class _DashboardHomeState extends State<DashboardHome> {
               format: format,
               title: 'Events',
               headers: const [
-                'Title',
                 'Organization',
+                'Title',
                 'Category',
                 'Date',
                 'Location',
@@ -3696,8 +4292,8 @@ class _DashboardHomeState extends State<DashboardHome> {
               rows: [
                 for (final r in rows)
                   [
-                    r['title'] as String,
                     r['orgName'] as String,
+                    r['title'] as String,
                     r['category'] as String,
                     fmtDate(r['date'] as DateTime?),
                     r['location'] as String,
@@ -3709,8 +4305,8 @@ class _DashboardHomeState extends State<DashboardHome> {
           table: Column(
             children: [
               _customTableHeader(const [
-                MapEntry('Title', 3),
                 MapEntry('Organization', 3),
+                MapEntry('Event', 3),
                 MapEntry('Category', 2),
                 MapEntry('Date', 2),
                 MapEntry('Location', 2),
@@ -3720,8 +4316,11 @@ class _DashboardHomeState extends State<DashboardHome> {
                   flexes: const [3, 3, 2, 2, 2],
                   isLast: i == rows.length - 1,
                   alternate: i.isOdd,
-                  onTap: () => _showDetailDialog(
+                  onTap: () => _showDashboardRecordDialog(
+                    kind: 'Event',
                     title: rows[i]['title'] as String,
+                    organizationName: rows[i]['orgName'] as String,
+                    organizationId: rows[i]['orgId'] as String,
                     fields: [
                       MapEntry('Organization', rows[i]['orgName'] as String),
                       MapEntry('Category', rows[i]['category'] as String),
@@ -3745,16 +4344,11 @@ class _DashboardHomeState extends State<DashboardHome> {
                     ],
                   ),
                   cells: [
-                    _cellText(rows[i]['title'] as String, bold: true),
-                    Tooltip(
-                      message: rows[i]['orgName'] as String,
-                      child: _cellText(
-                        (_dashboardOrgShortNameCache[rows[i]['orgId']] ?? '')
-                                .isNotEmpty
-                            ? _dashboardOrgShortNameCache[rows[i]['orgId']]!
-                            : rows[i]['orgName'] as String,
-                      ),
+                    _orgTableIdentity(
+                      name: rows[i]['orgName'] as String,
+                      orgId: rows[i]['orgId'] as String,
                     ),
+                    _cellText(rows[i]['title'] as String, bold: true),
                     _cellBadge(
                       rows[i]['category'] as String,
                       CategoryColors.getFg(rows[i]['category'] as String),
@@ -3830,16 +4424,16 @@ class _DashboardHomeState extends State<DashboardHome> {
               format: format,
               title: 'Pending Proposals',
               headers: const [
-                'Title',
                 'Organization',
+                'Title',
                 'Event Date',
                 'Submitted',
               ],
               rows: [
                 for (final r in rows)
                   [
-                    r['title'] as String,
                     r['orgName'] as String,
+                    r['title'] as String,
                     fmtDate(r['eventDate'] as DateTime?),
                     fmtDate(r['createdAt'] as DateTime?),
                   ],
@@ -3850,8 +4444,8 @@ class _DashboardHomeState extends State<DashboardHome> {
           table: Column(
             children: [
               _customTableHeader(const [
-                MapEntry('Title', 3),
                 MapEntry('Organization', 3),
+                MapEntry('Event', 3),
                 MapEntry('Event Date', 2),
                 MapEntry('Submitted', 2),
               ]),
@@ -3860,8 +4454,11 @@ class _DashboardHomeState extends State<DashboardHome> {
                   flexes: const [3, 3, 2, 2],
                   isLast: i == rows.length - 1,
                   alternate: i.isOdd,
-                  onTap: () => _showDetailDialog(
+                  onTap: () => _showDashboardRecordDialog(
+                    kind: 'Pending Proposal',
                     title: rows[i]['title'] as String,
+                    organizationName: rows[i]['orgName'] as String,
+                    organizationId: rows[i]['orgId'] as String,
                     fields: [
                       MapEntry('Organization', rows[i]['orgName'] as String),
                       MapEntry('Category', rows[i]['category'] as String),
@@ -3888,16 +4485,11 @@ class _DashboardHomeState extends State<DashboardHome> {
                     navigateToTabIndex: 4,
                   ),
                   cells: [
-                    _cellText(rows[i]['title'] as String, bold: true),
-                    Tooltip(
-                      message: rows[i]['orgName'] as String,
-                      child: _cellText(
-                        (_dashboardOrgShortNameCache[rows[i]['orgId']] ?? '')
-                                .isNotEmpty
-                            ? _dashboardOrgShortNameCache[rows[i]['orgId']]!
-                            : rows[i]['orgName'] as String,
-                      ),
+                    _orgTableIdentity(
+                      name: rows[i]['orgName'] as String,
+                      orgId: rows[i]['orgId'] as String,
                     ),
+                    _cellText(rows[i]['title'] as String, bold: true),
                     _cellText(fmtDate(rows[i]['eventDate'] as DateTime?)),
                     _cellText(fmtDate(rows[i]['createdAt'] as DateTime?)),
                   ],
@@ -4006,8 +4598,12 @@ class _DashboardHomeState extends State<DashboardHome> {
                   flexes: const [3, 3, 2, 2, 2],
                   isLast: i == items.length - 1,
                   alternate: i.isOdd,
-                  onTap: () => _showDetailDialog(
+                  onTap: () => _showDashboardRecordDialog(
+                    kind: 'Overdue Report',
                     title: items[i].eventTitle,
+                    organizationName: items[i].orgName,
+                    organizationId: items[i].orgId,
+                    logoUrl: items[i].orgLogoUrl,
                     fields: [
                       MapEntry('Organization', items[i].orgName),
                       MapEntry('Report Type', typeLabel(items[i].type)),
@@ -4024,14 +4620,11 @@ class _DashboardHomeState extends State<DashboardHome> {
                     navigateToTabIndex: 8,
                   ),
                   cells: [
-                    Tooltip(
-                      message: items[i].orgName,
-                      child: _cellText(
-                        items[i].orgShortName.isNotEmpty
-                            ? items[i].orgShortName
-                            : items[i].orgName,
-                        bold: true,
-                      ),
+                    _orgTableIdentity(
+                      name: items[i].orgName,
+                      orgId: items[i].orgId,
+                      shortName: items[i].orgShortName,
+                      logoUrl: items[i].orgLogoUrl,
                     ),
                     _cellText(items[i].eventTitle),
                     _cellBadge(
@@ -4089,6 +4682,10 @@ class _DashboardHomeState extends State<DashboardHome> {
         for (final doc in activeOrgsSnap.docs)
           doc.id: (doc.data()['shortName'] as String?) ?? '',
       };
+      final orgLogoMap = <String, String>{
+        for (final doc in activeOrgsSnap.docs)
+          doc.id: (doc.data()['logoUrl'] as String?) ?? '',
+      };
 
       for (final doc in proposalsSnap.docs) {
         final data = doc.data();
@@ -4145,6 +4742,7 @@ class _DashboardHomeState extends State<DashboardHome> {
           orgNameMap[doc.id] =
               (doc.data()['name'] as String?) ?? 'Organization';
           orgShortNameMap[doc.id] = (doc.data()['shortName'] as String?) ?? '';
+          orgLogoMap[doc.id] = (doc.data()['logoUrl'] as String?) ?? '';
         }
       }
 
@@ -4159,6 +4757,7 @@ class _DashboardHomeState extends State<DashboardHome> {
           orgId: orgId,
           orgName: orgName,
           orgShortName: orgShortNameMap[orgId] ?? '',
+          logoUrl: orgLogoMap[orgId] ?? '',
           proposals: proposalStat?['proposalCount'] as int? ?? 0,
           approvedEvents: proposalStat?['approvedCount'] as int? ?? 0,
           pendingProposals: proposalStat?['pendingCount'] as int? ?? 0,
@@ -4219,6 +4818,7 @@ class _OrgPerformance {
   final String orgId;
   final String orgName;
   final String orgShortName;
+  final String logoUrl;
   final int proposals;
   final int approvedEvents;
   final int pendingProposals;
@@ -4231,6 +4831,7 @@ class _OrgPerformance {
     required this.orgId,
     required this.orgName,
     this.orgShortName = '',
+    this.logoUrl = '',
     required this.proposals,
     required this.approvedEvents,
     required this.pendingProposals,
@@ -4253,6 +4854,7 @@ class _OverdueItem {
   final String orgId;
   final String orgName;
   final String orgShortName;
+  final String orgLogoUrl;
   final String eventTitle;
   final String type; // 'financial' | 'accomplishment'
   final DateTime deadline;
@@ -4260,6 +4862,7 @@ class _OverdueItem {
     required this.orgId,
     required this.orgName,
     this.orgShortName = '',
+    this.orgLogoUrl = '',
     required this.eventTitle,
     required this.type,
     required this.deadline,

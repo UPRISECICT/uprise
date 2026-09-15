@@ -194,12 +194,37 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     IconData icon, {
     Color? valueColor,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
+    final accent = valueColor ??
+        switch (label) {
+          'Requestor' => const Color(0xFF2563EB),
+          'Date Submitted' => const Color(0xFF4F46E5),
+          'Subject' => const Color(0xFFF97316),
+          'School Year' => const Color(0xFF059669),
+          'Semester' => const Color(0xFF7C3AED),
+          _ => const Color(0xFF64748B),
+        };
+    return Container(
+      padding: const EdgeInsets.all(11),
+      decoration: BoxDecoration(
+        color: accent.withAlpha(10),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: accent.withAlpha(50)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
           children: [
-            Icon(icon, size: 13, color: AdminColors.primaryDark.withAlpha(150)),
+            Container(
+              width: 26,
+              height: 26,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: accent.withAlpha(26),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: 13, color: accent),
+            ),
             const SizedBox(width: 6),
             Text(
               label,
@@ -221,7 +246,8 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
             color: valueColor ?? const Color(0xFF1A202C),
           ),
         ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -2319,6 +2345,12 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
 
   void _showViewDialog(Map<String, dynamic> data, String docId) {
     final status = (data['status'] ?? 'pending').toString();
+    final statusAccent = switch (status.toLowerCase()) {
+      'approved' => AdminColors.success,
+      'rejected' => AdminColors.error,
+      'resubmitted' => AdminColors.info,
+      _ => AdminColors.warning,
+    };
     final timestamp = data['timestamp'] as Timestamp?;
     final date = timestamp != null
         ? DateFormat('MMM dd, yyyy • hh:mm a').format(timestamp.toDate())
@@ -2362,7 +2394,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                   // ─── HEADER ──────────────────────────────────────────
                   Container(
                     padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
-                    decoration: BoxDecoration(
+                  decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
@@ -2371,9 +2403,12 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                           AdminColors.primaryDark.withAlpha(225),
                         ],
                       ),
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(18),
-                      ),
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(18),
+                    ),
+                    border: Border(
+                      bottom: BorderSide(color: statusAccent, width: 3),
+                    ),
                     ),
                     child: Row(
                       children: [

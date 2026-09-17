@@ -1,4 +1,8 @@
-const functions = require("firebase-functions");
+// `/v1`, not the bare package: since firebase-functions 6, the root import is
+// the v2 API, which has no `firestore.document()` or `pubsub.schedule()`.
+// With the bare require every export below threw at load time, so none of
+// these functions — push, reminders, credential emails — could deploy or run.
+const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const nodemailer = require("nodemailer");
 
@@ -44,6 +48,16 @@ exports.sendPushForNotification = functions.firestore
                 type: notif.type || 'general',
                 orgId: notif.orgId || '',
                 notificationId: context.params.notificationId,
+            },
+            // Route to the high-importance channel the app creates in
+            // PushNotificationService.initialize(), so the push pops up as a
+            // heads-up banner instead of landing silently in the tray under
+            // FCM's default-importance fallback channel.
+            android: {
+                priority: 'high',
+                notification: {
+                    channelId: 'uprise_notifications',
+                },
             },
             tokens: tokens,
         };

@@ -2194,7 +2194,7 @@ class _EventProposalsState extends State<EventProposals> {
                                           ? data['otherCategory']
                                           : (data['category'] ?? '—'),
                                       Icons.category_outlined,
-                                      valueColor: _categoryBadgeColor(
+                                      iconColor: _categoryBadgeColor(
                                         data['category'] ?? 'Other',
                                       ),
                                     ),
@@ -2268,7 +2268,7 @@ class _EventProposalsState extends State<EventProposals> {
                                       'Issues Certificate',
                                       issuesCertificate ? 'Yes' : 'No',
                                       Icons.verified_outlined,
-                                      valueColor: issuesCertificate
+                                      iconColor: issuesCertificate
                                           ? const Color(0xFF059669)
                                           : const Color(0xFF6B7280),
                                     ),
@@ -2370,7 +2370,7 @@ class _EventProposalsState extends State<EventProposals> {
                                               data['publishedAt'],
                                             ),
                                             Icons.publish_rounded,
-                                            valueColor: const Color(0xFF2563EB),
+                                            iconColor: const Color(0xFF2563EB),
                                           ),
                                         ),
                                         const SizedBox(width: 12),
@@ -2787,9 +2787,9 @@ class _EventProposalsState extends State<EventProposals> {
     String label,
     String value,
     IconData icon, {
-    Color? valueColor,
+    Color? iconColor,
   }) {
-    final accent = valueColor ??
+    final accent = iconColor ??
         switch (label) {
           'Category' => const Color(0xFFF97316),
           'Audience' => const Color(0xFF7C3AED),
@@ -2805,9 +2805,9 @@ class _EventProposalsState extends State<EventProposals> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: accent.withAlpha(10),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: accent.withAlpha(48)),
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE8ECF0)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2818,7 +2818,7 @@ class _EventProposalsState extends State<EventProposals> {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: accent.withAlpha(28),
-              shape: BoxShape.circle,
+              borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(icon, size: 14, color: accent),
           ),
@@ -2832,7 +2832,7 @@ class _EventProposalsState extends State<EventProposals> {
                   style: GoogleFonts.beVietnamPro(
                     fontSize: 9.5,
                     fontWeight: FontWeight.w700,
-                    color: const Color(0xFF9AA5B4),
+                    color: const Color(0xFF64748B),
                     letterSpacing: 0.4,
                   ),
                   maxLines: 1,
@@ -2844,7 +2844,7 @@ class _EventProposalsState extends State<EventProposals> {
                   style: GoogleFonts.beVietnamPro(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: valueColor ?? const Color(0xFF1A202C),
+                    color: const Color(0xFF1A202C),
                   ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,

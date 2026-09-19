@@ -8,6 +8,15 @@ const nodemailer = require("nodemailer");
 
 admin.initializeApp();
 
+const {deleteOrganizationAdviserRoles} = require('./adviser_cleanup');
+
+exports.deleteAdvisersForDeletedOrganization = functions
+    .runWith({failurePolicy: true})
+    .firestore.document('organizations/{orgId}')
+    .onDelete(async (_snapshot, context) => {
+        await deleteOrganizationAdviserRoles(admin.firestore(), context.params.orgId);
+    });
+
 // ─────────────────────────────────────────────
 //  EMAIL CONFIGURATION
 // ─────────────────────────────────────────────

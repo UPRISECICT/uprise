@@ -1605,6 +1605,51 @@ class _RequestDetailsDialog extends StatelessWidget {
                   ),
                 ),
               ],
+              if (request.status.toLowerCase() == 'approved' &&
+                  (request.signRemark ?? '').isNotEmpty) ...[
+                const SizedBox(height: 14),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFECFDF5),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFA7F3D0)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.check_circle_outline_rounded,
+                            size: 14,
+                            color: Color(0xFF059669),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'REMARK FROM ADMIN',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF059669),
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        request.signRemark!,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          color: const Color(0xFF1A202C),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -2748,6 +2793,7 @@ class LetterRequestModel {
   final String? signedDocumentBase64;
   final Timestamp? signedAt;
   final String? signedBy;
+  final String? signRemark;
 
   LetterRequestModel({
     required this.id,
@@ -2777,6 +2823,7 @@ class LetterRequestModel {
     this.signedDocumentBase64,
     this.signedAt,
     this.signedBy,
+    this.signRemark,
   });
 
   factory LetterRequestModel.fromFirestore(DocumentSnapshot doc) {
@@ -2809,6 +2856,7 @@ class LetterRequestModel {
       signedDocumentBase64: d['signedDocumentBase64'],
       signedAt: d['signedAt'] as Timestamp?,
       signedBy: d['signedBy'],
+      signRemark: d['signRemark'],
     );
   }
 }

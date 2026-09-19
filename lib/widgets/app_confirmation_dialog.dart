@@ -30,7 +30,7 @@ class AppConfirmationDialog extends StatelessWidget {
       elevation: 0,
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
       child: Container(
-        width: 480,
+        width: 460,
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
@@ -42,75 +42,43 @@ class AppConfirmationDialog extends StatelessWidget {
             ),
           ],
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        child: Stack(
           children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(24, 18, 12, 18),
-              decoration: const BoxDecoration(
-                color: Color(0xFF243248),
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withAlpha(22),
-                      borderRadius: BorderRadius.circular(11),
-                    ),
-                    child: Icon(icon, size: 20, color: Colors.white),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Close',
-                    onPressed: () => Navigator.pop(context, false),
-                    icon: const Icon(Icons.close_rounded),
-                    color: Colors.white70,
-                  ),
-                ],
-              ),
-            ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(28, 24, 28, 28),
+              padding: const EdgeInsets.fromLTRB(32, 40, 32, 28),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    width: 62,
-                    height: 62,
+                    width: 72,
+                    height: 72,
                     decoration: BoxDecoration(
                       color: accentColor.withAlpha(22),
                       shape: BoxShape.circle,
                     ),
-                    child: Icon(icon, color: accentColor, size: 29),
+                    child: Icon(icon, color: accentColor, size: 34),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 20),
+                  Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF1A202C),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                   Text(
                     message,
                     textAlign: TextAlign.center,
                     style: GoogleFonts.beVietnamPro(
-                      fontSize: 13,
+                      fontSize: 13.5,
                       height: 1.5,
                       color: const Color(0xFF64748B),
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 26),
                   Row(
                     children: [
                       Expanded(
@@ -119,9 +87,9 @@ class AppConfirmationDialog extends StatelessWidget {
                           style: OutlinedButton.styleFrom(
                             foregroundColor: const Color(0xFF475569),
                             side: const BorderSide(color: Color(0xFFE2E6EA)),
-                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: BorderRadius.circular(12),
                             ),
                           ),
                           child: Text(
@@ -143,9 +111,9 @@ class AppConfirmationDialog extends StatelessWidget {
                             backgroundColor: accentColor,
                             foregroundColor: Colors.white,
                             elevation: 0,
-                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: BorderRadius.circular(12),
                             ),
                           ),
                           child: Text(
@@ -159,6 +127,17 @@ class AppConfirmationDialog extends StatelessWidget {
                     ],
                   ),
                 ],
+              ),
+            ),
+            Positioned(
+              top: 12,
+              right: 12,
+              child: IconButton(
+                tooltip: 'Close',
+                onPressed: () => Navigator.pop(context, false),
+                icon: const Icon(Icons.close_rounded),
+                color: const Color(0xFF94A3B8),
+                iconSize: 20,
               ),
             ),
           ],

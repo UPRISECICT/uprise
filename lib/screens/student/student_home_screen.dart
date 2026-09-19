@@ -18,6 +18,7 @@ import '../../widgets/common/bottom_nav_bar.dart'; // BottomNavBar / BottomNavIt
 import '../../widgets/common/section_header.dart';
 import '../../widgets/common/event_card.dart';
 import '../../widgets/common/home_sections.dart';
+import '../../widgets/student/app_image.dart';
 import '../../widgets/common/organization_card.dart';
 import '../../widgets/student/announcements_feed.dart';
 import '../../widgets/student/profile_summary.dart';
@@ -925,8 +926,7 @@ class _HomeContentState extends State<_HomeContent> {
                               child: MerchPreviewCard(
                                 name: (data['name'] ?? '').toString(),
                                 price: ((data['price'] ?? 0) as num).toDouble(),
-                                imageBase64: (data['imageBase64'] ?? '')
-                                    .toString(),
+                                imageSource: productCoverImageSource(data),
                                 onTap: () => Navigator.push(
                                   context,
                                   MaterialPageRoute(

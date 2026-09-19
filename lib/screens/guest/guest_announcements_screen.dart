@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../widgets/common/action_tile.dart';
+import '../../services/org_directory.dart';
 import '../../widgets/common/announcement_filter_bar.dart';
 import '../../widgets/common/image_viewer.dart';
 import '../../widgets/student/app_image.dart';
@@ -33,6 +34,25 @@ class _GuestAnnouncementsScreenState extends State<GuestAnnouncementsScreen> {
       .where('isPublished', isEqualTo: true)
       .where('targetAudience', isEqualTo: 'Public')
       .snapshots();
+
+  @override
+  void initState() {
+    super.initState();
+    // Org names and logos are resolved per card through OrgDirectory, so this
+    // rebuilds when that index loads.
+    OrgDirectory.start();
+    OrgDirectory.revision.addListener(_onOrgDirectoryChanged);
+  }
+
+  @override
+  void dispose() {
+    OrgDirectory.revision.removeListener(_onOrgDirectoryChanged);
+    super.dispose();
+  }
+
+  void _onOrgDirectoryChanged() {
+    if (mounted) setState(() {});
+  }
 
   /// Shown when there are posts but none match the active filters — distinct
   /// from "No announcements available", which means there is nothing to read.
@@ -148,7 +168,16 @@ class _GuestAnnouncementsScreenState extends State<GuestAnnouncementsScreen> {
 
                           final title = data['title'] ?? '';
                           final content = data['content'] ?? '';
-                          final authorName = data['authorName'] ?? 'Unknown';
+                          // The org's current name and logo, resolved through
+                          // its id — `authorName` on the post was frozen at
+                          // post time and goes stale on a rename, and no logo
+                          // is ever written onto an announcement.
+                          final orgId = (data['orgId'] ?? '').toString();
+                          final directoryName = OrgDirectory.nameFor(orgId);
+                          final orgLogoUrl = OrgDirectory.logoFor(orgId);
+                          final authorName = directoryName.isNotEmpty
+                              ? directoryName
+                              : (data['authorName'] ?? 'Unknown').toString();
                           final audience = data['targetAudience'] ?? 'Public';
                           // Both fields, first non-empty wins — an announcement's photo
                           // can be stored inline or as a URL, and `??` would let an empty
@@ -232,19 +261,31 @@ class _GuestAnnouncementsScreenState extends State<GuestAnnouncementsScreen> {
                                             backgroundColor: AppColors
                                                 .primaryDark
                                                 .withAlpha(38),
+                                            // AppImage.provider handles both
+                                            // base64 and network logos; the
+                                            // initial stays the fallback for
+                                            // an org with no logo set.
+                                            backgroundImage:
+                                                orgLogoUrl.isNotEmpty
+                                                ? AppImage.provider(orgLogoUrl)
+                                                : null,
+                                            child: orgLogoUrl.isNotEmpty
+                                                ? null
+                                                : Text(
+                                                    authorName.isNotEmpty
+                                                        ? authorName[0]
+                                                              .toUpperCase()
+                                                        : '?',
 
-                                            child: Text(
-                                              authorName.isNotEmpty
-                                                  ? authorName[0].toUpperCase()
-                                                  : '?',
-
-                                              style: GoogleFonts.beVietnamPro(
-                                                color: AppColors
-                                                    .primaryDark
-                                                    .shade800,
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                            ),
+                                                    style:
+                                                        GoogleFonts.beVietnamPro(
+                                                          color: AppColors
+                                                              .primaryDark
+                                                              .shade800,
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                        ),
+                                                  ),
                                           ),
 
                                           const SizedBox(width: 10),

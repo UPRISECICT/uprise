@@ -49,6 +49,14 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
+        <!-- Channel FCM uses for pushes that arrive while the app is in the
+             background/closed. Matches the high-importance channel
+             PushNotificationService.initialize() creates, so those pushes
+             pop up as banners too. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="uprise_notifications" />
+
     </application>
 
     <queries>

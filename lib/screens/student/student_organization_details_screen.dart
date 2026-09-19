@@ -1,6 +1,5 @@
 // lib/screens/student/student_organization_details_screen.dart
 import 'package:flutter/material.dart';
-import '../../models/adviser_rank.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -8,6 +7,7 @@ import '../../utils/social_link_util.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../widgets/student/student_app_bar.dart';
 import '../../widgets/student/app_image.dart';
+import '../../widgets/common/announcement_filter_bar.dart';
 import '../../widgets/common/feed_cards.dart';
 import '../../widgets/common/loading_widget.dart';
 import '../../widgets/common/org_browsing_config.dart';
@@ -828,61 +828,6 @@ class _AboutTab extends StatelessWidget {
                               ],
                             ),
                           ),
-                        // What the adviser's position actually
-                        // covers. Students could see who the
-                        // adviser was but had no way to know what
-                        // they were the person to go to for.
-                        if (advisersToShow.isNotEmpty &&
-                            (advisersToShow.first['title'] ?? '')
-                                .toString()
-                                .isNotEmpty) ...[
-                          const SizedBox(height: 12),
-                          const Divider(height: 1),
-                          const SizedBox(height: 12),
-                          const Text(
-                            'RESPONSIBILITIES',
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.grey,
-                              letterSpacing: 0.6,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          for (final r in AdviserRank.responsibilitiesFor(
-                            advisersToShow.first['title']?.toString(),
-                          ))
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 6),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Container(
-                                    width: 4,
-                                    height: 4,
-                                    margin: const EdgeInsets.only(
-                                      top: 7,
-                                      right: 10,
-                                    ),
-                                    decoration: const BoxDecoration(
-                                      color: Colors.grey,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  Expanded(
-                                    child: Text(
-                                      r,
-                                      style: const TextStyle(
-                                        fontSize: 12.5,
-                                        height: 1.45,
-                                        color: _UiTokens.mutedText,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                        ],
                       ],
                     ),
                   );
@@ -1114,16 +1059,6 @@ class _EventsTab extends StatelessWidget {
 //  TAB 3 — ANNOUNCEMENTS
 // ─────────────────────────────────────────────────────────────
 
-/// Which slice of the org's announcements is showing. "General" is simply
-/// everything [_isUrgentAnnouncement] rejects.
-enum _AnnouncementFilter { all, urgent, general }
-
-/// The one definition of "urgent" — shared by the filter pills and the red
-/// card styling so the two can't disagree about a given announcement.
-bool _isUrgentAnnouncement(Map<String, dynamic> data) =>
-    (data['category'] ?? '').toString().toLowerCase() == 'urgent' ||
-    (data['title'] ?? '').toString().toLowerCase().contains('urgent');
-
 /// One announcement in the Organizations-feed card style. Shared by the
 /// Announcements tab and the pinned section on About so the two can't drift.
 Widget _announcementCard({
@@ -1134,9 +1069,12 @@ Widget _announcementCard({
   required String orgLogoUrl,
   bool pinned = false,
 }) {
-  // Urgent outranks pinned on the badge: the pinned section already carries a
-  // "Pinned" heading, so URGENT is the more useful thing to surface there.
-  final urgent = _isUrgentAnnouncement(data);
+  // The badge is the org's own category now that Urgent is no longer a
+  // hardcoded axis — orgs can still make an "Urgent" category, it just stops
+  // being special-cased. Urgent still outranks pinned, since the pinned
+  // section already carries a "Pinned" heading of its own.
+  final category = (data['category'] ?? '').toString().trim();
+  final urgent = category.toLowerCase() == 'urgent';
   return CompactFeedCard(
     // First non-empty, not `??`: `??` falls through only on null, so an empty
     // imageBase64 used to beat a populated imageUrl.
@@ -1150,6 +1088,8 @@ Widget _announcementCard({
         ? 'URGENT'
         : pinned
         ? 'PINNED'
+        : category.isNotEmpty
+        ? category.toUpperCase()
         : 'ANNOUNCEMENT',
     badgeColor: urgent
         ? const Color(0xFFDC2626)
@@ -1298,56 +1238,132 @@ class _AnnouncementsTab extends StatefulWidget {
 }
 
 class _AnnouncementsTabState extends State<_AnnouncementsTab> {
-  _AnnouncementFilter _filter = _AnnouncementFilter.all;
+  /// The selected category, or [kAnnouncementFilterAll] for no filter.
+  ///
+  /// Categories are whatever this org actually posts under — orgs define and
+  /// manage their own on the web side — so there is no fixed list to enumerate
+  /// here. Same reasoning as announcementCategoryOptions()'s doc comment.
+  String _filter = kAnnouncementFilterAll;
 
-  static const _options = [
-    (_AnnouncementFilter.all, 'All'),
-    (_AnnouncementFilter.urgent, 'Urgent'),
-    (_AnnouncementFilter.general, 'General'),
-  ];
+  // Cached once, and owned by the tab rather than the list below, because the
+  // chip row and the list are both built from it — one subscription feeds
+  // both, and a chip tap only re-filters what's already in hand.
+  late final Stream<QuerySnapshot> _announcementsStream = FirebaseFirestore
+      .instance
+      .collection('announcements')
+      .where('orgId', isEqualTo: widget.orgId)
+      .where('isPublished', isEqualTo: true)
+      .snapshots();
 
   @override
   Widget build(BuildContext context) {
-    return CustomScrollView(
-      key: const PageStorageKey('org-announcements'),
-      slivers: [
-        SliverOverlapInjector(
-          handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
-        ),
-        SliverToBoxAdapter(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-            child: Row(
-              children: [
-                for (final opt in _options) ...[
-                  _pill(opt.$1, opt.$2),
-                  if (opt != _options.last) const SizedBox(width: 8),
-                ],
-              ],
+    return StreamBuilder<QuerySnapshot>(
+      stream: _announcementsStream,
+      builder: (context, snapshot) {
+        final loading = snapshot.connectionState == ConnectionState.waiting;
+
+        // Audience-gated first: guests only ever see Public announcements,
+        // the same rule the standalone guest announcements screen applies.
+        final docs =
+            (snapshot.data?.docs ?? [])
+                .where(
+                  (d) => widget.config.allowsAnnouncement(
+                    d.data() as Map<String, dynamic>,
+                  ),
+                )
+                .toList()
+              ..sort((a, b) {
+                final dateA =
+                    (a.data() as Map<String, dynamic>)['timestamp']
+                        as Timestamp?;
+                final dateB =
+                    (b.data() as Map<String, dynamic>)['timestamp']
+                        as Timestamp?;
+
+                if (dateA == null && dateB == null) return 0;
+                if (dateA == null) return 1;
+                if (dateB == null) return -1;
+
+                return dateB.compareTo(dateA);
+              });
+
+        final categories = announcementCategoryOptions(
+          docs.map((d) => d.data() as Map<String, dynamic>).toList(),
+        );
+
+        // A selected category can vanish under us — the org edits the category
+        // off its last post — which would otherwise leave the list empty with
+        // the chip that emptied it gone from the row. Same guard
+        // AnnouncementFilterBar._dropdown makes for the same reason.
+        final selected =
+            _filter == kAnnouncementFilterAll || categories.contains(_filter)
+            ? _filter
+            : kAnnouncementFilterAll;
+
+        // Filter after the sort, client-side — no second query, no composite
+        // index. Matches AnnouncementFilters.matches()'s trim-and-compare so
+        // this tab and the global feed can't disagree about a category.
+        final visible = selected == kAnnouncementFilterAll
+            ? docs
+            : docs
+                  .where(
+                    (d) =>
+                        ((d.data() as Map<String, dynamic>)['category'] ?? '')
+                            .toString()
+                            .trim() ==
+                        selected,
+                  )
+                  .toList();
+
+        // A lone "All" chip says nothing — the row only earns its space once
+        // the org posts under more than one category.
+        final showChips = categories.length > 1;
+
+        return CustomScrollView(
+          key: const PageStorageKey('org-announcements'),
+          slivers: [
+            SliverOverlapInjector(
+              handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
             ),
-          ),
-        ),
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-          // Only the config changes on a pill tap, so the list's State — and
-          // its cached stream — survives; no resubscribe, no spinner.
-          sliver: _RecentAnnouncementsList(
-            orgId: widget.orgId,
-            orgName: widget.orgName,
-            orgLogoUrl: widget.orgLogoUrl,
-            onAnnouncementTap: widget.onAnnouncementTap,
-            filter: _filter,
-            config: widget.config,
-          ),
-        ),
-      ],
+            if (showChips)
+              SliverToBoxAdapter(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                  child: Row(
+                    children: [
+                      _pill(kAnnouncementFilterAll, 'All', selected),
+                      for (final c in categories) ...[
+                        const SizedBox(width: 8),
+                        _pill(c, c, selected),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            SliverPadding(
+              padding: EdgeInsets.fromLTRB(16, showChips ? 0 : 14, 16, 32),
+              sliver: _RecentAnnouncementsList(
+                docs: visible,
+                loading: loading,
+                hasError: snapshot.hasError,
+                emptyTitle: selected == kAnnouncementFilterAll
+                    ? 'No announcements yet'
+                    : 'No announcements in $selected',
+                orgName: widget.orgName,
+                orgLogoUrl: widget.orgLogoUrl,
+                onAnnouncementTap: widget.onAnnouncementTap,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
   /// Same recipe as _FeedFilterPills on the Organizations tab.
-  Widget _pill(_AnnouncementFilter value, String label) {
-    final isSelected = _filter == value;
+  Widget _pill(String value, String label, String selected) {
+    final isSelected = selected == value;
     return GestureDetector(
       onTap: () => setState(() => _filter = value),
       child: Container(
@@ -1510,142 +1526,86 @@ class _UpcomingEventsListState extends State<_UpcomingEventsList> {
 // ─────────────────────────────────────────────────────────────
 //  RECENT ANNOUNCEMENTS LIST (CLICKABLE)
 // ─────────────────────────────────────────────────────────────
-class _RecentAnnouncementsList extends StatefulWidget {
-  final String orgId;
+/// The announcements sliver. Deliberately owns no stream of its own: the tab
+/// above holds the single subscription and hands down the docs already
+/// audience-gated, sorted and category-filtered, so the chip row and this list
+/// can never disagree about what's showing.
+class _RecentAnnouncementsList extends StatelessWidget {
+  final List<QueryDocumentSnapshot> docs;
+  final bool loading;
+  final bool hasError;
+
+  /// Depends on the selected category, so it's the tab's to phrase.
+  final String emptyTitle;
+
   final Function(String) onAnnouncementTap;
-
-  /// Which slice to show. Only the config changes when the tab's pills are
-  /// tapped, so [_announcementsStream] is not resubscribed.
-  final _AnnouncementFilter filter;
-
   final String orgName;
   final String orgLogoUrl;
-  final OrgBrowsingConfig config;
 
   const _RecentAnnouncementsList({
-    required this.orgId,
+    required this.docs,
+    required this.loading,
+    required this.hasError,
+    required this.emptyTitle,
     required this.orgName,
     required this.orgLogoUrl,
     required this.onAnnouncementTap,
-    required this.config,
-    this.filter = _AnnouncementFilter.all,
   });
 
   @override
-  State<_RecentAnnouncementsList> createState() =>
-      _RecentAnnouncementsListState();
-}
-
-class _RecentAnnouncementsListState extends State<_RecentAnnouncementsList> {
-  // Cached once — same fix as _UpcomingEventsList above.
-  late final Stream<QuerySnapshot> _announcementsStream = FirebaseFirestore
-      .instance
-      .collection('announcements')
-      .where('orgId', isEqualTo: widget.orgId)
-      .where('isPublished', isEqualTo: true)
-      .snapshots();
-
-  @override
   Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: _announcementsStream,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return SliverToBoxAdapter(
-            child: Container(
-              height: 80,
-              alignment: Alignment.center,
-              child: const CircularProgressIndicator(
-                strokeWidth: 2,
-                color: AppColors.primaryDark,
-              ),
+    if (loading) {
+      return SliverToBoxAdapter(
+        child: Container(
+          height: 80,
+          alignment: Alignment.center,
+          child: const CircularProgressIndicator(
+            strokeWidth: 2,
+            color: AppColors.primaryDark,
+          ),
+        ),
+      );
+    }
+
+    if (hasError) {
+      return SliverToBoxAdapter(
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: _UiTokens.card(radiusOverride: 12),
+          child: Center(
+            child: Text(
+              'Failed to load announcements',
+              style: TextStyle(color: _UiTokens.mutedText),
             ),
-          );
-        }
+          ),
+        ),
+      );
+    }
 
-        if (snapshot.hasError) {
-          return SliverToBoxAdapter(
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: _UiTokens.card(radiusOverride: 12),
-              child: Center(
-                child: Text(
-                  'Failed to load announcements',
-                  style: TextStyle(color: _UiTokens.mutedText),
-                ),
-              ),
-            ),
-          );
-        }
+    if (docs.isEmpty) {
+      return SliverToBoxAdapter(
+        child: UpriseEmptyState(
+          icon: Icons.campaign_outlined,
+          title: emptyTitle,
+        ),
+      );
+    }
 
-        // Audience-gated first: guests only ever see Public announcements,
-        // the same rule the standalone guest announcements screen applies.
-        var docs = (snapshot.data?.docs ?? [])
-            .where(
-              (d) => widget.config.allowsAnnouncement(
-                d.data() as Map<String, dynamic>,
-              ),
-            )
-            .toList();
+    return SliverList.separated(
+      itemCount: docs.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 14),
+      itemBuilder: (context, index) {
+        final doc = docs[index];
+        final data = doc.data() as Map<String, dynamic>;
+        final timestamp = data['timestamp'] as Timestamp?;
+        final date = timestamp != null ? timestamp.toDate() : DateTime.now();
 
-        docs.sort((a, b) {
-          final dateA =
-              (a.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
-          final dateB =
-              (b.data() as Map<String, dynamic>)['timestamp'] as Timestamp?;
-
-          if (dateA == null && dateB == null) return 0;
-          if (dateA == null) return 1;
-          if (dateB == null) return -1;
-
-          return dateB.compareTo(dateA);
-        });
-
-        // Filter after the sort, client-side — no second query. The 5-item
-        // cap is gone: this is a full tab now, not a preview.
-        if (widget.filter != _AnnouncementFilter.all) {
-          final wantUrgent = widget.filter == _AnnouncementFilter.urgent;
-          docs = docs
-              .where(
-                (d) =>
-                    _isUrgentAnnouncement(d.data() as Map<String, dynamic>) ==
-                    wantUrgent,
-              )
-              .toList();
-        }
-
-        if (docs.isEmpty) {
-          return SliverToBoxAdapter(
-            child: UpriseEmptyState(
-              icon: Icons.campaign_outlined,
-              title: switch (widget.filter) {
-                _AnnouncementFilter.urgent => 'No urgent announcements',
-                _AnnouncementFilter.general => 'No general announcements',
-                _AnnouncementFilter.all => 'No announcements yet',
-              },
-            ),
-          );
-        }
-
-        return SliverList.separated(
-          itemCount: docs.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 14),
-          itemBuilder: (context, index) {
-            final doc = docs[index];
-            final data = doc.data() as Map<String, dynamic>;
-            final timestamp = data['timestamp'] as Timestamp?;
-            final date = timestamp != null
-                ? timestamp.toDate()
-                : DateTime.now();
-
-            return _announcementCard(
-              data: data,
-              date: date,
-              onTap: () => widget.onAnnouncementTap(doc.id),
-              orgName: widget.orgName,
-              orgLogoUrl: widget.orgLogoUrl,
-            );
-          },
+        return _announcementCard(
+          data: data,
+          date: date,
+          onTap: () => onAnnouncementTap(doc.id),
+          orgName: orgName,
+          orgLogoUrl: orgLogoUrl,
         );
       },
     );
@@ -1731,14 +1691,7 @@ class _OrgShopTabState extends State<_OrgShopTab> {
                   final data = docs[index].data() as Map<String, dynamic>;
                   final name = (data['name'] ?? '').toString();
                   final price = ((data['price'] ?? 0) as num).toDouble();
-                  // imageUrl as well as imageBase64: org_merchandise.dart
-                  // writes an explicit `imageBase64: ''` for a product
-                  // photographed by URL, so reading imageBase64 alone showed a
-                  // placeholder for every such product.
-                  final imageSource = firstNonEmptyImageSource([
-                    data['imageBase64']?.toString(),
-                    data['imageUrl']?.toString(),
-                  ]);
+                  final imageSource = productCoverImageSource(data);
 
                   return GestureDetector(
                     // The catalog browses app-wide and can't yet open to a

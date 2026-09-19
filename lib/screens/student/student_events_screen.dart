@@ -506,8 +506,6 @@ class _UpcomingTabState extends State<UpcomingTab>
       MaterialPageRoute(
         builder: (_) => _CategoryEventsScreen(
           category: category,
-          eventsStream: _approvedEventsStream,
-          registeredEventIdsStream: widget.registeredEventIdsStream,
           initialCompactView: _compactView,
           onCompactViewChanged: (v) => setState(() => _compactView = v),
         ),
@@ -795,15 +793,11 @@ EventListItem studentEventListItem(
 // the grid/list preference, which is mirrored back out.
 class _CategoryEventsScreen extends StatefulWidget {
   final String category;
-  final Stream<QuerySnapshot> eventsStream;
-  final Stream<Set<String>> registeredEventIdsStream;
   final bool initialCompactView;
   final ValueChanged<bool> onCompactViewChanged;
 
   const _CategoryEventsScreen({
     required this.category,
-    required this.eventsStream,
-    required this.registeredEventIdsStream,
     required this.initialCompactView,
     required this.onCompactViewChanged,
   });
@@ -813,6 +807,37 @@ class _CategoryEventsScreen extends StatefulWidget {
 }
 
 class _CategoryEventsScreenState extends State<_CategoryEventsScreen> {
+  // These used to be handed down from the landing page, which left this screen
+  // stuck on its spinner forever. Firestore's snapshots() is a BROADCAST
+  // stream, and a broadcast stream does not replay its latest event to a
+  // subscriber that arrives late. The landing page is kept alive by
+  // AutomaticKeepAliveClientMixin, so it still holds its subscription and had
+  // already consumed the snapshot long before the user tapped a category tile
+  // — this screen's StreamBuilder then sat waiting for an event that would
+  // only arrive if something in `events` happened to change, and the
+  // `!snap.hasData` guard below renders a CircularProgressIndicator until then.
+  //
+  // The three tabs get away with sharing the parent's stream because they all
+  // subscribe at startup, before the first snapshot is delivered.
+  //
+  // Owning the subscriptions here is also the pattern every other screen in
+  // this file already uses.
+  late final Stream<QuerySnapshot> _eventsStream = FirebaseFirestore.instance
+      .collection('events')
+      .where('status', isEqualTo: 'approved')
+      .orderBy('date')
+      .snapshots();
+
+  late final Stream<Set<String>> _registeredEventIdsStream = () {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return Stream<Set<String>>.value(<String>{});
+    return FirebaseFirestore.instance
+        .collection('registrations')
+        .where('userId', isEqualTo: user.uid)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => d['eventId'] as String).toSet());
+  }();
+
   final TextEditingController _searchCtrl = TextEditingController();
   String _searchQuery = '';
   late bool _compactView = widget.initialCompactView;
@@ -1069,12 +1094,23 @@ class _CategoryEventsScreenState extends State<_CategoryEventsScreen> {
         ),
       ),
       body: StreamBuilder<Set<String>>(
-        stream: widget.registeredEventIdsStream,
+        stream: _registeredEventIdsStream,
         builder: (context, regSnap) {
           final regIds = regSnap.data ?? <String>{};
           return StreamBuilder<QuerySnapshot>(
-            stream: widget.eventsStream,
+            stream: _eventsStream,
             builder: (context, snap) {
+              // Errors used to fall into the spinner branch below, so a failed
+              // query was indistinguishable from one still loading — which is
+              // what made the stale-stream bug above look like a hang.
+              if (snap.hasError) {
+                return Center(
+                  child: Text(
+                    'Failed to load events',
+                    style: TextStyle(color: Colors.grey.shade600),
+                  ),
+                );
+              }
               if (!snap.hasData) {
                 return const Center(
                   child: CircularProgressIndicator(
@@ -2337,6 +2373,20 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   bool get _isEventReallyOver =>
       widget.event.timeStatus == EventTimeStatus.completed;
 
+  /// Registration closes the moment an event starts — you can't sign up for
+  /// something already underway. Reads the same `timeStatus` that drives the
+  /// LIVE badge on the event cards, so the two can't disagree about whether an
+  /// event has begun.
+  bool get _registrationOpen =>
+      widget.event.timeStatus == EventTimeStatus.upcoming;
+
+  /// Why the Register button is disabled, or null while it's usable.
+  String? get _registrationClosedReason => switch (widget.event.timeStatus) {
+    EventTimeStatus.upcoming => null,
+    EventTimeStatus.ongoing => 'Registration closed — event has started',
+    EventTimeStatus.completed => 'Registration closed — event has ended',
+  };
+
   // Certificate status for the My Event section — same `certificates`
   // collection and `recipientUid` field the Certificates screen already
   // queries, just scoped to this one event via `eventId`.
@@ -3125,15 +3175,16 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 
   Future<void> _registerForEvent() async {
-    // Was widget.isPastEvent (start-time-based) — that flipped true the
-    // instant an event started, rejecting registration during an ongoing
-    // event even though the Register button itself stays visible until
-    // _isEventReallyOver (end-time-based). Late joiners to an ongoing
-    // event are allowed; only a genuinely finished event blocks it.
-    if (_isEventReallyOver) {
+    // Late joiners to an ongoing event used to be allowed here; they no longer
+    // are — registration closes at the start time. Re-checked at submit rather
+    // than trusting the disabled button, since a detail screen left open
+    // across the start time would otherwise still be able to submit.
+    if (!_registrationOpen) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Cannot register for past events'),
+        SnackBar(
+          content: Text(
+            _registrationClosedReason ?? 'Registration is closed',
+          ),
           backgroundColor: Colors.red,
         ),
       );
@@ -3763,7 +3814,45 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         ),
                       )
-                    else if (!_isEligibleForEvent) ...[
+                    // Time closes registration before eligibility does: once
+                    // the event is underway there's nothing to sign up for,
+                    // eligible or not. Kept visible but disabled so the reason
+                    // is on screen rather than implied by a missing button.
+                    else if (!_registrationOpen) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: null,
+                          icon: const Icon(Icons.timer_off_outlined, size: 18),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.grey.shade300,
+                            disabledBackgroundColor: Colors.grey.shade300,
+                            disabledForegroundColor: Colors.grey.shade600,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          label: Text(
+                            _registrationClosedReason ?? 'Registration closed',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Registration closes when an event begins. You can '
+                        'still view the details here.',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ] else if (!_isEligibleForEvent) ...[
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(

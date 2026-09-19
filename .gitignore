@@ -43,3 +43,7 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Service account keys used by one-off admin scripts (functions/scripts/) —
+# never commit real credentials.
+functions/scripts/*serviceAccountKey*.json

@@ -24,6 +24,7 @@ import '../../services/guest_event_registration.dart';
 import '../../widgets/common/bottom_nav_bar.dart';
 import '../../widgets/common/countdown_section.dart';
 import '../../widgets/common/home_sections.dart';
+import '../../widgets/student/app_image.dart';
 import '../../widgets/common/loading_widget.dart';
 import '../../widgets/common/organization_card.dart';
 import '../../widgets/common/section_header.dart';
@@ -734,8 +735,7 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
                             child: MerchPreviewCard(
                               name: (data['name'] ?? '').toString(),
                               price: ((data['price'] ?? 0) as num).toDouble(),
-                              imageBase64: (data['imageBase64'] ?? '')
-                                  .toString(),
+                              imageSource: productCoverImageSource(data),
                               onTap: _openMerch,
                             ),
                           );

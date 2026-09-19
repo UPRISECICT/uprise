@@ -11,6 +11,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:uprise/models/event_model.dart';
+import '../../services/org_directory.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../widgets/student/student_app_bar.dart';
 import '../../widgets/common/action_tile.dart';
@@ -101,56 +102,16 @@ bool shouldShowAnnouncementToStudent(Map<String, dynamic> data) {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  ORGANIZATION LOGO CACHE
-// ─────────────────────────────────────────────────────────────
-class OrgLogoCache {
-  static final Map<String, String> _cache = {};
-
-  static Future<void> loadAllOrganizations() async {
-    try {
-      final querySnapshot = await FirebaseFirestore.instance
-          .collection('organizations')
-          .get();
-
-      for (var doc in querySnapshot.docs) {
-        final data = doc.data();
-        final name = (data['name'] as String? ?? '').trim().toLowerCase();
-
-        // Try all possible field names
-        String logo = data['logouUrl'] as String? ?? '';
-        if (logo.isEmpty) logo = data['logoUrl'] as String? ?? '';
-        if (logo.isEmpty) logo = data['logo'] as String? ?? '';
-        if (logo.isEmpty) logo = data['imageUrl'] as String? ?? '';
-        if (logo.isEmpty) logo = data['profileImage'] as String? ?? '';
-
-        if (logo.isNotEmpty) {
-          _cache[name] = logo;
-        }
-      }
-
-      print('✅ Loaded ${_cache.length} organization logos');
-      print('📋 Available organizations: ${_cache.keys.join(", ")}');
-    } catch (e) {
-      print('❌ Error loading organizations: $e');
-    }
-  }
-
-  static String? getLogo(String orgName) {
-    if (orgName.isEmpty) return null;
-    final key = orgName.trim().toLowerCase();
-    return _cache[key];
-  }
-
-  static bool get isLoaded => _cache.isNotEmpty;
-}
-
-// ─────────────────────────────────────────────────────────────
 //  DATA MODEL
 // ─────────────────────────────────────────────────────────────
 class AnnouncementData {
   final String id;
   final String title;
   final String org;
+
+  /// The posting org's id — the only stable handle back to its profile. The
+  /// name and logo are resolved through it rather than read off the post.
+  final String orgId;
   final String orgSub;
   final String category;
   final String date;
@@ -173,6 +134,7 @@ class AnnouncementData {
     required this.id,
     required this.title,
     required this.org,
+    this.orgId = '',
     required this.orgSub,
     this.category = '',
     required this.date,
@@ -209,12 +171,27 @@ class AnnouncementData {
       d['imageUrl'] as String?,
     ]);
 
-    String logoUrl = d['logoUrl'] as String? ?? '';
+    // Resolve the org through its id, not through what the post recorded.
+    // `authorName` was frozen at post time from `shortName ?? name`, so it
+    // goes stale the moment an org renames itself, and `logoUrl` is never
+    // written onto an announcement at all — it was always empty here.
+    // Both fall back to the post's own copy for an org that no longer exists.
+    final orgId = (d['orgId'] ?? '').toString();
+    final authorName = (d['authorName'] as String? ?? '').trim();
+    final directoryName = OrgDirectory.nameFor(orgId);
+    final directoryLogo = OrgDirectory.logoFor(orgId);
+
+    final logoUrl = directoryLogo.isNotEmpty
+        ? directoryLogo
+        : (d['logoUrl'] as String? ?? '');
 
     return AnnouncementData(
       id: doc.id,
       title: d['title'] as String? ?? '',
-      org: d['authorName'] as String? ?? 'Organization',
+      org: directoryName.isNotEmpty
+          ? directoryName
+          : (authorName.isNotEmpty ? authorName : 'Organization'),
+      orgId: orgId,
       orgSub: (d['category'] as String?)?.toUpperCase() ?? 'ANNOUNCEMENT',
       category: (d['category'] as String? ?? '').trim(),
       date: DateFormat('MMM dd, yyyy').format(dateTime),
@@ -270,7 +247,6 @@ class StudentAnnouncementsScreen extends StatefulWidget {
 class _StudentAnnouncementsScreenState
     extends State<StudentAnnouncementsScreen> {
   final String? _userId = FirebaseAuth.instance.currentUser?.uid;
-  bool _orgsLoaded = false;
 
   AnnouncementFilters _filters = const AnnouncementFilters();
 
@@ -283,16 +259,21 @@ class _StudentAnnouncementsScreenState
   @override
   void initState() {
     super.initState();
-    _loadOrganizations();
+    OrgDirectory.start();
+    // Org names and logos are resolved at card-build time, so the feed has to
+    // rebuild when the directory's first snapshot lands — otherwise every card
+    // keeps the fallback name it was built with.
+    OrgDirectory.revision.addListener(_onOrgDirectoryChanged);
   }
 
-  Future<void> _loadOrganizations() async {
-    await OrgLogoCache.loadAllOrganizations();
-    if (mounted) {
-      setState(() {
-        _orgsLoaded = true;
-      });
-    }
+  @override
+  void dispose() {
+    OrgDirectory.revision.removeListener(_onOrgDirectoryChanged);
+    super.dispose();
+  }
+
+  void _onOrgDirectoryChanged() {
+    if (mounted) setState(() {});
   }
 
   /// Shown when the feed has posts but none survive the active filters —
@@ -344,8 +325,11 @@ class _StudentAnnouncementsScreenState
       body: StreamBuilder<QuerySnapshot>(
         stream: _announcementsStream,
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting ||
-              !_orgsLoaded) {
+          // Deliberately not gated on the org directory: a card whose org
+          // hasn't resolved yet falls back to the name stored on the post and
+          // corrects itself on the next revision, which beats holding the whole
+          // feed behind a spinner that never clears if that listener fails.
+          if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
               child: CircularProgressIndicator(color: AppColors.primaryDark),
             );
@@ -591,12 +575,8 @@ class _AnnouncementCardState extends State<_AnnouncementCard> {
 
   AnnouncementData get ann => widget.ann;
 
-  String? get _logoUrl {
-    if (ann.logoUrl.isNotEmpty) return ann.logoUrl;
-    final cachedLogo = OrgLogoCache.getLogo(ann.org);
-    if (cachedLogo != null && cachedLogo.isNotEmpty) return cachedLogo;
-    return null;
-  }
+  // Already resolved through OrgDirectory when the model was built.
+  String? get _logoUrl => ann.logoUrl.isNotEmpty ? ann.logoUrl : null;
 
   void _navigateToDetail(BuildContext context) {
     Navigator.push(
@@ -923,12 +903,9 @@ class AnnouncementDetailScreen extends StatelessWidget {
 
   const AnnouncementDetailScreen({super.key, required this.announcement});
 
-  String? get _logoUrl {
-    if (announcement.logoUrl.isNotEmpty) return announcement.logoUrl;
-    final cachedLogo = OrgLogoCache.getLogo(announcement.org);
-    if (cachedLogo != null && cachedLogo.isNotEmpty) return cachedLogo;
-    return null;
-  }
+  // Already resolved through OrgDirectory when the model was built.
+  String? get _logoUrl =>
+      announcement.logoUrl.isNotEmpty ? announcement.logoUrl : null;
 
   @override
   Widget build(BuildContext context) {

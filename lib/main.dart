@@ -6,6 +6,7 @@ import 'package:provider/provider.dart'; // ⭐ IDAGDAG ITO
 import 'role_router.dart'; // RoleRouter handles login vs home
 import 'utils/theme.dart';
 import 'firebase_options.dart';
+import 'services/push_notification_service.dart';
 import 'providers/event_provider.dart'; // ⭐ IDAGDAG ITO
 
 void main() async {
@@ -35,6 +36,8 @@ void main() async {
         cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
       );
     }
+    // Not awaited: displaying pushes must never delay first frame.
+    PushNotificationService.initialize();
     print('✅ Firebase initialized!');
   } catch (e) {
     if (e.toString().contains('duplicate-app')) {

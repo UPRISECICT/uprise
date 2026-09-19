@@ -3,11 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:uprise/models/event_model.dart';
 import '../student/app_colors.dart';
 import '../student/app_image.dart';
+import 'event_badges.dart';
 
 class CountdownWidget extends StatefulWidget {
   final EventModel? event;
 
-  const CountdownWidget({Key? key, this.event}) : super(key: key);
+  const CountdownWidget({super.key, this.event});
 
   @override
   State<CountdownWidget> createState() => _CountdownWidgetState();
@@ -16,7 +17,7 @@ class CountdownWidget extends StatefulWidget {
 class _CountdownWidgetState extends State<CountdownWidget> {
   late Timer _timer;
   Duration _duration = Duration.zero;
-  bool _isEventStarted = false;
+  EventTimeStatus _status = EventTimeStatus.upcoming;
 
   @override
   void initState() {
@@ -28,85 +29,34 @@ class _CountdownWidgetState extends State<CountdownWidget> {
   }
 
   void _updateDuration() {
-    if (widget.event == null) {
+    final event = widget.event;
+    if (event == null) {
       setState(() {
         _duration = Duration.zero;
-        _isEventStarted = false;
+        _status = EventTimeStatus.upcoming;
       });
       return;
     }
 
-    try {
-      // ⭐ GAMITIN ANG date + startTime NG EVENT ⭐
-      final eventDate = widget.event!.date;
-      final timeStr = widget.event!.startTime;
+    // Was a local RegExp re-parse of date + startTime, which never looked at
+    // the end time — so an event that had begun stuck on "started" forever
+    // with no ended state. EventModel.timeStatus/fullDateTime/endDateTime are
+    // the canonical classification (the same one the LIVE badge reads), and
+    // handle the blank-endTime case for us.
+    final status = event.timeStatus;
+    final now = DateTime.now();
 
-      DateTime? eventDateTime;
+    // Upcoming counts down to the start; ongoing counts down to the end,
+    // which is the number that's actually still meaningful mid-event.
+    final target = status == EventTimeStatus.upcoming
+        ? event.fullDateTime
+        : event.endDateTime;
+    final remaining = target.difference(now);
 
-      // Parse time string (e.g., "9:00 AM" or "14:30")
-      if (timeStr.isNotEmpty) {
-        try {
-          final cleaned = timeStr.trim().toUpperCase();
-          final match = RegExp(r'^(\d{1,2}):(\d{2})\s*(AM|PM)?$').firstMatch(cleaned);
-          if (match != null) {
-            int hour = int.parse(match.group(1)!);
-            final minute = int.parse(match.group(2)!);
-            final meridiem = match.group(3);
-
-            if (meridiem == 'PM' && hour != 12) hour += 12;
-            if (meridiem == 'AM' && hour == 12) hour = 0;
-
-            eventDateTime = DateTime(
-              eventDate.year,
-              eventDate.month,
-              eventDate.day,
-              hour,
-              minute,
-            );
-          }
-        } catch (_) {
-          // If time parsing fails, use midnight
-          eventDateTime = DateTime(
-            eventDate.year,
-            eventDate.month,
-            eventDate.day,
-          );
-        }
-      } else {
-        // If no time, use midnight
-        eventDateTime = DateTime(
-          eventDate.year,
-          eventDate.month,
-          eventDate.day,
-        );
-      }
-
-      if (eventDateTime == null) {
-        setState(() {
-          _duration = Duration.zero;
-          _isEventStarted = false;
-        });
-        return;
-      }
-
-      final now = DateTime.now();
-      final difference = eventDateTime.difference(now);
-
-      setState(() {
-        if (difference.isNegative) {
-          _duration = Duration.zero;
-          _isEventStarted = true;
-        } else {
-          _duration = difference;
-          _isEventStarted = false;
-        }
-      });
-    } catch (e) {
-      setState(() {
-        _duration = Duration.zero;
-        _isEventStarted = false;
-      });
-    }
+    setState(() {
+      _status = status;
+      _duration = remaining.isNegative ? Duration.zero : remaining;
+    });
   }
 
   @override
@@ -127,108 +77,35 @@ class _CountdownWidgetState extends State<CountdownWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final event = widget.event;
     // ✅ If no event, don't show anything
-    if (widget.event == null) {
-      return const SizedBox.shrink();
-    }
+    if (event == null) return const SizedBox.shrink();
 
     final days = _duration.inDays;
     final hours = _duration.inHours.remainder(24);
     final minutes = _duration.inMinutes.remainder(60);
     final seconds = _duration.inSeconds.remainder(60);
 
-    // ✅ If event has started, show different UI
-    if (_isEventStarted) {
-      final bannerUrl = widget.event!.bannerUrl ?? '';
-      final hasBanner = bannerUrl.isNotEmpty;
+    final ongoing = _status == EventTimeStatus.ongoing;
+    final completed = _status == EventTimeStatus.completed;
 
-      return Container(
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.green.withAlpha(77),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: hasBanner
-                  ? AppImage(source: bannerUrl, fit: BoxFit.cover)
-                  : const DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [Colors.green, Colors.greenAccent],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                      ),
-                    ),
-            ),
-            if (hasBanner)
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Colors.green.shade900.withAlpha(230),
-                        Colors.green.shade700.withAlpha(150),
-                      ],
-                      begin: Alignment.bottomLeft,
-                      end: Alignment.topRight,
-                    ),
-                  ),
-                ),
-              ),
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.emoji_events,
-                    color: Colors.white,
-                    size: 32,
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.event!.title,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const Text(
-                          '🎉 Event has started!',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+    // One card shape for all three states. The ongoing state used to drop the
+    // org name, the time blocks, the date and the location and render a lone
+    // trophy icon instead, which collapsed the card to roughly half the height
+    // its carousel slot reserves — it read as a placeholder rather than as the
+    // most important event on the screen.
+    final accent = ongoing
+        ? AppColors.success
+        : completed
+        ? const Color(0xFF475569)
+        : AppColors.primaryDark;
+    final accentLight = ongoing
+        ? const Color(0xFF34D399)
+        : completed
+        ? const Color(0xFF94A3B8)
+        : AppColors.primaryLight;
 
-    // ✅ Show countdown
-    final bannerUrl = widget.event!.bannerUrl ?? '';
+    final bannerUrl = event.bannerUrl ?? '';
     final hasBanner = bannerUrl.isNotEmpty;
 
     return Container(
@@ -237,7 +114,7 @@ class _CountdownWidgetState extends State<CountdownWidget> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primaryDark.withAlpha(77),
+            color: accent.withAlpha(77),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -248,10 +125,10 @@ class _CountdownWidgetState extends State<CountdownWidget> {
           Positioned.fill(
             child: hasBanner
                 ? AppImage(source: bannerUrl, fit: BoxFit.cover)
-                : const DecoratedBox(
+                : DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [AppColors.primaryDark, AppColors.primaryLight],
+                        colors: [accent, accentLight],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
@@ -263,10 +140,7 @@ class _CountdownWidgetState extends State<CountdownWidget> {
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [
-                      AppColors.primaryDark.withAlpha(235),
-                      AppColors.primaryDark.withAlpha(150),
-                    ],
+                    colors: [accent.withAlpha(235), accent.withAlpha(150)],
                     begin: Alignment.bottomLeft,
                     end: Alignment.topRight,
                   ),
@@ -283,7 +157,7 @@ class _CountdownWidgetState extends State<CountdownWidget> {
                   children: [
                     Expanded(
                       child: Text(
-                        widget.event!.orgName.toUpperCase(),
+                        event.orgName.toUpperCase(),
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 14,
@@ -295,30 +169,36 @@ class _CountdownWidgetState extends State<CountdownWidget> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withAlpha(51),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Text(
-                        'Event Starts',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: 0.5,
+                    // The same LiveBadge the event cards use for this state,
+                    // so an ongoing event is marked the same way everywhere
+                    // instead of being green here and red there.
+                    if (ongoing)
+                      const LiveBadge()
+                    else
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withAlpha(51),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          completed ? 'Event Ended' : 'Event Starts',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                            letterSpacing: 0.5,
+                          ),
                         ),
                       ),
-                    ),
                   ],
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  widget.event!.title,
+                  event.title,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 20,
@@ -328,34 +208,75 @@ class _CountdownWidgetState extends State<CountdownWidget> {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 16),
-                Row(
-                  children: [
-                    _buildTimeBlock(_twoDigits(days), 'DAYS'),
-                    const SizedBox(width: 8),
-                    _buildTimeBlock(_twoDigits(hours), 'HOURS'),
-                    const SizedBox(width: 8),
-                    _buildTimeBlock(_twoDigits(minutes), 'MINUTES'),
-                    const SizedBox(width: 8),
-                    _buildTimeBlock(_twoDigits(seconds), 'SECONDS'),
-                  ],
-                ),
+                if (completed)
+                  // Nothing left to count down to, so the tiles would only
+                  // show four zeroes.
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withAlpha(38),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.white.withAlpha(51)),
+                    ),
+                    child: const Text(
+                      'This event has ended',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  )
+                else ...[
+                  Text(
+                    ongoing ? 'ENDS IN' : 'STARTS IN',
+                    style: TextStyle(
+                      color: Colors.white.withAlpha(179),
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      _buildTimeBlock(_twoDigits(days), 'DAYS'),
+                      const SizedBox(width: 8),
+                      _buildTimeBlock(_twoDigits(hours), 'HOURS'),
+                      const SizedBox(width: 8),
+                      _buildTimeBlock(_twoDigits(minutes), 'MINUTES'),
+                      const SizedBox(width: 8),
+                      _buildTimeBlock(_twoDigits(seconds), 'SECONDS'),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    const Icon(Icons.calendar_today, color: Colors.white, size: 14),
+                    const Icon(
+                      Icons.calendar_today,
+                      color: Colors.white,
+                      size: 14,
+                    ),
                     const SizedBox(width: 6),
                     Text(
-                      widget.event!.formattedDate,
+                      event.formattedDate,
                       style: TextStyle(
                         color: Colors.white.withAlpha(230),
                         fontSize: 12,
                       ),
                     ),
                     const SizedBox(width: 16),
-                    const Icon(Icons.access_time, color: Colors.white, size: 14),
+                    const Icon(
+                      Icons.access_time,
+                      color: Colors.white,
+                      size: 14,
+                    ),
                     const SizedBox(width: 6),
                     Text(
-                      widget.event!.formattedTime,
+                      event.formattedTime,
                       style: TextStyle(
                         color: Colors.white.withAlpha(230),
                         fontSize: 12,
@@ -366,11 +287,15 @@ class _CountdownWidgetState extends State<CountdownWidget> {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    const Icon(Icons.location_on, color: Colors.white, size: 14),
+                    const Icon(
+                      Icons.location_on,
+                      color: Colors.white,
+                      size: 14,
+                    ),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        widget.event!.location,
+                        event.location,
                         style: TextStyle(
                           color: Colors.white.withAlpha(230),
                           fontSize: 12,

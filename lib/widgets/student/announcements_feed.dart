@@ -2,6 +2,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../../screens/student/student_announcements_screen.dart';
+import '../../services/org_directory.dart';
 import '../common/feed_cards.dart';
 import '../common/loading_widget.dart';
 import 'app_colors.dart';
@@ -44,6 +45,25 @@ class _AnnouncementsFeedState extends State<AnnouncementsFeed> {
       .orderBy('timestamp', descending: true)
       .limit(10)
       .snapshots();
+
+  @override
+  void initState() {
+    super.initState();
+    // Cards resolve their org name and logo through OrgDirectory at build
+    // time, so this has to rebuild once that index loads.
+    OrgDirectory.start();
+    OrgDirectory.revision.addListener(_onOrgDirectoryChanged);
+  }
+
+  @override
+  void dispose() {
+    OrgDirectory.revision.removeListener(_onOrgDirectoryChanged);
+    super.dispose();
+  }
+
+  void _onOrgDirectoryChanged() {
+    if (mounted) setState(() {});
+  }
 
   String _formatTime(DateTime timestamp) {
     final diff = DateTime.now().difference(timestamp);

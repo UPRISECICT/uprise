@@ -2,8 +2,8 @@
 //
 // View-only merchandise catalog for guests — mirrors
 // student_merchandise_screen.dart's showcase model (no cart/checkout,
-// browsing only), styled with the guest scope's own color tokens instead
-// of importing the student AppColors.
+// browsing only) and its visual design, with the guest scope's own token
+// class rather than importing the student screen's private one.
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -14,10 +14,60 @@ import '../../widgets/student/app_image.dart';
 import '../../widgets/student/student_app_bar.dart';
 
 // ─────────────────────────────────────────────────────────────
-// Theme (matches guest_events_screen.dart's palette)
+// Design tokens — same values as the student catalog's `_DS`, so the two
+// screens read as one product. Aliases the shared AppColors palette.
 // ─────────────────────────────────────────────────────────────
-const _kPrimary = AppColors.primaryDark;
-const _kBg = AppColors.background;
+class _DS {
+  static const Color ink = AppColors.textPrimary; // headings
+  static const Color body = AppColors.textSecondary; // body copy
+  static const Color muted = AppColors.textMuted; // labels, hints
+  static const Color brand = AppColors.primaryDark; // price, selected states
+  static const Color brandSoft = AppColors.primarySoft; // active tints
+  static const Color line = AppColors.divider; // hairline borders
+  static const Color well = AppColors.surfaceTint; // image backgrounds
+  static const Color success = AppColors.success;
+  static const Color successBg = AppColors.successBg;
+  static const Color danger = AppColors.error;
+  static const Color dangerBg = AppColors.errorBg;
+
+  static const double radiusSm = 12;
+  static const double radiusMd = 18;
+  static const double radiusLg = 24;
+  static const double radiusXl = 26;
+  static const double radiusPill = 100;
+
+  static const double gutter = 16;
+  static const double controlHeight = 44; // search field, filter buttons
+  static const double pillHeight = 34; // category pills
+
+  // Catalog grid. Hairline cards, no shadow — the warm photo wells already
+  // separate one tile from the next.
+  static const double gridMaxExtent = 220;
+  static const double gridTileHeight = 310;
+  static const double gridGapX = 12;
+  static const double gridGapY = 16;
+  static const double tileInset = 6; // photo inset inside a card
+  // Taller than the student card's: the guest card also carries a
+  // "Starts at" line and a stock count; sized to fit them at 1.3x text.
+  static const double cardInfoHeight = 124;
+
+  /// ~60% desaturation for photos of unavailable items.
+  static const ColorFilter unavailablePhoto = ColorFilter.matrix(<double>[
+    0.5276, 0.4291, 0.0433, 0, 0, //
+    0.1276, 0.8291, 0.0433, 0, 0, //
+    0.1276, 0.4291, 0.4433, 0, 0, //
+    0, 0, 0, 1, 0, //
+  ]);
+
+  static const double galleryHeight = 200; // details sheet photo
+
+  /// Small sentence-case label, e.g. the category under a product name.
+  static const TextStyle label = TextStyle(
+    fontSize: 12,
+    fontWeight: FontWeight.w600,
+    color: body,
+  );
+}
 
 // ─────────────────────────────────────────────────────────────
 // Models (display-only)
@@ -64,6 +114,10 @@ class _Product {
   final List<_ProductVariant> variants;
   final List<String> rotationPhotos;
 
+  /// UIDs of students who liked this product. Guests can see the count but
+  /// not add to it — liking is a student action on the student catalog.
+  final List<String> likedBy;
+
   const _Product({
     required this.id,
     required this.orgId,
@@ -77,6 +131,7 @@ class _Product {
     this.status = 'available',
     this.variants = const [],
     this.rotationPhotos = const [],
+    this.likedBy = const [],
   });
 
   List<String> get displayPhotos {
@@ -97,6 +152,8 @@ class _Product {
           : 'data:image/$imageFormat;base64,$imageBase64';
     }
 
+    final rawLikedBy = d['likedBy'];
+
     return _Product(
       id: doc.id,
       orgId: d['orgId'] as String? ?? '',
@@ -115,8 +172,13 @@ class _Product {
                 .toList()
           : const [],
       rotationPhotos: ((d['rotationPhotos'] as List?) ?? []).cast<String>(),
+      likedBy: rawLikedBy is List
+          ? rawLikedBy.whereType<String>().toList()
+          : const [],
     );
   }
+
+  int get likeCount => likedBy.length;
 
   bool get inStock {
     if (variants.isNotEmpty) return variants.any((v) => v.stock > 0);
@@ -132,10 +194,10 @@ class GuestMerchandiseScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _kBg,
-      appBar: const StudentAppBar(title: 'Merchandise'),
-      body: const _ProductsTab(),
+    return const Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: StudentAppBar(title: 'Merchandise'),
+      body: _ProductsTab(),
     );
   }
 }
@@ -155,6 +217,10 @@ class _ProductsTabState extends State<_ProductsTab> {
   String _selectedCategory = 'All';
   String _selectedOrg = 'All';
   final _searchCtrl = TextEditingController();
+
+  /// Trending re-orders whatever the filters already let through; it never
+  /// hides anything.
+  bool _sortTrending = false;
 
   List<String> _categories = ['All'];
   List<String> _orgs = ['All'];
@@ -234,122 +300,32 @@ class _ProductsTabState extends State<_ProductsTab> {
 
   bool get _hasOrgFilter => _selectedOrg != 'All';
 
+  /// Most-liked first. Dart's sort isn't stable, so ties fall back to name
+  /// then id — otherwise equal-liked items would shuffle on every snapshot.
+  List<_Product> _sortByLikes(List<_Product> products) {
+    return [...products]..sort((a, b) {
+        final byLikes = b.likeCount.compareTo(a.likeCount);
+        if (byLikes != 0) return byLikes;
+        final byName = a.name.toLowerCase().compareTo(b.name.toLowerCase());
+        if (byName != 0) return byName;
+        return a.id.compareTo(b.id);
+      });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // ── Search Bar with Filter Icon ──
-        Container(
-          color: Colors.white,
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _searchCtrl,
-                  onChanged: (v) => setState(() => _search = v),
-                  decoration: InputDecoration(
-                    hintText: 'Search merchandise…',
-                    hintStyle: const TextStyle(fontSize: 13),
-                    prefixIcon: const Icon(
-                      Icons.search,
-                      size: 18,
-                      color: Colors.black38,
-                    ),
-                    suffixIcon: _searchCtrl.text.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear, size: 16),
-                            onPressed: () {
-                              _searchCtrl.clear();
-                              setState(() => _search = '');
-                            },
-                          )
-                        : null,
-                    filled: true,
-                    fillColor: _kBg,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: _showOrgFilterDialog,
-                child: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: _hasOrgFilter ? _kPrimary.withAlpha(26) : _kBg,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: _hasOrgFilter ? _kPrimary : Colors.transparent,
-                      width: 1.5,
-                    ),
-                  ),
-                  child: Icon(
-                    Icons.filter_list_rounded,
-                    size: 22,
-                    color: _hasOrgFilter ? _kPrimary : Colors.black38,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        // ── Category Chips Row ──
-        if (!_loadingFilters && _categories.isNotEmpty)
-          Container(
-            color: Colors.white,
-            height: 40,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: _categories.length,
-              itemBuilder: (_, i) {
-                final cat = _categories[i];
-                final sel = cat == _selectedCategory;
-                return GestureDetector(
-                  onTap: () => setState(() => _selectedCategory = cat),
-                  child: Container(
-                    margin: const EdgeInsets.only(right: 8),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: sel ? _kPrimary : Colors.transparent,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: sel ? _kPrimary : Colors.black12,
-                        width: 1,
-                      ),
-                    ),
-                    child: Text(
-                      cat,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: sel ? Colors.white : Colors.black54,
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
+        _buildSearchAndFilters(),
 
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
             stream: _stream,
             builder: (ctx, snap) {
               if (snap.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
+                return const Center(
+                  child: CircularProgressIndicator(color: _DS.brand),
+                );
               }
               if (snap.hasError) {
                 return _EmptyHint(
@@ -407,18 +383,206 @@ class _ProductsTabState extends State<_ProductsTab> {
                 );
               }
 
-              return GridView.builder(
-                padding: const EdgeInsets.all(16),
-                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 200,
-                  childAspectRatio: 0.72,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                ),
-                itemCount: products.length,
-                itemBuilder: (ctx, i) => _ProductCard(product: products[i]),
-              );
+              final shown = _sortTrending ? _sortByLikes(products) : products;
+              return _buildCatalog(shown);
             },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSearchAndFilters() {
+    final searchBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(_DS.radiusSm),
+      borderSide: const BorderSide(color: _DS.line),
+    );
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: _DS.line)),
+      ),
+      padding: const EdgeInsets.only(top: 12, bottom: 12),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: _DS.gutter),
+            child: Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: _DS.controlHeight,
+                    child: TextField(
+                      controller: _searchCtrl,
+                      onChanged: (v) => setState(() => _search = v),
+                      textAlignVertical: TextAlignVertical.center,
+                      style: const TextStyle(fontSize: 13, color: _DS.ink),
+                      decoration: InputDecoration(
+                        hintText: 'Search merchandise',
+                        hintStyle: const TextStyle(
+                          fontSize: 13,
+                          color: _DS.muted,
+                        ),
+                        prefixIcon: const Icon(
+                          Icons.search_rounded,
+                          size: 19,
+                          color: _DS.muted,
+                        ),
+                        suffixIcon: _searchCtrl.text.isNotEmpty
+                            ? IconButton(
+                                tooltip: 'Clear search',
+                                icon: const Icon(
+                                  Icons.close_rounded,
+                                  size: 17,
+                                  color: _DS.body,
+                                ),
+                                onPressed: () {
+                                  _searchCtrl.clear();
+                                  setState(() => _search = '');
+                                },
+                              )
+                            : null,
+                        filled: true,
+                        fillColor: _DS.well,
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                        ),
+                        border: searchBorder,
+                        enabledBorder: searchBorder,
+                        focusedBorder: searchBorder.copyWith(
+                          borderSide: const BorderSide(
+                            color: _DS.brand,
+                            width: 1.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _TrendingToggle(
+                  active: _sortTrending,
+                  onTap: () {
+                    setState(() => _sortTrending = !_sortTrending);
+                  },
+                ),
+                const SizedBox(width: 8),
+                // Capped so the search field keeps usable width on a 320dp
+                // phone with both controls showing.
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 120),
+                  child: _FilterButton(
+                    icon: Icons.filter_list_rounded,
+                    active: _hasOrgFilter,
+                    label: _selectedOrg,
+                    onTap: _showOrgFilterDialog,
+                    onClear: () {
+                      setState(() => _selectedOrg = 'All');
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          // Height is held while the categories load, so the grid doesn't
+          // jump down a row when they arrive.
+          SizedBox(
+            height: _DS.pillHeight,
+            child: _loadingFilters || _categories.isEmpty
+                ? null
+                : ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    // Pills start on the gutter but scroll off the true edge.
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: _DS.gutter,
+                    ),
+                    itemCount: _categories.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 7),
+                    itemBuilder: (_, i) {
+                      final cat = _categories[i];
+                      final sel = cat == _selectedCategory;
+
+                      return Semantics(
+                        selected: sel,
+                        button: true,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            customBorder: const StadiumBorder(),
+                            onTap: () =>
+                                setState(() => _selectedCategory = cat),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 150),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                              ),
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: sel ? _DS.brand : Colors.white,
+                                borderRadius: BorderRadius.circular(
+                                  _DS.radiusPill,
+                                ),
+                                border: Border.all(
+                                  color: sel ? _DS.brand : _DS.line,
+                                ),
+                              ),
+                              child: Text(
+                                cat,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: sel ? Colors.white : _DS.body,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCatalog(List<_Product> products) {
+    final count = products.length;
+    final countLabel = count == 1 ? '1 item' : '$count items';
+
+    return CustomScrollView(
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(_DS.gutter, 14, _DS.gutter, 10),
+          sliver: SliverToBoxAdapter(
+            child: Text(
+              // Says the order out loud when Trending changed it, since the
+              // flame toggle up top is icon-only.
+              _sortTrending ? '$countLabel, most liked first' : countLabel,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: _DS.body,
+              ),
+            ),
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(_DS.gutter, 0, _DS.gutter, 28),
+          sliver: SliverGrid(
+            delegate: SliverChildBuilderDelegate(
+              (ctx, i) => _ProductCard(product: products[i]),
+              childCount: products.length,
+            ),
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: _DS.gridMaxExtent,
+              mainAxisExtent: _DS.gridTileHeight,
+              crossAxisSpacing: _DS.gridGapX,
+              mainAxisSpacing: _DS.gridGapY,
+            ),
           ),
         ),
       ],
@@ -432,102 +596,97 @@ class _ProductsTabState extends State<_ProductsTab> {
       builder: (context) => Container(
         decoration: const BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(_DS.radiusLg),
+          ),
         ),
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Filter by Organization',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                if (_hasOrgFilter)
-                  TextButton(
-                    onPressed: () {
-                      setState(() => _selectedOrg = 'All');
-                      Navigator.pop(context);
-                    },
-                    child: const Text(
-                      'Clear',
-                      style: TextStyle(
-                        color: Colors.red,
-                        fontWeight: FontWeight.w600,
-                      ),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const _SheetHandle(),
+              const SizedBox(height: 18),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Filter by organization',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                            color: _DS.ink,
+                          ),
+                        ),
+                        SizedBox(height: 3),
+                        Text(
+                          'Show merchandise from one organization.',
+                          style: TextStyle(fontSize: 12, color: _DS.body),
+                        ),
+                      ],
                     ),
                   ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            const Divider(),
-            const SizedBox(height: 8),
-            if (_loadingFilters)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(20),
-                  child: CircularProgressIndicator(),
-                ),
-              )
-            else if (_orgs.isEmpty || _orgs.length == 1)
-              const Padding(
-                padding: EdgeInsets.all(20),
-                child: Center(
-                  child: Text(
-                    'No organizations available',
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                ),
-              )
-            else
-              ..._orgs.map((org) {
-                final isSelected = org == _selectedOrg;
-                return ListTile(
-                  leading: Radio<String>(
-                    value: org,
-                    groupValue: _selectedOrg,
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() => _selectedOrg = value);
+                  if (_hasOrgFilter)
+                    TextButton(
+                      style: TextButton.styleFrom(foregroundColor: _DS.brand),
+                      onPressed: () {
+                        setState(() => _selectedOrg = 'All');
                         Navigator.pop(context);
-                      }
-                    },
-                    activeColor: _kPrimary,
+                      },
+                      child: const Text('Clear'),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              if (_loadingFilters)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(20),
+                    child: CircularProgressIndicator(color: _DS.brand),
                   ),
-                  title: Text(
-                    org,
-                    style: TextStyle(
-                      fontWeight: isSelected
-                          ? FontWeight.w600
-                          : FontWeight.normal,
-                      color: isSelected ? _kPrimary : Colors.black87,
+                )
+              else if (_orgs.isEmpty || _orgs.length == 1)
+                const Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Center(
+                    child: Text(
+                      'No organizations available',
+                      style: TextStyle(fontSize: 13, color: _DS.body),
                     ),
                   ),
-                  trailing: isSelected
-                      ? Icon(Icons.check_circle, color: _kPrimary, size: 20)
-                      : null,
-                  onTap: () {
-                    setState(() => _selectedOrg = org);
-                    Navigator.pop(context);
-                  },
-                );
-              }),
-            const SizedBox(height: 16),
-          ],
+                )
+              else
+                // Flexible + shrinkWrap: the sheet sizes to a short list but
+                // scrolls a long one instead of overflowing.
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    itemCount: _orgs.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 2),
+                    itemBuilder: (_, i) {
+                      final org = _orgs[i];
+                      return _OrganizationOption(
+                        // 'All' stays the stored value; only the row reads
+                        // as a sentence.
+                        label: org == 'All' ? 'All organizations' : org,
+                        selected: org == _selectedOrg,
+                        onTap: () {
+                          setState(() => _selectedOrg = org);
+                          Navigator.pop(context);
+                        },
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -545,155 +704,141 @@ class _ProductCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final fmt = NumberFormat('#,##0.00');
     final hasVariants = product.variants.isNotEmpty;
+    final unavailable = product.status == 'discontinued' || !product.inStock;
+    final stockCount = product.variants.isNotEmpty
+        ? product.variants.fold<int>(0, (total, v) => total + v.stock)
+        : product.stock;
+
     return GestureDetector(
       onTap: () => _showDetails(context),
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFF0F0F0)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withAlpha(13),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          borderRadius: BorderRadius.circular(_DS.radiusLg),
+          border: Border.all(color: _DS.line),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ClipRRect(
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(16),
-              ),
-              child: AspectRatio(
-                aspectRatio: 1,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    _buildProductImage(),
-                    if (product.status == 'discontinued' || !product.inStock)
-                      Positioned.fill(
-                        child: Container(
-                          color: Colors.black45,
-                          child: Center(
-                            child: Text(
-                              product.status == 'discontinued'
-                                  ? 'DISCONTINUED'
-                                  : 'OUT OF STOCK',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
+            // Photo inset on the warm well with its own corners, taking
+            // whatever height the fixed info block leaves.
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  _DS.tileInset,
+                  _DS.tileInset,
+                  _DS.tileInset,
+                  0,
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(_DS.radiusMd),
+                  child: ColoredBox(
+                    color: _DS.well,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        // Unavailable items fade toward grey instead of being
+                        // covered by a dark overlay.
+                        unavailable
+                            ? ColorFiltered(
+                                colorFilter: _DS.unavailablePhoto,
+                                child: _buildProductImage(),
+                              )
+                            : _buildProductImage(),
+                        if (product.category.isNotEmpty)
+                          Positioned(
+                            top: 8,
+                            left: 8,
+                            child: _SmallBadge(text: product.category),
                           ),
-                        ),
-                      ),
-                    Positioned(
-                      top: 6,
-                      left: 6,
-                      child: _StatusBadge(status: product.status),
+                        if (product.status == 'out_of_stock' ||
+                            product.status == 'discontinued')
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: _StatusBadge(status: product.status),
+                          ),
+                        if (product.likeCount > 0)
+                          Positioned(
+                            right: 8,
+                            bottom: 8,
+                            child: _LikeCount(count: product.likeCount),
+                          ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
-
-            Padding(
-              padding: const EdgeInsets.fromLTRB(11, 9, 11, 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 7,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _kPrimary.withAlpha(20),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      product.category.toUpperCase(),
-                      style: const TextStyle(
-                        fontSize: 8.5,
-                        color: _kPrimary,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.4,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    product.name,
-                    style: const TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.black87,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 7),
-                  if (hasVariants)
-                    Text(
-                      'Starts at',
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: Colors.grey.shade500,
-                      ),
-                    ),
-                  Text(
-                    '₱${fmt.format(product.price)}',
-                    style: const TextStyle(
-                      fontSize: 15.5,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.deepOrange,
-                    ),
-                  ),
-                  const SizedBox(height: 7),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 7,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: product.inStock
-                          ? Colors.green.withAlpha(26)
-                          : Colors.red.withAlpha(20),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          product.inStock
-                              ? Icons.inventory_2_outlined
-                              : Icons.block_rounded,
-                          size: 10,
-                          color: product.inStock
-                              ? Colors.green.shade700
-                              : Colors.redAccent,
+            SizedBox(
+              height: _DS.cardInfoHeight,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 9, 12, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Two lines reserved whether or not the name needs them,
+                    // so the price sits at the same height on every card.
+                    SizedBox(
+                      height: 34,
+                      child: Text(
+                        product.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: _DS.ink,
+                          height: 1.25,
                         ),
-                        const SizedBox(width: 4),
-                        Text(
-                          product.inStock
-                              ? '${product.variants.isNotEmpty ? product.variants.fold<int>(0, (sum, v) => sum + v.stock) : product.stock} in stock'
-                              : 'Out of stock',
-                          style: TextStyle(
-                            fontSize: 9.5,
-                            fontWeight: FontWeight.w600,
-                            color: product.inStock
-                                ? Colors.green.shade700
-                                : Colors.redAccent,
+                      ),
+                    ),
+                    const Spacer(),
+                    if (hasVariants)
+                      const Text(
+                        'Starts at',
+                        style: TextStyle(fontSize: 10, color: _DS.body),
+                      ),
+                    Text(
+                      '₱${fmt.format(product.price)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: unavailable ? _DS.muted : _DS.brand,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        Container(
+                          width: 7,
+                          height: 7,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: product.inStock ? _DS.success : _DS.danger,
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                        Flexible(
+                          child: Text(
+                            product.inStock
+                                ? '$stockCount in stock'
+                                : 'Out of stock',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w600,
+                              color: _DS.body,
+                            ),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ],
@@ -707,9 +852,13 @@ class _ProductCard extends StatelessWidget {
     // explicit `imageBase64: ''` for a product photographed by URL, so reading
     // imageBase64 alone showed a letter placeholder for every such product.
     // AppImage then handles the URL, which the old base64-only decode couldn't.
+    //
+    // The main photo is optional in the org form, so a product can carry its
+    // pictures only in `rotationPhotos`; fall back to the first of those.
     final imageData = firstNonEmptyImageSource([
       product.imageBase64,
       product.imageUrl,
+      if (product.rotationPhotos.isNotEmpty) product.rotationPhotos.first,
     ]);
     if (imageData.isEmpty) return _imgPlaceholder(product.name);
 
@@ -721,15 +870,15 @@ class _ProductCard extends StatelessWidget {
     );
   }
 
-  Widget _imgPlaceholder(String name) => Container(
-    color: _kPrimary.withAlpha(26),
+  Widget _imgPlaceholder(String name) => ColoredBox(
+    color: _DS.brandSoft,
     child: Center(
       child: Text(
         name.isNotEmpty ? name[0].toUpperCase() : '?',
         style: const TextStyle(
           fontSize: 36,
-          color: _kPrimary,
-          fontWeight: FontWeight.bold,
+          color: _DS.brand,
+          fontWeight: FontWeight.w800,
         ),
       ),
     ),
@@ -737,6 +886,10 @@ class _ProductCard extends StatelessWidget {
 
   void _showDetails(BuildContext context) {
     final fmt = NumberFormat('#,##0.00');
+    final stockCount = product.variants.isNotEmpty
+        ? product.variants.fold<int>(0, (total, v) => total + v.stock)
+        : product.stock;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -748,55 +901,63 @@ class _ProductCard extends StatelessWidget {
         builder: (_, ctrl) => Container(
           decoration: const BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(_DS.radiusXl),
+            ),
           ),
           child: SingleChildScrollView(
             controller: ctrl,
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(18, 10, 18, 24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
+                const _SheetHandle(),
+                const SizedBox(height: 14),
                 _buildDetailImage(),
-                const SizedBox(height: 16),
+                const SizedBox(height: 18),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                      child: Text(
-                        product.name,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (product.category.isNotEmpty) ...[
+                            Text(product.category, style: _DS.label),
+                            const SizedBox(height: 4),
+                          ],
+                          Text(
+                            product.name,
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                              color: _DS.ink,
+                              height: 1.2,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    _StatusBadge(status: product.status),
+                    const SizedBox(width: 10),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        _StatusBadge(status: product.status),
+                        if (product.likeCount > 0) ...[
+                          const SizedBox(height: 8),
+                          _LikeCount(count: product.likeCount),
+                        ],
+                      ],
+                    ),
                   ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  product.category,
-                  style: const TextStyle(fontSize: 12, color: Colors.black38),
                 ),
                 const SizedBox(height: 10),
                 Text(
                   '₱${fmt.format(product.price)}',
                   style: const TextStyle(
-                    fontSize: 22,
+                    fontSize: 24,
                     fontWeight: FontWeight.w800,
-                    color: _kPrimary,
+                    color: _DS.brand,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -806,8 +967,8 @@ class _ProductCard extends StatelessWidget {
                       : 'No description provided.',
                   style: const TextStyle(
                     fontSize: 13,
-                    color: Colors.black54,
-                    height: 1.5,
+                    color: _DS.body,
+                    height: 1.6,
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -815,18 +976,21 @@ class _ProductCard extends StatelessWidget {
                   children: [
                     _DetailChip(
                       icon: Icons.inventory_2_outlined,
-                      label:
-                          '${product.variants.isNotEmpty ? product.variants.fold<int>(0, (sum, v) => sum + v.stock) : product.stock} in stock',
+                      label: '$stockCount in stock',
                     ),
                   ],
                 ),
                 if (product.variants.isNotEmpty) ...[
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 20),
                   const Text(
                     'Variants',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: _DS.ink,
+                    ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 10),
                   _VariantsTable(product: product, basePrice: product.price),
                 ],
                 const SizedBox(height: 20),
@@ -841,27 +1005,31 @@ class _ProductCard extends StatelessWidget {
   Widget _buildDetailImage() {
     final photos = product.displayPhotos;
     if (photos.isEmpty) return _detailPlaceholder();
-    return ProductPhotoGallery(photosBase64: photos, height: 200);
+    return ProductPhotoGallery(
+      photosBase64: photos,
+      height: _DS.galleryHeight,
+      borderRadius: BorderRadius.circular(_DS.radiusLg),
+    );
   }
 
   Widget _detailPlaceholder() => Container(
-    height: 200,
+    height: _DS.galleryHeight,
     decoration: BoxDecoration(
-      color: _kPrimary.withAlpha(26),
-      borderRadius: BorderRadius.circular(12),
+      color: _DS.well,
+      borderRadius: BorderRadius.circular(_DS.radiusLg),
     ),
-    child: Column(
+    child: const Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Icon(
           Icons.image_not_supported_outlined,
-          size: 48,
-          color: Colors.grey.shade400,
+          size: 40,
+          color: _DS.muted,
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
         Text(
           'No Image Available',
-          style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+          style: TextStyle(fontSize: 13, color: _DS.body),
         ),
       ],
     ),
@@ -871,40 +1039,332 @@ class _ProductCard extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────
 // Shared small widgets
 // ─────────────────────────────────────────────────────────────
+
+/// Read-only heart and count. Guests can see what students like but can't
+/// like themselves, so there is no tap target here.
+class _LikeCount extends StatelessWidget {
+  final int count;
+  const _LikeCount({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: count == 1 ? '1 like' : '$count likes',
+      excludeSemantics: true,
+      child: Container(
+        height: 26,
+        padding: const EdgeInsets.only(left: 7, right: 9),
+        decoration: BoxDecoration(
+          color: Colors.white.withAlpha(240),
+          borderRadius: BorderRadius.circular(_DS.radiusPill),
+          border: Border.all(color: _DS.line),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.favorite_border_rounded,
+              size: 14,
+              color: _DS.body,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              NumberFormat.compact().format(count),
+              style: const TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w700,
+                color: _DS.body,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Sort toggle beside the search field. Icon-only to leave the search field
+/// its width; the tooltip and semantics carry the name.
+class _TrendingToggle extends StatelessWidget {
+  final bool active;
+  final VoidCallback onTap;
+
+  const _TrendingToggle({required this.active, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: active ? 'Showing most liked first' : 'Sort by most liked',
+      child: Semantics(
+        button: true,
+        toggled: active,
+        label: 'Trending: sort by most liked',
+        excludeSemantics: true,
+        child: Material(
+          color: active ? _DS.brand : _DS.well,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(_DS.radiusSm),
+            side: BorderSide(color: active ? _DS.brand : _DS.line),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: SizedBox(
+              width: _DS.controlHeight,
+              height: _DS.controlHeight,
+              child: Icon(
+                Icons.local_fire_department_rounded,
+                size: 20,
+                color: active ? Colors.white : _DS.body,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Opens the organization sheet. Once an organization is picked it widens to
+/// show which one, with its own ✕.
+class _FilterButton extends StatelessWidget {
+  final IconData icon;
+  final bool active;
+  final VoidCallback onTap;
+  final String? label;
+  final VoidCallback? onClear;
+
+  const _FilterButton({
+    required this.icon,
+    required this.active,
+    required this.onTap,
+    this.label,
+    this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = active ? _DS.brand : _DS.body;
+    final showLabel = active && label != null;
+
+    return Material(
+      color: active ? _DS.brandSoft : _DS.well,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(_DS.radiusSm),
+        side: BorderSide(color: active ? _DS.brand : _DS.line),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
+        height: _DS.controlHeight,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: InkWell(
+                onTap: onTap,
+                child: Semantics(
+                  button: true,
+                  label: showLabel
+                      ? 'Organization filter: $label'
+                      : 'Filter by organization',
+                  excludeSemantics: true,
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      left: showLabel ? 11 : 12,
+                      right: showLabel ? 4 : 12,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(icon, size: 20, color: foreground),
+                        if (showLabel) ...[
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              label!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: foreground,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            if (showLabel && onClear != null)
+              InkWell(
+                onTap: onClear,
+                child: Semantics(
+                  button: true,
+                  label: 'Clear organization filter',
+                  excludeSemantics: true,
+                  child: SizedBox(
+                    width: 32,
+                    height: _DS.controlHeight,
+                    child: Icon(Icons.close_rounded, size: 16, color: foreground),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One row of the organization sheet. Single-select: the picked row is tinted
+/// and carries a check, the rest stay plain.
+class _OrganizationOption extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _OrganizationOption({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      selected: selected,
+      inMutuallyExclusiveGroup: true,
+      button: true,
+      child: Material(
+        color: selected ? _DS.brandSoft : Colors.transparent,
+        borderRadius: BorderRadius.circular(_DS.radiusSm),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(_DS.radiusSm),
+          child: SizedBox(
+            height: 52,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight:
+                            selected ? FontWeight.w700 : FontWeight.w500,
+                        color: selected ? _DS.brand : _DS.ink,
+                      ),
+                    ),
+                  ),
+                  if (selected)
+                    const Icon(
+                      Icons.check_rounded,
+                      size: 20,
+                      color: _DS.brand,
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Drag handle shared by both bottom sheets.
+class _SheetHandle extends StatelessWidget {
+  const _SheetHandle();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        width: 38,
+        height: 4,
+        decoration: BoxDecoration(
+          color: _DS.line,
+          borderRadius: BorderRadius.circular(_DS.radiusPill),
+        ),
+      ),
+    );
+  }
+}
+
+class _SmallBadge extends StatelessWidget {
+  final String text;
+
+  const _SmallBadge({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      // Long category names ellipsize instead of running across the photo.
+      constraints: const BoxConstraints(maxWidth: 110),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withAlpha(235),
+        borderRadius: BorderRadius.circular(_DS.radiusPill),
+        border: Border.all(color: _DS.line),
+      ),
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          fontSize: 9.5,
+          fontWeight: FontWeight.w600,
+          color: _DS.body,
+        ),
+      ),
+    );
+  }
+}
+
 class _StatusBadge extends StatelessWidget {
   final String status;
   const _StatusBadge({required this.status});
 
   @override
   Widget build(BuildContext context) {
+    final Color fg;
     final Color bg;
     final String label;
     switch (status) {
       case 'out_of_stock':
-        bg = Colors.red.shade600;
-        label = 'OUT OF STOCK';
+        fg = _DS.danger;
+        bg = _DS.dangerBg;
+        label = 'Out of stock';
         break;
       case 'discontinued':
-        bg = Colors.grey.shade600;
-        label = 'DISCONTINUED';
+        fg = _DS.body;
+        bg = _DS.line;
+        label = 'Discontinued';
         break;
       default:
-        bg = Colors.green.shade600;
-        label = 'AVAILABLE';
+        fg = _DS.success;
+        bg = _DS.successBg;
+        label = 'Available';
     }
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(5),
+        borderRadius: BorderRadius.circular(_DS.radiusPill),
       ),
       child: Text(
         label,
-        style: const TextStyle(
-          fontSize: 8,
-          fontWeight: FontWeight.bold,
-          color: Colors.white,
-          letterSpacing: 0.4,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: fg,
         ),
       ),
     );
@@ -921,17 +1381,22 @@ class _DetailChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: _kBg,
-        borderRadius: BorderRadius.circular(8),
+        color: _DS.well,
+        borderRadius: BorderRadius.circular(_DS.radiusPill),
+        border: Border.all(color: _DS.line),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 13, color: Colors.black45),
-          const SizedBox(width: 4),
+          Icon(icon, size: 13, color: _DS.body),
+          const SizedBox(width: 5),
           Text(
             label,
-            style: const TextStyle(fontSize: 11, color: Colors.black54),
+            style: const TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: _DS.body,
+            ),
           ),
         ],
       ),
@@ -947,8 +1412,12 @@ class _VariantsTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fmt = NumberFormat('#,##0.00');
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(_DS.radiusMd),
+        border: Border.all(color: _DS.line),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: Table(
         columnWidths: const {
           0: FlexColumnWidth(1.5),
@@ -958,27 +1427,30 @@ class _VariantsTable extends StatelessWidget {
         },
         children: [
           TableRow(
-            decoration: const BoxDecoration(color: _kBg),
+            decoration: const BoxDecoration(color: _DS.well),
             children: [
-              _cell('SIZE', header: true),
-              _cell('COLOR', header: true),
-              _cell('STOCK', header: true),
-              _cell('PRICE', header: true),
+              _cell('Size', header: true),
+              _cell('Color', header: true),
+              _cell('Stock', header: true),
+              _cell('Price', header: true),
             ],
           ),
           for (final v in product.variants)
             TableRow(
-              decoration: BoxDecoration(
-                border: Border(bottom: BorderSide(color: Colors.grey.shade100)),
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: _DS.line)),
               ),
               children: [
                 _cell(v.size.isNotEmpty ? v.size : '—'),
                 _cell(v.color.isNotEmpty ? v.color : '—'),
                 _cell(
                   v.stock > 0 ? '${v.stock}' : 'Out',
-                  color: v.stock > 0 ? Colors.green.shade600 : Colors.redAccent,
+                  color: v.stock > 0 ? _DS.success : _DS.danger,
                 ),
-                _cell('₱${fmt.format(basePrice + (v.priceOffset ?? 0))}'),
+                _cell(
+                  '₱${fmt.format(basePrice + (v.priceOffset ?? 0))}',
+                  color: _DS.brand,
+                ),
               ],
             ),
         ],
@@ -987,13 +1459,13 @@ class _VariantsTable extends StatelessWidget {
   }
 
   Widget _cell(String text, {bool header = false, Color? color}) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
     child: Text(
       text,
       style: TextStyle(
-        fontSize: header ? 11 : 12,
-        fontWeight: header ? FontWeight.w700 : FontWeight.normal,
-        color: color ?? (header ? Colors.black54 : Colors.black87),
+        fontSize: header ? 11.5 : 12.5,
+        fontWeight: header ? FontWeight.w700 : FontWeight.w500,
+        color: color ?? (header ? _DS.body : _DS.ink),
       ),
     ),
   );
@@ -1016,27 +1488,44 @@ class _EmptyHint extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 52, color: Colors.black12),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: Colors.black45,
+        padding: const EdgeInsets.all(30),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 280),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: _DS.well,
+                  borderRadius: BorderRadius.circular(_DS.radiusMd),
+                  border: Border.all(color: _DS.line),
+                ),
+                child: Icon(icon, size: 26, color: _DS.muted),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              style: const TextStyle(fontSize: 12, color: Colors.black38),
-              textAlign: TextAlign.center,
-            ),
-          ],
+              const SizedBox(height: 14),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: _DS.ink,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                subtitle,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 12,
+                  height: 1.45,
+                  color: _DS.body,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

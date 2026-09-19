@@ -16,7 +16,6 @@ import 'package:intl/intl.dart';
 import '../../widgets/common/image_viewer.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../services/notification_service.dart';
-import '../../services/activity_logger.dart' as activity_log;
 import '../../utils/profanity_filter.dart';
 
 // MemoryImage's cache key is the decoded bytes object itself, not the
@@ -195,13 +194,12 @@ Widget _dateSeparatorPill(DateTime date) {
   );
 }
 
-// Long-press action sheet — Reply is always offered; Report or Delete is
-// whichever one applies to that message (never both, since you can't report
-// your own message or delete someone else's).
+// Long-press action sheet — Reply is always offered; Unsend only on your own
+// messages. (Report used to sit here too; it was removed along with its
+// dialog.)
 void _showMessageActions(
   BuildContext context, {
   required VoidCallback onReply,
-  VoidCallback? onReport,
   VoidCallback? onDelete,
 }) {
   showModalBottomSheet(
@@ -231,32 +229,14 @@ void _showMessageActions(
                 onReply();
               },
             ),
-            if (onReport != null)
-              ListTile(
-                leading: const Icon(
-                  Icons.flag_outlined,
-                  color: Color(0xFFDC2626),
-                ),
-                title: Text(
-                  'Report',
-                  style: GoogleFonts.poppins(
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFFDC2626),
-                  ),
-                ),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  onReport();
-                },
-              ),
             if (onDelete != null)
               ListTile(
                 leading: const Icon(
-                  Icons.delete_outline_rounded,
+                  Icons.undo_rounded,
                   color: Color(0xFFDC2626),
                 ),
                 title: Text(
-                  'Delete',
+                  'Unsend',
                   style: GoogleFonts.poppins(
                     fontWeight: FontWeight.w600,
                     color: const Color(0xFFDC2626),
@@ -288,126 +268,6 @@ String _initials(String name) {
       .toUpperCase();
 }
 
-const List<String> _reportReasons = [
-  'Spam',
-  'Inappropriate content',
-  'Harassment',
-  'Other',
-];
-
-// Mirrors showReportMessageDialog in org_broadcast.dart — logs straight to
-// activity_logs so admins see reported messages in the existing Activity
-// Logs page instead of a separate review queue.
-Future<void> _showReportMessageDialog(
-  BuildContext context, {
-  required String conversationId,
-  required String messageId,
-  required String messageText,
-  required String reportedUserId,
-  required String reportedUserRole,
-  required String orgId,
-}) async {
-  String selectedReason = _reportReasons.first;
-  final detailsCtrl = TextEditingController();
-  final submitted = await showDialog<bool>(
-    context: context,
-    builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setDialogState) => AlertDialog(
-        title: Text(
-          'Report message',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
-        ),
-        content: SizedBox(
-          // AlertDialog's own default insetPadding already reserves ~40px
-          // per side, so sizing against the full screen width (as the
-          // previous hardcoded 360 effectively assumed on narrow phones)
-          // pushed this past the actual available space.
-          width: (MediaQuery.of(ctx).size.width - 80).clamp(0, 360),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Why are you reporting this message?',
-                style: GoogleFonts.poppins(fontSize: 13),
-              ),
-              const SizedBox(height: 8),
-              for (final reason in _reportReasons)
-                RadioListTile<String>(
-                  value: reason,
-                  groupValue: selectedReason,
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(reason, style: GoogleFonts.poppins(fontSize: 13)),
-                  onChanged: (v) => setDialogState(() => selectedReason = v!),
-                ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: detailsCtrl,
-                maxLines: 2,
-                style: GoogleFonts.poppins(fontSize: 13),
-                decoration: InputDecoration(
-                  hintText: 'Additional details (optional)',
-                  hintStyle: GoogleFonts.poppins(fontSize: 12),
-                  border: const OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFDC2626),
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Report'),
-          ),
-        ],
-      ),
-    ),
-  );
-  if (submitted != true) return;
-
-  try {
-    await activity_log.ActivityLogger.log(
-      action:
-          'Reported a message from a ${reportedUserRole.isEmpty ? 'user' : reportedUserRole} ($selectedReason)',
-      module: 'Message Reports',
-      severity: 'warning',
-      orgId: orgId,
-      details: {
-        'orgId': orgId,
-        'conversationId': conversationId,
-        'messageId': messageId,
-        'messageText': messageText,
-        'reporterRole': 'student',
-        'reportedUserId': reportedUserId,
-        'reportedUserRole': reportedUserRole,
-        'reason': selectedReason,
-        'details': detailsCtrl.text.trim(),
-      },
-    );
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Message reported. Thanks for flagging it.'),
-        ),
-      );
-    }
-  } catch (e) {
-    if (context.mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Could not submit report: $e')));
-    }
-  }
-}
 
 class StudentBroadcastScreen extends StatefulWidget {
   final String orgId;
@@ -605,11 +465,12 @@ class _StudentBroadcastScreenState extends State<StudentBroadcastScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(
-          'Delete message?',
+          'Unsend message?',
           style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
         ),
         content: Text(
-          'This removes it for both you and ${widget.orgName}. This can\'t be undone.',
+          'This removes it for both you and ${widget.orgName}. They\'ll see '
+          'that you unsent a message. This can\'t be undone.',
           style: GoogleFonts.poppins(fontSize: 13),
         ),
         actions: [
@@ -623,7 +484,7 @@ class _StudentBroadcastScreenState extends State<StudentBroadcastScreen> {
               backgroundColor: const Color(0xFFDC2626),
               foregroundColor: Colors.white,
             ),
-            child: const Text('Delete'),
+            child: const Text('Unsend'),
           ),
         ],
       ),
@@ -634,11 +495,22 @@ class _StudentBroadcastScreenState extends State<StudentBroadcastScreen> {
       final ref = FirebaseFirestore.instance
           .collection('conversations')
           .doc(_conversationDocId);
-      await ref.collection('messages').doc(messageId).delete();
-      // The org's conversation-list preview shows lastMessage/lastMessageAt
-      // — if the deleted message was the latest one, recompute those from
-      // whatever's now actually the newest remaining message instead of
-      // leaving a stale preview of a message that no longer exists.
+      // Soft delete, not `.delete()`: the doc has to survive so both sides can
+      // render an "unsent a message" placeholder where it was, the way every
+      // other messaging app marks the gap. The content itself is cleared, so
+      // nothing recoverable is left behind.
+      await ref.collection('messages').doc(messageId).update({
+        'isDeleted': true,
+        'deletedAt': FieldValue.serverTimestamp(),
+        'text': '',
+        'imageBase64': FieldValue.delete(),
+        'fileBase64': FieldValue.delete(),
+        'fileName': FieldValue.delete(),
+      });
+      // The org's conversation-list preview shows lastMessage/lastMessageAt —
+      // if the unsent message was the latest one it's still the newest doc, so
+      // the preview has to be replaced explicitly rather than recomputed onto
+      // the same (now emptied) message.
       final latestSnap = await ref
           .collection('messages')
           .orderBy('timestamp', descending: true)
@@ -647,8 +519,11 @@ class _StudentBroadcastScreenState extends State<StudentBroadcastScreen> {
       if (latestSnap.docs.isNotEmpty) {
         final latest = latestSnap.docs.first.data();
         final latestText = (latest['text'] ?? '').toString();
+        final latestDeleted = latest['isDeleted'] == true;
         await ref.update({
-          'lastMessage': latestText.isEmpty ? 'Sent an image' : latestText,
+          'lastMessage': latestDeleted
+              ? 'Unsent a message'
+              : (latestText.isEmpty ? 'Sent an image' : latestText),
           'lastMessageAt': latest['timestamp'] ?? FieldValue.serverTimestamp(),
           'lastSenderRole': latest['senderRole'] ?? 'student',
         });
@@ -659,7 +534,7 @@ class _StudentBroadcastScreenState extends State<StudentBroadcastScreen> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Could not delete message: $e')));
+        ).showSnackBar(SnackBar(content: Text('Could not unsend message: $e')));
       }
     }
   }
@@ -903,6 +778,7 @@ class _StudentBroadcastScreenState extends State<StudentBroadcastScreen> {
                                   data['replyToText'] as String?;
                               final replyToSenderName =
                                   data['replyToSenderName'] as String?;
+                              final isDeleted = data['isDeleted'] == true;
                               return _MessageBubble(
                                 isMe: isFromStudent,
                                 text: text,
@@ -914,25 +790,24 @@ class _StudentBroadcastScreenState extends State<StudentBroadcastScreen> {
                                     : '',
                                 replyToText: replyToText,
                                 replyToSenderName: replyToSenderName,
-                                onReport: isFromStudent
-                                    ? null
-                                    : () => _showReportMessageDialog(
-                                        context,
-                                        conversationId: _conversationDocId,
-                                        messageId: doc.id,
-                                        messageText: text,
-                                        reportedUserId: widget.orgId,
-                                        reportedUserRole: 'org',
-                                        orgId: widget.orgId,
-                                      ),
-                                onDelete: isFromStudent
+                                isDeleted: isDeleted,
+                                senderName: isFromStudent
+                                    ? _studentName
+                                    : widget.orgName,
+                                // An unsent message has nothing left to unsend
+                                // or reply to.
+                                onDelete: isFromStudent && !isDeleted
                                     ? () => _confirmDeleteMessage(doc.id)
                                     : null,
-                                onReply: () => _startReply(
-                                  doc.id,
-                                  text,
-                                  isFromStudent ? _studentName : widget.orgName,
-                                ),
+                                onReply: isDeleted
+                                    ? null
+                                    : () => _startReply(
+                                        doc.id,
+                                        text,
+                                        isFromStudent
+                                            ? _studentName
+                                            : widget.orgName,
+                                      ),
                               );
                             },
                           );
@@ -1092,13 +967,15 @@ class _MessageBubble extends StatelessWidget {
   final String time;
   final String? replyToText;
   final String? replyToSenderName;
-  // Only set for the other person's messages — reporting your own message
-  // makes no sense, so the report option simply doesn't appear on isMe
-  // bubbles' long-press menu.
-  final VoidCallback? onReport;
-  // Only set for your own messages — the counterpart of onReport.
+  /// Only set for your own messages — you can't unsend someone else's.
   final VoidCallback? onDelete;
   final VoidCallback? onReply;
+
+  /// Soft-deleted: the doc survives so the gap can be marked in the thread.
+  final bool isDeleted;
+
+  /// Who sent it — only used to name them in the unsent placeholder.
+  final String senderName;
 
   const _MessageBubble({
     required this.isMe,
@@ -1109,7 +986,8 @@ class _MessageBubble extends StatelessWidget {
     required this.time,
     this.replyToText,
     this.replyToSenderName,
-    this.onReport,
+    this.isDeleted = false,
+    this.senderName = '',
     this.onDelete,
     this.onReply,
   });
@@ -1129,15 +1007,77 @@ class _MessageBubble extends StatelessWidget {
       bottomRight: Radius.circular(isMe ? 4 : 16),
     );
 
+    // An unsent message keeps its place in the thread as a muted outline —
+    // the reader sees that something was there and is gone, rather than the
+    // message silently vanishing mid-conversation.
+    if (isDeleted) {
+      return Align(
+        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.72,
+          ),
+          child: Column(
+            crossAxisAlignment: isMe
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: radius,
+                  border: Border.all(color: Colors.grey.shade400),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.block_rounded,
+                      size: 14,
+                      color: Colors.grey.shade600,
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        isMe
+                            ? 'You unsent a message'
+                            : '${senderName.isEmpty ? 'They' : senderName} unsent a message',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12.5,
+                          fontStyle: FontStyle.italic,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                time,
+                style: GoogleFonts.poppins(
+                  fontSize: 10,
+                  color: Colors.grey.shade500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: GestureDetector(
         onLongPress: onReply == null
-            ? (onReport ?? onDelete)
+            ? onDelete
             : () => _showMessageActions(
                 context,
                 onReply: onReply!,
-                onReport: onReport,
                 onDelete: onDelete,
               ),
         child: Container(

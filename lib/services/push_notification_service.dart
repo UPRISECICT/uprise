@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 // Registers this device for real OS/browser-level push (phone notification
 // tray on mobile, browser notification on web) and stores the FCM token on
@@ -21,6 +22,74 @@ class PushNotificationService {
       'BIJQbpd6E_WwV55OlGEaSI0-AMLy7a9sahbAZrza0YvJBY1mk9EqMKZVwtvLO_L2QXVC-C5snpoShhwX54aSMEI';
 
   static String? _registeredUid;
+
+  // ── Foreground display ──
+  //
+  // Android does NOT show an FCM notification while the app is open — the
+  // message is handed to FirebaseMessaging.onMessage and dropped unless the
+  // app draws it itself. Backgrounded/closed apps are fine (the OS shows it),
+  // but anyone testing with UPRISE open saw nothing. This re-posts foreground
+  // messages as local notifications on the same channel the Cloud Function
+  // targets.
+  static const String channelId = 'uprise_notifications';
+  static final FlutterLocalNotificationsPlugin _local =
+      FlutterLocalNotificationsPlugin();
+  static bool _initialized = false;
+
+  /// Call once at startup, after Firebase.initializeApp(). Mobile only — the
+  /// browser shows web pushes through the service worker.
+  static Future<void> initialize() async {
+    if (_initialized || kIsWeb) return;
+    _initialized = true;
+
+    try {
+      await _local.initialize(
+        settings: const InitializationSettings(
+          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        ),
+      );
+
+      // High importance is what makes Android show a heads-up banner rather
+      // than filing the notification silently in the tray. Channels are
+      // immutable once created, so this id must stay stable.
+      await _local
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >()
+          ?.createNotificationChannel(
+            const AndroidNotificationChannel(
+              channelId,
+              'UPRISE notifications',
+              description: 'Announcements, events, messages and reminders',
+              importance: Importance.high,
+            ),
+          );
+
+      FirebaseMessaging.onMessage.listen(_showForeground);
+    } catch (e) {
+      debugPrint('PushNotificationService.initialize failed: $e');
+    }
+  }
+
+  static Future<void> _showForeground(RemoteMessage message) async {
+    final n = message.notification;
+    if (n == null) return;
+    await _local.show(
+      // Stable per notification doc, so a redelivered message replaces its
+      // earlier banner instead of stacking a duplicate.
+      id: (message.data['notificationId'] ?? message.messageId ?? '').hashCode,
+      title: n.title,
+      body: n.body,
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          channelId,
+          'UPRISE notifications',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+      ),
+    );
+  }
 
   static Future<void> register(String uid) async {
     if (uid.isEmpty || _registeredUid == uid) return;

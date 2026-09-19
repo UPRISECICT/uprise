@@ -58,6 +58,25 @@ String firstNonEmptyImageSource(List<String?> candidates) {
   return '';
 }
 
+/// Single cover photo for a raw `products` document, for thumbnails built
+/// straight from Firestore data (home merch rail, org Merch tab).
+///
+/// A product's picture can live in any of three fields: `imageBase64` (the
+/// main photo), `imageUrl` (org_merchandise.dart writes `imageBase64: ''` for
+/// a product photographed by URL), or only `rotationPhotos` — the main photo
+/// is optional in the org form, so an item saved with just angle shots has
+/// both of the others empty. Reading fewer than all three left those items on
+/// a placeholder.
+String productCoverImageSource(Map<String, dynamic> data) {
+  final rotationPhotos = data['rotationPhotos'];
+  return firstNonEmptyImageSource([
+    data['imageBase64']?.toString(),
+    data['imageUrl']?.toString(),
+    if (rotationPhotos is List && rotationPhotos.isNotEmpty)
+      rotationPhotos.first?.toString(),
+  ]);
+}
+
 // Certificate templates uploaded to Cloudinary as a PDF are stored as-is —
 // the URL points straight at the raw PDF document, which Flutter's Image
 // widgets can't decode as pixels. Cloudinary renders a PDF's first page as

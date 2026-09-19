@@ -95,14 +95,17 @@ class HomeQuickAction extends StatelessWidget {
 class MerchPreviewCard extends StatelessWidget {
   final String name;
   final double price;
-  final String imageBase64;
+
+  /// Any source AppImage understands — base64 or URL. Build it with
+  /// `productCoverImageSource` so every field a photo can live in is checked.
+  final String imageSource;
   final VoidCallback onTap;
 
   const MerchPreviewCard({
     super.key,
     required this.name,
     required this.price,
-    required this.imageBase64,
+    required this.imageSource,
     required this.onTap,
   });
 
@@ -117,9 +120,9 @@ class MerchPreviewCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            imageBase64.isNotEmpty
+            imageSource.isNotEmpty
                 ? AppImage(
-                    source: imageBase64,
+                    source: imageSource,
                     height: 90,
                     width: double.infinity,
                     fit: BoxFit.cover,

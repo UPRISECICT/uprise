@@ -16,7 +16,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../services/notification_service.dart';
-import '../../../services/activity_logger.dart' as activity_log;
 import '../../../utils/profanity_filter.dart';
 import '../../../theme/org_theme.dart' as theme;
 import '../../../widgets/app_confirmation_dialog.dart';
@@ -271,13 +270,12 @@ Widget _dateSeparatorPill(DateTime date) {
   );
 }
 
-// Long-press action sheet — Reply is always offered; Report or Delete is
-// whichever one applies to that message (never both, since you can't report
-// your own message or delete someone else's).
+// Long-press action sheet — Reply is always offered; Unsend only on your own
+// messages. (Report used to sit here too; it was removed along with its
+// dialog, matching the student side.)
 void _showMessageActions(
   BuildContext context, {
   required VoidCallback onReply,
-  VoidCallback? onReport,
   VoidCallback? onDelete,
 }) {
   showModalBottomSheet(
@@ -304,32 +302,14 @@ void _showMessageActions(
                 onReply();
               },
             ),
-            if (onReport != null)
-              ListTile(
-                leading: const Icon(
-                  Icons.flag_outlined,
-                  color: Color(0xFFDC2626),
-                ),
-                title: Text(
-                  'Report',
-                  style: GoogleFonts.beVietnamPro(
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFFDC2626),
-                  ),
-                ),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  onReport();
-                },
-              ),
             if (onDelete != null)
               ListTile(
                 leading: const Icon(
-                  Icons.delete_outline_rounded,
+                  Icons.undo_rounded,
                   color: Color(0xFFDC2626),
                 ),
                 title: Text(
-                  'Delete',
+                  'Unsend',
                   style: GoogleFonts.beVietnamPro(
                     fontWeight: FontWeight.w600,
                     color: const Color(0xFFDC2626),
@@ -385,214 +365,6 @@ void _showImagePreview(BuildContext context, String imageBase64) {
   );
 }
 
-const List<String> _reportReasons = [
-  'Spam',
-  'Inappropriate content',
-  'Harassment',
-  'Other',
-];
-
-// Shared by both sides of this chat (org here, student in
-// student_broadcast_screen.dart) — logs straight to activity_logs so admins
-// see reported messages in the existing Activity Logs page instead of a
-// separate review queue.
-Future<void> showReportMessageDialog(
-  BuildContext context, {
-  required String conversationId,
-  required String messageId,
-  required String messageText,
-  required String reporterRole,
-  required String reportedUserId,
-  required String reportedUserRole,
-  required String orgId,
-}) async {
-  String selectedReason = _reportReasons.first;
-  final detailsCtrl = TextEditingController();
-  final submitted = await showDialog<bool>(
-    context: context,
-    barrierColor: Colors.black54,
-    builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setDialogState) => Dialog(
-        // Was unset — Dialog falls back to Flutter's default Material
-        // surface color, which skews purple/lavender on this app's
-        // unseeded theme.
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Container(
-          width: 400,
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEF2F2),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.flag_outlined,
-                      color: Color(0xFFDC2626),
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Text(
-                      'Report Message',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        color: _C.charcoal,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Why are you reporting this message?',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  color: _C.darkGray,
-                ),
-              ),
-              const SizedBox(height: 4),
-              for (final reason in _reportReasons)
-                RadioListTile<String>(
-                  value: reason,
-                  groupValue: selectedReason,
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  activeColor: const Color(0xFFDC2626),
-                  title: Text(
-                    reason,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 13,
-                      color: _C.charcoal,
-                    ),
-                  ),
-                  onChanged: (v) => setDialogState(() => selectedReason = v!),
-                ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: detailsCtrl,
-                maxLines: 2,
-                style: GoogleFonts.beVietnamPro(fontSize: 13),
-                decoration: InputDecoration(
-                  hintText: 'Additional details (optional)',
-                  hintStyle: GoogleFonts.beVietnamPro(
-                    fontSize: 12,
-                    color: _C.textFaint,
-                  ),
-                  filled: true,
-                  fillColor: _C.surface,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  OutlinedButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFFE2E6EA)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
-                    child: Text(
-                      'Cancel',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFF374151),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  ElevatedButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFDC2626),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
-                    child: Text(
-                      'Report',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
-  if (submitted != true) return;
-
-  try {
-    await activity_log.ActivityLogger.log(
-      action:
-          'Reported a message from a ${reportedUserRole.isEmpty ? 'user' : reportedUserRole} ($selectedReason)',
-      module: 'Message Reports',
-      severity: 'warning',
-      orgId: orgId,
-      details: {
-        'orgId': orgId,
-        'conversationId': conversationId,
-        'messageId': messageId,
-        'messageText': messageText,
-        'reporterRole': reporterRole,
-        'reportedUserId': reportedUserId,
-        'reportedUserRole': reportedUserRole,
-        'reason': selectedReason,
-        'details': detailsCtrl.text.trim(),
-      },
-    );
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Message reported. Thanks for flagging it.'),
-        ),
-      );
-    }
-  } catch (e) {
-    if (context.mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Could not submit report: $e')));
-    }
-  }
-}
 
 String _conversationId(String orgId, String studentId) => '${orgId}_$studentId';
 
@@ -1487,12 +1259,13 @@ class _ChatThreadState extends State<_ChatThread> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AppConfirmationDialog(
-        title: 'Delete Message',
+        title: 'Unsend Message',
         message:
-            'Delete this message for both you and $_studentName? This cannot be undone.',
-        confirmLabel: 'Delete',
+            'Remove this message for both you and $_studentName? They\'ll see '
+            'that you unsent a message. This cannot be undone.',
+        confirmLabel: 'Unsend',
         accentColor: const Color(0xFFDC2626),
-        icon: Icons.delete_outline_rounded,
+        icon: Icons.undo_rounded,
       ),
     );
     if (confirm != true) return;
@@ -1501,11 +1274,21 @@ class _ChatThreadState extends State<_ChatThread> {
       final ref = FirebaseFirestore.instance
           .collection('conversations')
           .doc(widget.conversationId);
-      await ref.collection('messages').doc(messageId).delete();
-      // The conversation list preview shows lastMessage/lastMessageAt — if
-      // the deleted message was the latest one, recompute those from
-      // whatever's now actually the newest remaining message instead of
-      // leaving a stale preview of a message that no longer exists.
+      // Soft delete, not `.delete()`: the doc has to survive so both sides can
+      // render an "unsent a message" placeholder where it was. Mirrors
+      // _confirmDeleteMessage in student_broadcast_screen.dart.
+      await ref.collection('messages').doc(messageId).update({
+        'isDeleted': true,
+        'deletedAt': FieldValue.serverTimestamp(),
+        'text': '',
+        'imageBase64': FieldValue.delete(),
+        'fileBase64': FieldValue.delete(),
+        'fileName': FieldValue.delete(),
+      });
+      // The conversation list preview shows lastMessage/lastMessageAt — if the
+      // unsent message was the latest one it's still the newest doc, so the
+      // preview has to be replaced explicitly rather than recomputed onto the
+      // same (now emptied) message.
       final latestSnap = await ref
           .collection('messages')
           .orderBy('timestamp', descending: true)
@@ -1515,7 +1298,9 @@ class _ChatThreadState extends State<_ChatThread> {
         final latest = latestSnap.docs.first.data();
         final latestText = (latest['text'] ?? '').toString();
         final latestFileName = (latest['fileName'] ?? '').toString();
-        final preview = latestText.isNotEmpty
+        final preview = latest['isDeleted'] == true
+            ? 'Unsent a message'
+            : latestText.isNotEmpty
             ? latestText
             : (latest['imageBase64'] != null
                   ? 'Sent an image'
@@ -1534,7 +1319,7 @@ class _ChatThreadState extends State<_ChatThread> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Could not delete message: $e')));
+        ).showSnackBar(SnackBar(content: Text('Could not unsend message: $e')));
       }
     }
   }
@@ -1797,6 +1582,7 @@ class _ChatThreadState extends State<_ChatThread> {
                     final replyToText = data['replyToText'] as String?;
                     final replyToSenderName =
                         data['replyToSenderName'] as String?;
+                    final isDeleted = data['isDeleted'] == true;
                     return _MessageBubble(
                       isMe: isOrg,
                       text: text,
@@ -1806,18 +1592,20 @@ class _ChatThreadState extends State<_ChatThread> {
                       time: ts != null ? DateFormat('h:mm a').format(ts) : '',
                       replyToText: replyToText,
                       replyToSenderName: replyToSenderName,
-                      // Reporting has no moderation workflow on the Org
-                      // side yet, so it is intentionally not exposed as a
-                      // dead action in the message menu.
-                      onReport: null,
-                      onDelete: isOrg
+                      isDeleted: isDeleted,
+                      senderName: isOrg ? widget.orgName : _studentName,
+                      // An unsent message has nothing left to unsend or
+                      // reply to.
+                      onDelete: isOrg && !isDeleted
                           ? () => _confirmDeleteMessage(doc.id)
                           : null,
-                      onReply: () => _startReply(
-                        doc.id,
-                        text,
-                        isOrg ? widget.orgName : _studentName,
-                      ),
+                      onReply: isDeleted
+                          ? null
+                          : () => _startReply(
+                              doc.id,
+                              text,
+                              isOrg ? widget.orgName : _studentName,
+                            ),
                     );
                   },
                 );
@@ -2051,13 +1839,15 @@ class _MessageBubble extends StatelessWidget {
   final String time;
   final String? replyToText;
   final String? replyToSenderName;
-  // Only set for the other person's messages — reporting your own message
-  // makes no sense, so the report option simply doesn't appear on isMe
-  // bubbles' long-press menu.
-  final VoidCallback? onReport;
-  // Only set for your own messages — the counterpart of onReport.
+  /// Only set for your own messages — you can't unsend someone else's.
   final VoidCallback? onDelete;
   final VoidCallback? onReply;
+
+  /// Soft-deleted: the doc survives so the gap can be marked in the thread.
+  final bool isDeleted;
+
+  /// Who sent it — only used to name them in the unsent placeholder.
+  final String senderName;
 
   const _MessageBubble({
     required this.isMe,
@@ -2068,13 +1858,75 @@ class _MessageBubble extends StatelessWidget {
     required this.time,
     this.replyToText,
     this.replyToSenderName,
-    this.onReport,
+    this.isDeleted = false,
+    this.senderName = '',
     this.onDelete,
     this.onReply,
   });
 
   @override
   Widget build(BuildContext context) {
+    // An unsent message keeps its place in the thread as a muted outline —
+    // the reader sees that something was there and is gone, rather than the
+    // message silently vanishing mid-conversation.
+    if (isDeleted) {
+      return Align(
+        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          constraints: const BoxConstraints(maxWidth: 320),
+          child: Column(
+            crossAxisAlignment: isMe
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFCBD2D9)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.block_rounded,
+                      size: 14,
+                      color: _C.darkGray,
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        isMe
+                            ? 'You unsent a message'
+                            : '${senderName.isEmpty ? 'They' : senderName} unsent a message',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 12.5,
+                          fontStyle: FontStyle.italic,
+                          color: _C.darkGray,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                time,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 10,
+                  color: _C.textFaint,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final bg = isMe ? _C.primaryDark : Colors.white;
     final fg = isMe ? Colors.white : _C.charcoal;
     final hasImage = imageBase64 != null;
@@ -2090,11 +1942,10 @@ class _MessageBubble extends StatelessWidget {
 
     final bubble = GestureDetector(
       onLongPress: onReply == null
-          ? (onReport ?? onDelete)
+          ? onDelete
           : () => _showMessageActions(
               context,
               onReply: onReply!,
-              onReport: onReport,
               onDelete: onDelete,
             ),
       child: Container(
@@ -2266,14 +2117,13 @@ class _MessageBubble extends StatelessWidget {
         ),
       ),
     );
-    // A visible affordance for Reply/Report/Delete — onLongPress alone
-    // technically works with a held mouse click, but nothing on the bubble
-    // hints it's interactive, so the action was undiscoverable on this
-    // desktop-only surface. Mirrors the hover-menu pattern used elsewhere
-    // (the announcement post card's "..." button) instead of relying on a
-    // touch gesture no one would think to try.
-    final actionsButton =
-        (onReport != null || onDelete != null || onReply != null)
+    // A visible affordance for Reply/Unsend — onLongPress alone technically
+    // works with a held mouse click, but nothing on the bubble hints it's
+    // interactive, so the action was undiscoverable on this desktop-only
+    // surface. Mirrors the hover-menu pattern used elsewhere (the announcement
+    // post card's "..." button) instead of relying on a touch gesture no one
+    // would think to try.
+    final actionsButton = (onDelete != null || onReply != null)
         ? Tooltip(
             message: 'Message Actions',
             waitDuration: const Duration(milliseconds: 400),
@@ -2281,11 +2131,10 @@ class _MessageBubble extends StatelessWidget {
               cursor: SystemMouseCursors.click,
               child: GestureDetector(
                 onTap: onReply == null
-                    ? (onReport ?? onDelete)
+                    ? onDelete
                     : () => _showMessageActions(
                         context,
                         onReply: onReply!,
-                        onReport: onReport,
                         onDelete: onDelete,
                       ),
                 child: Container(

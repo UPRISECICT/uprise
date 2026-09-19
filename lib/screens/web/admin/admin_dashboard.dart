@@ -31,6 +31,7 @@ import '../../../widgets/app_toast.dart';
 import '../../../widgets/app_confirmation_dialog.dart';
 import '../../../widgets/admin_export_button.dart';
 import '../../../services/firestore_collections.dart';
+import '../../../services/firestore_read_retry.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens — mirrors student_accounts.dart exactly
@@ -1591,9 +1592,12 @@ class _DashboardHomeState extends State<DashboardHome> {
   // Cached once (not re-created per build) so switching cards back and
   // forth doesn't re-fire this Firestore read every time — see the
   // sidebar submenu fix earlier in this file for the same pattern.
-  late final Future<List<_OrgPerformance>> _performanceFuture =
-      _loadPerformanceSummary();
-  late final Future<_OverdueSummary> _overdueFuture = _loadOverdueReports();
+  late Future<List<_OrgPerformance>> _performanceFuture = retryFirestoreRead(
+    _loadPerformanceSummary,
+  );
+  late Future<_OverdueSummary> _overdueFuture = retryFirestoreRead(
+    _loadOverdueReports,
+  );
 
   // Shared orgId → shortName cache for the stat-card drill-down tables
   // (Events, Pending Proposals, Overdue Reports) so switching between them
@@ -1631,9 +1635,9 @@ class _DashboardHomeState extends State<DashboardHome> {
     if (mounted) setState(() {});
   }
 
-  late final Stream<QuerySnapshot> _organizationsStream;
-  late final Stream<QuerySnapshot> _eventsStream;
-  late final Stream<QuerySnapshot> _proposalsStream;
+  late Stream<QuerySnapshot> _organizationsStream;
+  late Stream<QuerySnapshot> _eventsStream;
+  late Stream<QuerySnapshot> _proposalsStream;
 
   // Dedicated streams for the Active Events / Pending Proposals table
   // panels — deliberately NOT the same stream instance as the stat cards
@@ -1687,21 +1691,26 @@ class _DashboardHomeState extends State<DashboardHome> {
   void initState() {
     super.initState();
     _selectedMonth = _monthLabel(DateTime.now().month - 1);
-
-    _organizationsStream = FirebaseFirestore.instance
-        .collection('organizations')
-        .where('status', isEqualTo: 'active')
-        .snapshots();
-    _eventsStream = FirebaseFirestore.instance
-        .collection('event_proposals')
-        .where('status', isEqualTo: 'approved')
-        .snapshots();
-    _proposalsStream = FirebaseFirestore.instance
-        .collection('event_proposals')
-        .where('status', isEqualTo: 'pending')
-        .snapshots();
-
+    _initializeStatStreams();
     _fetchChartData();
+  }
+
+  void _initializeStatStreams() {
+    _organizationsStream = retryFirestoreStream(
+      () => FirebaseFirestore.instance.collection('organizations').snapshots(),
+    );
+    _eventsStream = retryFirestoreStream(
+      () => FirebaseFirestore.instance
+          .collection('event_proposals')
+          .where('status', isEqualTo: 'approved')
+          .snapshots(),
+    );
+    _proposalsStream = retryFirestoreStream(
+      () => FirebaseFirestore.instance
+          .collection('event_proposals')
+          .where('status', isEqualTo: 'pending')
+          .snapshots(),
+    );
   }
 
   // Overdue reports are never actually stored with a `status: overdue`
@@ -1854,7 +1863,7 @@ class _DashboardHomeState extends State<DashboardHome> {
     } catch (e) {
       // ignore: avoid_print
       print('[admin_dashboard] _loadOverdueReports error: $e');
-      return const _OverdueSummary(totalOverdue: 0, overdueByOrgName: {});
+      rethrow;
     }
   }
 
@@ -2302,17 +2311,38 @@ class _DashboardHomeState extends State<DashboardHome> {
     return StreamBuilder<QuerySnapshot>(
       stream: stream,
       builder: (ctx, snap) {
-        final loading = snap.connectionState == ConnectionState.waiting;
+        final loading = !snap.hasData;
         final isSelected = _selectedCard == cardIndex;
-        return StatCard(
-          adminLayout: true,
-          label: label,
-          value: loading ? '—' : '${snap.data?.docs.length ?? 0}',
-          icon: icon,
-          color: color,
-          selected: isSelected,
-          onTap: () =>
-              setState(() => _selectedCard = isSelected ? null : cardIndex),
+        final count = cardIndex == 0
+            ? snap.data?.docs.where((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                return (data['status'] ?? 'active') == 'active';
+              }).length
+            : snap.data?.docs.length;
+        return Tooltip(
+          message: snap.hasError
+              ? 'Could not load $label: ${snap.error}. Click to retry.'
+              : label,
+          child: StatCard(
+            adminLayout: true,
+            label: label,
+            value: snap.hasError
+                ? 'Error'
+                : loading
+                ? '—'
+                : '$count',
+            subtitle: snap.hasError ? 'Could not load. Click to retry.' : null,
+            icon: icon,
+            color: color,
+            selected: isSelected,
+            onTap: () => setState(() {
+              if (snap.hasError) {
+                _initializeStatStreams();
+              } else {
+                _selectedCard = isSelected ? null : cardIndex;
+              }
+            }),
+          ),
         );
       },
     );
@@ -2335,12 +2365,22 @@ class _DashboardHomeState extends State<DashboardHome> {
         return StatCard(
           adminLayout: true,
           label: label,
-          value: loading ? '—' : '${snap.data?.totalOverdue ?? 0}',
+          value: snap.hasError
+              ? 'Error'
+              : loading
+              ? '—'
+              : '${snap.data?.totalOverdue ?? 0}',
+          subtitle: snap.hasError ? 'Could not load. Click to retry.' : null,
           icon: icon,
           color: color,
           selected: isSelected,
-          onTap: () =>
-              setState(() => _selectedCard = isSelected ? null : cardIndex),
+          onTap: () => setState(() {
+            if (snap.hasError) {
+              _overdueFuture = retryFirestoreRead(_loadOverdueReports);
+            } else {
+              _selectedCard = isSelected ? null : cardIndex;
+            }
+          }),
         );
       },
     );
@@ -3004,9 +3044,7 @@ class _DashboardHomeState extends State<DashboardHome> {
             errorBuilder: (_, __, ___) => fallback,
           );
     if (image == null) return fallback;
-    return ClipOval(
-      child: SizedBox(width: 32, height: 32, child: image),
-    );
+    return ClipOval(child: SizedBox(width: 32, height: 32, child: image));
   }
 
   // Small pill for count columns (Approved/Pending/Merch Items) — a plain
@@ -3296,8 +3334,8 @@ class _DashboardHomeState extends State<DashboardHome> {
     required _OrgPerformance organization,
     required int rank,
   }) {
-    final medal = _rankMedalColors[rank] ??
-        const [Color(0xFF64748B), Color(0xFFE2E8F0)];
+    final medal =
+        _rankMedalColors[rank] ?? const [Color(0xFFF1F5F9), Color(0xFF334155)];
     showDialog(
       context: context,
       barrierColor: Colors.black54,
@@ -3374,7 +3412,7 @@ class _DashboardHomeState extends State<DashboardHome> {
                       width: double.infinity,
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: medal[0].withAlpha(90),
+                        color: medal[0],
                         borderRadius: BorderRadius.circular(_DS.radiusMd),
                         border: Border.all(color: medal[1].withAlpha(70)),
                       ),
@@ -3388,12 +3426,18 @@ class _DashboardHomeState extends State<DashboardHome> {
                               color: medal[1],
                               shape: BoxShape.circle,
                             ),
-                            child: Text(
-                              '#$rank',
-                              style: GoogleFonts.beVietnamPro(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
+                            child: Padding(
+                              padding: const EdgeInsets.all(6),
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  '#$rank',
+                                  style: GoogleFonts.beVietnamPro(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
@@ -3529,7 +3573,8 @@ class _DashboardHomeState extends State<DashboardHome> {
     String? shortName,
     String? logoUrl,
   }) {
-    final label = (shortName ?? _dashboardOrgShortNameCache[orgId] ?? '')
+    final label =
+        (shortName ?? _dashboardOrgShortNameCache[orgId] ?? '')
             .trim()
             .isNotEmpty
         ? (shortName ?? _dashboardOrgShortNameCache[orgId]!).trim()
@@ -3542,10 +3587,7 @@ class _DashboardHomeState extends State<DashboardHome> {
         ),
         const SizedBox(width: 10),
         Expanded(
-          child: Tooltip(
-            message: name,
-            child: _cellText(label, bold: true),
-          ),
+          child: Tooltip(message: name, child: _cellText(label, bold: true)),
         ),
       ],
     );
@@ -3613,16 +3655,28 @@ class _DashboardHomeState extends State<DashboardHome> {
     int? navigateToTabIndex,
   }) {
     final config = switch (kind) {
-      'Event' => (Icons.event_available_rounded, UpriseColors.info, 'Event details'),
+      'Event' => (
+        Icons.event_available_rounded,
+        UpriseColors.info,
+        'Event details',
+      ),
       'Pending Proposal' => (
         Icons.pending_actions_rounded,
         const Color(0xFFF59E0B),
         'Awaiting review',
       ),
-      _ => (Icons.warning_amber_rounded, UpriseColors.error, 'Report follow-up'),
+      _ => (
+        Icons.warning_amber_rounded,
+        UpriseColors.error,
+        'Report follow-up',
+      ),
     };
-    final compact = fields.where((field) => _isCompactField(field.value)).toList();
-    final long = fields.where((field) => !_isCompactField(field.value)).toList();
+    final compact = fields
+        .where((field) => _isCompactField(field.value))
+        .toList();
+    final long = fields
+        .where((field) => !_isCompactField(field.value))
+        .toList();
 
     showDialog(
       context: context,
@@ -3719,7 +3773,11 @@ class _DashboardHomeState extends State<DashboardHome> {
                                 color: config.$2.withAlpha(30),
                                 borderRadius: BorderRadius.circular(12),
                               ),
-                              child: Icon(config.$1, color: config.$2, size: 22),
+                              child: Icon(
+                                config.$1,
+                                color: config.$2,
+                                size: 22,
+                              ),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
@@ -3799,7 +3857,11 @@ class _DashboardHomeState extends State<DashboardHome> {
                           Navigator.pop(ctx);
                           widget.onNavigateToTab?.call(navigateToTabIndex);
                         },
-                        icon: Icon(Icons.arrow_forward_rounded, color: config.$2, size: 16),
+                        icon: Icon(
+                          Icons.arrow_forward_rounded,
+                          color: config.$2,
+                          size: 16,
+                        ),
                         label: Text(actionLabel),
                         style: TextButton.styleFrom(foregroundColor: config.$2),
                       ),
@@ -3809,7 +3871,10 @@ class _DashboardHomeState extends State<DashboardHome> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: UpriseColors.primaryDark,
                         elevation: 0,
-                        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 22,
+                          vertical: 12,
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(_DS.radiusSm),
                         ),
@@ -4103,6 +4168,14 @@ class _DashboardHomeState extends State<DashboardHome> {
     return FutureBuilder<List<_OrgPerformance>>(
       future: _performanceFuture,
       builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return _buildLoadError(
+            snapshot.error!,
+            () => setState(() {
+              _performanceFuture = retryFirestoreRead(_loadPerformanceSummary);
+            }),
+          );
+        }
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _tableCardSimple(
             Center(
@@ -4180,10 +4253,7 @@ class _DashboardHomeState extends State<DashboardHome> {
                     _rankBadge(i + 1),
                     Row(
                       children: [
-                        _orgAvatar(
-                          items[i].orgName,
-                          logoUrl: items[i].logoUrl,
-                        ),
+                        _orgAvatar(items[i].orgName, logoUrl: items[i].logoUrl),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Tooltip(
@@ -4506,6 +4576,14 @@ class _DashboardHomeState extends State<DashboardHome> {
     return FutureBuilder<_OverdueSummary>(
       future: _overdueFuture,
       builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return _buildLoadError(
+            snapshot.error!,
+            () => setState(() {
+              _overdueFuture = retryFirestoreRead(_loadOverdueReports);
+            }),
+          );
+        }
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _tableCardSimple(
             Center(
@@ -4659,31 +4737,30 @@ class _DashboardHomeState extends State<DashboardHome> {
             .collection('products')
             .where('isArchived', isEqualTo: false)
             .get(),
-        FirebaseFirestore.instance
-            .collection('organizations')
-            .where('status', isEqualTo: 'active')
-            .get(),
+        FirebaseFirestore.instance.collection('organizations').get(),
       ]);
       final proposalsSnap = snaps[0];
       final productsSnap = snaps[1];
-      final activeOrgsSnap = snaps[2];
+      final activeOrgs = snaps[2].docs.where(
+        (doc) => (doc.data()['status'] ?? 'active') == 'active',
+      );
 
       final proposalStats = <String, Map<String, dynamic>>{};
       final orderStats = <String, Map<String, dynamic>>{};
       // Seed with every active org first so orgs with zero proposals/orders
       // still show up — otherwise this list falls out of sync with the
       // "Active Orgs" stat card, which counts straight from `organizations`.
-      final orgIds = <String>{for (final doc in activeOrgsSnap.docs) doc.id};
+      final orgIds = <String>{for (final doc in activeOrgs) doc.id};
       final orgNameMap = <String, String>{
-        for (final doc in activeOrgsSnap.docs)
+        for (final doc in activeOrgs)
           doc.id: (doc.data()['name'] as String?) ?? 'Organization',
       };
       final orgShortNameMap = <String, String>{
-        for (final doc in activeOrgsSnap.docs)
+        for (final doc in activeOrgs)
           doc.id: (doc.data()['shortName'] as String?) ?? '',
       };
       final orgLogoMap = <String, String>{
-        for (final doc in activeOrgsSnap.docs)
+        for (final doc in activeOrgs)
           doc.id: (doc.data()['logoUrl'] as String?) ?? '',
       };
 
@@ -4769,8 +4846,29 @@ class _DashboardHomeState extends State<DashboardHome> {
       print('[admin_dashboard] _loadPerformanceSummary error: $e');
       // ignore: avoid_print
       print(s);
-      return <_OrgPerformance>[];
+      rethrow;
     }
+  }
+
+  Widget _buildLoadError(Object error, VoidCallback onRetry) {
+    return _tableCardSimple(
+      Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Could not load dashboard data.'),
+            const SizedBox(height: 8),
+            Text('$error', textAlign: TextAlign.center),
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _emptyPlaceholder(IconData icon, String message) {

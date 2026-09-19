@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -1173,7 +1173,9 @@ class _EventCalendarState extends State<EventCalendar> {
                 ),
                 child: Container(
                   padding: const EdgeInsets.fromLTRB(26, 22, 18, 20),
-                  decoration: const BoxDecoration(color: AdminColors.primaryDark),
+                  decoration: const BoxDecoration(
+                    color: AdminColors.primaryDark,
+                  ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1249,45 +1251,63 @@ class _EventCalendarState extends State<EventCalendar> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // ── Key details as tidy cards ──────────────────
-                      Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
-                        children: [
-                          _detailCard(
-                            'Date',
-                            DateFormat('MMM d, yyyy').format(event.date),
-                            Icons.calendar_today_rounded,
-                          ),
-                          _detailCard(
-                            'Time',
-                            time.isNotEmpty && time != 'TBD' ? time : 'TBD',
-                            Icons.access_time_rounded,
-                          ),
-                          _detailCard(
-                            'Location',
-                            event.location.isNotEmpty ? event.location : 'TBD',
-                            Icons.location_on_outlined,
-                          ),
-                          _detailCard(
-                            'Audience',
-                            event.audience.isNotEmpty
-                                ? event.audience
-                                : 'Public',
-                            Icons.group_outlined,
-                          ),
-                          if (event.schoolYear.isNotEmpty)
-                            _detailCard(
-                              'School Year',
-                              event.schoolYear,
-                              Icons.school_outlined,
-                            ),
-                          if (event.semester.isNotEmpty)
-                            _detailCard(
-                              'Semester',
-                              event.semester,
-                              Icons.date_range_outlined,
-                            ),
-                        ],
+                      LayoutBuilder(
+                        builder: (context, constraints) => Wrap(
+                          spacing: 12,
+                          runSpacing: 12,
+                          children:
+                              [
+                                    _detailCard(
+                                      'Date',
+                                      DateFormat(
+                                        'MMM d, yyyy',
+                                      ).format(event.date),
+                                      Icons.calendar_today_rounded,
+                                    ),
+                                    _detailCard(
+                                      'Time',
+                                      time.isNotEmpty && time != 'TBD'
+                                          ? time
+                                          : 'TBD',
+                                      Icons.access_time_rounded,
+                                    ),
+                                    _detailCard(
+                                      'Location',
+                                      event.location.isNotEmpty
+                                          ? event.location
+                                          : 'TBD',
+                                      Icons.location_on_outlined,
+                                    ),
+                                    _detailCard(
+                                      'Audience',
+                                      event.audience.isNotEmpty
+                                          ? event.audience
+                                          : 'Public',
+                                      Icons.group_outlined,
+                                    ),
+                                    if (event.schoolYear.isNotEmpty)
+                                      _detailCard(
+                                        'School Year',
+                                        event.schoolYear,
+                                        Icons.school_outlined,
+                                      ),
+                                    if (event.semester.isNotEmpty)
+                                      _detailCard(
+                                        'Semester',
+                                        event.semester,
+                                        Icons.date_range_outlined,
+                                      ),
+                                  ]
+                                  .map(
+                                    (card) => SizedBox(
+                                      width: constraints.maxWidth < 480
+                                          ? constraints.maxWidth
+                                          : (constraints.maxWidth - 12) / 2,
+                                      child: card,
+                                    ),
+                                  )
+                                  .toList(),
+                        ),
                       ),
                       const SizedBox(height: 22),
 
@@ -1303,12 +1323,7 @@ class _EventCalendarState extends State<EventCalendar> {
                           decoration: BoxDecoration(
                             color: const Color(0xFFF8F9FB),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border(
-                              left: BorderSide(
-                                color: AdminColors.accent,
-                                width: 3,
-                              ),
-                            ),
+                            border: Border.all(color: const Color(0xFFE8ECF0)),
                           ),
                           child: Text(
                             event.description,
@@ -1445,18 +1460,22 @@ class _EventCalendarState extends State<EventCalendar> {
   }
 
   // ─── NEW DETAIL CARD helper (used in the dialog) ──────────────────
-  Widget _detailCard(
-    String label,
-    String value,
-    IconData icon,
-  ) {
+  Widget _detailCard(String label, String value, IconData icon) {
+    final accent = switch (label) {
+      'Date' => const Color(0xFF2563EB),
+      'Time' => const Color(0xFF7C3AED),
+      'Location' => const Color(0xFFDB2777),
+      'Audience' => const Color(0xFF0891B2),
+      'School Year' => const Color(0xFF059669),
+      _ => const Color(0xFF0F766E),
+    };
     return Container(
       width: 260,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: const Color(0xFFE8ECF0)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1465,15 +1484,11 @@ class _EventCalendarState extends State<EventCalendar> {
             width: 32,
             height: 32,
             decoration: BoxDecoration(
-              color: const Color(0xFFEFF3F8),
+              color: accent.withAlpha(25),
               borderRadius: BorderRadius.circular(9),
             ),
             alignment: Alignment.center,
-            child: Icon(
-              icon,
-              size: 16,
-              color: AdminColors.primaryDark,
-            ),
+            child: Icon(icon, size: 16, color: accent),
           ),
           const SizedBox(width: 10),
           Expanded(

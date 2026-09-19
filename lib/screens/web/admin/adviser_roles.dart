@@ -1,4 +1,4 @@
-﻿// lib/screens/web/admin/adviser_roles.dart
+// lib/screens/web/admin/adviser_roles.dart
 
 import 'dart:async';
 import 'dart:convert';
@@ -490,6 +490,8 @@ class _AdviserRolesState extends State<AdviserRoles> {
 
   List<OrgModel> _orgs = [];
   Set<String> _archivedOrgIds = {};
+  Set<String> _existingOrgIds = {};
+  bool _cleaningOrphanRoles = false;
   bool _loadingMeta = true;
   bool _didInitialOfficerSync = false;
   int _activeAdviserCount = 0;
@@ -687,6 +689,37 @@ class _AdviserRolesState extends State<AdviserRoles> {
     }
   }
 
+  Future<void> _removeOrphanRoles(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> candidates,
+  ) async {
+    if (_cleaningOrphanRoles) return;
+    _cleaningOrphanRoles = true;
+    try {
+      final db = FirebaseFirestore.instance;
+      for (final candidate in candidates) {
+        final orgId = (candidate.data()['orgId'] ?? '').toString().trim();
+        await db.runTransaction((transaction) async {
+          final org = await transaction.get(
+            db.collection('organizations').doc(orgId),
+          );
+          if (org.exists) return;
+          final role = await transaction.get(candidate.reference);
+          // A concurrent edit may have reassigned the role to another org.
+          if (role.exists && role.data()?['orgId'] == orgId) {
+            transaction.delete(candidate.reference);
+          }
+        });
+      }
+    } catch (error) {
+      // A denied/offline read never counts as proof that a parent is missing.
+      debugPrint(
+        'Could not clean up deleted-organization adviser roles: $error',
+      );
+    } finally {
+      _cleaningOrphanRoles = false;
+    }
+  }
+
   Future<void> _loadMeta() async {
     setState(() => _loadingMeta = true);
     try {
@@ -711,14 +744,22 @@ class _AdviserRolesState extends State<AdviserRoles> {
 
       final orgIsArchived = <String, bool>{
         for (final doc in orgSnap.docs)
-          doc.id: (doc.data()['status'] ?? '').toString().toLowerCase() ==
+          doc.id:
+              (doc.data()['status'] ?? '').toString().toLowerCase() ==
               'archived',
       };
       final validRoles = rolesSnap.docs.where((doc) {
         final d = doc.data();
         final orgId = (d['orgId'] ?? '').toString().trim();
         final orgName = (d['orgName'] ?? '').toString().trim();
-        return orgId.isNotEmpty && orgName.isNotEmpty;
+        return orgIsArchived.containsKey(orgId) && orgName.isNotEmpty;
+      }).toList();
+
+      // Cached organization queries may be incomplete. Transactions below
+      // confirm each missing parent on the server before deleting any role.
+      final orphanCandidates = rolesSnap.docs.where((doc) {
+        final orgId = (doc.data()['orgId'] ?? '').toString().trim();
+        return orgId.isNotEmpty && !orgIsArchived.containsKey(orgId);
       }).toList();
 
       var activeAdviserCount = 0;
@@ -736,6 +777,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
 
       setState(() {
         _orgs = orgs;
+        _existingOrgIds = orgIsArchived.keys.toSet();
         _archivedOrgIds = orgIsArchived.entries
             .where((entry) => entry.value)
             .map((entry) => entry.key)
@@ -744,6 +786,10 @@ class _AdviserRolesState extends State<AdviserRoles> {
         _archivedAdviserCount = archivedAdviserCount;
         _loadingMeta = false;
       });
+
+      if (orphanCandidates.isNotEmpty) {
+        await _removeOrphanRoles(orphanCandidates);
+      }
 
       // Only sync officer/adviser data from `organizations` into every
       // `adviser_roles` doc on the very first load. `_loadMeta` itself is
@@ -930,7 +976,7 @@ class _AdviserRolesState extends State<AdviserRoles> {
           final data = d.data() as Map<String, dynamic>;
           final orgId = (data['orgId'] ?? '').toString().trim();
           final orgName = (data['orgName'] ?? '').toString().trim();
-          return orgId.isNotEmpty && orgName.isNotEmpty;
+          return _existingOrgIds.contains(orgId) && orgName.isNotEmpty;
         }).toList();
 
         // An adviser becomes archived when either its own role or its parent
@@ -2546,9 +2592,20 @@ class _AdviserRolesState extends State<AdviserRoles> {
   // so re-querying the whole collection on every export was what made this
   // noticeably slower than other pages' exports.
   List<QueryDocumentSnapshot> get _docsForExport {
-    if (_statusFilter == 'Archived') return _cachedArchivedAdviserDocs;
-    if (_statusFilter == 'Active') return _cachedActiveAdviserDocs;
-    return [..._cachedActiveAdviserDocs, ..._cachedArchivedAdviserDocs];
+    return [..._cachedActiveAdviserDocs, ..._cachedArchivedAdviserDocs].where((
+      doc,
+    ) {
+      final data = doc.data() as Map<String, dynamic>;
+      final orgId = (data['orgId'] ?? '').toString().trim();
+      if (!_existingOrgIds.contains(orgId)) return false;
+      final archived =
+          data['archived'] == true || _archivedOrgIds.contains(orgId);
+      return switch (_statusFilter) {
+        'Active' => !archived,
+        'Archived' => archived,
+        _ => true,
+      };
+    }).toList();
   }
 
   Future<void> _exportCSV() async {

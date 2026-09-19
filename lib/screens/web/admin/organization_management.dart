@@ -1970,10 +1970,8 @@ class _ViewOrganizationDialog extends StatelessWidget {
         constraints: BoxConstraints(
           maxHeight: MediaQuery.of(context).size.height * 0.88,
         ),
-        // A soft warm cream instead of stark white — ties the body back
-        // to the amber header instead of a flat, generic admin-form look.
         decoration: const BoxDecoration(
-          color: Color(0xFFFFFAF5),
+          color: Colors.white,
           borderRadius: BorderRadius.all(Radius.circular(18)),
         ),
         child: Column(
@@ -2004,7 +2002,7 @@ class _ViewOrganizationDialog extends StatelessWidget {
                       border: Border.all(color: Colors.white.withAlpha(70)),
                     ),
                     child: const Icon(
-                      Icons.open_in_new_rounded,
+                      Icons.business_rounded,
                       color: Colors.white,
                       size: 20,
                     ),
@@ -2053,10 +2051,10 @@ class _ViewOrganizationDialog extends StatelessWidget {
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Left side: Large Logo
+                        // Compact identity block; contact details sit below.
                         Container(
-                          width: 120,
-                          height: 120,
+                          width: 80,
+                          height: 80,
                           decoration: BoxDecoration(
                             color: const Color(0xFFF1F5F9),
                             borderRadius: BorderRadius.circular(16),
@@ -2067,7 +2065,7 @@ class _ViewOrganizationDialog extends StatelessWidget {
                             organization.name,
                           ),
                         ),
-                        const SizedBox(width: 24),
+                        const SizedBox(width: 16),
                         // Right side: Info
                         Expanded(
                           child: Column(
@@ -2077,7 +2075,7 @@ class _ViewOrganizationDialog extends StatelessWidget {
                               Text(
                                 organization.name,
                                 style: GoogleFonts.beVietnamPro(
-                                  fontSize: 24,
+                                  fontSize: 21,
                                   fontWeight: FontWeight.w700,
                                   color: const Color(0xFF1A202C),
                                 ),
@@ -2102,37 +2100,69 @@ class _ViewOrganizationDialog extends StatelessWidget {
                                   _typeBadge(organization.type),
                                 ],
                               ),
-                              const SizedBox(height: 12),
-                              if (organization.orgEmail.isNotEmpty)
-                                _infoRow(
-                                  Icons.email_outlined,
-                                  organization.orgEmail,
-                                ),
-                              if (organization.createdAt != null)
-                                _infoRow(
-                                  Icons.calendar_today_rounded,
-                                  DateFormat(
-                                    'MMMM d, yyyy',
-                                  ).format(organization.createdAt!),
-                                ),
                             ],
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 24),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final cardWidth = constraints.maxWidth < 440
+                            ? constraints.maxWidth
+                            : (constraints.maxWidth - 12) / 2;
+                        return Wrap(
+                          spacing: 12,
+                          runSpacing: 12,
+                          children: [
+                            SizedBox(
+                              width: cardWidth,
+                              child: _contactCard(
+                                'Organization email',
+                                organization.orgEmail,
+                                Icons.mail_outline_rounded,
+                                const Color(0xFF2563EB),
+                              ),
+                            ),
+                            SizedBox(
+                              width: cardWidth,
+                              child: _contactCard(
+                                'Date created',
+                                organization.createdAt == null
+                                    ? ''
+                                    : DateFormat(
+                                        'MMMM d, yyyy',
+                                      ).format(organization.createdAt!),
+                                Icons.calendar_today_outlined,
+                                const Color(0xFF7C3AED),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 24),
                     _sectionLabel(
                       'Description',
                       icon: Icons.description_rounded,
                     ),
-                    Text(
-                      organization.description.isNotEmpty
-                          ? organization.description
-                          : 'No description added yet.',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        color: AdminColors.darkGray,
-                        height: 1.6,
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFE8ECF0)),
+                      ),
+                      child: Text(
+                        organization.description.isNotEmpty
+                            ? organization.description
+                            : 'No description added yet.',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          color: AdminColors.darkGray,
+                          height: 1.6,
+                        ),
                       ),
                     ),
                     if (organization.categories.isNotEmpty) ...[
@@ -2167,7 +2197,7 @@ class _ViewOrganizationDialog extends StatelessWidget {
                             margin: const EdgeInsets.only(bottom: 12),
                             padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: const Color(0xFFF8FAFC),
                               borderRadius: BorderRadius.circular(14),
                               border: Border.all(
                                 color: const Color(0xFFE2E6EA),
@@ -2176,7 +2206,22 @@ class _ViewOrganizationDialog extends StatelessWidget {
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                if (organization.adviserPhotoUrl.isNotEmpty)
+                                if (organization.adviserPhotoUrl.isEmpty)
+                                  Container(
+                                    width: 40,
+                                    height: 40,
+                                    margin: const EdgeInsets.only(right: 12),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFE0F2F1),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: const Icon(
+                                      Icons.school_outlined,
+                                      color: Color(0xFF0F766E),
+                                      size: 20,
+                                    ),
+                                  )
+                                else
                                   Padding(
                                     padding: const EdgeInsets.only(right: 12),
                                     child: ClipOval(
@@ -2210,9 +2255,19 @@ class _ViewOrganizationDialog extends StatelessWidget {
                                         ),
                                       ),
                                       const SizedBox(height: 8),
-                                      _readOnlyDetail('Email', adviser.email),
+                                      _infoRow(
+                                        Icons.mail_outline_rounded,
+                                        adviser.email.isEmpty
+                                            ? 'No email provided'
+                                            : adviser.email,
+                                      ),
                                       const SizedBox(height: 4),
-                                      _readOnlyDetail('Phone', adviser.phone),
+                                      _infoRow(
+                                        Icons.phone_outlined,
+                                        adviser.phone.isEmpty
+                                            ? 'No phone provided'
+                                            : adviser.phone,
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -2305,6 +2360,56 @@ class _ViewOrganizationDialog extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _contactCard(String label, String value, IconData icon, Color accent) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE8ECF0)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: accent.withAlpha(25),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(icon, color: accent, size: 17),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                SelectableText(
+                  value.isEmpty ? 'Not provided' : value,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: const Color(0xFF1E293B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2423,32 +2528,6 @@ Widget _infoPill(String label, String value) {
         color: AdminColors.darkGray,
       ),
     ),
-  );
-}
-
-Widget _readOnlyDetail(String label, String value) {
-  return Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(
-        '$label: ',
-        style: GoogleFonts.beVietnamPro(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          color: const Color(0xFF334155),
-        ),
-      ),
-      Expanded(
-        child: Text(
-          value.isNotEmpty ? value : '—',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 12,
-            color: AdminColors.darkGray,
-            height: 1.5,
-          ),
-        ),
-      ),
-    ],
   );
 }
 

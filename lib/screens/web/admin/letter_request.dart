@@ -206,9 +206,9 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     return Container(
       padding: const EdgeInsets.all(11),
       decoration: BoxDecoration(
-        color: accent.withAlpha(10),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: accent.withAlpha(50)),
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE8ECF0)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -221,7 +221,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: accent.withAlpha(26),
-                shape: BoxShape.circle,
+                borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(icon, size: 13, color: accent),
             ),
@@ -243,7 +243,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
           style: GoogleFonts.beVietnamPro(
             fontSize: 13,
             fontWeight: FontWeight.w500,
-            color: valueColor ?? const Color(0xFF1A202C),
+            color: const Color(0xFF1A202C),
           ),
         ),
         ],

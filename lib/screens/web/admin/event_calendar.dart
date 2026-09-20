@@ -9,6 +9,7 @@ import 'export_pdf.dart';
 import 'export_excel.dart';
 import '../../../theme/admin_theme.dart';
 import '../../../services/activity_logger.dart' as activity_log;
+import '../../../widgets/app_toast.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Category Colors - matching the submission form categories
@@ -551,15 +552,9 @@ class _EventCalendarState extends State<EventCalendar> {
     );
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Cleaned up $deleted duplicate event${deleted == 1 ? '' : 's'}.',
-          ),
-          backgroundColor: const Color(0xFF059669),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
+      AppToast.success(
+        context,
+        'Cleaned up $deleted duplicate event${deleted == 1 ? '' : 's'}.',
       );
     }
   }
@@ -1755,12 +1750,7 @@ class _ExportEventsButton extends StatelessWidget {
       var docs = snap.docs;
 
       if (docs.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No data to export.'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        AppToast.info(context, 'No data to export.');
         return;
       }
 
@@ -1817,13 +1807,7 @@ class _ExportEventsButton extends StatelessWidget {
         throw UnsupportedError('Unsupported export format: $format');
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Export failed: $e'),
-          backgroundColor: AdminColors.error,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      AppToast.error(context, 'Export failed: $e');
     }
   }
 }

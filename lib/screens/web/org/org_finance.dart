@@ -14,6 +14,7 @@ import '../../../widgets/admin_export_button.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/org_action_icon_button.dart';
 import '../../../widgets/org_modal_shell.dart';
+import '../../../widgets/app_toast.dart';
 import 'export_util.dart';
 import 'export_pdf.dart';
 import '../../../theme/org_theme.dart';
@@ -526,12 +527,14 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
                     ? transaction.segment
                     : 'No description added',
                 icon: Icons.notes_rounded,
+                iconColor: const Color(0xFF64748B),
               ),
               const SizedBox(height: 14),
               OrgDetailItem(
                 label: 'Event',
                 value: transaction.eventName,
                 icon: Icons.event_outlined,
+                iconColor: const Color(0xFF3B82F6),
               ),
               if (transaction.hasReceipt) ...[
                 const SizedBox(height: 14),
@@ -591,14 +594,15 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
   }
 
   void _showSnack(String msg, Color color) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg, style: GoogleFonts.beVietnamPro()),
-        backgroundColor: color,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
+    if (color == OrgColors.error) {
+      AppToast.error(context, msg);
+    } else if (color == OrgColors.success) {
+      AppToast.success(context, msg);
+    } else if (color == OrgColors.warning) {
+      AppToast.warning(context, msg);
+    } else {
+      AppToast.info(context, msg);
+    }
   }
 
   // Standard accounting notation: expenses are wrapped in parentheses (e.g.
@@ -2827,14 +2831,7 @@ class _TransactionModalState extends State<_TransactionModal> {
   }
 
   void _showError(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg, style: GoogleFonts.beVietnamPro()),
-        backgroundColor: OrgColors.error,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
+    AppToast.error(context, msg);
   }
 
   @override

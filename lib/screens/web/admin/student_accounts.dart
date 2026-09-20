@@ -1137,40 +1137,76 @@ class _StudentAccountsState extends State<StudentAccounts> {
     );
   }
 
+  // Colored icon-badge card, matching event_proposals.dart / letter_request.dart's
+  // _detailItem — each field gets a distinct accent color instead of one flat icon.
   Widget _detailItem(
     String label,
     String value,
     IconData icon, {
     Color? valueColor,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(icon, size: 12, color: AdminColors.primaryDark.withAlpha(150)),
-            const SizedBox(width: 5),
-            Text(
-              label,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: const Color(0xFF64748B),
-                letterSpacing: 0.4,
-              ),
+    final accent =
+        valueColor ??
+        switch (label) {
+          'Student ID' => const Color(0xFF2563EB),
+          'Course' => const Color(0xFFF97316),
+          'Year Level' => const Color(0xFF4F46E5),
+          'Section' => const Color(0xFF7C3AED),
+          'Email' => const Color(0xFF0891B2),
+          _ => const Color(0xFF64748B),
+        };
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE8ECF0)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: accent.withAlpha(28),
+              borderRadius: BorderRadius.circular(10),
             ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-            color: valueColor ?? const Color(0xFF1A202C),
+            child: Icon(icon, size: 14, color: accent),
           ),
-        ),
-      ],
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label.toUpperCase(),
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF64748B),
+                    letterSpacing: 0.4,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  value,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: valueColor ?? const Color(0xFF1A202C),
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 

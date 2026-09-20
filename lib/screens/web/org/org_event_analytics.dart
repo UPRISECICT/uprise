@@ -11,6 +11,7 @@ import '../../../services/activity_logger.dart' as activity_log;
 import '../../../theme/org_theme.dart';
 import '../../../widgets/admin_export_button.dart';
 import '../../../widgets/stat_cards.dart';
+import '../../../widgets/app_toast.dart';
 import 'export_util.dart';
 import 'export_pdf.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -499,17 +500,15 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
 
   void _showSnack(String msg, Color color) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          msg,
-          style: GoogleFonts.beVietnamPro(color: Colors.white),
-        ),
-        backgroundColor: color,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
+    if (color == UpriseColors.error) {
+      AppToast.error(context, msg);
+    } else if (color == UpriseColors.success) {
+      AppToast.success(context, msg);
+    } else if (color == UpriseColors.warning) {
+      AppToast.warning(context, msg);
+    } else {
+      AppToast.info(context, msg);
+    }
   }
 
   // Every screen with an AdminExportButton emits 'excel'/'pdf' from its

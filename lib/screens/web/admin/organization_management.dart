@@ -1628,23 +1628,10 @@ class _ExportButton extends StatelessWidget {
         fileName,
         mimeType: 'application/pdf',
       );
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Download started: $fileName'),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      );
+      AppToast.success(context, 'Download started: $fileName');
     } catch (e) {
       debugPrint('Export PDF failed: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Export failed: $e'),
-          backgroundColor: AdminColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      );
+      AppToast.error(context, 'Export failed: $e');
     }
   }
 
@@ -1654,16 +1641,7 @@ class _ExportButton extends StatelessWidget {
       onSelected: (choice) async {
         final docs = await _getFilteredDocs();
         if (docs.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('No data to export.'),
-              backgroundColor: AdminColors.error,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-          );
+          AppToast.error(context, 'No data to export.');
           return;
         }
         if (choice == 'excel') {
@@ -3406,9 +3384,7 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
 
   void _showFileError(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: AdminColors.error),
-    );
+    AppToast.error(context, message);
   }
 
   Future<void> _pickImage() async {
@@ -3799,25 +3775,19 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
       );
 
       widget.onCreated();
-      // Captured before popping — ScaffoldMessengerState belongs to the
-      // ancestor Scaffold (the admin page behind this dialog), not to this
-      // dialog's own widget, so it stays valid for the follow-up snackbar
-      // below even after this dialog is closed and disposed.
-      final messenger = mounted ? ScaffoldMessenger.of(context) : null;
       if (mounted) {
         Navigator.pop(context);
       }
-      messenger?.showSnackBar(
-        SnackBar(
-          content: Text(
-            'Organization "$orgName" created! Sending credentials to $orgEmail…',
-          ),
-          backgroundColor: const Color(0xFF059669),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          duration: const Duration(seconds: 4),
-        ),
-      );
+      // This dialog's own context is unmounted once it's popped above, so
+      // the follow-up toast uses globalContext — the ancestor admin page's
+      // context, captured in its initState and still alive behind the
+      // dialog — the same way the old ScaffoldMessenger capture worked.
+      if (globalContext != null && globalContext!.mounted) {
+        AppToast.success(
+          globalContext!,
+          'Organization "$orgName" created! Sending credentials to $orgEmail…',
+        );
+      }
 
       // Was fire-and-forget with only a debugPrint on failure — invisible
       // outside a dev console, and since the generated password is never
@@ -3833,26 +3803,16 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
       );
       if (!sent) {
         debugPrint('⚠️ Failed to send credentials email to $orgEmail');
-        messenger?.showSnackBar(
-          SnackBar(
-            content: Text(
-              'Credentials email to $orgEmail failed to send. Share this '
-              'temporary password with them manually: ${account['password']}',
-            ),
-            backgroundColor: AdminColors.error,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            duration: const Duration(seconds: 15),
-            action: SnackBarAction(
-              label: 'Copy',
-              textColor: Colors.white,
-              onPressed: () =>
-                  Clipboard.setData(ClipboardData(text: account['password']!)),
-            ),
-          ),
-        );
+        if (globalContext != null && globalContext!.mounted) {
+          AppToast.error(
+            globalContext!,
+            'Credentials email to $orgEmail failed to send. Share this '
+            'temporary password with them manually: ${account['password']}',
+            actionLabel: 'Copy',
+            onAction: () =>
+                Clipboard.setData(ClipboardData(text: account['password']!)),
+          );
+        }
       } else {
         debugPrint('✅ Organization credentials email sent to $orgEmail');
       }
@@ -3865,14 +3825,7 @@ class _CreateOrganizationDialogState extends State<_CreateOrganizationDialog> {
 
   void _showError(String msg) {
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(msg),
-          backgroundColor: AdminColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      );
+      AppToast.error(context, msg);
       setState(() => _isLoading = false);
     }
   }
@@ -4321,29 +4274,11 @@ class _EditOrganizationDialogState extends State<_EditOrganizationDialog> {
       widget.onUpdated();
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Organization updated successfully.'),
-            backgroundColor: const Color(0xFF059669),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        );
+        AppToast.success(context, 'Organization updated successfully.');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: AdminColors.error,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        );
+        AppToast.error(context, 'Error: $e');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

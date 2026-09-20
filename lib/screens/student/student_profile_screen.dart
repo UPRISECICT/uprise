@@ -118,11 +118,16 @@ class ProfileModel extends ChangeNotifier {
     yearLevel = data['yearLevel'] ?? yearLevel;
     department = data['department'] ?? department;
     campus = data['campus'] ?? campus;
-    orgId = data['orgId'] ?? orgId;
-    orgRole = data['orgRole'] ?? orgRole;
+    // Org-tag fields are cleared with FieldValue.delete() by org_profile.dart
+    // when a student is removed from a org's roster, so a fresh doc.data()
+    // simply won't contain these keys anymore — falling back to the
+    // previous in-memory value (like the fields above do) would silently
+    // keep the stale org tag forever instead of clearing it.
+    orgId = data['orgId'] ?? '';
+    orgRole = data['orgRole'] ?? '';
     isOrgOfficer = data['isOrgOfficer'] == true;
     isOrgMember = data['isOrgMember'] == true;
-    officerPosition = data['officerPosition'] ?? officerPosition;
+    officerPosition = data['officerPosition'] ?? '';
   }
 
   // Cache-first: a fresh ProfileModel is created every time the student
@@ -172,9 +177,38 @@ class ProfileModel extends ChangeNotifier {
             orgName =
                 orgSnap.data()?['orgName'] ?? orgSnap.data()?['name'] ?? '';
           }
+        } else {
+          // Membership was untagged (orgId now cleared above) — drop the
+          // last-known org name too, otherwise the "My Organizations" card
+          // keeps rendering it since that card's visibility is gated on
+          // orgName.isNotEmpty, not on orgId.
+          orgName = '';
         }
 
         await _saveCache(user.uid);
+
+        // `users.fullName` (read by org_profile.dart's Members list) can
+        // drift from `students.fullName` — the org side only backfills it
+        // the first time a student is tagged (_tagMatchingStudentAccount),
+        // and update() below only ever wrote to `students`. Repair the
+        // drift here so the org roster picks up the correct name the next
+        // time this student opens the app, without needing them to re-save
+        // their profile.
+        if (fullName.isNotEmpty) {
+          final usersRef = FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid);
+          final usersSnap = await usersRef.get();
+          if (usersSnap.exists &&
+              (usersSnap.data()?['fullName'] ?? '') != fullName) {
+            await usersRef.set({
+              'firstName': firstName,
+              'middleName': middleName,
+              'lastName': lastName,
+              'fullName': fullName,
+            }, SetOptions(merge: true));
+          }
+        }
       }
     } catch (_) {
       // Offline or the fetch failed — whatever the cache already applied
@@ -266,6 +300,18 @@ class ProfileModel extends ChangeNotifier {
           'campus': this.campus,
         }, SetOptions(merge: true));
       }
+
+      // Keep `users.fullName` in sync — org_profile.dart's Members list
+      // reads it directly, and this write path previously only ever
+      // touched `students`, letting the two drift apart (see CLAUDE.md:
+      // student updates must write to both collections).
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'firstName': firstName,
+        'middleName': middleName,
+        'lastName': lastName,
+        'fullName': fullName,
+      }, SetOptions(merge: true));
+
       await _saveCache(user.uid);
     }
 

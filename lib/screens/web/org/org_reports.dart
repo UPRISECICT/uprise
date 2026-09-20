@@ -2243,16 +2243,7 @@ class _ViewReportModal extends StatelessWidget {
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error opening attachment: $e'),
-            backgroundColor: const Color(0xFFDC2626),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        );
+        AppToast.error(context, 'Error opening attachment: $e');
       }
     }
   }
@@ -3692,18 +3683,7 @@ class _ExportButton extends StatelessWidget {
         ..sort((a, b) => b.submittedAt.compareTo(a.submittedAt));
 
       if (rows.isEmpty) {
-        ScaffoldMessenger.of(ctx).showSnackBar(
-          SnackBar(
-            content: Text(
-              'No reports to export.',
-              style: GoogleFonts.beVietnamPro(),
-            ),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        );
+        AppToast.info(ctx, 'No reports to export.');
         return;
       }
 
@@ -3757,17 +3737,7 @@ class _ExportButton extends StatelessWidget {
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(ctx).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Export failed: $e',
-            style: GoogleFonts.beVietnamPro(color: Colors.white),
-          ),
-          backgroundColor: const Color(0xFFDC2626),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      );
+      AppToast.error(ctx, 'Export failed: $e');
     }
   }
 }

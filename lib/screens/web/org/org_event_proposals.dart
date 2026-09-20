@@ -344,6 +344,11 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String _filterStatus = 'All';
+  // Only true once the org has actually clicked a stat card — lets the
+  // Total card show the same "selected" glow the others get on tap,
+  // without it looking pre-selected on first page load (filter starts
+  // equal to 'All' by default, not by choice).
+  bool _filterStatusTouched = false;
   int _currentPage = 1;
   static const int _pageSize = 10;
 
@@ -453,14 +458,9 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
   void _openEditModal(String docId, Map<String, dynamic> data) {
     final status = data['status'] ?? 'pending';
     if (status != 'pending' && status != 'for_review') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Only pending or revision-requested proposals can be edited',
-          ),
-          backgroundColor: Colors.orange,
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.warning(
+        context,
+        'Only pending or revision-requested proposals can be edited',
       );
       return;
     }
@@ -564,113 +564,15 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
     showDialog(
       context: context,
       barrierColor: Colors.black54,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Container(
-          width: 420,
-          padding: const EdgeInsets.all(28),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEFF6FF),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.publish_rounded,
-                      color: Color(0xFF2563EB),
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Text(
-                      isPublished ? 'Update Published Event' : 'Publish Event',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF1A202C),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Text(
-                isPublished
-                    ? 'Push the latest details of "$title" to its existing entry on the student events page. This will not create a second listing.'
-                    : 'Publish "$title" to the student events page? Students will be able to view its full details and register immediately.',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 14,
-                  color: const Color(0xFF64748B),
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  OutlinedButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFFE2E6EA)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
-                    child: Text(
-                      'Cancel',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        color: const Color(0xFF374151),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  ElevatedButton(
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      _publishProposal(docId);
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF2563EB),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
-                    child: Text(
-                      isPublished ? 'Update' : 'Publish',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+      builder: (_) => AppConfirmationDialog(
+        title: isPublished ? 'Update Published Event' : 'Publish Event',
+        message: isPublished
+            ? 'Push the latest details of "$title" to its existing entry on the student events page. This will not create a second listing.'
+            : 'Publish "$title" to the student events page? Students will be able to view its full details and register immediately.',
+        confirmLabel: isPublished ? 'Update' : 'Publish',
+        accentColor: const Color(0xFF2563EB),
+        icon: Icons.publish_rounded,
+        onConfirm: () => _publishProposal(docId),
       ),
     );
   }
@@ -809,22 +711,14 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
         final baseMsg = existingEventId.isNotEmpty
             ? 'Event updated on the student events page!'
             : 'Event published to the student events page!';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              imageUploadError == null
-                  ? ' $baseMsg'
-                  : ' $baseMsg But the banner image failed to upload: $imageUploadError',
-            ),
-            backgroundColor: imageUploadError == null
-                ? const Color(0xFF059669)
-                : const Color(0xFFB45309),
-            behavior: SnackBarBehavior.floating,
-            duration: imageUploadError == null
-                ? const Duration(seconds: 4)
-                : const Duration(seconds: 7),
-          ),
-        );
+        if (imageUploadError == null) {
+          AppToast.success(context, ' $baseMsg');
+        } else {
+          AppToast.warning(
+            context,
+            ' $baseMsg But the banner image failed to upload: $imageUploadError',
+          );
+        }
       }
 
       // Log activity (optional)
@@ -843,14 +737,7 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
       debugPrint('❌ PUBLISH ERROR: $e');
       debugPrint('Stack trace: $stack');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('⚠️ Publish failed: $e'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 5),
-          ),
-        );
+        AppToast.error(context, '⚠️ Publish failed: $e');
       }
     } finally {
       _publishingIds.remove(proposalId);
@@ -908,12 +795,7 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
     );
 
     if (docs.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No data to export'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      AppToast.info(context, 'No data to export');
       return;
     }
 
@@ -1017,14 +899,7 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
     }
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Exported ${docs.length} proposals as $format'),
-          backgroundColor: const Color(0xFF059669),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      );
+      AppToast.success(context, 'Exported ${docs.length} proposals as $format');
     }
   }
 
@@ -1064,6 +939,7 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
     final cardGap = isMobile ? 8.0 : 14.0;
     void selectStatus(String status) => setState(() {
       _filterStatus = _filterStatus == status ? 'All' : status;
+      _filterStatusTouched = true;
       _currentPage = 1;
     });
 
@@ -1073,14 +949,14 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
         stream: _allStream,
         icon: Icons.description_outlined,
         color: UpriseColors.primaryDark,
-        // 'All' is the default, no-filter state — not a deliberate
-        // selection — so this card never shows the "selected" glow, even
-        // though _filterStatus starts equal to 'All'. Without this, the
-        // very first card always rendered pre-highlighted on page load,
-        // before the user had clicked anything.
-        selected: false,
+        // Highlights once the org deliberately taps back to "All", same
+        // as the other cards — but not on first page load, when
+        // _filterStatus is already 'All' by default rather than by
+        // choice (see _filterStatusTouched).
+        selected: _filterStatus == 'All' && _filterStatusTouched,
         onTap: () => setState(() {
           _filterStatus = 'All';
+          _filterStatusTouched = true;
           _currentPage = 1;
         }),
       ),
@@ -2191,9 +2067,7 @@ class _LiveTrackerModalState extends State<_LiveTrackerModal> {
     List<Map<String, dynamic>> rows,
   ) async {
     if (rows.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No participants to export')),
-      );
+      AppToast.info(context, 'No participants to export');
       return;
     }
     final headers = ['Name', 'Email', 'Status', 'Registered At'];
@@ -2236,15 +2110,11 @@ class _LiveTrackerModalState extends State<_LiveTrackerModal> {
         );
       }
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Exported ${rows.length} participants')),
-        );
+        AppToast.success(context, 'Exported ${rows.length} participants');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Export failed: $e')));
+        AppToast.error(context, 'Export failed: $e');
       }
     }
   }
@@ -3462,19 +3332,11 @@ class _SubmitProposalModalState extends State<_SubmitProposalModal> {
 
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              widget.editDocId != null
-                  ? 'Proposal updated.'
-                  : 'Proposal submitted successfully!',
-            ),
-            backgroundColor: const Color(0xFF059669),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
+        AppToast.success(
+          context,
+          widget.editDocId != null
+              ? 'Proposal updated.'
+              : 'Proposal submitted successfully!',
         );
       }
     } catch (e) {
@@ -5025,6 +4887,7 @@ class _ViewProposalModal extends StatelessWidget {
                                       ? data['otherCategory']
                                       : (data['category'] ?? '—'),
                                   icon: Icons.category_outlined,
+                                  iconColor: UpriseColors.primaryDark,
                                   valueColor: _categoryBadgeColor(
                                     (data['category'] ?? '').toString(),
                                   ),
@@ -5036,6 +4899,7 @@ class _ViewProposalModal extends StatelessWidget {
                                   label: 'Audience',
                                   value: data['audience'] ?? '—',
                                   icon: Icons.people_outline_rounded,
+                                  iconColor: const Color(0xFF06B6D4),
                                 ),
                               ),
                             ],
@@ -5049,6 +4913,7 @@ class _ViewProposalModal extends StatelessWidget {
                                   label: 'Date',
                                   value: _fmt(data['date']),
                                   icon: Icons.calendar_today_outlined,
+                                  iconColor: const Color(0xFF3B82F6),
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -5057,6 +4922,7 @@ class _ViewProposalModal extends StatelessWidget {
                                   label: 'Time',
                                   value: timeStr,
                                   icon: Icons.access_time_rounded,
+                                  iconColor: const Color(0xFFF59E0B),
                                 ),
                               ),
                             ],
@@ -5070,6 +4936,7 @@ class _ViewProposalModal extends StatelessWidget {
                                   label: 'School Year',
                                   value: data['schoolYear'] ?? '—',
                                   icon: Icons.school_outlined,
+                                  iconColor: const Color(0xFF8B5CF6),
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -5078,6 +4945,7 @@ class _ViewProposalModal extends StatelessWidget {
                                   label: 'Semester',
                                   value: data['semester'] ?? '—',
                                   icon: Icons.date_range_outlined,
+                                  iconColor: const Color(0xFF6366F1),
                                 ),
                               ),
                             ],
@@ -5091,6 +4959,7 @@ class _ViewProposalModal extends StatelessWidget {
                                   label: 'Location',
                                   value: data['location'] ?? '—',
                                   icon: Icons.location_on_outlined,
+                                  iconColor: const Color(0xFF14B8A6),
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -5099,6 +4968,7 @@ class _ViewProposalModal extends StatelessWidget {
                                   label: 'Issues Certificate',
                                   value: issuesCertificate ? 'Yes' : 'No',
                                   icon: Icons.verified_outlined,
+                                  iconColor: const Color(0xFF10B981),
                                   valueColor: issuesCertificate
                                       ? const Color(0xFF059669)
                                       : const Color(0xFF6B7280),
@@ -5117,6 +4987,7 @@ class _ViewProposalModal extends StatelessWidget {
                                       ? 'Unlimited'
                                       : '${data['capacity']} slots',
                                   icon: Icons.groups_outlined,
+                                  iconColor: const Color(0xFFEC4899),
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -5159,6 +5030,7 @@ class _ViewProposalModal extends StatelessWidget {
                                   label: 'Submitted By',
                                   value: data['submittedByEmail'] ?? '—',
                                   icon: Icons.email_outlined,
+                                  iconColor: const Color(0xFF0EA5E9),
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -5167,6 +5039,7 @@ class _ViewProposalModal extends StatelessWidget {
                                   label: 'Submitted At',
                                   value: _fmt(data['submittedAt']),
                                   icon: Icons.access_time_rounded,
+                                  iconColor: const Color(0xFF64748B),
                                 ),
                               ),
                             ],
@@ -5189,6 +5062,7 @@ class _ViewProposalModal extends StatelessWidget {
                                         label: 'Reviewed By',
                                         value: name,
                                         icon: Icons.rate_review_outlined,
+                                        iconColor: const Color(0xFF0EA5E9),
                                       );
                                     },
                                   ),
@@ -5199,6 +5073,7 @@ class _ViewProposalModal extends StatelessWidget {
                                     label: 'Reviewed At',
                                     value: _fmt(data['reviewedAt']),
                                     icon: Icons.access_time_rounded,
+                                    iconColor: const Color(0xFF64748B),
                                   ),
                                 ),
                               ],
@@ -5214,6 +5089,7 @@ class _ViewProposalModal extends StatelessWidget {
                                     label: 'Published to Students',
                                     value: _fmt(data['publishedAt']),
                                     icon: Icons.publish_rounded,
+                                    iconColor: const Color(0xFF10B981),
                                     valueColor: const Color(0xFF2563EB),
                                   ),
                                 ),
@@ -5414,9 +5290,7 @@ class _ViewProposalModal extends StatelessWidget {
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error opening attachment: $e')));
+        AppToast.error(context, 'Error opening attachment: $e');
       }
     }
   }

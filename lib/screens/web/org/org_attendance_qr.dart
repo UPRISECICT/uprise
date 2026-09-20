@@ -14,6 +14,7 @@ import 'package:csv/csv.dart';
 import 'package:file_saver/file_saver.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:video_player/video_player.dart';
 import '../../../theme/org_theme.dart';
 import '../../../widgets/admin_export_button.dart';
 import '../../../widgets/anchored_dropdown.dart';
@@ -2920,6 +2921,29 @@ IconData _registrationFieldIcon(String label) {
   return Icons.short_text_rounded;
 }
 
+// Color companion to _registrationFieldIcon — same per-field matching, kept
+// as a separate lookup since not every OrgDetailItem caller wants color
+// (icon-only default is still gray).
+Color _registrationFieldColor(String label) {
+  final l = label.toLowerCase();
+  if (l.contains('name')) return const Color(0xFF3B82F6);
+  if (l.contains('student') || l.contains('id number') || l.contains('id no')) {
+    return const Color(0xFF8B5CF6);
+  }
+  if (l.contains('year') || l.contains('grade')) {
+    return const Color(0xFFF59E0B);
+  }
+  if (l.contains('program') || l.contains('course') || l.contains('section')) {
+    return const Color(0xFF06B6D4);
+  }
+  if (l.contains('email')) return const Color(0xFF10B981);
+  if (l.contains('phone') || l.contains('contact') || l.contains('number')) {
+    return const Color(0xFFEC4899);
+  }
+  if (l.contains('address')) return const Color(0xFF6366F1);
+  return UpriseColors.primaryDark;
+}
+
 // Registration form answers are stored on the registration doc itself —
 // either as `formResponses` (self-describing: {label, value} per field, the
 // current student registration flow) or the older `formAnswers` (raw field
@@ -2944,7 +2968,14 @@ void showRegistrationAnswers(
   }
 
   if (responses is Map && responses.isNotEmpty) {
-    for (final v in responses.values) {
+    // Field keys are 'f_<createdAtMillis>', assigned when the org adds the
+    // field in the form builder — sorting by key restores the order the
+    // form was actually built in. Firestore doesn't preserve map key order
+    // on read, so without this, fields can render in an arbitrary order.
+    final sortedKeys = responses.keys.toList()
+      ..sort((a, b) => a.toString().compareTo(b.toString()));
+    for (final k in sortedKeys) {
+      final v = responses[k];
       if (v is Map) {
         final label = (v['label'] ?? '').toString();
         entries.add(
@@ -2968,7 +2999,11 @@ void showRegistrationAnswers(
       accentColor: UpriseColors.primaryDark,
       icon: Icons.assignment_outlined,
       title: 'Registration Answers',
-      subtitle: studentName,
+      // The first answer (after sorting above) is expected to be the form's
+      // name question — showing it here instead of the account's resolved
+      // name keeps the header and the first field always in sync, even when
+      // the student typed a shortened/different name on the form itself.
+      subtitle: entries.isNotEmpty ? entries.first.value : studentName,
       width: 460,
       maxHeightFraction: 0.75,
       body: Padding(
@@ -2989,11 +3024,16 @@ void showRegistrationAnswers(
                     if (e.value.startsWith('http://') ||
                         e.value.startsWith('https://'))
                       _LinkDetailItem(label: e.key, url: e.value)
+                    else if (e.value.startsWith('data:image/'))
+                      _ImageDetailItem(label: e.key, dataUri: e.value)
+                    else if (e.value.startsWith('data:video/'))
+                      _VideoDetailItem(label: e.key, dataUri: e.value)
                     else
                       OrgDetailItem(
                         label: e.key.toUpperCase(),
                         value: e.value,
                         icon: _registrationFieldIcon(e.key),
+                        iconColor: _registrationFieldColor(e.key),
                       ),
                     const SizedBox(height: 14),
                   ],
@@ -3073,6 +3113,286 @@ class _LinkDetailItem extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// Mobile uploads store the file_upload answer as a raw base64 data URI
+// (no storage bucket round-trip on that platform — see
+// student_events_screen.dart), unlike web uploads which get a real
+// https:// URL. Dumping that string through OrgDetailItem as plain text
+// used to render the entire base64 blob and blow out the modal's height
+// by tens of thousands of pixels. This decodes it and shows an actual
+// thumbnail instead, with tap-to-enlarge.
+class _ImageDetailItem extends StatelessWidget {
+  final String label;
+  final String dataUri;
+  const _ImageDetailItem({required this.label, required this.dataUri});
+
+  Uint8List? get _bytes {
+    try {
+      final comma = dataUri.indexOf(',');
+      if (comma == -1) return null;
+      return base64Decode(dataUri.substring(comma + 1));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bytes = _bytes;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 26,
+          height: 26,
+          margin: const EdgeInsets.only(top: 1),
+          decoration: BoxDecoration(
+            color: const Color(0xFF9AA5B4).withAlpha(28),
+            borderRadius: BorderRadius.circular(7),
+          ),
+          child: const Icon(
+            Icons.image_outlined,
+            size: 13,
+            color: Color(0xFF9AA5B4),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label.toUpperCase(),
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF9AA5B4),
+                  letterSpacing: 0.4,
+                ),
+              ),
+              const SizedBox(height: 6),
+              if (bytes == null)
+                Text(
+                  'Unable to preview this photo.',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 13,
+                    color: const Color(0xFF94A3B8),
+                  ),
+                )
+              else
+                MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: () => showDialog(
+                      context: context,
+                      builder: (_) => Dialog(
+                        backgroundColor: Colors.transparent,
+                        insetPadding: const EdgeInsets.all(24),
+                        child: InteractiveViewer(
+                          child: Image.memory(bytes, fit: BoxFit.contain),
+                        ),
+                      ),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.memory(
+                        bytes,
+                        width: 200,
+                        height: 140,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Text(
+                          'Unable to preview this photo.',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 13,
+                            color: const Color(0xFF94A3B8),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// Companion to _ImageDetailItem for data:video/* answers. A data: URI is
+// still a valid Uri, and video_player's web/mobile backends both accept it
+// through the networkUrl constructor, so the mobile-uploaded clip can
+// actually play instead of just showing an "attached" label.
+class _VideoDetailItem extends StatelessWidget {
+  final String label;
+  final String dataUri;
+  const _VideoDetailItem({required this.label, required this.dataUri});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 26,
+          height: 26,
+          margin: const EdgeInsets.only(top: 1),
+          decoration: BoxDecoration(
+            color: const Color(0xFF9AA5B4).withAlpha(28),
+            borderRadius: BorderRadius.circular(7),
+          ),
+          child: const Icon(
+            Icons.videocam_outlined,
+            size: 13,
+            color: Color(0xFF9AA5B4),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label.toUpperCase(),
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF9AA5B4),
+                  letterSpacing: 0.4,
+                ),
+              ),
+              const SizedBox(height: 6),
+              MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  onTap: () => showDialog(
+                    context: context,
+                    builder: (_) => Dialog(
+                      backgroundColor: Colors.transparent,
+                      insetPadding: const EdgeInsets.all(24),
+                      child: _VideoPlayerBox(dataUri: dataUri),
+                    ),
+                  ),
+                  child: Container(
+                    width: 200,
+                    height: 140,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0F172A),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Center(
+                      child: Icon(
+                        Icons.play_circle_fill_rounded,
+                        color: Colors.white,
+                        size: 44,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// The actual playable surface, opened from _VideoDetailItem's tap target.
+// Owns the VideoPlayerController lifecycle (init on open, dispose on close)
+// since that can't live on the stateless list item above.
+class _VideoPlayerBox extends StatefulWidget {
+  final String dataUri;
+  const _VideoPlayerBox({required this.dataUri});
+
+  @override
+  State<_VideoPlayerBox> createState() => _VideoPlayerBoxState();
+}
+
+class _VideoPlayerBoxState extends State<_VideoPlayerBox> {
+  VideoPlayerController? _controller;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final uri = Uri.tryParse(widget.dataUri);
+    if (uri == null) {
+      _failed = true;
+      return;
+    }
+    final controller = VideoPlayerController.networkUrl(uri);
+    _controller = controller;
+    controller
+        .initialize()
+        .then((_) {
+          if (!mounted) return;
+          setState(() {});
+          controller.play();
+        })
+        .catchError((_) {
+          if (mounted) setState(() => _failed = true);
+        });
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    if (_failed || controller == null) {
+      return Container(
+        width: 320,
+        height: 200,
+        decoration: BoxDecoration(
+          color: const Color(0xFF0F172A),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          'Unable to play this video.',
+          style: GoogleFonts.beVietnamPro(color: Colors.white70, fontSize: 13),
+        ),
+      );
+    }
+    if (!controller.value.isInitialized) {
+      return const SizedBox(
+        width: 320,
+        height: 200,
+        child: Center(
+          child: CircularProgressIndicator(color: Colors.white),
+        ),
+      );
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: AspectRatio(
+        aspectRatio: controller.value.aspectRatio,
+        child: GestureDetector(
+          onTap: () => setState(() {
+            controller.value.isPlaying ? controller.pause() : controller.play();
+          }),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              VideoPlayer(controller),
+              if (!controller.value.isPlaying)
+                const Icon(
+                  Icons.play_circle_fill_rounded,
+                  color: Colors.white70,
+                  size: 56,
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -3738,11 +4058,9 @@ class _WebinarCodePanelState extends State<_WebinarCodePanel> {
     // input mode (QR, manual, roll call, webinar) becomes available at once.
     if (!widget.attendanceIsOpen) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Open attendance from the event banner above first.'),
-            backgroundColor: Colors.red,
-          ),
+        AppToast.error(
+          context,
+          'Open attendance from the event banner above first.',
         );
       }
       return;
@@ -3775,11 +4093,9 @@ class _WebinarCodePanelState extends State<_WebinarCodePanel> {
   Future<void> _startCheckOut(int intervalMinutes) async {
     if (!widget.attendanceIsOpen) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Open attendance from the event banner above first.'),
-            backgroundColor: Colors.red,
-          ),
+        AppToast.error(
+          context,
+          'Open attendance from the event banner above first.',
         );
       }
       return;

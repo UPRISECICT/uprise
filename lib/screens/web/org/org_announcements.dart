@@ -3073,12 +3073,7 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                                   } catch (e) {
                                     setDlg(() => isSubmitting = false);
                                     if (ctx.mounted) {
-                                      ScaffoldMessenger.of(ctx).showSnackBar(
-                                        SnackBar(
-                                          content: Text('Error: $e'),
-                                          backgroundColor: _C.error,
-                                        ),
-                                      );
+                                      AppToast.error(ctx, 'Error: $e');
                                     }
                                   }
                                 },
@@ -3477,9 +3472,7 @@ class _PostCardState extends State<_PostCard> {
         ? await launchUrl(uri, mode: LaunchMode.externalApplication)
         : false;
     if (!opened && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open video link')),
-      );
+      AppToast.error(context, 'Could not open video link');
     }
   }
 

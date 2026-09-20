@@ -16,6 +16,7 @@ import '../../../utils/platform_file_utils.dart' as platform_file_utils;
 import '../../../utils/school_year.dart';
 import '../../../widgets/admin_export_button.dart';
 import '../../../widgets/anchored_dropdown.dart';
+import '../../../widgets/app_toast.dart';
 import '../../../widgets/org_action_icon_button.dart';
 import '../../../widgets/org_attachment_preview.dart';
 import '../../../widgets/org_modal_shell.dart';
@@ -172,6 +173,11 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _statusFilter = 'All';
   int _currentPage = 1;
+  // Only true once the org has actually clicked a stat card — lets the
+  // Total card show the same "selected" glow the others get on tap,
+  // without it looking pre-selected on first page load (filter starts
+  // equal to 'All' by default, not by choice).
+  bool _statusFilterTouched = false;
   static const int _pageSize = 10;
 
   String _orgName = '';
@@ -258,6 +264,7 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
         }
         void selectStatus(String status) => setState(() {
           _statusFilter = _statusFilter == status ? 'All' : status;
+          _statusFilterTouched = true;
           _currentPage = 1;
         });
 
@@ -271,15 +278,14 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
             value: '$total',
             icon: Icons.description_outlined,
             color: _DS.primary,
-            // 'All' is the default, no-filter state — not a deliberate
-            // selection — so this card never shows the "selected" glow,
-            // even though _statusFilter starts equal to 'All'. Without
-            // this, the very first card always rendered pre-highlighted
-            // on page load, before the user had clicked anything (same
-            // bug as event proposals' stat cards).
-            selected: false,
+            // Highlights once the org deliberately taps back to "All",
+            // same as the other cards — but not on first page load, when
+            // _statusFilter is already 'All' by default rather than by
+            // choice (see _statusFilterTouched).
+            selected: _statusFilter == 'All' && _statusFilterTouched,
             onTap: () => setState(() {
               _statusFilter = 'All';
+              _statusFilterTouched = true;
               _currentPage = 1;
             }),
           ),
@@ -921,12 +927,7 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
 
       if (docs.isEmpty) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No data to export'),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
+          AppToast.warning(context, 'No data to export');
         }
         return;
       }
@@ -993,19 +994,11 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
 
   void _showSnack(String msg, {bool isError = false}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          msg,
-          style: GoogleFonts.beVietnamPro(color: Colors.white),
-        ),
-        backgroundColor: isError
-            ? const Color(0xFFDC2626)
-            : const Color(0xFF059669),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
+    if (isError) {
+      AppToast.error(context, msg);
+    } else {
+      AppToast.success(context, msg);
+    }
   }
 
   Future<bool?> _showConfirmDialog({
@@ -1140,12 +1133,7 @@ class _RequestDetailsDialog extends StatelessWidget {
   void _openAttachment(BuildContext context) async {
     final base64 = request.attachmentBase64;
     if (base64 == null || base64.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No attachment found'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      AppToast.error(context, 'No attachment found');
       return;
     }
 
@@ -1196,12 +1184,7 @@ class _RequestDetailsDialog extends StatelessWidget {
         mimeType: mime,
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error opening file: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      AppToast.error(context, 'Error opening file: $e');
     }
   }
 
@@ -1216,12 +1199,7 @@ class _RequestDetailsDialog extends StatelessWidget {
         mimeType: 'application/pdf',
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error opening signed copy: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      AppToast.error(context, 'Error opening signed copy: $e');
     }
   }
 
@@ -1903,19 +1881,11 @@ class _LetterRequestModalState extends State<_LetterRequestModal> {
 
   void _showMsg(String msg, {bool isError = false}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          msg,
-          style: GoogleFonts.beVietnamPro(color: Colors.white),
-        ),
-        backgroundColor: isError
-            ? const Color(0xFFDC2626)
-            : const Color(0xFF059669),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
+    if (isError) {
+      AppToast.error(context, msg);
+    } else {
+      AppToast.success(context, msg);
+    }
   }
 
   Future<void> _pickNeededBy() async {

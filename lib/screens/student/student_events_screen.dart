@@ -31,7 +31,6 @@ import 'student_certificates_screen.dart';
 import 'student_webinar_code_screen.dart';
 import 'student_organization_details_screen.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import '../../services/webinar_attendance_service.dart';
 import '../../services/certificate_auto_issue_service.dart';
@@ -3042,48 +3041,36 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     }
   }
 
-  // A 'file_upload' question's picked answer. Images are compressed then
-  // stored as a base64 data URI directly on the answer (matches how org
-  // screens already store product/banner photos inline on a document).
-  // Videos go to Firebase Storage instead — even compressed, a video would
-  // blow past Firestore's 1 MiB document limit — and the answer stores the
-  // resulting download URL, which is also what the org-side answer viewer
-  // (showRegistrationAnswers in org_attendance_qr.dart) already renders as
-  // a tappable link for any http(s) value.
+  // A 'file_upload' question's picked photo answer. Compressed then stored
+  // as a base64 data URI directly on the answer (matches how org screens
+  // already store product/banner photos inline on a document).
+  //
+  // Video used to go through Firebase Storage (putData + getDownloadURL),
+  // but that requires the project to be on the Blaze billing plan just to
+  // provision the default bucket — on Spark it fails every attempt with
+  // firebase_storage/object-not-found, no matter how the upload code is
+  // written. Video answers are now a pasted link (Drive/YouTube/etc, see
+  // the 'file_upload' case in _buildFieldWidget) instead of a device
+  // upload, so this only ever handles the image path now.
   Future<void> _pickFileUploadAnswer(
     String id, {
-    required bool asVideo,
     VoidCallback? onStateChanged,
   }) async {
     final picker = ImagePicker();
-    final XFile? picked = asVideo
-        ? await picker.pickVideo(source: ImageSource.gallery)
-        : await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+    final XFile? picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+    );
     if (picked == null) return;
 
     _fileUploadBusy[id] = true;
     _refreshFieldState(onStateChanged);
     try {
       final bytes = await picked.readAsBytes();
-      if (asVideo) {
-        final user = FirebaseAuth.instance.currentUser;
-        final ext = picked.name.contains('.')
-            ? picked.name.split('.').last.toLowerCase()
-            : 'mp4';
-        final path =
-            'registration_uploads/${widget.event.id}/${user?.uid ?? 'anon'}/'
-            '${id}_${DateTime.now().millisecondsSinceEpoch}.$ext';
-        final ref = FirebaseStorage.instance.ref(path);
-        await ref.putData(bytes, SettableMetadata(contentType: 'video/$ext'));
-        final url = await ref.getDownloadURL();
-        _fileUploadValues[id] = url;
-        _fileUploadNames[id] = picked.name;
-      } else {
-        final compressed = await _compressPickedImage(bytes);
-        _fileUploadValues[id] =
-            'data:image/jpeg;base64,${base64Encode(compressed)}';
-        _fileUploadNames[id] = picked.name;
-      }
+      final compressed = await _compressPickedImage(bytes);
+      _fileUploadValues[id] =
+          'data:image/jpeg;base64,${base64Encode(compressed)}';
+      _fileUploadNames[id] = picked.name;
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -3123,11 +3110,18 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         continue;
       }
       if (type == 'file_upload') {
-        if (required && (_fileUploadValues[id] ?? '').isEmpty) {
-          return 'Please attach a photo/video for: $label';
+        final val = (_fileUploadValues[id] ?? '').trim();
+        if (required && val.isEmpty) {
+          return 'Please attach a photo or paste a video link for: $label';
         }
         if (_fileUploadBusy[id] == true) {
           return 'Please wait for the upload to finish for: $label';
+        }
+        if (val.isNotEmpty &&
+            !val.startsWith('data:image/') &&
+            !val.startsWith('http://') &&
+            !val.startsWith('https://')) {
+          return 'Please paste a valid link (starting with http:// or https://) for: $label';
         }
         continue;
       }
@@ -3459,93 +3453,108 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         break;
       case 'file_upload':
         final mediaType = (field['mediaType'] as String?) ?? 'both';
-        final hasValue = (_fileUploadValues[id] ?? '').isNotEmpty;
+        final allowsImage = mediaType == 'image' || mediaType == 'both';
+        final allowsVideo = mediaType == 'video' || mediaType == 'both';
+        final hasPhoto = (_fileUploadValues[id] ?? '').startsWith(
+          'data:image/',
+        );
+        final videoLinkText = _fieldControllers[id]?.text.trim() ?? '';
+        final hasVideoLink = videoLinkText.isNotEmpty;
         final busy = _fileUploadBusy[id] == true;
         input = Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (hasValue)
-              Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.green.shade200),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.check_circle,
-                      color: Colors.green,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _fileUploadNames[id] ?? 'File attached',
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          color: Colors.black87,
-                        ),
-                        overflow: TextOverflow.ellipsis,
+            if (allowsImage && !hasVideoLink) ...[
+              if (hasPhoto)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.green.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.check_circle,
+                        color: Colors.green,
+                        size: 18,
                       ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _fileUploadNames[id] ?? 'Photo attached',
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            color: Colors.black87,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () {
+                          _fileUploadValues.remove(id);
+                          _fileUploadNames.remove(id);
+                          if (onStateChanged != null) {
+                            onStateChanged();
+                          } else {
+                            setState(() {});
+                          }
+                        },
+                        child: const Icon(Icons.close, size: 16),
+                      ),
+                    ],
+                  ),
+                )
+              else if (busy)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Center(
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
                     ),
-                    InkWell(
-                      onTap: () {
-                        _fileUploadValues.remove(id);
-                        _fileUploadNames.remove(id);
-                        if (onStateChanged != null) {
-                          onStateChanged();
-                        } else {
-                          setState(() {});
-                        }
-                      },
-                      child: const Icon(Icons.close, size: 16),
-                    ),
-                  ],
+                  ),
+                )
+              else
+                OutlinedButton.icon(
+                  onPressed: () => _pickFileUploadAnswer(
+                    id,
+                    onStateChanged: onStateChanged,
+                  ),
+                  icon: const Icon(Icons.image_outlined, size: 16),
+                  label: const Text('Choose Photo'),
+                ),
+            ],
+            if (allowsImage && allowsVideo && !hasPhoto && !hasVideoLink)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  'or paste a video link',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                 ),
               ),
-            if (busy)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: Center(
-                  child: SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
+            if (allowsVideo && !hasPhoto)
+              TextField(
+                controller: _fieldControllers[id],
+                keyboardType: TextInputType.url,
+                decoration: _fieldDecoration('Paste a Google Drive/YouTube link').copyWith(
+                  prefixIcon: const Icon(Icons.link_rounded, size: 18),
                 ),
-              )
-            else
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  if (mediaType == 'image' || mediaType == 'both')
-                    OutlinedButton.icon(
-                      onPressed: () => _pickFileUploadAnswer(
-                        id,
-                        asVideo: false,
-                        onStateChanged: onStateChanged,
-                      ),
-                      icon: const Icon(Icons.image_outlined, size: 16),
-                      label: Text(hasValue ? 'Replace Photo' : 'Choose Photo'),
-                    ),
-                  if (mediaType == 'video' || mediaType == 'both')
-                    OutlinedButton.icon(
-                      onPressed: () => _pickFileUploadAnswer(
-                        id,
-                        asVideo: true,
-                        onStateChanged: onStateChanged,
-                      ),
-                      icon: const Icon(Icons.videocam_outlined, size: 16),
-                      label: Text(hasValue ? 'Replace Video' : 'Choose Video'),
-                    ),
-                ],
+                onChanged: (v) {
+                  _fileUploadValues[id] = v.trim();
+                  _fileUploadNames[id] = 'Video link';
+                  if (onStateChanged != null) {
+                    onStateChanged();
+                  } else {
+                    setState(() {});
+                  }
+                },
               ),
           ],
         );

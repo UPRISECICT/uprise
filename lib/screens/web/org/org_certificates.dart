@@ -3181,28 +3181,15 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
     if (_formKey.currentState?.validate() != true) return;
     if (_selectedTemplateUrl == null) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Upload your certificate design first.',
-              style: GoogleFonts.beVietnamPro(color: Colors.white),
-            ),
-            backgroundColor: UpriseColors.error,
-          ),
-        );
+        AppToast.error(context, 'Upload your certificate design first.');
       }
       return;
     }
     if (distribute && !_hasEligibleRecipients) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'No attendees have completed their evaluation yet — certificates can only be distributed to attendees who attended and evaluated the event.',
-              style: GoogleFonts.beVietnamPro(color: Colors.white),
-            ),
-            backgroundColor: UpriseColors.error,
-          ),
+        AppToast.error(
+          context,
+          'No attendees have completed their evaluation yet — certificates can only be distributed to attendees who attended and evaluated the event.',
         );
       }
       return;
@@ -3220,14 +3207,9 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
       final missing = _missingSignatoryKeys(roster);
       if (missing.isNotEmpty) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Missing signatory data for: ${missing.join(", ")}. Add them in Admin Settings → Signatories first.',
-                style: GoogleFonts.beVietnamPro(color: Colors.white),
-              ),
-              backgroundColor: UpriseColors.error,
-            ),
+          AppToast.error(
+            context,
+            'Missing signatory data for: ${missing.join(", ")}. Add them in Admin Settings → Signatories first.',
           );
         }
         return;
@@ -3387,32 +3369,16 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
       );
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              distribute
-                  ? 'Distributed ${_eligibleRecipients.length} certificate(s)!'
-                  : 'Saved as draft.',
-              style: GoogleFonts.beVietnamPro(color: Colors.white),
-            ),
-            backgroundColor: distribute
-                ? UpriseColors.success
-                : UpriseColors.darkGray,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
+        AppToast.success(
+          context,
+          distribute
+              ? 'Distributed ${_eligibleRecipients.length} certificate(s)!'
+              : 'Saved as draft.',
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: UpriseColors.error,
-          ),
-        );
+        AppToast.error(context, 'Error: $e');
       }
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
@@ -4448,13 +4414,9 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
     // like the picker is just hanging and then mysteriously failing.
     if ((picked.size) > _maxBytes) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '${picked.name} is ${(picked.size / (1024 * 1024)).toStringAsFixed(1)} MB — max size is 5 MB.',
-            ),
-            backgroundColor: UpriseColors.error,
-          ),
+        AppToast.error(
+          context,
+          '${picked.name} is ${(picked.size / (1024 * 1024)).toStringAsFixed(1)} MB — max size is 5 MB.',
         );
       }
       return;
@@ -4532,12 +4494,7 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: UpriseColors.error,
-          ),
-        );
+        AppToast.error(context, 'Error: $e');
       }
     } finally {
       if (mounted) setState(() => _isUploading = false);

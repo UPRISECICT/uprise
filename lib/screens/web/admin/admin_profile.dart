@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import '../../../theme/admin_theme.dart';
 import '../../../utils/file_validation.dart';
 import '../../../services/activity_logger.dart' as activity_log;
+import '../../../widgets/app_toast.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens
@@ -266,14 +267,11 @@ class _AdminProfileState extends State<AdminProfile> {
 
   void _showSnack(String message, {required bool success}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message, style: GoogleFonts.beVietnamPro(fontSize: 13)),
-        backgroundColor: success ? const Color(0xFF059669) : AdminColors.error,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
+    if (success) {
+      AppToast.success(context, message);
+    } else {
+      AppToast.error(context, message);
+    }
   }
 
   String _formatDate(DateTime? dt) {

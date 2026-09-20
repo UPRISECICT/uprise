@@ -17,6 +17,7 @@ import '../../../services/activity_logger.dart' as activity_log;
 import '../../../theme/org_theme.dart';
 import '../../../widgets/admin_export_button.dart';
 import '../../../widgets/anchored_dropdown.dart';
+import '../../../widgets/app_toast.dart';
 import '../../../widgets/product_photo_gallery.dart';
 import '../../../widgets/org_action_icon_button.dart';
 import '../admin/export_util.dart';
@@ -501,14 +502,15 @@ class _OrgMerchandiseScreenState extends State<OrgMerchandiseScreen>
   }
 
   void _showSnack(String msg, Color color) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg, style: GoogleFonts.beVietnamPro()),
-        backgroundColor: color,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
+    if (color == UpriseColors.error) {
+      AppToast.error(context, msg);
+    } else if (color == UpriseColors.success) {
+      AppToast.success(context, msg);
+    } else if (color == UpriseColors.warning) {
+      AppToast.warning(context, msg);
+    } else {
+      AppToast.info(context, msg);
+    }
   }
 }
 
@@ -901,14 +903,15 @@ class _ProductsTabState extends State<_ProductsTab> {
   }
 
   void _showSnack(String msg, Color color) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg, style: GoogleFonts.beVietnamPro()),
-        backgroundColor: color,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
+    if (color == UpriseColors.error) {
+      AppToast.error(context, msg);
+    } else if (color == UpriseColors.success) {
+      AppToast.success(context, msg);
+    } else if (color == UpriseColors.warning) {
+      AppToast.warning(context, msg);
+    } else {
+      AppToast.info(context, msg);
+    }
   }
 
   @override
@@ -1920,19 +1923,11 @@ class _ProductModalState extends State<_ProductModal> {
       if (mounted) {
         widget.onProductSaved?.call();
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _isEdit
-                  ? 'Product updated successfully!'
-                  : 'Product added successfully!',
-            ),
-            backgroundColor: const Color(0xFF059669),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
+        AppToast.success(
+          context,
+          _isEdit
+              ? 'Product updated successfully!'
+              : 'Product added successfully!',
         );
       }
     } catch (e) {
@@ -1954,14 +1949,7 @@ class _ProductModalState extends State<_ProductModal> {
   }
 
   void _showError(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg, style: GoogleFonts.beVietnamPro()),
-        backgroundColor: UpriseColors.error,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
+    AppToast.error(context, msg);
   }
 
   @override
@@ -2918,14 +2906,7 @@ class _VariantDialogState extends State<_VariantDialog> {
   }
 
   void _showVariantError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message, style: GoogleFonts.beVietnamPro()),
-        backgroundColor: UpriseColors.error,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
+    AppToast.error(context, message);
   }
 
   void _save() {
@@ -4100,14 +4081,15 @@ class _OrdersTabState extends State<_OrdersTab> {
   }
 
   void _showSnack(String msg, Color color) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg, style: GoogleFonts.beVietnamPro()),
-        backgroundColor: color,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
+    if (color == UpriseColors.error) {
+      AppToast.error(context, msg);
+    } else if (color == UpriseColors.success) {
+      AppToast.success(context, msg);
+    } else if (color == UpriseColors.warning) {
+      AppToast.warning(context, msg);
+    } else {
+      AppToast.info(context, msg);
+    }
   }
 
   @override
@@ -5053,12 +5035,7 @@ class _OrderDetailsModalState extends State<_OrderDetailsModal> {
       if (mounted) setState(() => _paymentVerified = true);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: UpriseColors.error,
-          ),
-        );
+        AppToast.error(context, 'Error: $e');
       }
     } finally {
       if (mounted) setState(() => _verifying = false);
@@ -5571,12 +5548,7 @@ class _SalesReportModal extends StatelessWidget {
       );
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('PDF export failed: $e'),
-            backgroundColor: UpriseColors.error,
-          ),
-        );
+        AppToast.error(context, 'PDF export failed: $e');
       }
     }
   }
@@ -6375,14 +6347,11 @@ class _GcashSettingsDialogState extends State<_GcashSettingsDialog> {
   }
 
   void _showSnack(String msg, {bool isSuccess = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg, style: GoogleFonts.beVietnamPro()),
-        backgroundColor: isSuccess ? UpriseColors.success : UpriseColors.error,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
+    if (isSuccess) {
+      AppToast.success(context, msg);
+    } else {
+      AppToast.error(context, msg);
+    }
   }
 
   @override

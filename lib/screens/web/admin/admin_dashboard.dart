@@ -743,9 +743,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
       // error is exactly what an unnoticed Firestore permission-denied (or
       // any other write failure) looks like from the outside.
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not mark notifications as read: $e')),
-        );
+        AppToast.error(context, 'Could not mark notifications as read: $e');
       }
     }
   }

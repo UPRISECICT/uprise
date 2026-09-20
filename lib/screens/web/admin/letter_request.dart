@@ -1434,26 +1434,17 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
         String message =
             'Status updated to ${newStatus[0].toUpperCase()}${newStatus.substring(1)}';
         if (newStatus == 'revision') message = 'Revision requested with notes';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
-            backgroundColor: newStatus == 'approved'
-                ? AdminColors.success
-                : (newStatus == 'revision'
-                      ? AdminColors.info
-                      : AdminColors.error),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        if (newStatus == 'approved') {
+          AppToast.success(context, message);
+        } else if (newStatus == 'revision') {
+          AppToast.info(context, message);
+        } else {
+          AppToast.error(context, message);
+        }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: AdminColors.error,
-          ),
-        );
+        AppToast.error(context, 'Error: $e');
       }
     }
   }
@@ -2198,12 +2189,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                                   } catch (e) {
                                     setDialogState(() => isSaving = false);
                                     if (ctx.mounted) {
-                                      ScaffoldMessenger.of(ctx).showSnackBar(
-                                        SnackBar(
-                                          content: Text('Signing failed: $e'),
-                                          backgroundColor: AdminColors.error,
-                                        ),
-                                      );
+                                      AppToast.error(ctx, 'Signing failed: $e');
                                     }
                                   }
                                 },
@@ -2336,22 +2322,11 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Letter approved and digitally signed!'),
-            backgroundColor: AdminColors.success,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        AppToast.success(context, 'Letter approved and digitally signed!');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: AdminColors.error,
-          ),
-        );
+        AppToast.error(context, 'Error: $e');
       }
       rethrow;
     }
@@ -3140,12 +3115,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
   void _viewAttachment(Map<String, dynamic> data) {
     final base64 = data['attachmentBase64'];
     if (base64 == null || base64.toString().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No attachment found'),
-          backgroundColor: AdminColors.error,
-        ),
-      );
+      AppToast.error(context, 'No attachment found');
       return;
     }
     _openFileFromBase64(base64, data['attachmentName'] ?? 'attachment');
@@ -3154,12 +3124,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
   void _viewSignedCertificate(Map<String, dynamic> data) {
     final base64 = data['signedDocumentBase64'];
     if (base64 == null || base64.toString().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No signed certificate found'),
-          backgroundColor: AdminColors.error,
-        ),
-      );
+      AppToast.error(context, 'No signed certificate found');
       return;
     }
     final letterId = (data['letterId'] ?? 'letter').toString();
@@ -3170,13 +3135,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     try {
       Uint8List bytes = base64Decode(base64String);
       if (bytes.isEmpty) {
-        if (mounted)
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Empty file'),
-              backgroundColor: AdminColors.error,
-            ),
-          );
+        if (mounted) AppToast.error(context, 'Empty file');
         return;
       }
 
@@ -3332,12 +3291,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     } catch (e) {
       debugPrint('Error opening file: $e');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error opening file: $e'),
-          backgroundColor: AdminColors.error,
-        ),
-      );
+      AppToast.error(context, 'Error opening file: $e');
     }
   }
 
@@ -3525,7 +3479,6 @@ class _ExportButton extends StatelessWidget {
   }
 
   Future<void> _doExport(BuildContext context, String format) async {
-    final messenger = ScaffoldMessenger.of(context);
     try {
       // No server-side orderBy — see the note on _buildTable's stream for
       // why that silently drops any doc missing a 'timestamp' field.
@@ -3560,9 +3513,7 @@ class _ExportButton extends StatelessWidget {
         }).toList();
       }
       if (docs.isEmpty) {
-        messenger.showSnackBar(
-          const SnackBar(content: Text('No data to export.')),
-        );
+        if (context.mounted) AppToast.info(context, 'No data to export.');
         return;
       }
 
@@ -3601,9 +3552,9 @@ class _ExportButton extends StatelessWidget {
           fileName,
           mimeType: xlsxMimeType,
         );
-        messenger.showSnackBar(
-          SnackBar(content: Text('Download started: $fileName')),
-        );
+        if (context.mounted) {
+          AppToast.success(context, 'Download started: $fileName');
+        }
       } else if (format == 'pdf') {
         final rows = docs.map((doc) {
           final d = doc.data() as Map<String, dynamic>?;
@@ -3639,19 +3590,14 @@ class _ExportButton extends StatelessWidget {
           fileName,
           mimeType: 'application/pdf',
         );
-        messenger.showSnackBar(
-          SnackBar(content: Text('Download started: $fileName')),
-        );
+        if (context.mounted) {
+          AppToast.success(context, 'Download started: $fileName');
+        }
       } else {
         throw UnsupportedError('Unsupported export format: $format');
       }
     } catch (e) {
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text('Export failed: $e'),
-          backgroundColor: AdminColors.error,
-        ),
-      );
+      if (context.mounted) AppToast.error(context, 'Export failed: $e');
     }
   }
 }

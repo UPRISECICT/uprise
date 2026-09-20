@@ -12,6 +12,7 @@
 import 'dart:async';
 import '../../../widgets/stat_cards.dart';
 import '../../../widgets/app_confirmation_dialog.dart';
+import '../../../widgets/app_toast.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -1366,9 +1367,7 @@ class _OrgDashboardState extends State<OrgDashboard> {
       // error is exactly what an unnoticed Firestore permission-denied (or
       // any other write failure) looks like from the outside.
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not mark notifications as read: $e')),
-        );
+        AppToast.error(context, 'Could not mark notifications as read: $e');
       }
     }
   }
@@ -3738,7 +3737,40 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
   // uses instead of plain text — without it, Category showed a color-coded
   // badge in the table but flattened to plain black text once you opened
   // the detail view, which read as a missing/broken color.
+  // Icon + accent color for each detail-modal field tile's left-side chip.
+  // One shared lookup since the same labels (Date, Location, Audience…)
+  // repeat across the Events, Proposals and Merchandise detail dialogs.
+  static const Map<String, IconData> _detailFieldIcons = {
+    'Category': Icons.sell_rounded,
+    'Date': Icons.calendar_today_rounded,
+    'Event Date': Icons.calendar_today_rounded,
+    'Time': Icons.access_time_rounded,
+    'Location': Icons.location_on_rounded,
+    'Audience': Icons.groups_rounded,
+    'Description': Icons.notes_rounded,
+    'Submitted': Icons.upload_file_rounded,
+    'Price': Icons.payments_rounded,
+    'In Stock': Icons.inventory_2_rounded,
+  };
+
+  static const Map<String, Color> _detailFieldColors = {
+    'Category': OrgColors.primaryDark,
+    'Date': Color(0xFF2563EB),
+    'Event Date': Color(0xFF2563EB),
+    'Time': Color(0xFFF59E0B),
+    'Location': Color(0xFF0D9488),
+    'Audience': Color(0xFF7C3AED),
+    'Description': OrgColors.darkGray,
+    'Submitted': Color(0xFF0D9488),
+    'Price': OrgColors.success,
+    'In Stock': Color(0xFF7C3AED),
+  };
+
   Widget _detailRow(String label, String value, {Color? badgeColor}) {
+    // Category's chip is tinted per-category (badgeColor); every other
+    // field falls back to its fixed lookup color above.
+    final tint = badgeColor ?? _detailFieldColors[label] ?? OrgColors.darkGray;
+    final icon = _detailFieldIcons[label] ?? Icons.info_outline_rounded;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
@@ -3747,30 +3779,48 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
         borderRadius: BorderRadius.circular(_DS.radiusSm),
         border: Border.all(color: OrgColors.border),
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label.toUpperCase(),
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 10.5,
-              fontWeight: FontWeight.w700,
-              color: OrgColors.textFaint,
-              letterSpacing: 0.6,
+          Container(
+            width: 30,
+            height: 30,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: tint.withAlpha(25),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(icon, size: 15, color: tint),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label.toUpperCase(),
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    color: OrgColors.textFaint,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                if (badgeColor != null)
+                  _cellBadge(value, badgeColor)
+                else
+                  Text(
+                    value,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 13.5,
+                      color: OrgColors.charcoal,
+                      height: 1.45,
+                    ),
+                  ),
+              ],
             ),
           ),
-          const SizedBox(height: 6),
-          if (badgeColor != null)
-            _cellBadge(value, badgeColor)
-          else
-            Text(
-              value,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 13.5,
-                color: OrgColors.charcoal,
-                height: 1.45,
-              ),
-            ),
         ],
       ),
     );
@@ -4058,23 +4108,11 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
       }
       await OrgExportUtil.saveBytes(bytes, fileName, mimeType: mimeType);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Exported $fileName'),
-            backgroundColor: OrgColors.success,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        AppToast.success(context, 'Exported $fileName');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Export failed: $e'),
-            backgroundColor: OrgColors.error,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        AppToast.error(context, 'Export failed: $e');
       }
     }
   }

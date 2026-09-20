@@ -18,8 +18,20 @@ import 'package:fl_chart/fl_chart.dart';
 
 // ── Design tokens ────────────────────────────────────────────────────────────
 class _DS {
+  // Card radius matches StatCardTokens.radius (12) so the KPI cards and the
+  // chart cards below them read as one family rather than two.
   static const double radiusMd = 12;
-  static const double radiusLg = 16;
+
+  // One 4px spacing scale for the whole screen. The gaps between sections
+  // were 14/14/20 and the paddings 20/18/16/14 - close enough to look
+  // accidental rather than deliberate.
+  static const double s1 = 4;
+  static const double s2 = 8;
+  static const double s3 = 12;
+  static const double s4 = 16;
+  static const double s5 = 20;
+  static const double s6 = 24;
+  static const double s7 = 32;
 
   // Matches the single flat drop shadow every other org screen's cards
   // use (dashboard, calendar, certificates, finance, merchandise, etc.)
@@ -45,20 +57,82 @@ class _DS {
       ),
     );
   }
+
+  // The one card surface for every section on this screen. Each section used
+  // to build its own BoxDecoration and they had drifted apart - two used a
+  // half-alpha border, one a full one - and the page then wrapped the lot in
+  // a *fourth* card, so white cards sat on a white card and the shadows
+  // cancelled instead of separating anything.
+  static BoxDecoration card() => BoxDecoration(
+    color: _C.white,
+    borderRadius: BorderRadius.circular(radiusMd),
+    border: Border.all(color: _C.border),
+    boxShadow: cardShadow,
+  );
 }
 
 // ── Color aliases ────────────────────────────────────────────────────────────
 class _C {
-  static const Color amber = Color(0xFFF59E0B);
-  static const Color green = Color(0xFF10B981);
-  static const Color red = Color(0xFFEF4444);
-  static const Color blue = Color(0xFF3B82F6);
+  // The four loose KPI accents that used to live here - amber, green, red
+  // and blue - are gone. They tinted the four summary cards in four hues
+  // for four things that are not four categories of anything, which is
+  // decoration, not encoding. The cards now take chartBrand like the rest
+  // of the page, and the only non-brand hues left in this file are the
+  // three status steps below, which each carry a meaning.
+
   // Matches the 0xFFFBFCFE Scaffold background every other org screen uses.
   static const Color surface = Color(0xFFFBFCFE);
-  static const Color border = Color(0xFFE2E8F0);
+  // Matches StatCardTokens.border so the KPI cards and the chart cards
+  // underneath share one edge colour (was 0xFFE2E8F0, a half-step off).
+  static const Color border = Color(0xFFE8ECF0);
   static const Color muted = Color(0xFF64748B);
   static const Color charcoal = Color(0xFF0F172A);
   static const Color white = Color(0xFFFFFFFF);
+
+  // -- Chart tokens ---------------------------------------------------------
+  //
+  // Every bar chart here plots ONE measure across events, so it is a single
+  // series and takes a single hue. Colouring a bar by its own value (which
+  // the rating chart used to do) re-encodes what the bar's height already
+  // says and spends the colour channel for nothing.
+  //
+  // The brand primary is the hue for the count charts (registrations,
+  // attendance, ratings by event). The two money tabs deliberately break
+  // from it - income and expense read faster in the conventional green/red -
+  // and they borrow the status steps below rather than introducing a second
+  // green and a second red, so one green means "good" everywhere here.
+  static const Color chartBrand = UpriseColors.primaryDark;
+
+  // Recessive hairline grid - one step off the card surface.
+  static const Color grid = Color(0xFFF1F5F9);
+
+  // Star ratings are an ORDINAL scale, so they take a one-hue ramp with
+  // monotone lightness (5 = darkest) rather than the green->amber->red
+  // rainbow this used to draw. Validated as an ordinal ramp against the
+  // white card: monotone L, every adjacent gap >= 0.06, light end 2.18:1,
+  // hue spread 9 degrees.
+  static const Color rating5 = Color(0xFF7A2E00);
+  static const Color rating4 = Color(0xFFA83E00);
+  static const Color rating3 = Color(0xFFC85A1C);
+  static const Color rating2 = Color(0xFFDE7D45);
+  static const Color rating1 = Color(0xFFEA9E70);
+
+  // Attendance IS a status scale (good / warning / critical), so it keeps
+  // reserved status steps instead of the ordinal ramp. A darker amber was
+  // tried for "Late" and rejected: it collapses to deltaE 1.7 against the
+  // green under deuteranopia, where this lighter step holds 11.3. It sits
+  // below 3:1 on white by design - the legend label + count beside every
+  // wedge is the required relief, so the colour never carries meaning alone.
+  static const Color statusGood = Color(0xFF0CA30C);
+  static const Color statusWarning = Color(0xFFFAB219);
+  static const Color statusCritical = Color(0xFFD03B3B);
+
+  // Neutral chip behind the donut legend percentages. The percentage used to
+  // be set in the slice's own colour on a 10%-alpha wash of it, which put
+  // the lightest steps (status warning, rating1) at ~1.8:1 as *text*. The
+  // coloured dot beside the label already carries identity, so the number
+  // goes back to ink.
+  static const Color chipBg = Color(0xFFF3F5F7);
 }
 
 // ── Data model ───────────────────────────────────────────────────────────────
@@ -309,10 +383,17 @@ class OrgEventAnalyticsScreen extends StatefulWidget {
 class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
   late Future<_AnalyticsData> _dataFuture;
 
-  // Feedback is currently split across two collections from an incomplete
-  // migration — see the comment in _loadAll() — so both are watched.
-  StreamSubscription<QuerySnapshot>? _feedbackSubscription;
-  StreamSubscription<QuerySnapshot>? _eventFeedbackSubscription;
+  // Every collection _loadAll() reads is watched, so the page keeps itself
+  // current and there is no Refresh button to press. It used to watch only
+  // the two feedback collections, which made the "Live sync" chip a
+  // half-truth: ratings updated on their own, but a new event, a new
+  // registration, an attendance check-in or a finance entry sat stale until
+  // someone refreshed by hand.
+  final List<StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>
+  _subscriptions = [];
+
+  // One re-fetch per burst of writes - see _scheduleReload().
+  Timer? _reloadDebounce;
 
   // Each KPI card jumps to the chart section with more detail on that
   // metric instead of just sitting there as a static number.
@@ -345,8 +426,10 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
 
   @override
   void dispose() {
-    _feedbackSubscription?.cancel();
-    _eventFeedbackSubscription?.cancel();
+    _reloadDebounce?.cancel();
+    for (final subscription in _subscriptions) {
+      subscription.cancel();
+    }
     super.dispose();
   }
 
@@ -460,42 +543,63 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
   }
 
   void _listenForUpdates() {
-    _feedbackSubscription?.cancel();
-    _eventFeedbackSubscription?.cancel();
-    // Unfiltered — this only triggers a full _loadAll() re-fetch on any
-    // change, and _loadAll() itself does the real event-membership
-    // filtering (feedback docs have no orgId field to filter by here).
-    // Both collections are watched — see _loadAll() for why.
-    _feedbackSubscription = FirebaseFirestore.instance
-        .collection('feedback')
-        .snapshots()
-        .listen(
-          (snapshot) {
-            if (mounted) {
-              setState(() {
-                _dataFuture = _loadAll();
-              });
+    for (final subscription in _subscriptions) {
+      subscription.cancel();
+    }
+    _subscriptions.clear();
+
+    final db = FirebaseFirestore.instance;
+
+    // These mirror the reads in _loadAll() one for one, including the three
+    // unscoped ones: neither 'registrations', the attendances group, nor
+    // either feedback collection carries an orgId to filter by, so they are
+    // watched whole and _loadAll() does the event-membership scoping
+    // client-side. A change anywhere in them costs one re-fetch, which is
+    // why the debounce below exists.
+    final sources = <Query<Map<String, dynamic>>>[
+      db.collection('events').where('orgId', isEqualTo: widget.orgId),
+      db.collection('transactions').where('orgId', isEqualTo: widget.orgId),
+      db.collection('feedback'),
+      db.collection('event_feedback'),
+      db.collection('registrations'),
+      db.collectionGroup('attendances'),
+    ];
+
+    for (final source in sources) {
+      var isFirstSnapshot = true;
+      _subscriptions.add(
+        source.snapshots().listen(
+          (_) {
+            // Each listener fires once on attach with data the initial
+            // _loadAll() has already fetched; only later changes are worth
+            // re-fetching for.
+            if (isFirstSnapshot) {
+              isFirstSnapshot = false;
+              return;
             }
+            _scheduleReload();
           },
-          onError: (error) {
-            debugPrint('Feedback listener error: $error');
+          onError: (Object error) {
+            debugPrint('Analytics listener error: $error');
           },
-        );
-    _eventFeedbackSubscription = FirebaseFirestore.instance
-        .collection('event_feedback')
-        .snapshots()
-        .listen(
-          (snapshot) {
-            if (mounted) {
-              setState(() {
-                _dataFuture = _loadAll();
-              });
-            }
-          },
-          onError: (error) {
-            debugPrint('Event feedback listener error: $error');
-          },
-        );
+        ),
+      );
+    }
+  }
+
+  // One re-fetch per burst. A single _loadAll() is six queries, and one user
+  // action often writes to several of the watched collections at once -
+  // publishing an event, or a check-in that writes an attendance and a
+  // registration - so without this each of those would trigger its own full
+  // reload.
+  void _scheduleReload() {
+    _reloadDebounce?.cancel();
+    _reloadDebounce = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      setState(() {
+        _dataFuture = _loadAll();
+      });
+    });
   }
 
   void _showSnack(String msg, Color color) {
@@ -604,7 +708,11 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.error_outline, color: _C.red, size: 48),
+                const Icon(
+                  Icons.error_outline,
+                  color: _C.statusCritical,
+                  size: 48,
+                ),
                 const SizedBox(height: 12),
                 Text(
                   'Failed to load analytics',
@@ -630,23 +738,41 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
                   ? 16.0
                   : (isTablet ? 22.0 : 28.0);
 
+              // The cards and the section cards sit straight on the tinted
+              // page surface. They used to be wrapped in one big white card,
+              // which put white cards on a white card: the section shadows
+              // had nothing to fall on, so the groups stopped reading as
+              // separate and the whole tab flattened into one slab.
+              //
+              // The four KPI cards come first, before the heading. They are
+              // the answer the page exists to give - four numbers, readable
+              // without scrolling - and each one is a shortcut into the
+              // chart that explains it. The heading below them introduces
+              // those charts rather than the page, which the app bar
+              // already names.
               return SingleChildScrollView(
-                padding: EdgeInsets.all(horizontalPadding),
+                padding: EdgeInsets.fromLTRB(
+                  horizontalPadding,
+                  isMobile ? _DS.s5 : _DS.s6,
+                  horizontalPadding,
+                  _DS.s7,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(_DS.radiusLg),
-                        border: Border.all(color: _C.border),
-                        boxShadow: _DS.cardShadow,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [_buildHeader(), _buildAnalyticsTab(data)],
-                      ),
+                    _KpiStatsRow(
+                      data: data,
+                      onTapEvents: () => _scrollToSection(_distributionKey),
+                      onTapRegistrations: () =>
+                          _scrollToSection(_regAttendanceKey),
+                      onTapAttendance: () =>
+                          _scrollToSection(_regAttendanceKey),
+                      onTapRating: () => _scrollToSection(_ratingKey),
                     ),
+                    SizedBox(height: isMobile ? _DS.s6 : _DS.s7),
+                    _buildHeader(isMobile: isMobile),
+                    SizedBox(height: isMobile ? _DS.s4 : _DS.s5),
+                    _buildAnalyticsTab(data),
                   ],
                 ),
               );
@@ -657,95 +783,93 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
     );
   }
 
-  // Plain header — this screen used to switch between an Analytics tab and
-  // an Events tab; the Events tab (per-event registrants/attendance/
-  // feedback/finance) has moved to Events & Schedules' own Event Overview,
-  // so there's nothing left to switch between here. Kept the live-sync
-  // indicator and manual refresh button since those are still meaningful.
-  Widget _buildHeader() {
-    return Container(
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: _C.border)),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(_DS.radiusLg)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        child: Row(
+  // The heading that introduces the charts, sitting under the KPI cards.
+  // This screen used to switch between an Analytics tab and an Events tab;
+  // the Events tab (per-event registrants/attendance/feedback/finance) has
+  // moved to Events & Schedules' own Event Overview, so there's nothing
+  // left to switch between. What was left behind was a card title bar that
+  // still read as a tab strip.
+  //
+  // It is sized as a section heading, not a page title: the app bar above
+  // already says "Analytics", and a second 22px "Analytics" under the cards
+  // would be the same word twice at the same weight.
+  Widget _buildHeader({required bool isMobile}) {
+    final heading = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
-              Icons.bar_chart_rounded,
-              size: 18,
-              color: UpriseColors.primaryDark,
-            ),
-            const SizedBox(width: 8),
             Text(
               'Analytics',
               style: GoogleFonts.beVietnamPro(
-                fontSize: 15,
+                fontSize: isMobile ? 16 : 18,
                 fontWeight: FontWeight.w700,
-                color: UpriseColors.primaryDark,
+                color: _C.charcoal,
+                letterSpacing: -0.3,
               ),
             ),
-            const Spacer(),
-            Container(
-              width: 7,
-              height: 7,
-              decoration: const BoxDecoration(
-                color: _C.green,
-                shape: BoxShape.circle,
-              ),
-            ),
-            const SizedBox(width: 5),
-            Text(
-              'Live sync',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: _C.green,
-              ),
-            ),
-            const SizedBox(width: 14),
-            AdminExportButton(onSelected: _exportAnalytics),
-            const SizedBox(width: 10),
-            _RefreshButton(onTap: _refresh),
+            const SizedBox(width: _DS.s3),
+            const _LiveSyncPill(),
           ],
         ),
-      ),
+        const SizedBox(height: _DS.s1),
+        Text(
+          'Registrations, attendance, ratings and event finance across your '
+          'organization.',
+          style: GoogleFonts.beVietnamPro(fontSize: 12.5, color: _C.muted),
+        ),
+      ],
+    );
+
+    // Export is the only action left. The Refresh button next to it is
+    // gone: every collection this page reads is now watched (see
+    // _listenForUpdates), so there is nothing a manual refresh would fetch
+    // that has not already arrived. _refresh() itself stays for the Retry
+    // in the error state, where there is no live data yet to wait on.
+    final actions = AdminExportButton(onSelected: _exportAnalytics);
+
+    if (isMobile) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          heading,
+          const SizedBox(height: _DS.s3),
+          actions,
+        ],
+      );
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: heading),
+        actions,
+      ],
     );
   }
 
   // ── Analytics tab ──────────────────────────────────────────────────────────
   // Pure aggregate/graph view.
   Widget _buildAnalyticsTab(_AnalyticsData data) {
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _KpiStatsRow(
-            data: data,
-            onTapEvents: () => _scrollToSection(_distributionKey),
-            onTapRegistrations: () => _scrollToSection(_regAttendanceKey),
-            onTapAttendance: () => _scrollToSection(_regAttendanceKey),
-            onTapRating: () => _scrollToSection(_ratingKey),
-          ),
-          const SizedBox(height: 14),
-          KeyedSubtree(
-            key: _distributionKey,
-            child: _DistributionCard(data: data),
-          ),
-          const SizedBox(height: 14),
-          KeyedSubtree(
-            key: _ratingKey,
-            child: _RatingByEventChart(data: data),
-          ),
-          const SizedBox(height: 20),
-          KeyedSubtree(
-            key: _regAttendanceKey,
-            child: _PerformanceOverviewChart(data: data),
-          ),
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        KeyedSubtree(
+          key: _distributionKey,
+          child: _DistributionCard(data: data),
+        ),
+        const SizedBox(height: _DS.s4),
+        KeyedSubtree(
+          key: _ratingKey,
+          child: _RatingByEventChart(data: data),
+        ),
+        const SizedBox(height: _DS.s4),
+        KeyedSubtree(
+          key: _regAttendanceKey,
+          child: _PerformanceOverviewChart(data: data),
+        ),
+      ],
     );
   }
 }
@@ -754,38 +878,123 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
 // Supporting widgets
 // ════════════════════════════════════════════════════════════════════════════
 
-class _RefreshButton extends StatelessWidget {
-  final VoidCallback onTap;
-  const _RefreshButton({required this.onTap});
+// The live-sync indicator. Was a bare 7px green dot plus green 11px text
+// floating in the title bar; as a contained chip it reads as a status badge
+// instead of stray decoration, and the label stops wearing a status colour
+// as text at 3.3:1.
+class _LiveSyncPill extends StatelessWidget {
+  const _LiveSyncPill();
 
   @override
-  Widget build(BuildContext context) => OutlinedButton.icon(
-    onPressed: onTap,
-    icon: const Icon(
-      Icons.refresh_rounded,
-      size: 15,
-      color: UpriseColors.darkGray,
-    ),
-    label: Text(
-      'Refresh',
-      style: GoogleFonts.beVietnamPro(
-        fontSize: 12.5,
-        color: UpriseColors.darkGray,
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: _DS.s2, vertical: 3),
+      decoration: BoxDecoration(
+        color: _C.statusGood.withAlpha(20),
+        borderRadius: BorderRadius.circular(999),
       ),
-    ),
-    style: OutlinedButton.styleFrom(
-      side: const BorderSide(color: UpriseColors.mediumGray),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      minimumSize: Size.zero,
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-    ),
-  );
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: const BoxDecoration(
+              color: _C.statusGood,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            'Live sync',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: _C.charcoal,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-// Color for a 1-5 rating, shared by every rating pill/bar in this file.
-Color _ratingColor(double score) =>
-    score >= 4.0 ? _C.green : (score >= 3.0 ? _C.amber : _C.red);
+// One header for every section card. The three cards each built their own -
+// different icon tints (blue / amber / none at all) and different paddings -
+// which is what made them look like three components borrowed from three
+// different screens.
+class _CardHeader extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String? trailing;
+  const _CardHeader({required this.icon, required this.title, this.trailing});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(_DS.s4, _DS.s4, _DS.s4, _DS.s3),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: _C.chartBrand.withAlpha(20),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 16, color: _C.chartBrand),
+          ),
+          const SizedBox(width: _DS.s3),
+          Expanded(
+            child: Text(
+              title,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: _C.charcoal,
+              ),
+            ),
+          ),
+          if (trailing != null)
+            Text(
+              trailing!,
+              style: GoogleFonts.beVietnamPro(fontSize: 11, color: _C.muted),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// A small lift on hover. The KPI cards have always been tappable - each
+// jumps to the chart that explains its number - but nothing said so except
+// the cursor. This wraps the shared StatCard rather than changing it, since
+// twenty other screens use that widget and most of their cards are not
+// tappable at all.
+class _HoverLift extends StatefulWidget {
+  final Widget child;
+  const _HoverLift({required this.child});
+
+  @override
+  State<_HoverLift> createState() => _HoverLiftState();
+}
+
+class _HoverLiftState extends State<_HoverLift> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: AnimatedSlide(
+        offset: Offset(0, _hovered ? -0.02 : 0),
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOut,
+        child: widget.child,
+      ),
+    );
+  }
+}
 
 // Top-of-tab KPI row — quick-glance org-wide totals that don't need a
 // chart of their own (event count, registrations, attendance rate, avg
@@ -807,33 +1016,39 @@ class _KpiStatsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // One hue across the row. These were blue / amber / green / a colour
+    // that changed with the rating - four hues for four cards that are not
+    // four categories, so the colour channel was spent on nothing the icon
+    // and the label did not already say, and the strip read as four widgets
+    // borrowed from four different screens. Brand orange makes them one
+    // group, and it leaves green and red free to keep meaning "good" and
+    // "bad" in the charts below.
+    //
+    // Not four steps of orange either: an ordinal ramp on nominal cards
+    // would imply the leftmost matters most.
     final stats = [
       (
         'Total Events',
         '${data.events.length}',
         Icons.event_outlined,
-        _C.blue,
         onTapEvents,
       ),
       (
         'Registrations',
         '${data.totalRegistrations}',
         Icons.how_to_reg_outlined,
-        _C.amber,
         onTapRegistrations,
       ),
       (
         'Attendance Rate',
         '${data.attendanceRate.toStringAsFixed(0)}%',
         Icons.fact_check_outlined,
-        _C.green,
         onTapAttendance,
       ),
       (
         'Avg. Rating',
         data.totalFeedbacks == 0 ? '—' : data.avgRating.toStringAsFixed(1),
         Icons.star_outline_rounded,
-        _ratingColor(data.avgRating),
         onTapRating,
       ),
     ];
@@ -842,16 +1057,16 @@ class _KpiStatsRow extends StatelessWidget {
       builder: (context, constraints) {
         final isNarrow = constraints.maxWidth < 640;
         final cardWidth = isNarrow
-            ? (constraints.maxWidth - 12) / 2
-            : (constraints.maxWidth - 36) / 4;
+            ? (constraints.maxWidth - _DS.s3) / 2
+            : (constraints.maxWidth - _DS.s3 * 3) / 4;
         return Wrap(
-          spacing: 12,
-          runSpacing: 12,
+          spacing: _DS.s3,
+          runSpacing: _DS.s3,
           children: [
             for (final s in stats)
               SizedBox(
                 width: cardWidth,
-                child: _kpiCard(s.$1, s.$2, s.$3, s.$4, s.$5),
+                child: _kpiCard(s.$1, s.$2, s.$3, s.$4),
               ),
           ],
         );
@@ -865,15 +1080,16 @@ class _KpiStatsRow extends StatelessWidget {
     String label,
     String value,
     IconData icon,
-    Color color,
     VoidCallback? onTap,
   ) {
-    return StatCard(
-      label: label,
-      value: value,
-      icon: icon,
-      color: color,
-      onTap: onTap,
+    return _HoverLift(
+      child: StatCard(
+        label: label,
+        value: value,
+        icon: icon,
+        color: _C.chartBrand,
+        onTap: onTap,
+      ),
     );
   }
 }
@@ -897,54 +1113,18 @@ class _RatingByEventChart extends StatelessWidget {
     final shown = sorted.take(_maxBars).toList();
 
     return Container(
-      decoration: BoxDecoration(
-        color: _C.white,
-        borderRadius: BorderRadius.circular(_DS.radiusMd),
-        border: Border.all(color: _C.border.withOpacity(0.5)),
-        boxShadow: _DS.cardShadow,
-      ),
+      decoration: _DS.card(),
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEFF6FF),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.bar_chart_rounded,
-                    size: 16,
-                    color: _C.blue,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  'Average rating by event',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: _C.charcoal,
-                  ),
-                ),
-                if (sorted.length > shown.length) ...[
-                  const Spacer(),
-                  Text(
-                    'Top ${shown.length} of ${sorted.length}',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11,
-                      color: _C.muted,
-                    ),
-                  ),
-                ],
-              ],
-            ),
+          _CardHeader(
+            icon: Icons.bar_chart_rounded,
+            title: 'Average rating by event',
+            trailing: sorted.length > shown.length
+                ? 'Top ${shown.length} of ${sorted.length}'
+                : null,
           ),
           _DS.fadeDivider(),
           if (shown.isEmpty)
@@ -973,10 +1153,8 @@ class _RatingByEventChart extends StatelessWidget {
                       show: true,
                       drawVerticalLine: false,
                       horizontalInterval: 1,
-                      getDrawingHorizontalLine: (_) => const FlLine(
-                        color: Color(0xFFF1F5F9),
-                        strokeWidth: 1,
-                      ),
+                      getDrawingHorizontalLine: (_) =>
+                          const FlLine(color: _C.grid, strokeWidth: 1),
                     ),
                     borderData: FlBorderData(show: false),
                     titlesData: FlTitlesData(
@@ -1063,9 +1241,17 @@ class _RatingByEventChart extends StatelessWidget {
                         barRods: [
                           BarChartRodData(
                             toY: score,
-                            color: _ratingColor(score),
-                            width: 22,
-                            borderRadius: BorderRadius.circular(4),
+                            // One hue for every bar. This used to call
+                            // _ratingColor(score), which painted each bar by
+                            // its own value - the bar's height already says
+                            // that, so the colour channel was spent saying it
+                            // twice and the chart came out a green/amber/red
+                            // rainbow of nominal event names.
+                            color: _C.chartBrand,
+                            width: 18,
+                            borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(4),
+                            ),
                           ),
                         ],
                       );
@@ -1121,12 +1307,7 @@ class _PerformanceOverviewChart extends StatelessWidget {
           ..sort((a, b) => b.value.compareTo(a.value));
 
     return Container(
-      decoration: BoxDecoration(
-        color: _C.white,
-        borderRadius: BorderRadius.circular(_DS.radiusMd),
-        border: Border.all(color: _C.border.withAlpha(128)),
-        boxShadow: _DS.cardShadow,
-      ),
+      decoration: _DS.card(),
       clipBehavior: Clip.antiAlias,
       child: DefaultTabController(
         length: 4,
@@ -1134,20 +1315,13 @@ class _PerformanceOverviewChart extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
-              child: Text(
-                'Performance Overview',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: _C.charcoal,
-                ),
-              ),
+            const _CardHeader(
+              icon: Icons.insights_rounded,
+              title: 'Performance overview',
             ),
             Container(
               decoration: const BoxDecoration(
-                border: Border(bottom: BorderSide(color: Color(0xFFE8ECF0))),
+                border: Border(bottom: BorderSide(color: _C.border)),
               ),
               child: TabBar(
                 isScrollable: true,
@@ -1179,7 +1353,7 @@ class _PerformanceOverviewChart extends StatelessWidget {
                 children: [
                   _SingleSeriesBarChart(
                     entries: regEntries,
-                    color: _C.blue,
+                    color: _C.chartBrand,
                     moneyFormat: false,
                     emptyMessage:
                         'No registration records yet — they will show up '
@@ -1187,7 +1361,7 @@ class _PerformanceOverviewChart extends StatelessWidget {
                   ),
                   _SingleSeriesBarChart(
                     entries: attEntries,
-                    color: _C.green,
+                    color: _C.chartBrand,
                     moneyFormat: false,
                     emptyMessage:
                         'No attendance records yet — they will show up '
@@ -1195,7 +1369,10 @@ class _PerformanceOverviewChart extends StatelessWidget {
                   ),
                   _SingleSeriesBarChart(
                     entries: incomeEntries,
-                    color: _C.amber,
+                    // Money in. statusGood rather than the _C.green KPI
+                    // accent: that one measures 2.54:1 on the white card,
+                    // under the 3:1 floor for a chart mark.
+                    color: _C.statusGood,
                     moneyFormat: true,
                     emptyMessage:
                         'No income records tied to an event yet — '
@@ -1204,7 +1381,8 @@ class _PerformanceOverviewChart extends StatelessWidget {
                   ),
                   _SingleSeriesBarChart(
                     entries: expenseEntries,
-                    color: _C.red,
+                    // Money out, matching the Absent wedge's red.
+                    color: _C.statusCritical,
                     moneyFormat: true,
                     emptyMessage:
                         'No expense records tied to an event yet — '
@@ -1293,7 +1471,7 @@ class _SingleSeriesBarChart extends StatelessWidget {
                   drawVerticalLine: false,
                   horizontalInterval: chartMaxY / 4,
                   getDrawingHorizontalLine: (_) =>
-                      const FlLine(color: Color(0xFFF1F5F9), strokeWidth: 1),
+                      const FlLine(color: _C.grid, strokeWidth: 1),
                 ),
                 borderData: FlBorderData(show: false),
                 titlesData: FlTitlesData(
@@ -1383,8 +1561,10 @@ class _SingleSeriesBarChart extends StatelessWidget {
                       BarChartRodData(
                         toY: shown[i].value,
                         color: color,
-                        width: 22,
-                        borderRadius: BorderRadius.circular(4),
+                        width: 18,
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(4),
+                        ),
                       ),
                     ],
                   );
@@ -1406,91 +1586,69 @@ class _DistributionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final counts = data.starCounts;
     final totalRatings = data.totalFeedbacks;
+    // An ordinal one-hue ramp, darkest at 5. This was a green/emerald/amber/
+    // orange/red rainbow, which reads as five unrelated categories rather
+    // than one ordered scale and re-uses the status hues for non-status data.
     final ratingSlices = [
-      _DonutSlice('5 stars', counts[5]!, const Color(0xFF10B981)),
-      _DonutSlice('4 stars', counts[4]!, const Color(0xFF34D399)),
-      _DonutSlice('3 stars', counts[3]!, const Color(0xFFFBBF24)),
-      _DonutSlice('2 stars', counts[2]!, const Color(0xFFFB923C)),
-      _DonutSlice('1 star', counts[1]!, const Color(0xFFF87171)),
+      _DonutSlice('5 stars', counts[5]!, _C.rating5),
+      _DonutSlice('4 stars', counts[4]!, _C.rating4),
+      _DonutSlice('3 stars', counts[3]!, _C.rating3),
+      _DonutSlice('2 stars', counts[2]!, _C.rating2),
+      _DonutSlice('1 star', counts[1]!, _C.rating1),
     ];
 
     final att = data.attendanceStatusBreakdown;
     final attendanceSlices = [
-      _DonutSlice('Present', att['present']!, const Color(0xFF10B981)),
-      _DonutSlice('Late', att['late']!, const Color(0xFFFB923C)),
-      _DonutSlice('Absent', att['absent']!, const Color(0xFFF87171)),
+      _DonutSlice('Present', att['present']!, _C.statusGood),
+      _DonutSlice('Late', att['late']!, _C.statusWarning),
+      _DonutSlice('Absent', att['absent']!, _C.statusCritical),
     ];
     final attTotal = attendanceSlices.fold<int>(0, (s, e) => s + e.count);
 
     return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _C.white,
-        borderRadius: BorderRadius.circular(_DS.radiusMd),
-        border: Border.all(color: _C.border.withOpacity(0.5)),
-        boxShadow: _DS.cardShadow,
-      ),
+      decoration: _DS.card(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFFBEB),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.insert_chart_outlined,
-                  size: 16,
-                  color: _C.amber,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                'Rating & attendance breakdown',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: _C.charcoal,
-                ),
-              ),
-            ],
+          const _CardHeader(
+            icon: Icons.insert_chart_outlined,
+            title: 'Rating & attendance breakdown',
           ),
-          const SizedBox(height: 16),
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: _DonutSection(
-                    label: 'By rating',
-                    slices: ratingSlices,
-                    centerBig: totalRatings == 0
-                        ? '—'
-                        : data.avgRating.toStringAsFixed(1),
-                    centerSmall: 'average',
-                    emptyText: 'No feedback yet',
+          Padding(
+            padding: const EdgeInsets.fromLTRB(_DS.s4, 0, _DS.s4, _DS.s4),
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: _DonutSection(
+                      label: 'By rating',
+                      slices: ratingSlices,
+                      centerBig: totalRatings == 0
+                          ? '—'
+                          : data.avgRating.toStringAsFixed(1),
+                      centerSmall: 'average',
+                      emptyText: 'No feedback yet',
+                    ),
                   ),
-                ),
-                Container(
-                  width: 1,
-                  margin: const EdgeInsets.symmetric(horizontal: 18),
-                  color: _C.border.withOpacity(0.5),
-                ),
-                Expanded(
-                  child: _DonutSection(
-                    label: 'By attendance',
-                    slices: attendanceSlices,
-                    centerBig: attTotal == 0
-                        ? '—'
-                        : '${data.attendanceRate.toStringAsFixed(0)}%',
-                    centerSmall: 'attended',
-                    emptyText: 'No attendance yet',
+                  Container(
+                    width: 1,
+                    margin: const EdgeInsets.symmetric(horizontal: _DS.s5),
+                    color: _C.border,
                   ),
-                ),
-              ],
+                  Expanded(
+                    child: _DonutSection(
+                      label: 'By attendance',
+                      slices: attendanceSlices,
+                      centerBig: attTotal == 0
+                          ? '—'
+                          : '${data.attendanceRate.toStringAsFixed(0)}%',
+                      centerSmall: 'attended',
+                      emptyText: 'No attendance yet',
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -1665,7 +1823,7 @@ class _DonutSectionState extends State<_DonutSection> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
-                color: s.color.withValues(alpha: 0.1),
+                color: _C.chipBg,
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
@@ -1673,7 +1831,7 @@ class _DonutSectionState extends State<_DonutSection> {
                 style: GoogleFonts.beVietnamPro(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: s.color,
+                  color: _C.charcoal,
                 ),
               ),
             ),

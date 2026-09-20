@@ -2,9 +2,9 @@
 //
 // The in-app notification switch, shared by students and guests.
 //
-// The enforcement half of this already existed: both
-// NotificationService._isEnabledFor and NotificationHelper._isEnabledFor read
-// `users/{uid}/settings/notifications` → `push_notifications` and skip the
+// The enforcement half of this already existed:
+// NotificationService._isEnabledFor reads
+// `users/{uid}/settings/notifications` → `push_notifications` and skips the
 // write when it's false, defaulting to enabled when the doc is absent. Until
 // now only the org portal (org_settings.dart `_NotificationsTab`) ever wrote
 // that doc, so neither students nor guests could mute anything.

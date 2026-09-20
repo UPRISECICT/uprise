@@ -21,6 +21,11 @@ import '../../../utils/school_year.dart';
 import '../../../theme/org_theme.dart';
 import '../../../widgets/admin_export_button.dart';
 import '../../../widgets/anchored_dropdown.dart';
+import '../../../widgets/app_confirmation_dialog.dart';
+// Already the banner renderer for admin/reports_management.dart and the
+// shared event_card — it resolves data: URIs, raw base64 and http URLs, so
+// this screen does not need its own decoding path.
+import '../../../widgets/student/event_image.dart';
 import '../../../widgets/org_action_icon_button.dart';
 import '../../../widgets/org_attachment_preview.dart';
 import '../../../widgets/org_modal_shell.dart';
@@ -41,7 +46,30 @@ class _DS {
   // theme/org_theme.dart's UpriseColors.primaryDark) — same drift bug as
   // org_events_schedule.dart's calendar page had.
   static const Color primary = UpriseColors.primaryDark;
-  static const Color primaryBg = Color(0xFFFEF3C7);
+
+  // Was 0xFFFEF3C7, an amber/yellow left over from a palette this screen no
+  // longer uses. It is the fill behind the confirm dialog's icon badge and
+  // behind a selected report-type card, and both of those sit directly above
+  // a #C2410C button - so the pairing read as two brands in one modal, not
+  // as one accent. 0xFFFFF7ED is the soft brand tint sixteen other spots in
+  // the org portal already use.
+  static const Color primaryBg = Color(0xFFFFF7ED);
+
+  // Checked as a set with the dataviz validator against a light surface,
+  // all pairs. These three pass every check. The pair they replace did not:
+  // overdue #DC2626 against due-soon #C2410C came out at ΔE 6.0 for normal
+  // vision and 2.4 under protanopia — two states this page treats as
+  // different that most people cannot actually tell apart.
+  static const Color statusOverdue = Color(0xFFB91C1C);
+  static const Color statusDueSoon = Color(0xFFD97706);
+  static const Color statusOnTrack = Color(0xFF059669);
+
+  // The two report types are identity, not severity — which is what
+  // colouring a button by what it does has to mean. Deliberately nowhere
+  // near the three status hues above, so a button never reads as a state,
+  // and ΔE 21.4 apart from each other (16.4 under deuteranopia).
+  static const Color typeFinancial = Color(0xFF0891B2);
+  static const Color typeAccomplishment = Color(0xFF4F46E5);
 
   static const Color surface = Color(0xFFFBFCFE);
   static const Color cardBg = Color(0xFFFFFFFF);
@@ -176,6 +204,14 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
   // actually overdue, because there was no way to tell the difference.
   bool _deadlinesLoadFailed = false;
 
+  // Set while the Pending Reports page is showing — build() swaps to it in
+  // place of the table rather than opening a dialog over it, so the sidebar
+  // and top bar org_dashboard.dart wraps this screen in stay visible. Same
+  // pattern as org_events_schedule.dart's _overviewEvent.
+  bool _showPendingPage = false;
+  final TextEditingController _pendingSearchController =
+      TextEditingController();
+
   @override
   void initState() {
     super.initState();
@@ -187,6 +223,7 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
   void dispose() {
     _countdownTimer?.cancel();
     _searchController.dispose();
+    _pendingSearchController.dispose();
     super.dispose();
   }
 
@@ -251,6 +288,9 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
           'eventId': doc.id,
           'eventTitle': data['title']?.toString() ?? 'Untitled Event',
           'eventDate': date,
+          // Already on the doc and already what the student and guest event
+          // lists render; this query just never asked for it.
+          'bannerUrl': data['bannerUrl']?.toString() ?? '',
         });
       }
 
@@ -289,6 +329,7 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
               eventDate: eventDate,
               type: type,
               deadline: deadline,
+              bannerUrl: ev['bannerUrl'] as String,
             ),
           );
         }
@@ -352,6 +393,13 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
           final all = (snap.data?.docs ?? [])
               .map(ReportModel.fromFirestore)
               .toList();
+
+          // The pending/overdue list takes over the body instead of opening
+          // on top of it. It lives inside this StreamBuilder so a report
+          // submitted from the page drops off the list as soon as Firestore
+          // acknowledges the write, with no separate refresh.
+          if (_showPendingPage) return _buildPendingPage(all);
+
           final filtered = _applyFilters(all);
 
           return Column(
@@ -424,8 +472,16 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
     );
   }
 
-  // ── Deadline row ── UPDATED WITH PROFESSIONAL UI ──────────────────────────
-  Widget _buildDeadlineRow(List<ReportModel> all) {
+  // What is still owed, grouped by event and ordered by how soon it is due.
+  // The banner and the Pending Reports page both read this, so the count in
+  // the banner and the rows on the page can never disagree about what counts
+  // as pending.
+  ({
+    List<_PendingEventDeadline> pending,
+    Map<String, List<_PendingEventDeadline>> groups,
+    List<String> orderedEventIds,
+  })
+  _pendingDeadlines(List<ReportModel> all) {
     final submittedKeys = all
         .where((r) => r.status != 'archived' && (r.eventId ?? '').isNotEmpty)
         .map((r) => '${r.eventId}_${r.type}')
@@ -436,6 +492,30 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
             .where((d) => !submittedKeys.contains('${d.eventId}_${d.type}'))
             .toList()
           ..sort((a, b) => a.deadline.compareTo(b.deadline));
+
+    final groups = <String, List<_PendingEventDeadline>>{};
+    for (final d in pending) {
+      groups.putIfAbsent(d.eventId, () => []).add(d);
+    }
+
+    final orderedEventIds = groups.keys.toList()
+      ..sort((a, b) {
+        final da = groups[a]!
+            .map((d) => d.deadline)
+            .reduce((x, y) => x.isBefore(y) ? x : y);
+        final db = groups[b]!
+            .map((d) => d.deadline)
+            .reduce((x, y) => x.isBefore(y) ? x : y);
+        return da.compareTo(db);
+      });
+
+    return (pending: pending, groups: groups, orderedEventIds: orderedEventIds);
+  }
+
+  // ── Deadline row ── UPDATED WITH PROFESSIONAL UI ──────────────────────────
+  Widget _buildDeadlineRow(List<ReportModel> all) {
+    final deadlines = _pendingDeadlines(all);
+    final pending = deadlines.pending;
 
     // Never claim "all clear" when the deadline check itself failed to load
     // — that used to look identical to genuinely having nothing pending,
@@ -526,22 +606,7 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
       );
     }
 
-    // Group by event
-    final groups = <String, List<_PendingEventDeadline>>{};
-    for (final d in pending) {
-      groups.putIfAbsent(d.eventId, () => []).add(d);
-    }
-
-    final orderedEventIds = groups.keys.toList()
-      ..sort((a, b) {
-        final da = groups[a]!
-            .map((d) => d.deadline)
-            .reduce((x, y) => x.isBefore(y) ? x : y);
-        final db = groups[b]!
-            .map((d) => d.deadline)
-            .reduce((x, y) => x.isBefore(y) ? x : y);
-        return da.compareTo(db);
-      });
+    final orderedEventIds = deadlines.orderedEventIds;
 
     // Calculate stats
     final overdueCount = pending
@@ -677,8 +742,7 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
               cursor: SystemMouseCursors.click,
               child: InkWell(
                 borderRadius: BorderRadius.circular(8),
-                onTap: () =>
-                    _showAllDeadlines(context, groups, orderedEventIds),
+                onTap: () => setState(() => _showPendingPage = true),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
@@ -725,264 +789,261 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
     );
   }
 
-  // ── Show all deadlines in a beautiful bottom sheet ────────────────────────
-  void _showAllDeadlines(
-    BuildContext context,
-    Map<String, List<_PendingEventDeadline>> groups,
-    List<String> orderedEventIds,
-  ) {
+  void _closePendingPage() => setState(() {
+    _showPendingPage = false;
+    _pendingSearchController.clear();
+  });
+
+  // ── Pending Reports page ──────────────────────────────────────────────────
+  // This was a 640px dialog. It carries a search field, a list with no cap on
+  // how long it can get, and an action button on every overdue row — and
+  // pressing one of those buttons opened the upload modal on top of it, so
+  // the org was looking at a modal, over a modal, over the page. As a page it
+  // has room for the list, the back arrow replaces the Close button, and the
+  // upload modal has nothing behind it but this.
+  Widget _buildPendingPage(List<ReportModel> all) {
     final now = DateTime.now();
-    final totalPending = orderedEventIds.length;
+    final deadlines = _pendingDeadlines(all);
+    final groups = deadlines.groups;
+    final orderedEventIds = deadlines.orderedEventIds;
+    final eventCount = orderedEventIds.length;
     final overdueCount = orderedEventIds
         .where((id) => groups[id]!.any((d) => now.isAfter(d.deadline)))
         .length;
 
-    final searchCtrl = TextEditingController();
+    final query = _pendingSearchController.text.trim().toLowerCase();
+    final visibleEventIds = query.isEmpty
+        ? orderedEventIds
+        : orderedEventIds
+              .where(
+                (id) => groups[id]!.any(
+                  (d) => d.eventTitle.toLowerCase().contains(query),
+                ),
+              )
+              .toList();
 
-    // A centered Dialog instead of a bottom sheet — every other detail/edit
-    // panel in the org web portal (certificates, event overview, etc.) uses
-    // a centered Dialog; the mobile-style bottom sheet was the odd one out
-    // here and read as less "desktop admin tool" than the rest of the app.
-    showDialog(
-      context: context,
-      builder: (ctx) => Dialog(
-        insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        child: StatefulBuilder(
-          builder: (context, setSheetState) {
-            final query = searchCtrl.text.trim().toLowerCase();
-            final visibleEventIds = query.isEmpty
-                ? orderedEventIds
-                : orderedEventIds
-                      .where(
-                        (id) => groups[id]!.any(
-                          (d) => d.eventTitle.toLowerCase().contains(query),
-                        ),
-                      )
-                      .toList();
-            return Container(
-              width: 640,
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.of(context).size.height * 0.85,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Header ────────────────────────────────────────────────────────
+        // Light and compact, matching the Event Overview header: this sits
+        // directly under org_dashboard.dart's own top bar, so a second heavy
+        // block would just be banner chrome twice.
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(12, 12, 20, 12),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(bottom: BorderSide(color: _DS.border)),
+          ),
+          child: Row(
+            children: [
+              IconButton(
+                icon: const Icon(
+                  Icons.arrow_back_rounded,
+                  color: _DS.primary,
+                  size: 20,
+                ),
+                tooltip: 'Back to Report Submissions',
+                onPressed: _closePendingPage,
               ),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: _DS.primary.withAlpha(20),
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: const Icon(
+                  Icons.pending_actions_rounded,
+                  color: _DS.primary,
+                  size: 20,
+                ),
               ),
-              clipBehavior: Clip.antiAlias,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Header
-                  Container(
-                    padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFF8F9FB),
-                      borderRadius: BorderRadius.vertical(
-                        top: Radius.circular(18),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Pending Reports',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: _DS.textPrimary,
                       ),
                     ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: _DS.primary.withAlpha(20),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Icon(
-                            Icons.pending_actions_rounded,
-                            size: 24,
-                            color: _DS.primary,
-                          ),
+                    const SizedBox(height: 2),
+                    Text(
+                      eventCount == 0
+                          ? 'Nothing left to submit'
+                          : '$eventCount event${eventCount > 1 ? 's' : ''} need${eventCount > 1 ? '' : 's'} attention',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12.5,
+                        color: _DS.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Red here is the status, not the chrome — it is the same red
+              // the overdue rows below use, and it is the only red on the
+              // page now that the upload buttons wear the brand colour.
+              if (overdueCount > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEF2F2),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFFCA5A5)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.warning_amber_rounded,
+                        size: 16,
+                        color: _DS.statusOverdue,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '$overdueCount Overdue',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: _DS.statusOverdue,
                         ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'All Pending Reports',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w700,
-                                  color: _DS.textPrimary,
-                                ),
-                              ),
-                              Text(
-                                '$totalPending event${totalPending > 1 ? 's' : ''} need${totalPending > 1 ? '' : 's'} attention',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 13,
-                                  color: _DS.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (overdueCount > 0) ...[
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFEF2F2),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: const Color(0xFFFCA5A5),
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  Icons.warning_amber_rounded,
-                                  size: 16,
-                                  color: Color(0xFFDC2626),
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  '$overdueCount Overdue',
-                                  style: GoogleFonts.beVietnamPro(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    color: const Color(0xFFDC2626),
-                                  ),
-                                ),
-                              ],
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+        // ── Search ────────────────────────────────────────────────────────
+        // Capped rather than full-bleed: a search box as wide as the window
+        // reads as the page's main input, and this one only narrows a list.
+        if (eventCount > 0)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(28, 20, 28, 0),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 460),
+              child: SizedBox(
+                height: 44,
+                child: TextField(
+                  controller: _pendingSearchController,
+                  onChanged: (_) => setState(() {}),
+                  style: GoogleFonts.beVietnamPro(fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: 'Search by event name…',
+                    hintStyle: GoogleFonts.beVietnamPro(
+                      fontSize: 14,
+                      color: _DS.textHint,
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.search_rounded,
+                      size: 20,
+                      color: _DS.textHint,
+                    ),
+                    suffixIcon: query.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.close, size: 18),
+                            tooltip: 'Clear Search',
+                            onPressed: () => setState(
+                              () => _pendingSearchController.clear(),
                             ),
                           ),
-                          const SizedBox(width: 8),
-                        ],
-                        IconButton(
-                          icon: const Icon(Icons.close_rounded, size: 20),
-                          tooltip: 'Close',
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                      ],
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: const EdgeInsets.symmetric(
+                      vertical: 0,
+                      horizontal: 16,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: _DS.border),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: _DS.border),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(
+                        color: _DS.primary,
+                        width: 1.5,
+                      ),
                     ),
                   ),
-                  // Search — this list has no cap on how many events can show
-                  // up here, so once an org has more than a handful of
-                  // pending reports it becomes a long scroll with nothing to
-                  // narrow it down.
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
-                    child: TextField(
-                      controller: searchCtrl,
-                      onChanged: (_) => setSheetState(() {}),
-                      style: GoogleFonts.beVietnamPro(fontSize: 13),
-                      decoration: InputDecoration(
-                        hintText: 'Search by event name…',
-                        hintStyle: GoogleFonts.beVietnamPro(
-                          fontSize: 13,
+                ),
+              ),
+            ),
+          ),
+        const SizedBox(height: 16),
+        // ── Grid ──────────────────────────────────────────────────────────
+        // A catalogue grid rather than a table, on the merch screen's
+        // pattern: an org recognises its own event by its banner faster
+        // than by reading a title down a column of them.
+        Expanded(
+          child: visibleEventIds.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        eventCount == 0
+                            ? Icons.check_circle_outline_rounded
+                            : Icons.search_off_rounded,
+                        size: 44,
+                        color: eventCount == 0
+                            ? const Color(0xFF059669)
+                            : _DS.textHint,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        eventCount == 0
+                            ? 'All reports for your finished events are submitted.'
+                            : 'No pending reports match "$query".',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13.5,
                           color: _DS.textSecondary,
                         ),
-                        prefixIcon: const Icon(
-                          Icons.search_rounded,
-                          size: 18,
-                          color: Color(0xFF9AA5B4),
-                        ),
-                        suffixIcon: query.isEmpty
-                            ? null
-                            : IconButton(
-                                icon: const Icon(Icons.close_rounded, size: 18),
-                                tooltip: 'Clear Search',
-                                onPressed: () {
-                                  searchCtrl.clear();
-                                  setSheetState(() {});
-                                },
-                              ),
-                        isDense: true,
-                        filled: true,
-                        fillColor: const Color(0xFFF8F9FB),
-                        contentPadding: const EdgeInsets.symmetric(
-                          vertical: 12,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(color: _DS.border),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(color: _DS.border),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: _DS.primary),
-                        ),
                       ),
-                    ),
+                    ],
                   ),
-                  const Divider(height: 20, color: _DS.border),
-                  // List — Flexible (not Expanded) so a short list just
-                  // shrinks to fit instead of leaving a big empty area
-                  // below it, while a long one still scrolls within the
-                  // dialog's max height.
-                  Flexible(
-                    child: visibleEventIds.isEmpty
-                        ? Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 40),
-                            child: Center(
-                              child: Text(
-                                'No pending reports match "$query"',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 13,
-                                  color: _DS.textSecondary,
-                                ),
-                              ),
-                            ),
-                          )
-                        : ListView.builder(
-                            shrinkWrap: true,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 24,
-                              vertical: 8,
-                            ),
-                            itemCount: visibleEventIds.length,
-                            itemBuilder: (_, idx) {
-                              final eventId = visibleEventIds[idx];
-                              final items = groups[eventId]!;
-                              return _PendingDeadlineListItem(
-                                items: items,
-                                onUpload: (type) =>
-                                    _openPrefillModal(eventId, type),
-                              );
-                            },
-                          ),
+                )
+              : GridView.builder(
+                  padding: const EdgeInsets.fromLTRB(28, 0, 28, 28),
+                  // mainAxisExtent, not childAspectRatio: it pins every
+                  // card to the same height whatever width the column
+                  // lands on, so a long event title cannot make one card
+                  // taller than the row it sits in.
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    // Wider than the merch grid's 280. A product photo is
+                    // square; an event banner is not, and a narrower column
+                    // squeezed "Upload Accomplishment" against the edge of
+                    // its own button.
+                    maxCrossAxisExtent: 360,
+                    mainAxisExtent: 272,
+                    crossAxisSpacing: 18,
+                    mainAxisSpacing: 18,
                   ),
-                  // Close button
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () => Navigator.pop(context),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _DS.primary,
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        child: Text(
-                          'Close',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
+                  itemCount: visibleEventIds.length,
+                  itemBuilder: (_, idx) {
+                    final eventId = visibleEventIds[idx];
+                    return _PendingEventCard(
+                      items: groups[eventId]!,
+                      onUpload: (type) => _openPrefillModal(eventId, type),
+                    );
+                  },
+                ),
         ),
-      ),
+      ],
     );
   }
 
@@ -1421,12 +1482,13 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
     builder: (_) => _ViewReportModal(report: r),
   );
 
-  // Closes the overdue-list bottom sheet (if open) and jumps straight into
-  // the upload modal with the event + type already selected — used by the
-  // "Upload now" shortcut on overdue items instead of the normal flow of
-  // clicking "Upload Report" and picking the event/type from scratch.
+  // Jumps straight into the upload modal with the event + type already
+  // selected — used by the "Upload now" shortcut on overdue items instead of
+  // the normal flow of clicking "Upload Report" and picking the event/type
+  // from scratch. It used to pop() first, to dismiss the overdue-list dialog
+  // it was raised from; that list is a page now, so there is nothing to
+  // dismiss and the pop would have closed the page out from under the modal.
   void _openPrefillModal(String eventId, String type) {
-    Navigator.of(context).pop();
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -1501,6 +1563,11 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
     error ? AppToast.error(context, msg) : AppToast.success(context, msg);
   }
 
+  // AppConfirmationDialog is the shell thirteen other admin and org screens
+  // already confirm through. This one used to raise its own _ConfirmDialog -
+  // narrower, squarer corners, icon and title side by side instead of
+  // centred, half-width buttons instead of full - so the same "are you sure"
+  // looked like a different product depending on which tab you asked it from.
   Future<bool?> _confirm({
     required String title,
     required String message,
@@ -1509,11 +1576,14 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
   }) => showDialog<bool>(
     context: context,
     barrierColor: Colors.black54,
-    builder: (_) => _ConfirmDialog(
+    builder: (_) => AppConfirmationDialog(
       title: title,
       message: message,
       confirmLabel: confirmLabel,
-      destructive: destructive,
+      accentColor: destructive ? const Color(0xFFDC2626) : _DS.primary,
+      icon: destructive
+          ? Icons.delete_outline_rounded
+          : Icons.check_circle_outline_rounded,
     ),
   );
 }
@@ -1528,220 +1598,315 @@ class _PendingEventDeadline {
   final DateTime eventDate;
   final String type;
   final DateTime deadline;
+  // Empty for an event whose org never uploaded one — the card falls back
+  // to the event's initial rather than a grey box that looks identical on
+  // every card it appears on.
+  final String bannerUrl;
   const _PendingEventDeadline({
     required this.eventId,
     required this.eventTitle,
     required this.eventDate,
     required this.type,
     required this.deadline,
+    this.bannerUrl = '',
   });
 }
 
-// ── List item for the bottom sheet ────────────────────────────────────────
-class _PendingDeadlineListItem extends StatelessWidget {
+// ── Card for the Pending Reports grid ────────────────────────────────────
+// The merch card's shape — banner on top, details beneath, actions that
+// surface on hover — because this is the one list in the portal where a
+// picture already does the identifying.
+//
+// One thing the merch card never has to do: that screen is a catalogue and
+// this page is a to-do list. Letting the banner take most of the card would
+// bury the only thing the page exists to say, so the status rides on the
+// banner as a pill as well as under it as text.
+class _PendingEventCard extends StatefulWidget {
   final List<_PendingEventDeadline> items;
-  // Only offered for items that are actually overdue — for reports that
-  // still have time left, the normal "Upload Report" flow already covers it.
   final ValueChanged<String> onUpload;
-  const _PendingDeadlineListItem({required this.items, required this.onUpload});
+  const _PendingEventCard({required this.items, required this.onUpload});
+
+  @override
+  State<_PendingEventCard> createState() => _PendingEventCardState();
+}
+
+class _PendingEventCardState extends State<_PendingEventCard> {
+  bool _hovering = false;
+
+  // Financial first, so the two buttons never swap places between cards.
+  List<_PendingEventDeadline> get _ordered {
+    final sorted = [...widget.items];
+    sorted.sort(
+      (a, b) => a.type == b.type ? 0 : (a.type == 'financial' ? -1 : 1),
+    );
+    return sorted;
+  }
+
+  Widget _banner(_PendingEventDeadline first) {
+    if (first.bannerUrl.isEmpty) {
+      final title = first.eventTitle.trim();
+      return Container(
+        color: _DS.primaryBg,
+        alignment: Alignment.center,
+        child: Text(
+          title.isEmpty ? '?' : title[0].toUpperCase(),
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 42,
+            fontWeight: FontWeight.w700,
+            color: _DS.primary.withAlpha(80),
+          ),
+        ),
+      );
+    }
+    return AnimatedScale(
+      duration: const Duration(milliseconds: 200),
+      scale: _hovering ? 1.05 : 1.0,
+      child: EventImage(
+        imageUrl: first.bannerUrl,
+        fit: BoxFit.cover,
+        showLoadingIndicator: false,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final items = _ordered;
+    final first = items.first;
     final now = DateTime.now();
-    final overdueItems = items.where((d) => now.isAfter(d.deadline)).toList();
-    final anyOverdue = overdueItems.isNotEmpty;
+    final anyOverdue = items.any((d) => now.isAfter(d.deadline));
     final earliest = items
         .map((d) => d.deadline)
         .reduce((a, b) => a.isBefore(b) ? a : b);
-    final typesLabel = items
-        .map((d) => d.type == 'financial' ? 'Financial' : 'Accomplishment')
-        .join(' & ');
     final daysLeft = now.difference(earliest).inDays.abs();
     final isDueSoon = !anyOverdue && daysLeft <= 3;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: anyOverdue
-              ? const Color(0xFFFCA5A5)
-              : isDueSoon
-              ? const Color(0xFFFFE4CC)
-              : _DS.border,
+    final statusColor = anyOverdue
+        ? _DS.statusOverdue
+        : isDueSoon
+        ? _DS.statusDueSoon
+        : _DS.statusOnTrack;
+    final statusIcon = anyOverdue
+        ? Icons.error_outline_rounded
+        : isDueSoon
+        ? Icons.schedule_rounded
+        : Icons.check_circle_outline_rounded;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _DS.border),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(8),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              // Status indicator bar
-              Container(
-                width: 4,
-                height: 44,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
                 decoration: BoxDecoration(
-                  color: anyOverdue
-                      ? const Color(0xFFDC2626)
-                      : isDueSoon
-                      ? _DS.primary
-                      : const Color(0xFF059669),
-                  borderRadius: BorderRadius.circular(2),
+                  borderRadius: BorderRadius.circular(11),
+                  boxShadow: _hovering
+                      ? [
+                          BoxShadow(
+                            color: Colors.black.withAlpha(30),
+                            blurRadius: 18,
+                            offset: const Offset(0, 8),
+                          ),
+                        ]
+                      : _DS.cardShadow,
                 ),
-              ),
-              const SizedBox(width: 14),
-              // Content
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      items.first.eventTitle,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: _DS.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Container(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(11),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      _banner(first),
+                      // On the banner, so it survives the picture taking
+                      // most of the card — this is what you scan the grid
+                      // for. Icon and word together, never the colour alone.
+                      Positioned(
+                        left: 8,
+                        top: 8,
+                        child: Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 2,
+                            horizontal: 9,
+                            vertical: 5,
                           ),
                           decoration: BoxDecoration(
-                            color: anyOverdue
-                                ? const Color(0xFFFEF2F2)
-                                : isDueSoon
-                                ? const Color(0xFFFFF7ED)
-                                : const Color(0xFFECFDF5),
-                            borderRadius: BorderRadius.circular(12),
+                            color: statusColor,
+                            borderRadius: BorderRadius.circular(20),
                           ),
-                          child: Text(
-                            typesLabel,
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: anyOverdue
-                                  ? const Color(0xFFDC2626)
-                                  : isDueSoon
-                                  ? _DS.primary
-                                  : const Color(0xFF059669),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(statusIcon, size: 12, color: Colors.white),
+                              const SizedBox(width: 4),
+                              Text(
+                                anyOverdue
+                                    ? 'Overdue'
+                                    : isDueSoon
+                                    ? 'Due Soon'
+                                    : 'On Track',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      // Revealed on hover, the way the merch card reveals
+                      // its edit and archive icons. The scrim is what keeps
+                      // the buttons legible over a banner of any colour.
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          ignoring: !_hovering,
+                          child: AnimatedOpacity(
+                            duration: const Duration(milliseconds: 150),
+                            opacity: _hovering ? 1 : 0,
+                            child: Container(
+                              padding: const EdgeInsets.all(10),
+                              alignment: Alignment.bottomCenter,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.center,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.black.withAlpha(0),
+                                    Colors.black.withAlpha(170),
+                                  ],
+                                ),
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  for (var i = 0; i < items.length; i++) ...[
+                                    if (i > 0) const SizedBox(height: 6),
+                                    _UploadNowButton(
+                                      label: items[i].type == 'financial'
+                                          ? 'Upload Financial'
+                                          : 'Upload Accomplishment',
+                                      color: items[i].type == 'financial'
+                                          ? _DS.typeFinancial
+                                          : _DS.typeAccomplishment,
+                                      onTap: () =>
+                                          widget.onUpload(items[i].type),
+                                    ),
+                                  ],
+                                ],
+                              ),
                             ),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Text(
-                          anyOverdue
-                              ? 'Overdue by ${daysLeft} day${daysLeft > 1 ? 's' : ''}'
-                              : 'Due in $daysLeft day${daysLeft > 1 ? 's' : ''}',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 12,
-                            color: _DS.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              // Status badge
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: anyOverdue
-                      ? const Color(0xFFFEF2F2)
-                      : isDueSoon
-                      ? const Color(0xFFFFF7ED)
-                      : const Color(0xFFECFDF5),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: anyOverdue
-                        ? const Color(0xFFFCA5A5)
-                        : isDueSoon
-                        ? const Color(0xFFFFE4CC)
-                        : const Color(0xFFA7F3D0),
+                      ),
+                    ],
                   ),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      anyOverdue
-                          ? Icons.error_outline_rounded
-                          : isDueSoon
-                          ? Icons.schedule_rounded
-                          : Icons.check_circle_outline_rounded,
-                      size: 14,
-                      color: anyOverdue
-                          ? const Color(0xFFDC2626)
-                          : isDueSoon
-                          ? _DS.primary
-                          : const Color(0xFF059669),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      anyOverdue
-                          ? 'Overdue'
-                          : isDueSoon
-                          ? 'Due Soon'
-                          : 'On Track',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: anyOverdue
-                            ? const Color(0xFFDC2626)
-                            : isDueSoon
-                            ? _DS.primary
-                            : const Color(0xFF059669),
-                      ),
-                    ),
-                  ],
-                ),
               ),
-            ],
-          ),
-          if (anyOverdue) ...[
+            ),
             const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: overdueItems
-                  .map(
-                    (d) => _UploadNowButton(
-                      label: d.type == 'financial'
-                          ? 'Upload Financial'
-                          : 'Upload Accomplishment',
-                      onTap: () => onUpload(d.type),
+            // The same two hues the buttons wear, so the chip and the
+            // button you press for it are recognisably the same thing.
+            Row(
+              children: [
+                for (var i = 0; i < items.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 5),
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: items[i].type == 'financial'
+                          ? _DS.typeFinancial
+                          : _DS.typeAccomplishment,
+                      shape: BoxShape.circle,
                     ),
-                  )
-                  .toList(),
+                  ),
+                ],
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Text(
+                    items
+                        .map(
+                          (d) => d.type == 'financial'
+                              ? 'Financial'
+                              : 'Accomplishment',
+                        )
+                        .join(' & ')
+                        .toUpperCase(),
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w700,
+                      color: _DS.textSecondary,
+                      letterSpacing: 0.4,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              first.eventTitle,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: _DS.textPrimary,
+                height: 1.25,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(statusIcon, size: 12, color: statusColor),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    anyOverdue
+                        ? 'Overdue by $daysLeft day${daysLeft > 1 ? 's' : ''}'
+                        : 'Due in $daysLeft day${daysLeft > 1 ? 's' : ''}',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: statusColor,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
           ],
-        ],
+        ),
       ),
     );
   }
 }
 
+// Coloured by which report it uploads, not by how late that report is.
+// This button has now been three colours: #DC2626, which made the one thing
+// you are meant to press look like a fourth restatement of the problem; then
+// brand orange, which was correct but told you nothing, and sat dark and
+// heavy over a photograph. Financial and Accomplishment are two different
+// errands, and that is the only thing the colour of the button has to say.
 class _UploadNowButton extends StatelessWidget {
   final String label;
+  final Color color;
   final VoidCallback onTap;
-  const _UploadNowButton({required this.label, required this.onTap});
+  const _UploadNowButton({
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1751,13 +1916,15 @@ class _UploadNowButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         onTap: onTap,
         child: Container(
+          width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: const Color(0xFFDC2626),
+            color: color,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Icon(
                 Icons.upload_file_rounded,
@@ -2481,12 +2648,17 @@ class _ReportModalState extends State<_ReportModal> {
     final ok = await showDialog<bool>(
       context: context,
       barrierColor: Colors.black54,
-      builder: (_) => _ConfirmDialog(
+      builder: (_) => AppConfirmationDialog(
         title: isEdit ? 'Save Changes' : 'Submit Report',
         message: isEdit
             ? 'Save changes to this report?'
             : 'Submit this report?',
         confirmLabel: 'Confirm',
+        accentColor: _DS.primary,
+        // The badge repeats the verb of the modal this is raised from
+        // rather than a generic tick, since this dialog lands on top of
+        // that modal and the two are read together.
+        icon: isEdit ? Icons.save_outlined : Icons.upload_file_rounded,
       ),
     );
     if (ok != true) return;
@@ -3107,12 +3279,17 @@ class _ReportModalState extends State<_ReportModal> {
     }
 
     if (hasFile) {
+      // A quiet card with a green tick, not a green card. The fill, the
+      // 1.5px saturated border and the text were all #059669, which made the
+      // one row confirming a file is attached louder than the Submit button
+      // it sits above. The tick still carries the "attached" state; the card
+      // no longer shouts it.
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: const Color(0xFFECFDF5),
+          color: const Color(0xFFF8F9FB),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: const Color(0xFF059669), width: 1.5),
+          border: Border.all(color: const Color(0xFFE2E6EA)),
         ),
         child: Row(
           children: [
@@ -3138,7 +3315,7 @@ class _ReportModalState extends State<_ReportModal> {
                     style: GoogleFonts.beVietnamPro(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: const Color(0xFF065F46),
+                      color: _DS.textPrimary,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -3147,7 +3324,7 @@ class _ReportModalState extends State<_ReportModal> {
                       _fileSize!,
                       style: GoogleFonts.beVietnamPro(
                         fontSize: 11,
-                        color: const Color(0xFF059669),
+                        color: _DS.textSecondary,
                       ),
                     ),
                 ],
@@ -3448,129 +3625,6 @@ class _Colon extends StatelessWidget {
         fontSize: 18,
         fontWeight: FontWeight.w700,
         color: _DS.primary,
-      ),
-    ),
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Confirm dialog
-// ─────────────────────────────────────────────────────────────────────────────
-class _ConfirmDialog extends StatelessWidget {
-  final String title;
-  final String message;
-  final String confirmLabel;
-  final bool destructive;
-  const _ConfirmDialog({
-    required this.title,
-    required this.message,
-    required this.confirmLabel,
-    this.destructive = false,
-  });
-
-  @override
-  Widget build(BuildContext context) => Dialog(
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-    child: Container(
-      width: 420,
-      padding: const EdgeInsets.all(28),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: destructive ? const Color(0xFFFEF2F2) : _DS.primaryBg,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  destructive
-                      ? Icons.delete_outline_rounded
-                      : Icons.check_circle_outline_rounded,
-                  color: destructive ? const Color(0xFFDC2626) : _DS.primary,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Text(
-                title,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  color: _DS.textPrimary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            message,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 14,
-              color: _DS.textSecondary,
-              height: 1.5,
-            ),
-          ),
-          const SizedBox(height: 24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              OutlinedButton(
-                onPressed: () => Navigator.pop(context, false),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Color(0xFFE2E6EA)),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 11,
-                  ),
-                ),
-                child: Text(
-                  'Cancel',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    color: const Color(0xFF374151),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: destructive
-                      ? const Color(0xFFDC2626)
-                      : _DS.primary,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 11,
-                  ),
-                ),
-                child: Text(
-                  confirmLabel,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
     ),
   );

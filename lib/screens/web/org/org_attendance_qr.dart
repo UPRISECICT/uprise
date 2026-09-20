@@ -3006,7 +3006,7 @@ void showRegistrationAnswers(
       subtitle: entries.isNotEmpty ? entries.first.value : studentName,
       width: 460,
       maxHeightFraction: 0.75,
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: entries.isEmpty
             ? Text(

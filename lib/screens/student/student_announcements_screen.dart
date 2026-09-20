@@ -78,27 +78,28 @@ Future<void> _goToLinkedEvent(
 //  SHOULD SHOW ANNOUNCEMENT
 // ─────────────────────────────────────────────────────────────
 bool shouldShowAnnouncementToStudent(Map<String, dynamic> data) {
-  if (data['isPublished'] == false) {
-    return false;
-  }
   if (data['isArchived'] == true) {
     return false;
   }
 
+  // Scheduled posts are written with isPublished: false at creation time and
+  // nothing ever flips it back to true — there's no cron/Cloud Function that
+  // does it — so isPublished can't be trusted for these. Whether a scheduled
+  // post is visible depends entirely on whether scheduledPublishDate has
+  // already passed.
   final isScheduled = data['isScheduled'] == true;
-  if (!isScheduled) {
+  if (isScheduled) {
+    final scheduledPublishDate = data['scheduledPublishDate'];
+    if (scheduledPublishDate is Timestamp) {
+      return !scheduledPublishDate.toDate().isAfter(DateTime.now());
+    }
+    if (scheduledPublishDate is DateTime) {
+      return !scheduledPublishDate.isAfter(DateTime.now());
+    }
     return true;
   }
 
-  final scheduledPublishDate = data['scheduledPublishDate'];
-  if (scheduledPublishDate is Timestamp) {
-    return !scheduledPublishDate.toDate().isAfter(DateTime.now());
-  }
-  if (scheduledPublishDate is DateTime) {
-    return !scheduledPublishDate.isAfter(DateTime.now());
-  }
-
-  return true;
+  return data['isPublished'] != false;
 }
 
 // ─────────────────────────────────────────────────────────────

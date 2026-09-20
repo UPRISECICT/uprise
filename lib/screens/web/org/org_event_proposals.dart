@@ -515,7 +515,7 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
   }
 
   // ── Archive logic ────────────────────────────────────────────────
-  void _confirmArchive(String docId, String title) {
+  void _confirmArchive(String docId, String title, String status) {
     showDialog(
       context: context,
       builder: (_) => AppConfirmationDialog(
@@ -525,18 +525,23 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
         confirmLabel: 'Archive',
         accentColor: const Color(0xFFF59E0B),
         icon: Icons.archive_outlined,
-        onConfirm: () => _archiveProposal(docId, title),
+        onConfirm: () => _archiveProposal(docId, title, status),
       ),
     );
   }
 
-  Future<void> _archiveProposal(String docId, String title) async {
+  Future<void> _archiveProposal(String docId, String title, String status) async {
     try {
       await FirebaseFirestore.instance
           .collection('event_proposals')
           .doc(docId)
           .update({
             'status': 'archived',
+            // Archiving used to overwrite status straight to 'archived' with
+            // no memory of what it was — that made restoring impossible, since
+            // there was nothing to restore *to*. This is what _restoreProposal
+            // reads back.
+            'previousStatus': status,
             'archivedAt': FieldValue.serverTimestamp(),
             'archivedBy': FirebaseAuth.instance.currentUser?.uid ?? '',
           });
@@ -551,6 +556,56 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
     } catch (e) {
       if (mounted) {
         AppToast.error(context, 'Archive failed: $e');
+      }
+    }
+  }
+
+  void _confirmRestore(String docId, String title) {
+    showDialog(
+      context: context,
+      builder: (_) => AppConfirmationDialog(
+        title: 'Restore Proposal',
+        message: 'Restore "$title" from the archive?',
+        confirmLabel: 'Restore',
+        accentColor: UpriseColors.primaryDark,
+        icon: Icons.unarchive_outlined,
+        onConfirm: () => _restoreProposal(docId, title),
+      ),
+    );
+  }
+
+  Future<void> _restoreProposal(String docId, String title) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('event_proposals')
+          .doc(docId)
+          .get();
+      // Falls back to 'approved' for proposals archived before
+      // previousStatus existed — approved is the far more common archive
+      // path (rejected proposals are rarely archived) so it's the safer
+      // default over leaving the proposal stuck as 'archived'.
+      final previousStatus =
+          (doc.data()?['previousStatus'] as String?) ?? 'approved';
+      await FirebaseFirestore.instance
+          .collection('event_proposals')
+          .doc(docId)
+          .update({
+            'status': previousStatus,
+            'previousStatus': FieldValue.delete(),
+            'archivedAt': FieldValue.delete(),
+            'archivedBy': FieldValue.delete(),
+          });
+      await activity_log.ActivityLogger.log(
+        action: 'restore_proposal',
+        module: 'event_proposals',
+        details: {'orgId': widget.orgId, 'proposalId': docId, 'title': title},
+      );
+      if (mounted) {
+        AppToast.success(context, 'Proposal "$title" has been restored');
+      }
+    } catch (e) {
+      if (mounted) {
+        AppToast.error(context, 'Restore failed: $e');
       }
     }
   }
@@ -1521,13 +1576,18 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
                         ? () => _openLiveTrackerModal(data)
                         : null;
                     final onArchive =
-                        (isPastEvent ||
-                            status == 'approved' ||
-                            status == 'rejected')
+                        (status != 'archived' &&
+                            (isPastEvent ||
+                                status == 'approved' ||
+                                status == 'rejected'))
                         ? () => _confirmArchive(
                             docId,
                             data['title'] ?? 'Proposal',
+                            status,
                           )
+                        : null;
+                    final onRestore = status == 'archived'
+                        ? () => _confirmRestore(docId, data['title'] ?? 'Proposal')
                         : null;
 
                     // Full desktop table (sidebar + generous content width)
@@ -1548,6 +1608,7 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
                         onPublish: onPublish,
                         onLiveTracker: onLiveTracker,
                         onArchive: onArchive,
+                        onRestore: onRestore,
                       );
                     }
 
@@ -1605,6 +1666,13 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
                             tooltip: 'Archive',
                             color: const Color(0xFF6B7280),
                             onTap: onArchive,
+                          ),
+                        if (onRestore != null)
+                          OrgActionIconButton(
+                            icon: Icons.unarchive_outlined,
+                            tooltip: 'Restore',
+                            color: UpriseColors.primaryDark,
+                            onTap: onRestore,
                           ),
                       ],
                     );
@@ -1874,6 +1942,7 @@ class _ActionPopupButton extends StatelessWidget {
   final VoidCallback? onPublish;
   final VoidCallback? onLiveTracker;
   final VoidCallback? onArchive;
+  final VoidCallback? onRestore;
   const _ActionPopupButton({
     required this.onView,
     this.isPastEvent = false,
@@ -1883,6 +1952,7 @@ class _ActionPopupButton extends StatelessWidget {
     this.onPublish,
     this.onLiveTracker,
     this.onArchive,
+    this.onRestore,
   });
 
   Widget _menuRow(IconData icon, Color color, String label) => Row(
@@ -1968,6 +2038,15 @@ class _ActionPopupButton extends StatelessWidget {
             Icons.inventory_2_outlined,
             const Color(0xFF6B7280),
             'Archive',
+          ),
+        ),
+      if (onRestore != null)
+        PopupMenuItem<VoidCallback>(
+          value: onRestore,
+          child: _menuRow(
+            Icons.unarchive_outlined,
+            UpriseColors.primaryDark,
+            'Restore',
           ),
         ),
     ];

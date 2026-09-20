@@ -45,8 +45,23 @@ exports.sendPushForNotification = functions.firestore
 
         const userRef = admin.firestore().collection('users').doc(notif.userId);
         const userSnap = await userRef.get();
-        const tokens = userSnap.exists ? (userSnap.data().fcmTokens || []) : [];
+        if (!userSnap.exists) return null;
+        const userData = userSnap.data();
+        const tokens = userData.fcmTokens || [];
         if (tokens.length === 0) return null;
+
+        // Mirrors student_notifications_screen.dart's client-side portal
+        // filter. That filter only hides the doc from the in-app list —
+        // without this same check here, a student/guest who is also tagged
+        // to an org (via orgId) still got a real phone push for an
+        // org-portal-only notification (e.g. sendToOrgMembers broadcasts),
+        // even though it never showed up in their notification list.
+        const role = userData.role || '';
+        const isMobileUser = role === 'student' || role === 'guest';
+        const portal = notif.portal;
+        const mobileVisiblePortal =
+            portal === undefined || portal === null || portal === '' || portal === 'student';
+        if (isMobileUser && !mobileVisiblePortal) return null;
 
         const message = {
             notification: {

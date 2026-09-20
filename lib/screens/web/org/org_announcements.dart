@@ -1098,6 +1098,52 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
     }
   }
 
+  // Categories are only ever removed from the picker, never force-deleted
+  // off existing posts — an announcement already tagged with this text keeps
+  // it. If any post still uses that text, `_loadOrganizationProfile`'s
+  // postCategories fallback will bring it right back on the next reload,
+  // which is the intended self-healing behavior (still-in-use categories
+  // stay pickable).
+  Future<void> _deleteCategory(String category) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AppConfirmationDialog(
+        title: 'Delete Category',
+        message:
+            'Delete "$category" from your category list? Announcements already tagged with it keep the tag.',
+        confirmLabel: 'Delete',
+        accentColor: _C.error,
+        icon: Icons.delete_outline_rounded,
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('organizations')
+          .doc(widget.orgId)
+          .set({
+            'announcementCategories': FieldValue.arrayRemove([category]),
+          }, SetOptions(merge: true));
+      await activity_log.ActivityLogger.log(
+        action: 'delete_announcement_category',
+        module: 'announcements',
+        details: {'orgId': widget.orgId, 'category': category},
+      );
+      if (mounted) {
+        setState(() {
+          _customCategories.removeWhere(
+            (existing) => existing.toLowerCase() == category.toLowerCase(),
+          );
+          if (_selectedCategory == category) _selectedCategory = 'All Announcement';
+        });
+        _snack('Category deleted');
+      }
+    } catch (error) {
+      if (mounted) _snack('Could not delete category: $error', isError: true);
+    }
+  }
+
   // ── Pinned panel (wide layout) ──────────────────────────────────────────────
   Widget _buildPinnedPanel(List<AnnouncementModel> all) {
     final pinned = all.where((a) => a.isPinned).take(_maxPinned).toList();
@@ -1901,7 +1947,7 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
-              itemBuilder: (_) => [
+              itemBuilder: (menuCtx) => [
                 ..._allCategories.map(
                   (c) => PopupMenuItem<String>(
                     value: c,
@@ -1914,14 +1960,37 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
                           color: category == c ? _C.primaryDark : _C.darkGray,
                         ),
                         const SizedBox(width: 10),
-                        Text(
-                          c,
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13,
-                            fontWeight: category == c
-                                ? FontWeight.w600
-                                : FontWeight.w400,
-                            color: category == c ? _C.primaryDark : _C.charcoal,
+                        Expanded(
+                          child: Text(
+                            c,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13,
+                              fontWeight: category == c
+                                  ? FontWeight.w600
+                                  : FontWeight.w400,
+                              color: category == c
+                                  ? _C.primaryDark
+                                  : _C.charcoal,
+                            ),
+                          ),
+                        ),
+                        // Its own tap target, so tapping it doesn't also
+                        // select the category via the PopupMenuItem's
+                        // whole-row InkWell (verified — the InkResponse here
+                        // wins the gesture arena for taps landing on it).
+                        InkResponse(
+                          radius: 16,
+                          onTap: () {
+                            Navigator.of(menuCtx).pop();
+                            _deleteCategory(c);
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.all(4),
+                            child: Icon(
+                              Icons.delete_outline_rounded,
+                              size: 15,
+                              color: _C.textFaint,
+                            ),
                           ),
                         ),
                       ],

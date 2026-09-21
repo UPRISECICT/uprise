@@ -7,12 +7,13 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../widgets/student/app_colors.dart';
 import '../../widgets/student/app_image.dart';
 import '../../widgets/student/student_app_bar.dart';
 import '../../widgets/common/loading_widget.dart';
-import '../../widgets/product_photo_gallery.dart';
+import '../../utils/social_link_util.dart';
 import 'student_organization_details_screen.dart';
 
 // ─────────────────────────────────────────────────────────────
@@ -37,7 +38,6 @@ class _DS {
   static const Color line = AppColors.divider; // hairline borders
   static const Color well = AppColors.surfaceTint; // image backgrounds
   static const Color success = AppColors.success;
-  static const Color successBg = AppColors.successBg;
   static const Color danger = AppColors.error;
   static const Color dangerBg = AppColors.errorBg;
   static const Color heart = danger; // liked state
@@ -45,7 +45,6 @@ class _DS {
   static const double radiusSm = 12;
   static const double radiusMd = 18;
   static const double radiusLg = 24;
-  static const double radiusXl = 26;
   static const double radiusPill = 100;
 
   static const double gutter = 16;
@@ -71,9 +70,9 @@ class _DS {
     0, 0, 0, 1, 0, //
   ]);
 
-  // Details sheet.
-  static const double sheetHeightFactor = .9;
-  static const double galleryHeight = 330;
+  // Details page.
+  static const double galleryHeight = 320;
+  static const double thumbSize = 58; // photo strip under the hero
 
   /// Small sentence-case label, e.g. the category above a product name.
   /// Replaces the old tracked-out all-caps style.
@@ -156,7 +155,7 @@ class _Product {
   });
 
   // First non-empty of the inline photo and the URL — same order the guest
-  // catalog uses. ProductPhotoGallery renders either kind via AppImage.
+  // catalog uses. AppImage renders either kind.
   List<String> get displayPhotos {
     if (rotationPhotos.isNotEmpty) return rotationPhotos;
     final single = firstNonEmptyImageSource([imageBase64, imageUrl]);
@@ -185,8 +184,14 @@ class _Product {
         : <ProductVariant>[];
 
     final rawRotationPhotos = data['rotationPhotos'];
+    // Empty slots are real data: org_merchandise.dart stores '' for a
+    // rotation slot the officer cleared. Kept, they put a blank hero in
+    // the gallery and count an angle the product does not have.
     final rotationPhotos = rawRotationPhotos is List
-        ? rawRotationPhotos.whereType<String>().toList()
+        ? rawRotationPhotos
+              .whereType<String>()
+              .where((photo) => photo.isNotEmpty)
+              .toList()
         : <String>[];
 
     final rawLikedBy = data['likedBy'];
@@ -277,11 +282,21 @@ class _OrgBrief {
   final String shortName;
   final String logoUrl;
 
+  // How a student reaches the seller. Ordering happens by message —
+  // there is no checkout in this app — so the details page needs a real
+  // destination rather than a Buy button that leads nowhere.
+  final String facebook;
+  final String instagram;
+  final String gmail;
+
   const _OrgBrief({
     required this.id,
     required this.name,
     this.shortName = '',
     this.logoUrl = '',
+    this.facebook = '',
+    this.instagram = '',
+    this.gmail = '',
   });
 
   factory _OrgBrief.fromDoc(String id, Map<String, dynamic> data) {
@@ -292,6 +307,9 @@ class _OrgBrief {
       name: name,
       shortName: read('shortName'),
       logoUrl: read('logoUrl'),
+      facebook: read('facebook'),
+      instagram: read('instagram'),
+      gmail: read('gmail'),
     );
   }
 
@@ -299,9 +317,53 @@ class _OrgBrief {
   /// full name rarely fits a chip at grid width.
   String get displayName => shortName.isNotEmpty ? shortName : name;
 
-  /// Only worth showing under the short name when it adds something.
-  bool get hasDistinctFullName =>
-      shortName.isNotEmpty && name.isNotEmpty && name != shortName;
+  /// The first channel this organization actually published, in the order
+  /// a student is most likely to get an answer. Null when the officers
+  /// have not filled in any social links on their profile.
+  _OrgContact? get contact {
+    if (facebook.isNotEmpty) {
+      return _OrgContact(
+        platform: 'facebook',
+        icon: Icons.facebook_rounded,
+        url: normalizeSocialUrl('facebook', facebook),
+      );
+    }
+    if (instagram.isNotEmpty) {
+      return _OrgContact(
+        platform: 'instagram',
+        icon: Icons.camera_alt_outlined,
+        url: normalizeSocialUrl('instagram', instagram),
+      );
+    }
+    if (gmail.isNotEmpty) {
+      return _OrgContact(
+        platform: 'gmail',
+        icon: Icons.mail_outline_rounded,
+        url: normalizeSocialUrl('gmail', gmail),
+      );
+    }
+    return null;
+  }
+}
+
+/// A published way to reach an organization.
+class _OrgContact {
+  final String platform;
+  final IconData icon;
+  final String url;
+
+  const _OrgContact({
+    required this.platform,
+    required this.icon,
+    required this.url,
+  });
+
+  /// Named in the failure message when the link cannot be opened.
+  String get label => switch (platform) {
+    'facebook' => 'Facebook',
+    'instagram' => 'Instagram',
+    _ => 'email',
+  };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -500,7 +562,6 @@ class _ProductsTabState extends State<_ProductsTab> {
 
         return Column(
           children: [
-            _buildCatalogHeader(),
             _buildSearchAndFilters(
               categories: ['All', ...categories],
               organizations: ['All', ...organizations],
@@ -512,68 +573,14 @@ class _ProductsTabState extends State<_ProductsTab> {
                       title: 'No merchandise found',
                       subtitle: _search.trim().isNotEmpty
                           ? 'Try a different search term.'
-                          : 'No merchandise is available yet.',
+                          : 'Official items from CICT student '
+                                'organizations will show up here.',
                     )
                   : _buildCatalog(shownProducts),
             ),
           ],
         );
       },
-    );
-  }
-
-  // Header and search read as one white surface with a single hairline under
-  // it, instead of two stacked blocks.
-  Widget _buildCatalogHeader() {
-    return Container(
-      width: double.infinity,
-      color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(_DS.gutter, 14, _DS.gutter, 12),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: _DS.brandSoft,
-              borderRadius: BorderRadius.circular(_DS.radiusSm),
-            ),
-            child: const Icon(
-              Icons.storefront_rounded,
-              color: _DS.brand,
-              size: 19,
-            ),
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Official Merchandise',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    height: 1.2,
-                    color: _DS.ink,
-                  ),
-                ),
-                SizedBox(height: 2),
-                Text(
-                  'Explore official and promotional items from CICT student organizations.',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    height: 1.4,
-                    color: _DS.body,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -591,7 +598,7 @@ class _ProductsTabState extends State<_ProductsTab> {
         color: Colors.white,
         border: Border(bottom: BorderSide(color: _DS.line)),
       ),
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(top: 10, bottom: 10),
       child: Column(
         children: [
           Padding(
@@ -676,7 +683,7 @@ class _ProductsTabState extends State<_ProductsTab> {
               ],
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           // Height is held while the categories load, so the grid doesn't
           // jump down a row when they arrive.
           SizedBox(
@@ -747,25 +754,36 @@ class _ProductsTabState extends State<_ProductsTab> {
     final count = products.length;
     final countLabel = count == 1 ? '1 item' : '$count items';
 
+    // A bare "24 items" above an untouched catalog is a line of chrome
+    // that tells the reader nothing they can't see. It only means
+    // something once a search, a filter or Trending has changed what is
+    // in front of them.
+    final narrowed =
+        _search.trim().isNotEmpty ||
+        _selectedCategory != 'All' ||
+        _selectedOrg != 'All' ||
+        _sortTrending;
+
     return CustomScrollView(
       slivers: [
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(_DS.gutter, 14, _DS.gutter, 10),
-          sliver: SliverToBoxAdapter(
-            child: Text(
-              // Says the order out loud when Trending changed it, since the
-              // flame toggle up top is icon-only.
-              _sortTrending ? '$countLabel, most liked first' : countLabel,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: _DS.body,
+        if (narrowed)
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(_DS.gutter, 12, _DS.gutter, 2),
+            sliver: SliverToBoxAdapter(
+              child: Text(
+                // Says the order out loud when Trending changed it, since
+                // the flame toggle up top is icon-only.
+                _sortTrending ? '$countLabel, most liked first' : countLabel,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: _DS.body,
+                ),
               ),
             ),
           ),
-        ),
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(_DS.gutter, 0, _DS.gutter, 28),
+          padding: const EdgeInsets.fromLTRB(_DS.gutter, 12, _DS.gutter, 28),
           sliver: SliverGrid(
             delegate: SliverChildBuilderDelegate((context, index) {
               final product = products[index];
@@ -888,11 +906,11 @@ class _ProductsTabState extends State<_ProductsTab> {
   }
 
   void _showProductDetails(_Product product, _OrgBrief? org) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _ProductDetailsSheet(product: product, org: org),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _ProductDetailsPage(product: product, org: org),
+      ),
     );
   }
 }
@@ -1037,33 +1055,33 @@ class _ProductCard extends StatelessWidget {
                     const Spacer(),
                     // "From" when variants price differently, so a tile can
                     // never advertise less than the item actually costs.
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
-                      children: [
-                        if (product.hasPriceRange) ...[
-                          const Text(
-                            'From ',
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w600,
-                              color: _DS.body,
+                    // One paragraph, for the same reason the action bar uses one: a
+                    // baseline-aligned Row with a lone Flexible child cannot be laid out
+                    // wherever its height has to be measured rather than given.
+                    Text.rich(
+                      TextSpan(
+                        children: [
+                          if (product.hasPriceRange)
+                            const TextSpan(
+                              text: 'From ',
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w600,
+                                color: _DS.body,
+                              ),
                             ),
-                          ),
-                        ],
-                        Flexible(
-                          child: Text(
-                            _formatPeso(product.minPrice),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          TextSpan(
+                            text: _formatPeso(product.minPrice),
                             style: TextStyle(
                               fontSize: 17,
                               fontWeight: FontWeight.w800,
                               color: available ? _DS.brand : _DS.muted,
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 3),
                     Row(
@@ -1126,326 +1144,396 @@ class _ProductCard extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────
 // Product Details – display only
+//
+// A pushed page rather than a 90%-height modal sheet. The sheet was already
+// tall enough to be a page in all but name, and a persistent action bar has
+// nowhere stable to sit inside a scrolling sheet.
 // ─────────────────────────────────────────────────────────────
-class _ProductDetailsSheet extends StatelessWidget {
+class _ProductDetailsPage extends StatefulWidget {
   final _Product product;
   final _OrgBrief? org;
 
-  const _ProductDetailsSheet({required this.product, required this.org});
+  const _ProductDetailsPage({required this.product, required this.org});
+
+  @override
+  State<_ProductDetailsPage> createState() => _ProductDetailsPageState();
+}
+
+class _ProductDetailsPageState extends State<_ProductDetailsPage> {
+  final PageController _photoController = PageController();
+  int _photoIndex = 0;
+
+  _Product get _product => widget.product;
+  _OrgBrief? get _org => widget.org;
+
+  @override
+  void dispose() {
+    _photoController.dispose();
+    super.dispose();
+  }
+
+  void _selectPhoto(int index) {
+    setState(() => _photoIndex = index);
+    _photoController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final photos = product.displayPhotos;
-    final available = product.inStock && product.status != 'discontinued';
+    final photos = _product.displayPhotos;
 
-    return Container(
-      height: MediaQuery.of(context).size.height * _DS.sheetHeightFactor,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(_DS.radiusXl)),
-      ),
-      child: Column(
-        children: [
-          const Padding(
-            padding: EdgeInsets.only(top: 10),
-            child: _SheetHandle(),
-          ),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(18, 14, 18, 30),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // The old "Merchandise Details" title row only restated what
-                  // the sheet obviously was; the close button now floats on
-                  // the photo, top-left, clear of the gallery's own n/N
-                  // counter at top-right.
-                  Container(
-                    height: _DS.galleryHeight,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: _DS.well,
-                      borderRadius: BorderRadius.circular(_DS.radiusLg),
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        photos.isEmpty
-                            ? const _NoPhoto()
-                            : ProductPhotoGallery(
-                                photosBase64: photos,
-                                height: _DS.galleryHeight,
-                              ),
-                        Positioned(
-                          top: 10,
-                          left: 10,
-                          child: _SheetCloseButton(
-                            onPressed: () => Navigator.pop(context),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (photos.length > 1) ...[
-                    const SizedBox(height: 9),
-                    const Center(
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.swipe_rounded, size: 15, color: _DS.muted),
-                          SizedBox(width: 5),
-                          Text(
-                            'Swipe to explore different angles',
-                            style: TextStyle(fontSize: 11, color: _DS.body),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 18),
-                  if (org != null) ...[
-                    _OrgHeaderRow(org: org!),
-                    const SizedBox(height: 16),
-                  ],
-                  // Category → name → price + availability read as one header
-                  // block, with the like button riding alongside the name the
-                  // way a favourite sits beside a product title.
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              product.category.isEmpty
-                                  ? 'Official merchandise'
-                                  : product.category,
-                              style: _DS.label,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              product.name,
-                              style: const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.w800,
-                                color: _DS.ink,
-                                height: 1.2,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      // Liking lives here rather than on the card, where a
-                      // heart sharing the photo with the tap-to-open target
-                      // was easy to hit by accident.
-                      _LikeButton(
-                        productId: product.id,
-                        likedBy: product.likedBy,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              product.hasPriceRange
-                                  ? '${_formatPeso(product.minPrice)} – '
-                                        '${_formatPeso(product.maxPrice)}'
-                                  : _formatPeso(product.price),
-                              style: const TextStyle(
-                                fontSize: 25,
-                                fontWeight: FontWeight.w800,
-                                color: _DS.brand,
-                              ),
-                            ),
-                            // Says why there are two numbers, instead of
-                            // leaving the reader to work it out from the
-                            // variants table further down.
-                            if (product.hasPriceRange)
-                              const Text(
-                                'Price depends on the variant',
-                                style: TextStyle(fontSize: 11, color: _DS.body),
-                              ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      _AvailabilityPill(
-                        available: available,
-                        label: product.availabilityLabel,
-                      ),
-                    ],
-                  ),
-                  if (product.description.trim().isNotEmpty) ...[
-                    const SizedBox(height: 24),
-                    const _SectionTitle(title: 'About this merchandise'),
-                    const SizedBox(height: 8),
-                    Text(
-                      product.description,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        height: 1.6,
-                        color: _DS.body,
-                      ),
-                    ),
-                  ],
-                  if (product.variants.isNotEmpty) ...[
-                    const SizedBox(height: 24),
-                    const _SectionTitle(title: 'Available variants'),
-                    const SizedBox(height: 10),
-                    // One panel with hairlines between rows reads as a single
-                    // list, where separate bordered tiles read as N buttons.
-                    Container(
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: _DS.well,
-                        borderRadius: BorderRadius.circular(_DS.radiusMd),
-                        border: Border.all(color: _DS.line),
-                      ),
-                      child: Column(
-                        children: [
-                          for (var i = 0; i < product.variants.length; i++) ...[
-                            if (i > 0)
-                              const Divider(
-                                height: 1,
-                                thickness: 1,
-                                color: _DS.line,
-                              ),
-                            _VariantRow(
-                              productPrice: product.price,
-                              variant: product.variants[i],
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 24),
-                  // Demoted to a quiet footnote: as a filled orange panel this
-                  // competed with the price for attention, even though it's
-                  // boilerplate that's identical on every product.
-                  const Divider(height: 1, color: _DS.line),
-                  const SizedBox(height: 14),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(
-                        Icons.info_outline_rounded,
-                        size: 15,
-                        color: _DS.muted,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          org == null
-                              ? 'This catalog is for viewing and promotional '
-                                    'purposes only. Coordinate directly with the '
-                                    'organization for availability and purchase '
-                                    'arrangements.'
-                              : 'This catalog is for viewing and promotional '
-                                    'purposes only. Message ${org!.displayName} '
-                                    'directly to ask about availability and how '
-                                    'to order.',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            height: 1.45,
-                            color: _DS.body,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: const StudentAppBar(title: 'Product Details'),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(_DS.gutter, 12, _DS.gutter, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _PhotoStage(
+              photos: photos,
+              controller: _photoController,
+              onPageChanged: (index) => setState(() => _photoIndex = index),
+            ),
+            if (photos.length > 1) ...[
+              const SizedBox(height: 10),
+              // Thumbnails replace the old "Swipe to explore different
+              // angles" caption: the other angles are shown rather than
+              // described, and tapping one is easier than discovering a
+              // swipe.
+              _PhotoThumbnails(
+                photos: photos,
+                activeIndex: _photoIndex,
+                onSelected: _selectPhoto,
+              ),
+            ],
+            const SizedBox(height: 18),
+            // Category only when the product actually has one. It used to
+            // fall back to the words "Official merchandise", which told the
+            // reader nothing the screen hadn't already said.
+            if (_product.category.trim().isNotEmpty) ...[
+              Text(_product.category, style: _DS.label),
+              const SizedBox(height: 5),
+            ],
+            Text(
+              _product.name,
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                height: 1.25,
+                color: _DS.ink,
               ),
             ),
-          ),
-        ],
+            if (_org != null) ...[
+              const SizedBox(height: 8),
+              _SellerLine(org: _org!),
+            ],
+            if (_product.description.trim().isNotEmpty) ...[
+              const SizedBox(height: 22),
+              const _SectionTitle(title: 'About this merchandise'),
+              const SizedBox(height: 8),
+              Text(
+                _product.description,
+                style: const TextStyle(
+                  fontSize: 13,
+                  height: 1.6,
+                  color: _DS.body,
+                ),
+              ),
+            ],
+            if (_product.variants.isNotEmpty) ...[
+              const SizedBox(height: 22),
+              const _SectionTitle(title: 'Available variants'),
+              const SizedBox(height: 10),
+              // One panel with hairlines between rows reads as a single
+              // list, where separate bordered tiles read as N buttons.
+              Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: _DS.well,
+                  borderRadius: BorderRadius.circular(_DS.radiusMd),
+                  border: Border.all(color: _DS.line),
+                ),
+                child: Column(
+                  children: [
+                    for (var i = 0; i < _product.variants.length; i++) ...[
+                      if (i > 0)
+                        const Divider(height: 1, thickness: 1, color: _DS.line),
+                      _VariantRow(
+                        productPrice: _product.price,
+                        variant: _product.variants[i],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 22),
+            _PromoNote(org: _org),
+          ],
+        ),
+      ),
+      // Price, availability and the two things a student can actually do stay
+      // on screen while the variants scroll past.
+      bottomNavigationBar: _ProductActionBar(product: _product, org: _org),
+    );
+  }
+}
+
+/// The main photo. Swipeable when there is more than one, and driven by the
+/// same controller the thumbnail strip taps into.
+class _PhotoStage extends StatelessWidget {
+  final List<String> photos;
+  final PageController controller;
+  final ValueChanged<int> onPageChanged;
+
+  const _PhotoStage({
+    required this.photos,
+    required this.controller,
+    required this.onPageChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: _DS.galleryHeight,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: _DS.well,
+        borderRadius: BorderRadius.circular(_DS.radiusLg),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: photos.isEmpty
+          ? const _NoPhoto()
+          // No n/N counter here: the thumbnail strip below already says how
+          // many photos there are and which one is showing.
+          : PageView.builder(
+              controller: controller,
+              itemCount: photos.length,
+              onPageChanged: onPageChanged,
+              itemBuilder: (_, index) => AppImage(
+                source: photos[index],
+                fit: BoxFit.contain,
+                showLoadingIndicator: false,
+                placeholder: const _NoPhoto(),
+              ),
+            ),
+    );
+  }
+}
+
+/// Tappable strip of the product's other angles.
+class _PhotoThumbnails extends StatelessWidget {
+  final List<String> photos;
+  final int activeIndex;
+  final ValueChanged<int> onSelected;
+
+  const _PhotoThumbnails({
+    required this.photos,
+    required this.activeIndex,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: _DS.thumbSize,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: photos.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final active = index == activeIndex;
+
+          return Semantics(
+            selected: active,
+            button: true,
+            label: 'Photo ${index + 1} of ${photos.length}',
+            child: GestureDetector(
+              onTap: () => onSelected(index),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                width: _DS.thumbSize,
+                height: _DS.thumbSize,
+                decoration: BoxDecoration(
+                  color: _DS.well,
+                  borderRadius: BorderRadius.circular(_DS.radiusSm),
+                  border: Border.all(
+                    color: active ? _DS.brand : _DS.line,
+                    width: active ? 2 : 1,
+                  ),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: AppImage(
+                  source: photos[index],
+                  fit: BoxFit.cover,
+                  showLoadingIndicator: false,
+                  placeholder: const _NoPhoto(),
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
 }
 
-/// Seller row at the top of the details sheet: logo, organization name, and a
-/// way through to that organization's page.
-///
-/// The sheet used to tell the reader to "coordinate directly with the
-/// organization" without ever naming one, and with no route to it.
-class _OrgHeaderRow extends StatelessWidget {
+/// The seller, on one line directly under the product name — where a product
+/// page puts it. This replaces a boxed header panel that spent a whole card
+/// on a logo and a name.
+class _SellerLine extends StatelessWidget {
   final _OrgBrief org;
 
-  const _OrgHeaderRow({required this.org});
+  const _SellerLine({required this.org});
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: _DS.well,
-      borderRadius: BorderRadius.circular(_DS.radiusMd),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(_DS.radiusMd),
-        onTap: () {
-          // Captured before the pop: pushing through a context whose route
-          // has already been removed is not safe.
-          final navigator = Navigator.of(context);
-          navigator.pop();
-          navigator.push(
-            MaterialPageRoute(
-              builder: (_) => StudentOrganizationsDetailsScreen(orgId: org.id),
+    return InkWell(
+      borderRadius: BorderRadius.circular(_DS.radiusPill),
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => StudentOrganizationsDetailsScreen(orgId: org.id),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _OrgAvatar(org: org, size: 22),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                org.displayName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: _DS.body,
+                ),
+              ),
             ),
-          );
-        },
+            const Icon(Icons.chevron_right_rounded, size: 18, color: _DS.muted),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Sticky bar: what the item costs, whether it can be had, and the only two
+/// things a student can actually do here — save it, or ask the seller.
+///
+/// The reference design puts a cart and a "Buy now" here. There is no cart,
+/// no checkout and no order record in this app, so those would have been
+/// buttons that lead nowhere; messaging the organization is how a purchase
+/// is actually arranged.
+class _ProductActionBar extends StatelessWidget {
+  final _Product product;
+  final _OrgBrief? org;
+
+  const _ProductActionBar({required this.product, required this.org});
+
+  @override
+  Widget build(BuildContext context) {
+    final available = product.available;
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: _DS.line)),
+      ),
+      child: SafeArea(
+        top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+          padding: const EdgeInsets.fromLTRB(_DS.gutter, 10, _DS.gutter, 10),
           child: Row(
             children: [
-              _OrgAvatar(org: org, size: 38),
-              const SizedBox(width: 12),
               Expanded(
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Sold by',
-                      style: TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w600,
-                        color: _DS.muted,
+                    // One paragraph rather than a baseline-aligned Row.
+                    //
+                    // A Row with CrossAxisAlignment.baseline whose only child is Flexible
+                    // cannot be laid out here: this Column is MainAxisSize.min inside the
+                    // bottomNavigationBar slot, which is loosely constrained, so the flex
+                    // sizing pass asks the flexible child for a baseline before laying it
+                    // out. That threw "RenderBox was not laid out" and took the whole page
+                    // down to a blank white body — no details, no action bar.
+                    //
+                    // Products priced by variant survived it, because the "From " Text gave
+                    // the row a second, inflexible child to take the baseline from. That is
+                    // why details opened for some products and not for others.
+                    //
+                    // Spans inside one paragraph share a baseline for free.
+                    Text.rich(
+                      TextSpan(
+                        children: [
+                          if (product.hasPriceRange)
+                            const TextSpan(
+                              text: 'From ',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: _DS.body,
+                              ),
+                            ),
+                          TextSpan(
+                            text: _formatPeso(product.minPrice),
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                              color: available ? _DS.brand : _DS.muted,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 1),
-                    Text(
-                      org.displayName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: _DS.ink,
-                      ),
                     ),
-                    if (org.hasDistinctFullName)
-                      Text(
-                        org.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 11, color: _DS.body),
-                      ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: available ? _DS.success : _DS.danger,
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                        Flexible(
+                          child: Text(
+                            product.availabilityLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: _DS.body,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              const Icon(
-                Icons.chevron_right_rounded,
-                size: 20,
-                color: _DS.muted,
-              ),
+              const SizedBox(width: 10),
+              _LikeButton(productId: product.id, likedBy: product.likedBy),
+              if (org != null) ...[
+                const SizedBox(width: 8),
+                _ContactButton(org: org!),
+              ],
             ],
           ),
         ),
@@ -1454,24 +1542,109 @@ class _OrgHeaderRow extends StatelessWidget {
   }
 }
 
-/// Close button that floats over the details photo. The frosted white disc
-/// keeps it legible on both light product shots and dark ones.
-class _SheetCloseButton extends StatelessWidget {
-  final VoidCallback onPressed;
+/// Opens the organization's messaging channel, or its page when it has not
+/// listed one.
+class _ContactButton extends StatelessWidget {
+  final _OrgBrief org;
 
-  const _SheetCloseButton({required this.onPressed});
+  const _ContactButton({required this.org});
+
+  Future<void> _open(BuildContext context) async {
+    final contact = org.contact;
+
+    if (contact == null) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => StudentOrganizationsDetailsScreen(orgId: org.id),
+        ),
+      );
+      return;
+    }
+
+    final messenger = ScaffoldMessenger.of(context);
+    final uri = Uri.tryParse(contact.url);
+    final opened =
+        uri != null &&
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+
+    if (!opened) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Could not open ${contact.label}.')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white.withAlpha(235),
-      shape: const CircleBorder(side: BorderSide(color: _DS.line)),
-      clipBehavior: Clip.antiAlias,
-      child: IconButton(
-        tooltip: 'Close',
-        onPressed: onPressed,
-        icon: const Icon(Icons.close_rounded, size: 20, color: _DS.ink),
+    final contact = org.contact;
+
+    return SizedBox(
+      height: _DS.controlHeight,
+      child: ElevatedButton.icon(
+        onPressed: () => _open(context),
+        icon: Icon(
+          contact?.icon ?? Icons.storefront_rounded,
+          size: 18,
+          color: Colors.white,
+        ),
+        label: Text(
+          contact == null ? 'Visit page' : 'Message',
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: Colors.white,
+          ),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: _DS.brand,
+          elevation: 0,
+          // The app theme gives every ElevatedButton
+          // minimumSize: Size(double.infinity, 48) so full-width buttons
+          // come for free. That is fine wherever the parent bounds the
+          // width, and fatal here: this button is a non-flex child of the
+          // action bar Row, and a Row lays those out with an unbounded
+          // maxWidth. An infinite *minimum* enforced against an unbounded
+          // maximum collapses to a tight infinite width, which throws
+          // "BoxConstraints forces an infinite width". The button then had
+          // no size, and the failure climbed to the Scaffold's
+          // bottomNavigationBar slot - a slot that paints nothing instead
+          // of an error box, which is why the whole page went white.
+          minimumSize: const Size(0, _DS.controlHeight),
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(_DS.radiusSm),
+          ),
+        ),
       ),
+    );
+  }
+}
+
+/// One line on why there is no Buy button. The old version spent four lines
+/// repeating what the action bar now says outright.
+class _PromoNote extends StatelessWidget {
+  final _OrgBrief? org;
+
+  const _PromoNote({required this.org});
+
+  @override
+  Widget build(BuildContext context) {
+    final seller = org == null ? 'the organization' : org!.displayName;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Icon(Icons.info_outline_rounded, size: 15, color: _DS.muted),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            'This catalog is for promotion only — orders are arranged '
+            'directly with $seller.',
+            style: const TextStyle(fontSize: 11, height: 1.45, color: _DS.body),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -2038,47 +2211,6 @@ class _StatusChip extends StatelessWidget {
           fontWeight: FontWeight.w700,
           color: _DS.danger,
         ),
-      ),
-    );
-  }
-}
-
-class _AvailabilityPill extends StatelessWidget {
-  final bool available;
-  final String label;
-
-  const _AvailabilityPill({required this.available, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    final color = available ? _DS.success : _DS.danger;
-
-    // Same dot the product card uses, so availability reads the same way on
-    // the rack and in the details sheet.
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: available ? _DS.successBg : _DS.dangerBg,
-        borderRadius: BorderRadius.circular(_DS.radiusPill),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: color),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: color,
-            ),
-          ),
-        ],
       ),
     );
   }

@@ -47,9 +47,9 @@ class _DS {
   static const double gridGapX = 12;
   static const double gridGapY = 16;
   static const double tileInset = 6; // photo inset inside a card
-  // Taller than the student card's: the guest card also carries a
-  // "Starts at" line and a stock count; sized to fit them at 1.3x text.
-  static const double cardInfoHeight = 124;
+  // Name, price and availability. Sized for the whole block at 1.3x text
+  // scale, since the price and availability lines are stacked now.
+  static const double cardInfoHeight = 110;
 
   /// ~60% desaturation for photos of unavailable items.
   static const ColorFilter unavailablePhoto = ColorFilter.matrix(<double>[
@@ -184,6 +184,88 @@ class _Product {
     if (variants.isNotEmpty) return variants.any((v) => v.stock > 0);
     return stock > 0;
   }
+
+  int get totalStock {
+    if (variants.isNotEmpty) {
+      return variants.fold<int>(0, (total, v) => total + v.stock);
+    }
+    return stock;
+  }
+
+  /// Lowest and highest price a buyer could actually pay, variants included.
+  ///
+  /// The catalog used to print the base price flat, so a product whose
+  /// variants carry a `priceOffset` advertised ₱120 and turned out to cost
+  /// ₱180 on the details sheet.
+  double get minPrice {
+    if (variants.isEmpty) return price;
+    return variants
+        .map((v) => price + (v.priceOffset ?? 0))
+        .reduce((a, b) => a < b ? a : b);
+  }
+
+  double get maxPrice {
+    if (variants.isEmpty) return price;
+    return variants
+        .map((v) => price + (v.priceOffset ?? 0))
+        .reduce((a, b) => a > b ? a : b);
+  }
+
+  bool get hasPriceRange => maxPrice - minPrice > 0.009;
+
+  bool get isDiscontinued => status == 'discontinued';
+
+  bool get available => inStock && !isDiscontinued;
+
+  /// One availability sentence, shared by the card and the details sheet on
+  /// both the student and guest catalogs — they used to disagree, one saying
+  /// "In stock" where the other said "23 in stock".
+  String get availabilityLabel {
+    if (isDiscontinued) return 'No longer available';
+    if (!inStock) return 'Out of stock';
+    final left = totalStock;
+    if (left > 0 && left <= 5) return 'Only $left left';
+    return 'In stock';
+  }
+}
+
+/// The selling organization, as the catalog needs to show it.
+///
+/// A promotional catalog that never names the seller leaves the reader with
+/// nothing to act on — the details sheet even said "coordinate directly with
+/// the organization" without saying which one. Organizations are already
+/// loaded here for the org filter, so attribution costs no extra read.
+class _OrgBrief {
+  final String id;
+  final String name;
+  final String shortName;
+  final String logoUrl;
+
+  const _OrgBrief({
+    required this.id,
+    required this.name,
+    this.shortName = '',
+    this.logoUrl = '',
+  });
+
+  factory _OrgBrief.fromDoc(String id, Map<String, dynamic> data) {
+    String read(String key) => (data[key] ?? '').toString().trim();
+    final name = read('name').isNotEmpty ? read('name') : read('orgName');
+    return _OrgBrief(
+      id: id,
+      name: name,
+      shortName: read('shortName'),
+      logoUrl: read('logoUrl'),
+    );
+  }
+
+  /// What fits on a product tile: the acronym when the org has one, since the
+  /// full name rarely fits a chip at grid width.
+  String get displayName => shortName.isNotEmpty ? shortName : name;
+
+  /// Only worth showing under the short name when it adds something.
+  bool get hasDistinctFullName =>
+      shortName.isNotEmpty && name.isNotEmpty && name != shortName;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -222,9 +304,11 @@ class _ProductsTabState extends State<_ProductsTab> {
   /// hides anything.
   bool _sortTrending = false;
 
-  List<String> _categories = ['All'];
-  List<String> _orgs = ['All'];
   final Map<String, String> _orgIdMap = {};
+
+  /// Active organizations by id — the source for naming the seller on every
+  /// card and in the details sheet.
+  final Map<String, _OrgBrief> _orgsById = {};
   bool _loadingFilters = true;
   // Null until _loadFilters() resolves — only then do we know which orgs are
   // active, so the product grid isn't briefly emptied by filtering against
@@ -234,7 +318,7 @@ class _ProductsTabState extends State<_ProductsTab> {
   @override
   void initState() {
     super.initState();
-    _loadFilters();
+    _loadOrganizations();
   }
 
   @override
@@ -243,52 +327,38 @@ class _ProductsTabState extends State<_ProductsTab> {
     super.dispose();
   }
 
-  Future<void> _loadFilters() async {
+  /// Loads organizations only.
+  ///
+  /// This used to also `.get()` the entire products collection a
+  /// second time
+  /// just to list the categories — while [_stream] was already streaming
+  /// those same documents, photos and all, since product images are stored
+  /// inline as base64. That was the whole catalog downloaded twice on a phone
+  /// connection. Categories are derived from the stream instead.
+  Future<void> _loadOrganizations() async {
     try {
       final orgSnapshot = await FirebaseFirestore.instance
           .collection('organizations')
           .where('status', isEqualTo: 'active')
           .get();
 
+      _orgIdMap.clear();
+      _orgsById.clear();
+
       for (final doc in orgSnapshot.docs) {
-        final name = doc.data()['name'] as String? ?? '';
-        if (name.isNotEmpty) {
-          _orgIdMap[name] = doc.id;
-        }
+        final brief = _OrgBrief.fromDoc(doc.id, doc.data());
+        if (brief.name.isEmpty) continue;
+        _orgIdMap[brief.name] = doc.id;
+        _orgsById[doc.id] = brief;
       }
 
-      final productsSnap = await FirebaseFirestore.instance
-          .collection('products')
-          .where('isArchived', isEqualTo: false)
-          .get();
-
-      final categories =
-          productsSnap.docs
-              .map((d) => d.data()['category'] as String? ?? '')
-              .where((cat) => cat.isNotEmpty)
-              .toSet()
-              .toList()
-            ..sort();
-
-      final productOrgIds = productsSnap.docs
-          .map((d) => d.data()['orgId'] as String? ?? '')
-          .where((id) => id.isNotEmpty)
-          .toSet();
-
-      final filteredOrgs =
-          _orgIdMap.entries
-              .where((entry) => productOrgIds.contains(entry.value))
-              .map((entry) => entry.key)
-              .toList()
-            ..sort();
-
+      if (!mounted) return;
       setState(() {
-        _categories = ['All', ...categories];
-        _orgs = ['All', ...filteredOrgs];
-        _activeOrgIds = _orgIdMap.values.toSet();
+        _activeOrgIds = _orgsById.keys.toSet();
         _loadingFilters = false;
       });
     } catch (_) {
+      if (!mounted) return;
       setState(() => _loadingFilters = false);
     }
   }
@@ -304,95 +374,130 @@ class _ProductsTabState extends State<_ProductsTab> {
   /// then id — otherwise equal-liked items would shuffle on every snapshot.
   List<_Product> _sortByLikes(List<_Product> products) {
     return [...products]..sort((a, b) {
-        final byLikes = b.likeCount.compareTo(a.likeCount);
-        if (byLikes != 0) return byLikes;
-        final byName = a.name.toLowerCase().compareTo(b.name.toLowerCase());
-        if (byName != 0) return byName;
-        return a.id.compareTo(b.id);
-      });
+      final byLikes = b.likeCount.compareTo(a.likeCount);
+      if (byLikes != 0) return byLikes;
+      final byName = a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      if (byName != 0) return byName;
+      return a.id.compareTo(b.id);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _buildSearchAndFilters(),
-
-        Expanded(
-          child: StreamBuilder<QuerySnapshot>(
-            stream: _stream,
-            builder: (ctx, snap) {
-              if (snap.connectionState == ConnectionState.waiting) {
-                return const Center(
-                  child: CircularProgressIndicator(color: _DS.brand),
-                );
-              }
-              if (snap.hasError) {
-                return _EmptyHint(
+    // The filter row used to sit outside the stream, so it could only offer
+    // categories from a second, separate fetch. Everything is built from one
+    // snapshot now.
+    return StreamBuilder<QuerySnapshot>(
+      stream: _stream,
+      builder: (ctx, snap) {
+        if (snap.hasError) {
+          return Column(
+            children: [
+              _buildSearchAndFilters(
+                categories: const ['All'],
+                organizations: const ['All'],
+              ),
+              Expanded(
+                child: _EmptyHint(
                   icon: Icons.error_outline,
                   title: 'Something went wrong',
                   subtitle: snap.error.toString(),
-                );
-              }
+                ),
+              ),
+            ],
+          );
+        }
 
-              var products = (snap.data?.docs ?? [])
-                  .map((d) => _Product.fromFirestore(d))
-                  .toList();
+        final loading = snap.connectionState == ConnectionState.waiting;
 
-              final activeOrgIds = _activeOrgIds;
-              if (activeOrgIds != null) {
-                // Hide merch from organizations the admin has deactivated.
-                products = products
-                    .where((p) => activeOrgIds.contains(p.orgId))
-                    .toList();
-              }
+        var products = (snap.data?.docs ?? [])
+            .map((d) => _Product.fromFirestore(d))
+            .toList();
 
-              if (_selectedCategory != 'All') {
-                products = products
-                    .where((p) => p.category == _selectedCategory)
-                    .toList();
-              }
+        final activeOrgIds = _activeOrgIds;
+        if (activeOrgIds != null) {
+          // Hide merch from organizations the admin has deactivated.
+          products = products
+              .where((p) => activeOrgIds.contains(p.orgId))
+              .toList();
+        }
 
-              if (_selectedOrg != 'All') {
-                final orgId = _orgIdMap[_selectedOrg];
-                if (orgId != null) {
-                  products = products.where((p) => p.orgId == orgId).toList();
-                }
-              }
+        // Categories and the organization list come from the catalog itself,
+        // so a filter can never offer something that matches nothing.
+        final categories = <String>{
+          for (final p in products)
+            if (p.category.trim().isNotEmpty) p.category.trim(),
+        }.toList()..sort();
+        final orgNames = <String>{
+          for (final p in products)
+            if (_orgsById[p.orgId] != null) _orgsById[p.orgId]!.name,
+        }.toList()..sort();
 
-              if (_search.isNotEmpty) {
-                final q = _search.toLowerCase();
-                products = products
-                    .where(
-                      (p) =>
-                          p.name.toLowerCase().contains(q) ||
-                          p.description.toLowerCase().contains(q),
-                    )
-                    .toList();
-              }
+        if (_selectedCategory != 'All') {
+          products = products
+              .where((p) => p.category == _selectedCategory)
+              .toList();
+        }
 
-              if (products.isEmpty) {
-                return _EmptyHint(
-                  icon: Icons.storefront_outlined,
-                  title: 'No products found',
-                  subtitle: _search.isNotEmpty
-                      ? 'Try a different search term.'
-                      : _hasOrgFilter
-                      ? 'No products from $_selectedOrg organization.'
-                      : 'No merchandise available yet.',
-                );
-              }
+        if (_selectedOrg != 'All') {
+          final orgId = _orgIdMap[_selectedOrg];
+          if (orgId != null) {
+            products = products.where((p) => p.orgId == orgId).toList();
+          }
+        }
 
-              final shown = _sortTrending ? _sortByLikes(products) : products;
-              return _buildCatalog(shown);
-            },
-          ),
-        ),
-      ],
+        if (_search.isNotEmpty) {
+          final q = _search.toLowerCase();
+          products = products.where((p) {
+            final org = _orgsById[p.orgId];
+            return p.name.toLowerCase().contains(q) ||
+                p.description.toLowerCase().contains(q) ||
+                p.category.toLowerCase().contains(q) ||
+                // Searching by organization is the other obvious way to look
+                // for merch, now that the seller is on every card.
+                (org?.name.toLowerCase().contains(q) ?? false) ||
+                (org?.shortName.toLowerCase().contains(q) ?? false);
+          }).toList();
+        }
+
+        final Widget body;
+        if (loading) {
+          body = const Center(
+            child: CircularProgressIndicator(color: _DS.brand),
+          );
+        } else if (products.isEmpty) {
+          body = _EmptyHint(
+            icon: Icons.storefront_outlined,
+            title: 'No merchandise found',
+            subtitle: _search.isNotEmpty
+                ? 'Try a different search term.'
+                : _hasOrgFilter
+                ? 'No merchandise from $_selectedOrg yet.'
+                : 'No merchandise is available yet.',
+          );
+        } else {
+          body = _buildCatalog(
+            _sortTrending ? _sortByLikes(products) : products,
+          );
+        }
+
+        return Column(
+          children: [
+            _buildSearchAndFilters(
+              categories: ['All', ...categories],
+              organizations: ['All', ...orgNames],
+            ),
+            Expanded(child: body),
+          ],
+        );
+      },
     );
   }
 
-  Widget _buildSearchAndFilters() {
+  Widget _buildSearchAndFilters({
+    required List<String> categories,
+    required List<String> organizations,
+  }) {
     final searchBorder = OutlineInputBorder(
       borderRadius: BorderRadius.circular(_DS.radiusSm),
       borderSide: const BorderSide(color: _DS.line),
@@ -477,7 +582,7 @@ class _ProductsTabState extends State<_ProductsTab> {
                     icon: Icons.filter_list_rounded,
                     active: _hasOrgFilter,
                     label: _selectedOrg,
-                    onTap: _showOrgFilterDialog,
+                    onTap: () => _showOrgFilterDialog(organizations),
                     onClear: () {
                       setState(() => _selectedOrg = 'All');
                     },
@@ -491,18 +596,16 @@ class _ProductsTabState extends State<_ProductsTab> {
           // jump down a row when they arrive.
           SizedBox(
             height: _DS.pillHeight,
-            child: _loadingFilters || _categories.isEmpty
+            child: _loadingFilters || categories.length <= 1
                 ? null
                 : ListView.separated(
                     scrollDirection: Axis.horizontal,
                     // Pills start on the gutter but scroll off the true edge.
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: _DS.gutter,
-                    ),
-                    itemCount: _categories.length,
+                    padding: const EdgeInsets.symmetric(horizontal: _DS.gutter),
+                    itemCount: categories.length,
                     separatorBuilder: (_, __) => const SizedBox(width: 7),
                     itemBuilder: (_, i) {
-                      final cat = _categories[i];
+                      final cat = categories[i];
                       final sel = cat == _selectedCategory;
 
                       return Semantics(
@@ -573,10 +676,17 @@ class _ProductsTabState extends State<_ProductsTab> {
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(_DS.gutter, 0, _DS.gutter, 28),
           sliver: SliverGrid(
-            delegate: SliverChildBuilderDelegate(
-              (ctx, i) => _ProductCard(product: products[i]),
-              childCount: products.length,
-            ),
+            delegate: SliverChildBuilderDelegate((ctx, i) {
+              final product = products[i];
+              final org = _orgsById[product.orgId];
+              return _ProductCard(
+                product: product,
+                org: org,
+                onViewOrg: org == null
+                    ? null
+                    : () => setState(() => _selectedOrg = org.name),
+              );
+            }, childCount: products.length),
             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
               maxCrossAxisExtent: _DS.gridMaxExtent,
               mainAxisExtent: _DS.gridTileHeight,
@@ -589,7 +699,7 @@ class _ProductsTabState extends State<_ProductsTab> {
     );
   }
 
-  void _showOrgFilterDialog() {
+  void _showOrgFilterDialog(List<String> organizations) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -651,7 +761,7 @@ class _ProductsTabState extends State<_ProductsTab> {
                     child: CircularProgressIndicator(color: _DS.brand),
                   ),
                 )
-              else if (_orgs.isEmpty || _orgs.length == 1)
+              else if (organizations.length <= 1)
                 const Padding(
                   padding: EdgeInsets.all(20),
                   child: Center(
@@ -668,10 +778,10 @@ class _ProductsTabState extends State<_ProductsTab> {
                   child: ListView.separated(
                     shrinkWrap: true,
                     padding: EdgeInsets.zero,
-                    itemCount: _orgs.length,
+                    itemCount: organizations.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 2),
                     itemBuilder: (_, i) {
-                      final org = _orgs[i];
+                      final org = organizations[i];
                       return _OrganizationOption(
                         // 'All' stays the stored value; only the row reads
                         // as a sentence.
@@ -698,16 +808,21 @@ class _ProductsTabState extends State<_ProductsTab> {
 // ─────────────────────────────────────────────────────────────
 class _ProductCard extends StatelessWidget {
   final _Product product;
-  const _ProductCard({required this.product});
+  final _OrgBrief? org;
+
+  /// Filters the catalog to this organization. Guests have no membership, so
+  /// "everything else they sell" is the useful next step from a product.
+  final VoidCallback? onViewOrg;
+
+  const _ProductCard({
+    required this.product,
+    required this.org,
+    this.onViewOrg,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final fmt = NumberFormat('#,##0.00');
-    final hasVariants = product.variants.isNotEmpty;
-    final unavailable = product.status == 'discontinued' || !product.inStock;
-    final stockCount = product.variants.isNotEmpty
-        ? product.variants.fold<int>(0, (total, v) => total + v.stock)
-        : product.stock;
+    final available = product.available;
 
     return GestureDetector(
       onTap: () => _showDetails(context),
@@ -739,24 +854,39 @@ class _ProductCard extends StatelessWidget {
                       children: [
                         // Unavailable items fade toward grey instead of being
                         // covered by a dark overlay.
-                        unavailable
-                            ? ColorFiltered(
+                        available
+                            ? _buildProductImage()
+                            : ColorFiltered(
                                 colorFilter: _DS.unavailablePhoto,
                                 child: _buildProductImage(),
-                              )
-                            : _buildProductImage(),
-                        if (product.category.isNotEmpty)
+                              ),
+                        // Who is selling it — the one fact the catalog never
+                        // showed. The category used to sit here, repeating
+                        // the filter pill already selected above the grid.
+                        //
+                        // `right` keeps it clear of the photo gallery's own
+                        // n/N counter in that corner.
+                        if (org != null)
                           Positioned(
                             top: 8,
                             left: 8,
-                            child: _SmallBadge(text: product.category),
+                            right: 44,
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: _OrgChip(org: org!),
+                            ),
                           ),
-                        if (product.status == 'out_of_stock' ||
-                            product.status == 'discontinued')
+                        // Moved out of the top-right corner, where it used to
+                        // sit directly on top of the gallery's photo counter.
+                        if (!available)
                           Positioned(
-                            top: 8,
-                            right: 8,
-                            child: _StatusBadge(status: product.status),
+                            left: 8,
+                            bottom: 8,
+                            child: _StatusChip(
+                              label: product.isDiscontinued
+                                  ? 'No longer available'
+                                  : 'Out of stock',
+                            ),
                           ),
                         if (product.likeCount > 0)
                           Positioned(
@@ -794,20 +924,32 @@ class _ProductCard extends StatelessWidget {
                       ),
                     ),
                     const Spacer(),
-                    if (hasVariants)
-                      const Text(
-                        'Starts at',
-                        style: TextStyle(fontSize: 10, color: _DS.body),
-                      ),
-                    Text(
-                      '₱${fmt.format(product.price)}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: unavailable ? _DS.muted : _DS.brand,
-                      ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        if (product.hasPriceRange)
+                          const Text(
+                            'From ',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w600,
+                              color: _DS.body,
+                            ),
+                          ),
+                        Flexible(
+                          child: Text(
+                            _formatPeso(product.minPrice),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800,
+                              color: available ? _DS.brand : _DS.muted,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 3),
                     Row(
@@ -817,15 +959,13 @@ class _ProductCard extends StatelessWidget {
                           height: 7,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: product.inStock ? _DS.success : _DS.danger,
+                            color: available ? _DS.success : _DS.danger,
                           ),
                         ),
                         const SizedBox(width: 5),
                         Flexible(
                           child: Text(
-                            product.inStock
-                                ? '$stockCount in stock'
-                                : 'Out of stock',
+                            product.availabilityLabel,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
@@ -885,16 +1025,11 @@ class _ProductCard extends StatelessWidget {
   );
 
   void _showDetails(BuildContext context) {
-    final fmt = NumberFormat('#,##0.00');
-    final stockCount = product.variants.isNotEmpty
-        ? product.variants.fold<int>(0, (total, v) => total + v.stock)
-        : product.stock;
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => DraggableScrollableSheet(
+      builder: (sheetContext) => DraggableScrollableSheet(
         initialChildSize: 0.65,
         maxChildSize: 0.92,
         minChildSize: 0.4,
@@ -914,7 +1049,37 @@ class _ProductCard extends StatelessWidget {
                 const _SheetHandle(),
                 const SizedBox(height: 14),
                 _buildDetailImage(),
+                if (product.displayPhotos.length > 1) ...[
+                  const SizedBox(height: 9),
+                  const Center(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.swipe_rounded, size: 15, color: _DS.muted),
+                        SizedBox(width: 5),
+                        Text(
+                          'Swipe to explore different angles',
+                          style: TextStyle(fontSize: 11, color: _DS.body),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 18),
+                // Who is selling it, with a way to see the rest of their
+                // merchandise. The sheet never named the organization before.
+                if (org != null) ...[
+                  _OrgHeaderRow(
+                    org: org!,
+                    onTap: onViewOrg == null
+                        ? null
+                        : () {
+                            Navigator.pop(sheetContext);
+                            onViewOrg!();
+                          },
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -938,52 +1103,73 @@ class _ProductCard extends StatelessWidget {
                         ],
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        _StatusBadge(status: product.status),
-                        if (product.likeCount > 0) ...[
-                          const SizedBox(height: 8),
-                          _LikeCount(count: product.likeCount),
-                        ],
-                      ],
-                    ),
+                    if (product.likeCount > 0) ...[
+                      const SizedBox(width: 10),
+                      _LikeCount(count: product.likeCount),
+                    ],
                   ],
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  '₱${fmt.format(product.price)}',
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w800,
-                    color: _DS.brand,
-                  ),
                 ),
                 const SizedBox(height: 12),
-                Text(
-                  product.description.isNotEmpty
-                      ? product.description
-                      : 'No description provided.',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: _DS.body,
-                    height: 1.6,
-                  ),
-                ),
-                const SizedBox(height: 16),
+                // Price and availability sit together, and say the same thing
+                // the product tile said — the two used to disagree on format
+                // and on how stock was worded.
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    _DetailChip(
-                      icon: Icons.inventory_2_outlined,
-                      label: '$stockCount in stock',
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            product.hasPriceRange
+                                ? '${_formatPeso(product.minPrice)} – '
+                                      '${_formatPeso(product.maxPrice)}'
+                                : _formatPeso(product.price),
+                            style: const TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w800,
+                              color: _DS.brand,
+                            ),
+                          ),
+                          if (product.hasPriceRange)
+                            const Text(
+                              'Price depends on the variant',
+                              style: TextStyle(fontSize: 11, color: _DS.body),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    _AvailabilityPill(
+                      available: product.available,
+                      label: product.availabilityLabel,
                     ),
                   ],
                 ),
+                if (product.description.trim().isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  const Text(
+                    'About this merchandise',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: _DS.ink,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    product.description,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: _DS.body,
+                      height: 1.6,
+                    ),
+                  ),
+                ],
                 if (product.variants.isNotEmpty) ...[
                   const SizedBox(height: 20),
                   const Text(
-                    'Variants',
+                    'Available variants',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
@@ -993,7 +1179,41 @@ class _ProductCard extends StatelessWidget {
                   const SizedBox(height: 10),
                   _VariantsTable(product: product, basePrice: product.price),
                 ],
-                const SizedBox(height: 20),
+                const SizedBox(height: 22),
+                const Divider(height: 1, color: _DS.line),
+                const SizedBox(height: 14),
+                // The same footnote the student catalog carries, so both
+                // audiences are told the same thing about how to actually buy.
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.info_outline_rounded,
+                      size: 15,
+                      color: _DS.muted,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        org == null
+                            ? 'This catalog is for viewing and promotional '
+                                  'purposes only. Coordinate directly with the '
+                                  'organization for availability and purchase '
+                                  'arrangements.'
+                            : 'This catalog is for viewing and promotional '
+                                  'purposes only. Message ${org!.displayName} '
+                                  'directly to ask about availability and how '
+                                  'to order.',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          height: 1.45,
+                          color: _DS.body,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
               ],
             ),
           ),
@@ -1021,11 +1241,7 @@ class _ProductCard extends StatelessWidget {
     child: const Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(
-          Icons.image_not_supported_outlined,
-          size: 40,
-          color: _DS.muted,
-        ),
+        Icon(Icons.image_not_supported_outlined, size: 40, color: _DS.muted),
         SizedBox(height: 8),
         Text(
           'No Image Available',
@@ -1042,6 +1258,127 @@ class _ProductCard extends StatelessWidget {
 
 /// Read-only heart and count. Guests can see what students like but can't
 /// like themselves, so there is no tap target here.
+/// Seller row at the top of the details sheet: logo, organization name, and —
+/// for a guest, who has no membership to manage — a way to see the rest of
+/// what that organization sells.
+///
+/// The sheet used to show no organization at all.
+class _OrgHeaderRow extends StatelessWidget {
+  final _OrgBrief org;
+  final VoidCallback? onTap;
+
+  const _OrgHeaderRow({required this.org, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: _DS.well,
+      borderRadius: BorderRadius.circular(_DS.radiusMd),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(_DS.radiusMd),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+          child: Row(
+            children: [
+              _OrgAvatar(org: org, size: 38),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Sold by',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                        color: _DS.muted,
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      org.displayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: _DS.ink,
+                      ),
+                    ),
+                    if (org.hasDistinctFullName)
+                      Text(
+                        org.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 11, color: _DS.body),
+                      ),
+                  ],
+                ),
+              ),
+              if (onTap != null) ...[
+                const SizedBox(width: 8),
+                const Text(
+                  'See all',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: _DS.brand,
+                  ),
+                ),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: _DS.brand,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Availability, worded exactly as the product tile words it.
+class _AvailabilityPill extends StatelessWidget {
+  final bool available;
+  final String label;
+
+  const _AvailabilityPill({required this.available, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = available ? _DS.success : _DS.danger;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: available ? _DS.successBg : _DS.dangerBg,
+        borderRadius: BorderRadius.circular(_DS.radiusPill),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _LikeCount extends StatelessWidget {
   final int count;
   const _LikeCount({required this.count});
@@ -1208,7 +1545,11 @@ class _FilterButton extends StatelessWidget {
                   child: SizedBox(
                     width: 32,
                     height: _DS.controlHeight,
-                    child: Icon(Icons.close_rounded, size: 16, color: foreground),
+                    child: Icon(
+                      Icons.close_rounded,
+                      size: 16,
+                      color: foreground,
+                    ),
                   ),
                 ),
               ),
@@ -1257,18 +1598,15 @@ class _OrganizationOption extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 14,
-                        fontWeight:
-                            selected ? FontWeight.w700 : FontWeight.w500,
+                        fontWeight: selected
+                            ? FontWeight.w700
+                            : FontWeight.w500,
                         color: selected ? _DS.brand : _DS.ink,
                       ),
                     ),
                   ),
                   if (selected)
-                    const Icon(
-                      Icons.check_rounded,
-                      size: 20,
-                      color: _DS.brand,
-                    ),
+                    const Icon(Icons.check_rounded, size: 20, color: _DS.brand),
                 ],
               ),
             ),
@@ -1298,107 +1636,135 @@ class _SheetHandle extends StatelessWidget {
   }
 }
 
-class _SmallBadge extends StatelessWidget {
-  final String text;
+/// One peso format for the whole catalog — and the same one the organization
+/// portal uses. The two mobile catalogs used to disagree (₱800 here, ₱800.00
+/// on the guest side) about the same product.
+String _formatPeso(num amount) => '₱${NumberFormat('#,##0.##').format(amount)}';
 
-  const _SmallBadge({required this.text});
+/// The selling organization's logo, or its initials when it has none.
+class _OrgAvatar extends StatelessWidget {
+  final _OrgBrief org;
+  final double size;
+
+  const _OrgAvatar({required this.org, this.size = 18});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      // Long category names ellipsize instead of running across the photo.
-      constraints: const BoxConstraints(maxWidth: 110),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.white.withAlpha(235),
-        borderRadius: BorderRadius.circular(_DS.radiusPill),
-        border: Border.all(color: _DS.line),
-      ),
-      child: Text(
-        text,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(
-          fontSize: 9.5,
-          fontWeight: FontWeight.w600,
-          color: _DS.body,
+    final provider = org.logoUrl.isEmpty
+        ? null
+        : AppImage.provider(org.logoUrl);
+
+    if (provider != null) {
+      return ClipOval(
+        child: Image(
+          image: provider,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _initials(),
         ),
-      ),
-    );
-  }
-}
-
-class _StatusBadge extends StatelessWidget {
-  final String status;
-  const _StatusBadge({required this.status});
-
-  @override
-  Widget build(BuildContext context) {
-    final Color fg;
-    final Color bg;
-    final String label;
-    switch (status) {
-      case 'out_of_stock':
-        fg = _DS.danger;
-        bg = _DS.dangerBg;
-        label = 'Out of stock';
-        break;
-      case 'discontinued':
-        fg = _DS.body;
-        bg = _DS.line;
-        label = 'Discontinued';
-        break;
-      default:
-        fg = _DS.success;
-        bg = _DS.successBg;
-        label = 'Available';
+      );
     }
+    return _initials();
+  }
+
+  Widget _initials() {
+    final source = org.displayName.trim();
+    final letters = source.isEmpty
+        ? '?'
+        : source
+              .split(RegExp(r'[\s\-]+'))
+              .where((word) => word.isNotEmpty)
+              .take(2)
+              .map((word) => word[0].toUpperCase())
+              .join();
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(_DS.radiusPill),
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: const BoxDecoration(
+        color: _DS.brandSoft,
+        shape: BoxShape.circle,
       ),
       child: Text(
-        label,
+        letters,
         style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          color: fg,
+          fontSize: size * .44,
+          fontWeight: FontWeight.w800,
+          color: _DS.brand,
+          height: 1,
         ),
       ),
     );
   }
 }
 
-class _DetailChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  const _DetailChip({required this.icon, required this.label});
+/// Seller attribution on a product tile: logo plus the org's acronym, since
+/// a full organization name does not fit a chip at grid width.
+class _OrgChip extends StatelessWidget {
+  final _OrgBrief org;
+
+  const _OrgChip({required this.org});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.fromLTRB(4, 4, 9, 4),
       decoration: BoxDecoration(
-        color: _DS.well,
+        color: Colors.white.withAlpha(240),
         borderRadius: BorderRadius.circular(_DS.radiusPill),
+        // Photos are often white-backed product shots; the hairline keeps the
+        // chip from dissolving into them.
         border: Border.all(color: _DS.line),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 13, color: _DS.body),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w600,
-              color: _DS.body,
+          _OrgAvatar(org: org, size: 16),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              org.displayName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: _DS.ink,
+              ),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// States an unavailable item outright instead of leaving a greyed photo to
+/// imply it.
+class _StatusChip extends StatelessWidget {
+  final String label;
+
+  const _StatusChip({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: _DS.dangerBg,
+        borderRadius: BorderRadius.circular(_DS.radiusPill),
+        border: Border.all(color: _DS.danger.withAlpha(60)),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          fontSize: 9.5,
+          fontWeight: FontWeight.w700,
+          color: _DS.danger,
+        ),
       ),
     );
   }
@@ -1411,7 +1777,6 @@ class _VariantsTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fmt = NumberFormat('#,##0.00');
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(_DS.radiusMd),
@@ -1448,7 +1813,7 @@ class _VariantsTable extends StatelessWidget {
                   color: v.stock > 0 ? _DS.success : _DS.danger,
                 ),
                 _cell(
-                  '₱${fmt.format(basePrice + (v.priceOffset ?? 0))}',
+                  _formatPeso(basePrice + (v.priceOffset ?? 0)),
                   color: _DS.brand,
                 ),
               ],

@@ -1,7 +1,6 @@
 // lib/screens/web/org/org_merchandise.dart
 
 import 'dart:convert';
-import '../../../widgets/stat_cards.dart';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -11,19 +10,14 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:fl_chart/fl_chart.dart';
-import 'package:universal_html/html.dart' as html;
 import '../../../services/activity_logger.dart' as activity_log;
 import '../../../theme/org_theme.dart';
 import '../../../widgets/admin_export_button.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/app_toast.dart';
 import '../../../widgets/product_photo_gallery.dart';
-import '../../../widgets/org_action_icon_button.dart';
 import '../admin/export_util.dart';
 import '../admin/export_pdf.dart';
-import 'export_pdf.dart' show OrgExportPdf;
-import 'export_util.dart' show OrgExportUtil;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens (mirrors student accounts)
@@ -106,47 +100,87 @@ class _DS {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Status badge (reused)
+// Status badge
+//
+// This used to speak a vocabulary the data never uses — published / draft /
+// archived — while products actually store available / out_of_stock /
+// discontinued, so every badge fell through to the grey default and rendered
+// the raw field, underscore and all ("OUT_OF_STOCK"). The labels below are the
+// real states, phrased the way they behave in the mobile app: anything not
+// archived IS visible to students, which is why 'available' reads as live.
 // ─────────────────────────────────────────────────────────────────────────────
-Widget _statusBadge(String status) {
-  final Map<String, _BadgeStyle> styles = {
-    'published': _BadgeStyle(
-      const Color(0xFFECFDF5),
-      const Color(0xFF059669),
-      'PUBLISHED',
-    ),
-    'draft': _BadgeStyle(
-      const Color(0xFFFFFBEB),
-      const Color(0xFFFB923C),
-      'DRAFT',
-    ),
-    'archived': _BadgeStyle(
-      const Color(0xFFFEF2F2),
-      const Color(0xFFDC2626),
-      'ARCHIVED',
-    ),
-  };
-  final s =
-      styles[status.toLowerCase()] ??
-      _BadgeStyle(
+String _statusLabel(String status) {
+  switch (status.toLowerCase()) {
+    case 'available':
+      return 'Available';
+    case 'out_of_stock':
+      return 'Out of Stock';
+    case 'discontinued':
+      return 'Discontinued';
+    default:
+      return status.isEmpty
+          ? 'Available'
+          : status.replaceAll('_', ' ').toUpperCase();
+  }
+}
+
+_BadgeStyle _statusStyle(String status, {bool isArchived = false}) {
+  if (isArchived) {
+    return _BadgeStyle(
+      const Color(0xFFF3F4F6),
+      const Color(0xFF6B7280),
+      'HIDDEN',
+      Icons.visibility_off_outlined,
+    );
+  }
+  switch (status.toLowerCase()) {
+    case 'out_of_stock':
+      return _BadgeStyle(
+        const Color(0xFFFEF2F2),
+        const Color(0xFFDC2626),
+        'OUT OF STOCK',
+        Icons.remove_shopping_cart_outlined,
+      );
+    case 'discontinued':
+      return _BadgeStyle(
         const Color(0xFFF3F4F6),
         const Color(0xFF6B7280),
-        status.toUpperCase(),
+        'DISCONTINUED',
+        Icons.do_not_disturb_on_outlined,
       );
+    default:
+      return _BadgeStyle(
+        const Color(0xFFECFDF5),
+        const Color(0xFF059669),
+        'LIVE ON MOBILE',
+        Icons.phone_iphone_rounded,
+      );
+  }
+}
+
+Widget _statusBadge(String status, {bool isArchived = false}) {
+  final s = _statusStyle(status, isArchived: isArchived);
   return Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
     decoration: BoxDecoration(
       color: s.bg,
       borderRadius: BorderRadius.circular(_DS.radiusPill),
     ),
-    child: Text(
-      s.label,
-      style: GoogleFonts.beVietnamPro(
-        fontSize: 10,
-        fontWeight: FontWeight.w700,
-        color: s.fg,
-        letterSpacing: 0.8,
-      ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(s.icon, size: 11, color: s.fg),
+        const SizedBox(width: 5),
+        Text(
+          s.label,
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: s.fg,
+            letterSpacing: 0.6,
+          ),
+        ),
+      ],
     ),
   );
 }
@@ -154,7 +188,8 @@ Widget _statusBadge(String status) {
 class _BadgeStyle {
   final Color bg, fg;
   final String label;
-  const _BadgeStyle(this.bg, this.fg, this.label);
+  final IconData icon;
+  const _BadgeStyle(this.bg, this.fg, this.label, this.icon);
 }
 
 const List<String> _merchandiseCategories = [
@@ -165,6 +200,19 @@ const List<String> _merchandiseCategories = [
   'Notebooks / Planners',
   'Others',
 ];
+
+/// Whether a product is in the mobile catalog or archived out of it. Archiving
+/// is the only thing that removes a product from the student and guest apps —
+/// "discontinued" and "out of stock" still appear there, just marked
+/// unavailable — so the label says exactly that.
+enum _Visibility {
+  live('Live on mobile', Icons.phone_iphone_rounded),
+  hidden('Hidden', Icons.visibility_off_outlined);
+
+  const _Visibility(this.label, this.icon);
+  final String label;
+  final IconData icon;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Screen
@@ -177,42 +225,22 @@ class OrgMerchandiseScreen extends StatefulWidget {
   State<OrgMerchandiseScreen> createState() => _OrgMerchandiseScreenState();
 }
 
-class _OrgMerchandiseScreenState extends State<OrgMerchandiseScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  int _selectedTab = 0;
+class _OrgMerchandiseScreenState extends State<OrgMerchandiseScreen> {
+  // The grid loads the catalog and hands it up here, so the header counts the
+  // exact same list the org is looking at. A separate .snapshots() on the same
+  // collection would have downloaded every product a second time — product
+  // docs carry their photos inline as base64, so that is real weight — and
+  // could disagree with the grid mid-edit.
+  List<ProductModel> _catalog = const [];
+  // Until the first load lands, the counts below would all read zero — an
+  // empty shop and a loading one should not look the same.
+  bool _catalogLoaded = false;
 
-  // Created once, not inline in build() — _buildStatsRow rebuilds on every
-  // tab change, so constructing fresh .snapshots() there each time was
-  // re-subscribing to Firestore from scratch every time.
-  late final Stream<QuerySnapshot> _statsProductsStream = FirebaseFirestore
-      .instance
-      .collection('products')
-      .where('orgId', isEqualTo: widget.orgId)
-      .where('isArchived', isEqualTo: false)
-      .snapshots();
-  late final Stream<QuerySnapshot> _statsOrdersStream = FirebaseFirestore
-      .instance
-      .collection('orders')
-      .where('orgId', isEqualTo: widget.orgId)
-      .snapshots();
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 1, vsync: this);
-    _tabController.addListener(() {
-      if (_tabController.indexIsChanging) {
-        setState(() => _selectedTab = _tabController.index);
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
+  // The grid keeps its own loaded list, so a parent setState() alone never
+  // showed a product added from the header button — the child State survives
+  // the rebuild holding its old list. This key lets the save callback actually
+  // re-run the query.
+  final GlobalKey<_ProductsTabState> _gridKey = GlobalKey<_ProductsTabState>();
 
   @override
   Widget build(BuildContext context) {
@@ -225,15 +253,18 @@ class _OrgMerchandiseScreenState extends State<OrgMerchandiseScreen>
           _buildHeader(isMobile),
           const SizedBox(height: 16),
           Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              physics: const NeverScrollableScrollPhysics(),
-              children: [
-                _ProductsTab(
-                  orgId: widget.orgId,
-                  onAddProduct: () => _openAddProductModal(context),
-                ),
-              ],
+            child: _ProductsTab(
+              key: _gridKey,
+              orgId: widget.orgId,
+              onAddProduct: () => _openAddProductModal(context),
+              onCatalogLoaded: (products) {
+                if (mounted) {
+                  setState(() {
+                    _catalog = products;
+                    _catalogLoaded = true;
+                  });
+                }
+              },
             ),
           ),
         ],
@@ -241,24 +272,24 @@ class _OrgMerchandiseScreenState extends State<OrgMerchandiseScreen>
     );
   }
 
-  // Bordered admin-dashboard-style stat cards + a separate toolbar row read
-  // as a generic CRUD panel, not a shop — merged into one header where the
-  // stats are lightweight inline chips (secondary information) and the
-  // actual visual weight goes to the "Shop" identity and the product grid
-  // below. _statsOrdersStream is left defined but unused (Sales/Revenue
-  // cards were removed along with the checkout flow).
+  // This catalog *is* what students and guests browse in the mobile app, so
+  // the header leads with that relationship — how many products are live on
+  // mobile, how many hearts they have earned, what needs attention — instead
+  // of generic CRUD counters.
   Widget _buildHeader(bool isMobile) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: _statsProductsStream,
-      builder: (context, productSnap) {
-        final products = productSnap.data?.docs ?? [];
-        final totalProducts = products.length;
-        final lowStock = products
-            .where((p) => ((p.data() as Map)['stock'] ?? 0) <= 5)
-            .length;
+    final live = _catalog.where((p) => !p.isArchived).toList();
+    final hidden = _catalog.length - live.length;
+    final lowStock = live
+        .where((p) => p.totalStock > 0 && p.totalStock <= 5)
+        .length;
+    final outOfStock = live.where((p) => p.totalStock <= 0).length;
+    final likes = live.fold<int>(0, (total, p) => total + p.likeCount);
 
-        final title = Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
+    final title = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
@@ -269,82 +300,143 @@ class _OrgMerchandiseScreenState extends State<OrgMerchandiseScreen>
                 color: const Color(0xFF1A202C),
               ),
             ),
-            const SizedBox(width: 14),
-            Container(width: 1, height: 16, color: const Color(0xFFE2E6EA)),
-            const SizedBox(width: 14),
-            _InlineStat(
-              icon: Icons.shopping_bag_outlined,
-              text: '$totalProducts product${totalProducts == 1 ? '' : 's'}',
-              color: UpriseColors.info,
-            ),
-            if (lowStock > 0) ...[
-              const SizedBox(width: 16),
-              _InlineStat(
-                icon: Icons.warning_amber_rounded,
-                text: '$lowStock low stock',
-                color: UpriseColors.error,
-              ),
-            ],
-          ],
-        );
-
-        final actions = Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AdminExportButton(
-              onSelected: (format) => _exportCurrentTab(format),
-            ),
             const SizedBox(width: 10),
-            ElevatedButton.icon(
-              onPressed: () => _openAddProductModal(context),
-              icon: const Icon(Icons.add, size: 18, color: Colors.white),
-              label: Text(
-                'Add Product',
-                style: GoogleFonts.beVietnamPro(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
+            if (_catalogLoaded)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                decoration: BoxDecoration(
+                  color: UpriseColors.primaryDark.withAlpha(20),
+                  borderRadius: BorderRadius.circular(_DS.radiusPill),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.phone_iphone_rounded,
+                      size: 11,
+                      color: UpriseColors.primaryDark,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      '${live.length} live on mobile',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        color: UpriseColors.primaryDark,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: UpriseColors.primaryDark,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 10,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                elevation: 0,
-              ),
-            ),
           ],
-        );
-
-        return Padding(
-          padding: EdgeInsets.fromLTRB(
-            isMobile ? 16 : 28,
-            isMobile ? 16 : 24,
-            isMobile ? 16 : 28,
-            0,
+        ),
+        const SizedBox(height: 5),
+        Text(
+          'Merchandise students and guests browse in the Uprise app.',
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 12.5,
+            color: const Color(0xFF64748B),
           ),
-          child: isMobile
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [title, const SizedBox(height: 14), actions],
-                )
-              : Row(children: [title, const Spacer(), actions]),
-        );
-      },
+        ),
+      ],
     );
-  }
 
-  Future<void> _exportCurrentTab(String format) async {
-    if (_selectedTab == 0) {
-      await _exportProducts(format);
-    } else {
-      await _exportOrders(format);
-    }
+    final stats = !_catalogLoaded
+        ? const SizedBox(height: 18)
+        : Wrap(
+            spacing: 16,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              _InlineStat(
+                icon: Icons.favorite_rounded,
+                text: '$likes like${likes == 1 ? '' : 's'} from students',
+                color: UpriseColors.primaryDark,
+              ),
+              if (lowStock > 0)
+                _InlineStat(
+                  icon: Icons.warning_amber_rounded,
+                  text: '$lowStock low stock',
+                  color: UpriseColors.warning,
+                ),
+              if (outOfStock > 0)
+                _InlineStat(
+                  icon: Icons.remove_shopping_cart_outlined,
+                  text: '$outOfStock out of stock',
+                  color: UpriseColors.error,
+                ),
+              if (hidden > 0)
+                _InlineStat(
+                  icon: Icons.visibility_off_outlined,
+                  text: '$hidden hidden from students',
+                  color: UpriseColors.darkGray,
+                ),
+            ],
+          );
+
+    final actions = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AdminExportButton(onSelected: (format) => _exportProducts(format)),
+        const SizedBox(width: 10),
+        ElevatedButton.icon(
+          onPressed: () => _openAddProductModal(context),
+          icon: const Icon(Icons.add, size: 18, color: Colors.white),
+          label: Text(
+            'Add Product',
+            style: GoogleFonts.beVietnamPro(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: UpriseColors.primaryDark,
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            elevation: 0,
+          ),
+        ),
+      ],
+    );
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        isMobile ? 16 : 28,
+        isMobile ? 16 : 24,
+        isMobile ? 16 : 28,
+        0,
+      ),
+      child: isMobile
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                title,
+                const SizedBox(height: 12),
+                stats,
+                const SizedBox(height: 14),
+                actions,
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: title),
+                    const SizedBox(width: 16),
+                    actions,
+                  ],
+                ),
+                const SizedBox(height: 12),
+                stats,
+              ],
+            ),
+    );
   }
 
   Future<void> _exportProducts(String format) async {
@@ -360,17 +452,28 @@ class _OrgMerchandiseScreenState extends State<OrgMerchandiseScreen>
       return;
     }
     final now = DateFormat('yyyyMMdd').format(DateTime.now());
+    // "Sold" used to be a column here, but with no checkout flow it can only
+    // ever read 0 — likes are the one real signal the mobile catalog gives
+    // back, so the export carries those instead.
+    const headers = ['Name', 'Category', 'Price', 'Stock', 'Status', 'Likes'];
+    List<String> rowFor(Map<String, dynamic> d) => [
+      '${d['name'] ?? ''}',
+      '${d['category'] ?? ''}',
+      ((d['price'] ?? 0) as num).toDouble().toStringAsFixed(2),
+      '${d['stock'] ?? 0}',
+      _statusLabel('${d['status'] ?? ''}'),
+      '${(d['likedBy'] as List?)?.length ?? 0}',
+    ];
+
     // AdminExportButton's dropdown emits 'excel'/'pdf' (see
     // admin_export_button.dart's _items), not 'csv' — this used to check
     // for 'csv', so "Export as Excel" silently did nothing.
     if (format == 'excel') {
       final buf = StringBuffer();
-      buf.writeln('Product Name,Category,Price,Stock,Sold');
+      buf.writeln(headers.join(','));
       for (final doc in docs) {
-        final d = doc.data();
-        buf.writeln(
-          '"${d['name']}","${d['category']}","${d['price']}","${d['stock']}","${d['sold']}"',
-        );
+        final row = rowFor(doc.data());
+        buf.writeln(row.map((c) => '"$c"').join(','));
       }
       await AdminExportUtil.saveText(
         buf.toString(),
@@ -378,20 +481,10 @@ class _OrgMerchandiseScreenState extends State<OrgMerchandiseScreen>
         mimeType: 'text/csv',
       );
     } else if (format == 'pdf') {
-      final rows = docs.map((doc) {
-        final d = doc.data();
-        return [
-          '${d['name']}',
-          '${d['category']}',
-          '${d['price']}',
-          '${d['stock']}',
-          '${d['sold']}',
-        ];
-      }).toList();
       final pdfBytes = await AdminExportPdf.generateTablePdf(
-        title: 'Product Inventory',
-        headers: const ['Name', 'Category', 'Price', 'Stock', 'Sold'],
-        rows: rows,
+        title: 'Product Catalog',
+        headers: headers,
+        rows: docs.map((doc) => rowFor(doc.data())).toList(),
       );
       await AdminExportUtil.saveBytes(
         pdfBytes,
@@ -402,102 +495,16 @@ class _OrgMerchandiseScreenState extends State<OrgMerchandiseScreen>
     _showSnack('Exported products', UpriseColors.success);
   }
 
-  Future<void> _exportOrders(String format) async {
-    final snap = await FirebaseFirestore.instance
-        .collection('orders')
-        .where('orgId', isEqualTo: widget.orgId)
-        .orderBy('createdAt', descending: true)
-        .get();
-    final docs = snap.docs;
-    if (docs.isEmpty) {
-      _showSnack('No orders to export', UpriseColors.warning);
-      return;
-    }
-    final now = DateFormat('yyyyMMdd').format(DateTime.now());
-    if (format == 'csv') {
-      final buf = StringBuffer();
-      buf.writeln(
-        'Order ID,Customer,Section,Total,Status,Pickup Status,Date,Bundle ID',
-      );
-      for (final doc in docs) {
-        final d = doc.data();
-        final createdAt = d['createdAt'] as Timestamp?;
-        final date = createdAt != null
-            ? DateFormat('yyyy-MM-dd').format(createdAt.toDate())
-            : '—';
-        buf.writeln(
-          '"${d['orderId']}","${d['customerName']}","${d['section'] ?? ''}","${d['total']}","${d['status']}","${d['pickupStatus'] ?? 'Pending'}","$date","${d['bundleId'] ?? ''}"',
-        );
-      }
-      await AdminExportUtil.saveText(
-        buf.toString(),
-        'orders_$now.csv',
-        mimeType: 'text/csv',
-      );
-    } else if (format == 'pdf') {
-      final rows = docs.map((doc) {
-        final d = doc.data();
-        final createdAt = d['createdAt'] as Timestamp?;
-        final date = createdAt != null
-            ? DateFormat('yyyy-MM-dd').format(createdAt.toDate())
-            : '—';
-        return [
-          '${d['orderId']}',
-          '${d['customerName']}',
-          '${d['section'] ?? ''}',
-          '${d['total']}',
-          '${d['status']}',
-          '${d['pickupStatus'] ?? 'Pending'}',
-          date,
-        ];
-      }).toList();
-      final pdfBytes = await AdminExportPdf.generateTablePdf(
-        title: 'Sales Orders',
-        headers: const [
-          'Order ID',
-          'Customer',
-          'Section',
-          'Total',
-          'Status',
-          'Pickup Status',
-          'Date',
-        ],
-        rows: rows,
-      );
-      await AdminExportUtil.saveBytes(
-        pdfBytes,
-        'orders_$now.pdf',
-        mimeType: 'application/pdf',
-      );
-    }
-    _showSnack('Exported orders', UpriseColors.success);
-  }
-
   void _openAddProductModal(BuildContext context) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => _ProductModal(
         orgId: widget.orgId,
-        onProductSaved: () {
-          setState(() {});
-        },
+        knownCustomCategories:
+            _gridKey.currentState?.customCategories ?? const [],
+        onProductSaved: () => _gridKey.currentState?.reload(),
       ),
-    );
-  }
-
-  void _openSalesReport(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (_) => _SalesReportModal(orgId: widget.orgId),
-    );
-  }
-
-  void _openGcashSettings(BuildContext context) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => _GcashSettingsDialog(orgId: widget.orgId),
     );
   }
 
@@ -511,47 +518,6 @@ class _OrgMerchandiseScreenState extends State<OrgMerchandiseScreen>
     } else {
       AppToast.info(context, msg);
     }
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Pill Tab
-// ─────────────────────────────────────────────────────────────────────────────
-class _PillTab extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-  const _PillTab({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          margin: const EdgeInsets.all(3),
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
-          decoration: BoxDecoration(
-            color: selected ? UpriseColors.primaryDark : Colors.transparent,
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Text(
-            label,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: selected ? Colors.white : const Color(0xFF64748B),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
 
@@ -596,7 +562,14 @@ class _InlineStat extends StatelessWidget {
 class _ProductsTab extends StatefulWidget {
   final String orgId;
   final VoidCallback onAddProduct;
-  const _ProductsTab({required this.orgId, required this.onAddProduct});
+  // Hands the loaded catalog to the header so both read the same list.
+  final ValueChanged<List<ProductModel>> onCatalogLoaded;
+  const _ProductsTab({
+    super.key,
+    required this.orgId,
+    required this.onAddProduct,
+    required this.onCatalogLoaded,
+  });
 
   @override
   State<_ProductsTab> createState() => _ProductsTabState();
@@ -607,133 +580,157 @@ class _ProductsTabState extends State<_ProductsTab> {
   String _searchQuery = '';
   String _categoryFilter = 'All';
   String _statusFilter = 'All';
+  // Visibility (live on mobile / hidden) is a different question from
+  // availability (in stock / discontinued), so it gets its own control. They
+  // used to share one dropdown, where picking "Archived" silently threw the
+  // availability filter away.
+  _Visibility _visibility = _Visibility.live;
 
-  final List<String> _categoryFilters = ['All', ..._merchandiseCategories];
-  final List<String> _statusFilters = [
+  final List<String> _statusFilters = const [
     'All',
     'Available',
     'Out of Stock',
     'Discontinued',
-    'Archived',
   ];
 
-  bool _hasMore = true;
-  bool _isLoading = false;
-  final ScrollController _scrollController = ScrollController();
-  List<ProductModel> _products = [];
-  DocumentSnapshot? _lastDocument;
-  bool _isInitialLoad = true;
+  bool _isLoading = true;
+  String? _loadError;
+  // Every product this org owns, archived included. A catalog is tens of
+  // items, not thousands, so one query up front makes search and the filters
+  // honest: they used to run client-side over a 20-doc page, which meant
+  // searching returned only what happened to match inside that page and the
+  // "N products" counter was counting the page, not the catalog.
+  List<ProductModel> _allProducts = [];
 
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
     _loadProducts();
   }
 
   @override
   void dispose() {
     _searchController.dispose();
-    _scrollController.dispose();
     super.dispose();
   }
 
-  void _onScroll() {
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 200) {
-      _loadMoreProducts();
-    }
-  }
+  /// Re-runs the query. Called by the parent (through a GlobalKey) after a
+  /// product is added from the header button.
+  void reload() => _loadProducts();
 
-  Future<void> _loadProducts({bool reset = true}) async {
-    if (_isLoading) return;
-    if (reset) {
+  Future<void> _loadProducts() async {
+    if (mounted) {
       setState(() {
-        _products = [];
-        _lastDocument = null;
-        _hasMore = true;
-        _isInitialLoad = true;
+        _isLoading = true;
+        _loadError = null;
       });
     }
-    await _fetchProducts(reset: reset);
-  }
-
-  Future<void> _fetchProducts({bool reset = true}) async {
-    if (_isLoading || !_hasMore) return;
-
-    setState(() => _isLoading = true);
-
     try {
-      var query = FirebaseFirestore.instance
+      // Deliberately no orderBy here: an equality filter plus orderBy needs a
+      // composite index, and the catalog is small enough to sort locally.
+      final snapshot = await FirebaseFirestore.instance
           .collection('products')
           .where('orgId', isEqualTo: widget.orgId)
-          .where('isArchived', isEqualTo: _statusFilter == 'Archived')
-          .orderBy('createdAt', descending: true);
+          .get();
 
-      if (!reset && _lastDocument != null) {
-        query = query.startAfterDocument(_lastDocument!);
-      }
-
-      query = query.limit(20);
-      final snapshot = await query.get();
-
-      if (snapshot.docs.isEmpty) {
-        setState(() {
-          _hasMore = false;
-          _isLoading = false;
-          _isInitialLoad = false;
-        });
-        return;
-      }
-
-      final newProducts = snapshot.docs
+      final products = snapshot.docs
           .map((d) => ProductModel.fromFirestore(d))
           .toList();
-
-      final filtered = _applyFilters(newProducts);
-
-      setState(() {
-        if (reset) {
-          _products = filtered;
-        } else {
-          _products.addAll(filtered);
-        }
-        _lastDocument = snapshot.docs.last;
-        _hasMore = snapshot.docs.length >= 20;
-        _isLoading = false;
-        _isInitialLoad = false;
+      // Newest first; docs whose serverTimestamp has not resolved yet sort to
+      // the top, where a just-created product belongs anyway.
+      products.sort((a, b) {
+        final at = a.createdAt, bt = b.createdAt;
+        if (at == null && bt == null) return 0;
+        if (at == null) return -1;
+        if (bt == null) return 1;
+        return bt.compareTo(at);
       });
+
+      if (!mounted) return;
+      setState(() {
+        _allProducts = products;
+        _isLoading = false;
+      });
+      // After the frame: this drives a setState() in the parent, which cannot
+      // run while this build is in flight.
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => widget.onCatalogLoaded(products),
+      );
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
-        _isInitialLoad = false;
+        _loadError = '$e';
       });
-      if (mounted) _showSnack('Error loading products: $e', UpriseColors.error);
+      _showSnack('Error loading products: $e', UpriseColors.error);
     }
   }
 
-  void _loadMoreProducts() {
-    if (!_isLoading && _hasMore && !_isInitialLoad) {
-      _fetchProducts(reset: false);
-    }
+  /// Categories actually in use, so the dropdown never offers a filter that
+  /// matches nothing — and always includes custom ("Others") categories the
+  /// org typed in, which are real categories in the mobile app's filter row.
+  List<String> get _categoryFilters {
+    final used = _allProducts
+        .map((p) => p.category.trim())
+        .where((c) => c.isNotEmpty)
+        .toSet();
+    final ordered = <String>[
+      ..._merchandiseCategories.where(used.contains),
+      ...used.where((c) => !_merchandiseCategories.contains(c)).toList()
+        ..sort(),
+    ];
+    return ['All', ...ordered];
   }
 
-  List<ProductModel> _applyFilters(List<ProductModel> list) {
-    return list.where((p) {
+  List<ProductModel> get _visibleProducts {
+    final q = _searchQuery.trim().toLowerCase();
+    return _allProducts.where((p) {
+      final matchVisibility = switch (_visibility) {
+        _Visibility.live => !p.isArchived,
+        _Visibility.hidden => p.isArchived,
+      };
       final matchSearch =
-          _searchQuery.isEmpty ||
-          p.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          p.category.toLowerCase().contains(_searchQuery.toLowerCase());
+          q.isEmpty ||
+          p.name.toLowerCase().contains(q) ||
+          p.category.toLowerCase().contains(q) ||
+          p.description.toLowerCase().contains(q);
       final matchCat =
           _categoryFilter == 'All' || p.category == _categoryFilter;
       final matchStatus =
           _statusFilter == 'All' ||
-          _statusFilter == 'Archived' ||
           (_statusFilter == 'Available' && p.status == 'available') ||
           (_statusFilter == 'Out of Stock' && p.status == 'out_of_stock') ||
           (_statusFilter == 'Discontinued' && p.status == 'discontinued');
-      return matchSearch && matchCat && matchStatus;
+      return matchVisibility && matchSearch && matchCat && matchStatus;
     }).toList();
+  }
+
+  /// Categories this org typed in itself (anything outside the preset list).
+  /// They are real, student-facing filter chips in the mobile app, so the
+  /// product form offers them for reuse instead of letting near-duplicates
+  /// accumulate.
+  List<String> get customCategories {
+    final custom = _allProducts
+        .map((p) => p.category.trim())
+        .where((c) => c.isNotEmpty && !_merchandiseCategories.contains(c))
+        .toSet()
+        .toList();
+    custom.sort();
+    return custom;
+  }
+
+  bool get _hasActiveFilters =>
+      _searchQuery.trim().isNotEmpty ||
+      _categoryFilter != 'All' ||
+      _statusFilter != 'All';
+
+  void _clearFilters() {
+    _searchController.clear();
+    setState(() {
+      _searchQuery = '';
+      _categoryFilter = 'All';
+      _statusFilter = 'All';
+    });
   }
 
   Future<void> _archiveProduct(ProductModel product) async {
@@ -771,7 +768,7 @@ class _ProductsTabState extends State<_ProductsTab> {
                   const SizedBox(width: 14),
                   Expanded(
                     child: Text(
-                      'Archive Product',
+                      'Hide from students?',
                       style: GoogleFonts.beVietnamPro(
                         fontSize: 17,
                         fontWeight: FontWeight.w700,
@@ -783,7 +780,10 @@ class _ProductsTabState extends State<_ProductsTab> {
               ),
               const SizedBox(height: 16),
               Text(
-                'Archive "${product.name}"? It will be hidden from the store.',
+                'Archiving "${product.name}" removes it from the merchandise '
+                'catalog students and guests see in the Uprise app. Its likes '
+                'and stock are kept, and you can restore it anytime from the '
+                'Hidden tab.',
                 style: GoogleFonts.beVietnamPro(
                   fontSize: 14,
                   color: UpriseColors.darkGray,
@@ -828,7 +828,7 @@ class _ProductsTabState extends State<_ProductsTab> {
                       ),
                     ),
                     child: Text(
-                      'Archive',
+                      'Archive & hide',
                       style: GoogleFonts.beVietnamPro(
                         fontSize: 13,
                         color: Colors.white,
@@ -861,10 +861,8 @@ class _ProductsTabState extends State<_ProductsTab> {
         },
       );
       if (mounted) {
-        _showSnack('Product archived', UpriseColors.success);
-        setState(() {
-          _products.removeWhere((p) => p.id == product.id);
-        });
+        _showSnack('Product hidden from the app', UpriseColors.success);
+        await _loadProducts();
       }
     } catch (e) {
       if (mounted) _showSnack('Error: $e', UpriseColors.error);
@@ -892,10 +890,11 @@ class _ProductsTabState extends State<_ProductsTab> {
         },
       );
       if (mounted) {
-        _showSnack('Product restored', UpriseColors.success);
-        setState(() {
-          _products.removeWhere((p) => p.id == product.id);
-        });
+        _showSnack(
+          'Product restored — live in the app again',
+          UpriseColors.success,
+        );
+        await _loadProducts();
       }
     } catch (e) {
       if (mounted) _showSnack('Error: $e', UpriseColors.error);
@@ -932,15 +931,10 @@ class _ProductsTabState extends State<_ProductsTab> {
       height: 40,
       child: TextField(
         controller: _searchController,
-        onChanged: (value) {
-          setState(() {
-            _searchQuery = value;
-          });
-          _loadProducts(reset: true);
-        },
+        onChanged: (value) => setState(() => _searchQuery = value),
         style: GoogleFonts.beVietnamPro(fontSize: 13),
         decoration: InputDecoration(
-          hintText: 'Search products...',
+          hintText: 'Search name, category or description…',
           hintStyle: GoogleFonts.beVietnamPro(
             fontSize: 13,
             color: const Color(0xFF9AA5B4),
@@ -950,6 +944,20 @@ class _ProductsTabState extends State<_ProductsTab> {
             size: 18,
             color: Color(0xFF9AA5B4),
           ),
+          suffixIcon: _searchQuery.isEmpty
+              ? null
+              : IconButton(
+                  icon: const Icon(
+                    Icons.close_rounded,
+                    size: 16,
+                    color: Color(0xFF9AA5B4),
+                  ),
+                  tooltip: 'Clear search',
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() => _searchQuery = '');
+                  },
+                ),
           filled: true,
           fillColor: Colors.white,
           contentPadding: const EdgeInsets.symmetric(
@@ -958,11 +966,11 @@ class _ProductsTabState extends State<_ProductsTab> {
           ),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
-            borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
+            borderSide: const BorderSide(color: _DS.borderSoft),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
-            borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
+            borderSide: const BorderSide(color: _DS.borderSoft),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
@@ -973,96 +981,137 @@ class _ProductsTabState extends State<_ProductsTab> {
     );
   }
 
-  // Was search + dropdowns floating loose directly on the page background,
-  // no unifying surface — same "awful" bare-controls look fixed on the
-  // Announcements toolbar. One elevated card now groups them.
   Widget _buildToolbar(bool isMobile) {
     final horizontalPadding = isMobile ? 16.0 : 28.0;
+    final liveCount = _allProducts.where((p) => !p.isArchived).length;
+    final hiddenCount = _allProducts.length - liveCount;
+    final shown = _visibleProducts.length;
+    final inTab = _allProducts
+        .where(
+          (p) => _visibility == _Visibility.live ? !p.isArchived : p.isArchived,
+        )
+        .length;
+
+    final visibilitySwitch = _VisibilitySwitch(
+      value: _visibility,
+      liveCount: liveCount,
+      hiddenCount: hiddenCount,
+      onChanged: (v) => setState(() => _visibility = v),
+    );
+
+    final categoryFilters = _categoryFilters;
+    final filters = [
+      _FilterDropdown(
+        value: categoryFilters.contains(_categoryFilter)
+            ? _categoryFilter
+            : 'All',
+        items: categoryFilters,
+        hint: 'Category',
+        icon: Icons.category_outlined,
+        onChanged: (v) => setState(() => _categoryFilter = v ?? 'All'),
+      ),
+      _FilterDropdown(
+        value: _statusFilter,
+        items: _statusFilters,
+        hint: 'Availability',
+        icon: Icons.inventory_2_outlined,
+        onChanged: (v) => setState(() => _statusFilter = v ?? 'All'),
+      ),
+    ];
+
+    // Counts the whole catalog now, not just the page that happened to be
+    // loaded, so it can honestly say "8 of 23".
+    final countLabel = Text(
+      _hasActiveFilters
+          ? '$shown of $inTab product${inTab == 1 ? '' : 's'}'
+          : '$inTab product${inTab == 1 ? '' : 's'}',
+      style: GoogleFonts.beVietnamPro(
+        fontSize: 13,
+        color: const Color(0xFF64748B),
+      ),
+    );
+
+    // The catalog is fetched once rather than streamed, so there is an
+    // explicit way to pull in changes another officer made.
+    final refreshButton = IconButton(
+      onPressed: _isLoading ? null : _loadProducts,
+      icon: const Icon(Icons.refresh_rounded, size: 18),
+      tooltip: 'Refresh catalog',
+      color: const Color(0xFF64748B),
+      visualDensity: VisualDensity.compact,
+    );
+
+    final clearButton = _hasActiveFilters
+        ? TextButton.icon(
+            onPressed: _clearFilters,
+            icon: const Icon(Icons.filter_alt_off_outlined, size: 15),
+            label: Text(
+              'Clear filters',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            style: TextButton.styleFrom(
+              foregroundColor: UpriseColors.primaryDark,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              minimumSize: const Size(0, 36),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          )
+        : const SizedBox.shrink();
+
     final content = isMobile
         ? Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              visibilitySwitch,
+              const SizedBox(height: 10),
               _buildSearchField(),
               const SizedBox(height: 10),
               Row(
                 children: [
-                  Expanded(
-                    child: _FilterDropdown(
-                      value: _categoryFilter,
-                      items: _categoryFilters,
-                      hint: 'Category',
-                      icon: Icons.category_outlined,
-                      onChanged: (v) {
-                        setState(() {
-                          _categoryFilter = v!;
-                        });
-                        _loadProducts(reset: true);
-                      },
-                    ),
-                  ),
+                  Expanded(child: filters[0]),
                   const SizedBox(width: 10),
-                  Expanded(
-                    child: _FilterDropdown(
-                      value: _statusFilter,
-                      items: _statusFilters,
-                      hint: 'Status',
-                      icon: Icons.circle_outlined,
-                      onChanged: (v) {
-                        setState(() {
-                          _statusFilter = v!;
-                        });
-                        _loadProducts(reset: true);
-                      },
-                    ),
-                  ),
+                  Expanded(child: filters[1]),
                 ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                '${_products.length} products',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  color: const Color(0xFF64748B),
-                ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  countLabel,
+                  const Spacer(),
+                  clearButton,
+                  refreshButton,
+                ],
               ),
             ],
           )
-        : Row(
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(width: 260, child: _buildSearchField()),
-              const SizedBox(width: 10),
-              _FilterDropdown(
-                value: _categoryFilter,
-                items: _categoryFilters,
-                hint: 'Category',
-                icon: Icons.category_outlined,
-                onChanged: (v) {
-                  setState(() {
-                    _categoryFilter = v!;
-                  });
-                  _loadProducts(reset: true);
-                },
+              Row(
+                children: [
+                  visibilitySwitch,
+                  const Spacer(),
+                  countLabel,
+                  if (_hasActiveFilters) ...[
+                    const SizedBox(width: 6),
+                    clearButton,
+                  ],
+                  const SizedBox(width: 4),
+                  refreshButton,
+                ],
               ),
-              const SizedBox(width: 10),
-              _FilterDropdown(
-                value: _statusFilter,
-                items: _statusFilters,
-                hint: 'Status',
-                icon: Icons.circle_outlined,
-                onChanged: (v) {
-                  setState(() {
-                    _statusFilter = v!;
-                  });
-                  _loadProducts(reset: true);
-                },
-              ),
-              const Spacer(),
-              Text(
-                '${_products.length} products',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  color: const Color(0xFF64748B),
-                ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  SizedBox(width: 300, child: _buildSearchField()),
+                  const SizedBox(width: 10),
+                  filters[0],
+                  const SizedBox(width: 10),
+                  filters[1],
+                ],
               ),
             ],
           );
@@ -1070,7 +1119,7 @@ class _ProductsTabState extends State<_ProductsTab> {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
       child: Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(14),
@@ -1082,150 +1131,210 @@ class _ProductsTabState extends State<_ProductsTab> {
   }
 
   Widget _buildProductGrid(bool isMobile) {
-    if (_isInitialLoad) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_products.isEmpty) {
-      return _buildEmptyState(
-        Icons.inventory_2_outlined,
-        'No products found',
-        _searchQuery.isNotEmpty ||
-                _categoryFilter != 'All' ||
-                _statusFilter != 'All'
-            ? 'Try adjusting your filters'
-            : 'Click "Add Product" to get started.',
+    if (_isLoading) {
+      return const Center(
+        child: SizedBox(
+          width: 28,
+          height: 28,
+          child: CircularProgressIndicator(
+            strokeWidth: 2.5,
+            color: UpriseColors.primaryDark,
+          ),
+        ),
       );
     }
 
-    return GridView.builder(
-      controller: _scrollController,
-      padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 28),
-      // A fixed 4-column grid always reserved 4 columns' worth of width even
-      // with only 1-2 products, leaving most of a wide screen blank —
-      // MaxCrossAxisExtent instead sizes each card to a comfortable target
-      // width and lets the column count adapt to whatever's actually there,
-      // like a real product-catalog grid rather than a sparse admin table.
-      // A single column on phone widths gives each card its full target
-      // size (280) instead of squeezing two half-width cards side by side.
-      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: isMobile ? 480 : 280,
-        crossAxisSpacing: 20,
-        mainAxisSpacing: 28,
-        childAspectRatio: 0.68,
-      ),
-      itemCount: _products.length + (_hasMore ? 1 : 0),
-      itemBuilder: (context, index) {
-        if (index == _products.length) {
-          return _buildLoadingMoreIndicator();
-        }
-        return _ProductCard(
-          product: _products[index],
-          alwaysShowActions: isMobile,
-          onTap: () => showDialog(
-            context: context,
-            builder: (_) => _ProductDetailsModal(product: _products[index]),
+    if (_loadError != null && _allProducts.isEmpty) {
+      return _buildEmptyState(
+        icon: Icons.cloud_off_outlined,
+        title: 'Could not load your products',
+        subtitle: 'Check your connection and try again.',
+        action: OutlinedButton.icon(
+          onPressed: _loadProducts,
+          icon: const Icon(Icons.refresh_rounded, size: 16),
+          label: Text(
+            'Retry',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
           ),
-          onArchive: () => _products[index].isArchived
-              ? _unarchiveProduct(_products[index])
-              : _archiveProduct(_products[index]),
-          onEdit: () => showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (_) => _ProductModal(
-              orgId: widget.orgId,
-              existingProduct: _products[index],
-              onProductSaved: () {
-                _loadProducts(reset: true);
-              },
+          style: OutlinedButton.styleFrom(
+            foregroundColor: UpriseColors.primaryDark,
+            side: const BorderSide(color: UpriseColors.primaryDark),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final products = _visibleProducts;
+
+    if (products.isEmpty) {
+      // Three genuinely different situations that used to share one message.
+      if (_hasActiveFilters) {
+        return _buildEmptyState(
+          icon: Icons.search_off_rounded,
+          title: 'No products match',
+          subtitle: 'Try a different search term or clear the filters.',
+          action: TextButton.icon(
+            onPressed: _clearFilters,
+            icon: const Icon(Icons.filter_alt_off_outlined, size: 16),
+            label: Text(
+              'Clear filters',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            style: TextButton.styleFrom(
+              foregroundColor: UpriseColors.primaryDark,
             ),
           ),
         );
-      },
-    );
-  }
+      }
+      if (_visibility == _Visibility.hidden) {
+        return _buildEmptyState(
+          icon: Icons.visibility_off_outlined,
+          title: 'Nothing is hidden',
+          subtitle:
+              'Every product you have made is live in the mobile app right now.',
+        );
+      }
+      return _buildEmptyState(
+        icon: Icons.storefront_outlined,
+        title: 'Your shop is empty',
+        subtitle:
+            'Add your first product and it appears in the Uprise app for '
+            'students and guests to browse.',
+        action: ElevatedButton.icon(
+          onPressed: widget.onAddProduct,
+          icon: const Icon(Icons.add, size: 18, color: Colors.white),
+          label: Text(
+            'Add Your First Product',
+            style: GoogleFonts.beVietnamPro(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: UpriseColors.primaryDark,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            elevation: 0,
+          ),
+        ),
+      );
+    }
 
-  Widget _buildLoadingMoreIndicator() {
-    return Container(
-      height: 80,
-      alignment: Alignment.center,
-      child: const SizedBox(
-        width: 24,
-        height: 24,
-        child: CircularProgressIndicator(strokeWidth: 2),
+    return RefreshIndicator(
+      onRefresh: _loadProducts,
+      color: UpriseColors.primaryDark,
+      child: GridView.builder(
+        padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 28),
+        // MaxCrossAxisExtent sizes each card to a comfortable target width and
+        // lets the column count adapt to what is actually there, like a real
+        // product catalog rather than a sparse admin table.
+        gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: isMobile ? 480 : 288,
+          crossAxisSpacing: 20,
+          mainAxisSpacing: 24,
+          childAspectRatio: 0.70,
+        ),
+        itemCount: products.length,
+        itemBuilder: (context, index) {
+          final product = products[index];
+          return _ProductCard(
+            product: product,
+            alwaysShowActions: isMobile,
+            onTap: () => showDialog(
+              context: context,
+              builder: (_) => _ProductDetailsModal(product: product),
+            ),
+            onArchive: () => product.isArchived
+                ? _unarchiveProduct(product)
+                : _archiveProduct(product),
+            onEdit: () => showDialog(
+              context: context,
+              barrierDismissible: false,
+              builder: (_) => _ProductModal(
+                orgId: widget.orgId,
+                existingProduct: product,
+                knownCustomCategories: customCategories,
+                onProductSaved: _loadProducts,
+              ),
+            ),
+          );
+        },
       ),
     );
   }
 
-  Widget _buildEmptyState(IconData icon, String message, String subtitle) {
-    final bool noFiltersActive =
-        _searchQuery.isEmpty &&
-        _categoryFilter == 'All' &&
-        _statusFilter == 'All';
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 96,
-            height: 96,
-            decoration: BoxDecoration(
-              color: UpriseColors.primaryDark.withAlpha(20),
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: Icon(
-              icon,
-              size: 44,
-              color: UpriseColors.primaryDark.withAlpha(160),
-            ),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            noFiltersActive ? 'Your store is empty' : message,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFF1A202C),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            noFiltersActive
-                ? 'Add your first product to start selling merchandise to students.'
-                : subtitle,
-            textAlign: TextAlign.center,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 13,
-              color: const Color(0xFF64748B),
-            ),
-          ),
-          if (noFiltersActive) ...[
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: widget.onAddProduct,
-              icon: const Icon(Icons.add, size: 18, color: Colors.white),
-              label: Text(
-                'Add Your First Product',
-                style: GoogleFonts.beVietnamPro(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: UpriseColors.primaryDark,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 12,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                elevation: 0,
+  Widget _buildEmptyState({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    Widget? action,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 88,
+                    height: 88,
+                    decoration: BoxDecoration(
+                      color: UpriseColors.primaryDark.withAlpha(18),
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: Icon(
+                      icon,
+                      size: 40,
+                      color: UpriseColors.primaryDark.withAlpha(160),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    title,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF1A202C),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 380),
+                    child: Text(
+                      subtitle,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        height: 1.5,
+                        color: const Color(0xFF64748B),
+                      ),
+                    ),
+                  ),
+                  if (action != null) ...[const SizedBox(height: 20), action],
+                ],
               ),
             ),
-          ],
-        ],
+          ),
+        ),
       ),
     );
   }
@@ -1319,106 +1428,142 @@ class _ProductCardState extends State<_ProductCard> {
   @override
   Widget build(BuildContext context) {
     final product = widget.product;
-    final totalStock = product.variants.isNotEmpty
-        ? product.variants.fold<int>(0, (sum, v) => sum + v.stock)
-        : product.stock;
-    final isLowStock = totalStock <= 5 && totalStock > 0;
-    final isOutOfStock = totalStock == 0;
+    final totalStock = product.totalStock;
+    final isArchived = product.isArchived;
+    final isOutOfStock = totalStock <= 0;
+    final isLowStock = totalStock > 0 && totalStock <= 5;
     final isDiscontinued = product.status == 'discontinued';
-    final String? statusLabel = isOutOfStock
-        ? 'Out of Stock'
+    // Only states that need the org to do something get a strip under the
+    // price. "Live and in stock" is the normal case and says nothing.
+    final (String, IconData, Color)? alert = isArchived
+        ? null
+        : isOutOfStock
+        ? (
+            'Out of stock in the app',
+            Icons.remove_shopping_cart_outlined,
+            UpriseColors.error,
+          )
         : isDiscontinued
-        ? 'Discontinued'
+        ? (
+            'Marked unavailable',
+            Icons.do_not_disturb_on_outlined,
+            UpriseColors.darkGray,
+          )
         : isLowStock
-        ? 'Low Stock'
+        ? (
+            'Only $totalStock left',
+            Icons.warning_amber_rounded,
+            UpriseColors.warning,
+          )
         : null;
+
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
       child: GestureDetector(
         onTap: widget.onTap,
-        child: Container(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(_DS.radiusMd),
-            border: Border.all(color: _DS.borderSoft),
+            border: Border.all(
+              color: _hovering
+                  ? UpriseColors.primaryDark.withAlpha(70)
+                  : _DS.borderSoft,
+            ),
+            boxShadow: _hovering
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withAlpha(20),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ]
+                : null,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               AspectRatio(
                 aspectRatio: 1,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: _hovering
-                        ? [
-                            BoxShadow(
-                              color: Colors.black.withAlpha(28),
-                              blurRadius: 20,
-                              offset: const Offset(0, 10),
-                            ),
-                          ]
-                        : _DS.cardShadow,
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        AnimatedScale(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // Archived products are dimmed rather than badged only,
+                      // so a hidden item never reads as part of the live
+                      // catalog at a glance.
+                      Opacity(
+                        opacity: isArchived ? 0.45 : 1,
+                        child: AnimatedScale(
                           duration: const Duration(milliseconds: 200),
-                          scale: _hovering ? 1.05 : 1.0,
+                          scale: _hovering ? 1.04 : 1.0,
                           child: _buildProductImage(),
                         ),
-                        // Quick-action affordance, like a storefront's
-                        // wishlist/quick-view icons — invisible until hovered
-                        // instead of permanent chrome over the product photo.
+                      ),
+                      if (isArchived)
                         Positioned(
-                          right: 8,
+                          left: 8,
                           top: 8,
-                          child: AnimatedOpacity(
-                            duration: const Duration(milliseconds: 150),
-                            opacity: (_hovering || widget.alwaysShowActions)
-                                ? 1
-                                : 0,
-                            child: IgnorePointer(
-                              ignoring:
-                                  !(_hovering || widget.alwaysShowActions),
-                              child: Column(
-                                children: [
-                                  _CardActionButton(
-                                    icon: Icons.edit_outlined,
-                                    tooltip: 'Edit',
-                                    onTap: widget.onEdit,
-                                  ),
-                                  const SizedBox(height: 6),
-                                  _CardActionButton(
-                                    icon: widget.product.isArchived
-                                        ? Icons.unarchive_outlined
-                                        : Icons.archive_outlined,
-                                    tooltip: widget.product.isArchived
-                                        ? 'Unarchive'
-                                        : 'Archive',
-                                    onTap: widget.onArchive,
-                                    color: UpriseColors.warning,
-                                  ),
-                                ],
-                              ),
+                          child: _statusBadge(product.status, isArchived: true),
+                        ),
+                      // Likes are the only engagement signal the mobile
+                      // catalog produces, so they sit on the photo the way a
+                      // storefront shows its wishlist count.
+                      if (!isArchived && product.likeCount > 0)
+                        Positioned(
+                          left: 8,
+                          top: 8,
+                          child: _LikePill(count: product.likeCount),
+                        ),
+                      // Quick actions stay invisible until hover instead of
+                      // being permanent chrome over the product photo.
+                      Positioned(
+                        right: 8,
+                        top: 8,
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 150),
+                          opacity: (_hovering || widget.alwaysShowActions)
+                              ? 1
+                              : 0,
+                          child: IgnorePointer(
+                            ignoring: !(_hovering || widget.alwaysShowActions),
+                            child: Column(
+                              children: [
+                                _CardActionButton(
+                                  icon: Icons.edit_outlined,
+                                  tooltip: 'Edit',
+                                  onTap: widget.onEdit,
+                                ),
+                                const SizedBox(height: 6),
+                                _CardActionButton(
+                                  icon: isArchived
+                                      ? Icons.visibility_outlined
+                                      : Icons.visibility_off_outlined,
+                                  tooltip: isArchived
+                                      ? 'Show in the app again'
+                                      : 'Hide from students',
+                                  onTap: widget.onArchive,
+                                  color: isArchived
+                                      ? UpriseColors.success
+                                      : UpriseColors.warning,
+                                ),
+                              ],
                             ),
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ),
               const SizedBox(height: 12),
               Text(
-                product.category,
+                product.category.isEmpty ? 'Uncategorized' : product.category,
                 style: GoogleFonts.beVietnamPro(
                   fontSize: 10.5,
                   fontWeight: FontWeight.w600,
@@ -1428,7 +1573,7 @@ class _ProductCardState extends State<_ProductCard> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 5),
               Text(
                 product.name,
                 style: GoogleFonts.beVietnamPro(
@@ -1440,13 +1585,18 @@ class _ProductCardState extends State<_ProductCard> {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 6),
+              const Spacer(),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
                 children: [
+                  // Was NumberFormat('#,###'), which rounded — a ₱149.50
+                  // product read as ₱150 here while the mobile app showed
+                  // ₱149.5. Same format as the student and guest catalogs.
                   Text(
-                    '₱${NumberFormat('#,###').format(product.price)}',
+                    '₱${NumberFormat('#,##0.##').format(product.price)}',
                     style: GoogleFonts.beVietnamPro(
-                      fontSize: 15,
+                      fontSize: 16,
                       fontWeight: FontWeight.w800,
                       color: const Color(0xFF1A202C),
                     ),
@@ -1454,10 +1604,13 @@ class _ProductCardState extends State<_ProductCard> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '$totalStock in stock',
+                      product.variants.isNotEmpty
+                          ? '$totalStock in ${product.variants.length} variant${product.variants.length == 1 ? '' : 's'}'
+                          : '$totalStock in stock',
+                      textAlign: TextAlign.right,
                       style: GoogleFonts.beVietnamPro(
                         fontSize: 11,
-                        color: const Color(0xFF9AA5B4),
+                        color: const Color(0xFF94A3B8),
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -1465,39 +1618,49 @@ class _ProductCardState extends State<_ProductCard> {
                   ),
                 ],
               ),
-              if (statusLabel != null) ...[
-                const SizedBox(height: 3),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.warning_amber_rounded,
-                      size: 12,
-                      color: Color(0xFFDC2626),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      statusLabel,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFFDC2626),
+              const SizedBox(height: 6),
+              SizedBox(
+                height: 16,
+                child: isArchived
+                    ? Row(
+                        children: [
+                          const Icon(
+                            Icons.visibility_off_outlined,
+                            size: 12,
+                            color: Color(0xFF94A3B8),
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            'Hidden from students',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFF94A3B8),
+                            ),
+                          ),
+                        ],
+                      )
+                    : alert == null
+                    ? const SizedBox.shrink()
+                    : Row(
+                        children: [
+                          Icon(alert.$2, size: 12, color: alert.$3),
+                          const SizedBox(width: 5),
+                          Expanded(
+                            child: Text(
+                              alert.$1,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w600,
+                                color: alert.$3,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
-                ),
-              ],
-              if (product.sold > 0) ...[
-                const SizedBox(height: 3),
-                Text(
-                  '${product.sold} sold',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF059669),
-                  ),
-                ),
-              ],
+              ),
             ],
           ),
         ),
@@ -1557,6 +1720,55 @@ class _ProductCardState extends State<_ProductCard> {
 // A flat gray box + generic bag icon read as "broken image" rather than
 // "no photo yet" — this gives an empty product a deliberate, on-brand look
 // instead of looking like something failed to load.
+/// How many students and guests have hearted this product in the mobile app.
+/// The card used to show "N sold" here, a number that can no longer move now
+/// that there is no checkout — this is the one signal the catalog really
+/// produces.
+class _LikePill extends StatelessWidget {
+  final int count;
+  const _LikePill({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: '$count student${count == 1 ? '' : 's'} liked this',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.white.withAlpha(235),
+          borderRadius: BorderRadius.circular(_DS.radiusPill),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withAlpha(20),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.favorite_rounded,
+              size: 11,
+              color: UpriseColors.primaryDark,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              NumberFormat.compact().format(count),
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF1A202C),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _NoPhotoPlaceholder extends StatelessWidget {
   const _NoPhotoPlaceholder();
 
@@ -1663,11 +1875,15 @@ class _ProductModal extends StatefulWidget {
   final String orgId;
   final ProductModel? existingProduct;
   final VoidCallback? onProductSaved;
+  // Custom ("Others") categories this org has already used, offered back as
+  // chips so near-duplicates do not pile up in the mobile app's filter row.
+  final List<String> knownCustomCategories;
 
   const _ProductModal({
     required this.orgId,
     this.existingProduct,
     this.onProductSaved,
+    this.knownCustomCategories = const [],
   });
 
   @override
@@ -2013,14 +2229,15 @@ class _ProductModalState extends State<_ProductModal> {
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-                        if (_isEdit && widget.existingProduct != null)
-                          Text(
-                            'PRODUCT ID: #${widget.existingProduct!.id.substring(0, 8).toUpperCase()}',
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 10,
-                              color: UpriseColors.darkGray,
-                            ),
+                        if (_isEdit && widget.existingProduct != null) ...[
+                          const SizedBox(height: 4),
+                          // Says up front whether the product being edited is
+                          // actually in the students' catalog right now.
+                          _statusBadge(
+                            widget.existingProduct!.status,
+                            isArchived: widget.existingProduct!.isArchived,
                           ),
+                        ],
                       ],
                     ),
                   ),
@@ -2053,6 +2270,9 @@ class _ProductModalState extends State<_ProductModal> {
                       _sectionLabel(
                         'Product Information',
                         icon: Icons.info_outline_rounded,
+                        hint:
+                            'This is what students and guests read in the '
+                            'Uprise app catalog.',
                       ),
                       TextFormField(
                         controller: _nameCtrl,
@@ -2124,9 +2344,78 @@ class _ProductModalState extends State<_ProductModal> {
                             required: true,
                           ),
                           style: GoogleFonts.beVietnamPro(fontSize: 13),
+                          onChanged: (_) => setState(() {}),
                           validator: (v) =>
                               v?.trim().isEmpty ?? true ? 'Required' : null,
                         ),
+                        // Whatever is typed here becomes a filter chip in the
+                        // student and guest catalogs, so "Tshirts" and
+                        // "T-shirts" would sit there as two separate
+                        // categories forever. Offering the org's existing ones
+                        // makes reuse the easy path.
+                        if (widget.knownCustomCategories.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            'Already used by this org — tap to reuse:',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 11.5,
+                              color: const Color(0xFF94A3B8),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: widget.knownCustomCategories.map((c) {
+                              final selected =
+                                  _customCategoryCtrl.text
+                                      .trim()
+                                      .toLowerCase() ==
+                                  c.toLowerCase();
+                              return InkWell(
+                                onTap: () => setState(() {
+                                  _customCategoryCtrl.text = c;
+                                }),
+                                borderRadius: BorderRadius.circular(
+                                  _DS.radiusPill,
+                                ),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 11,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: selected
+                                        ? UpriseColors.primaryDark.withAlpha(22)
+                                        : const Color(0xFFF1F4F8),
+                                    borderRadius: BorderRadius.circular(
+                                      _DS.radiusPill,
+                                    ),
+                                    border: Border.all(
+                                      color: selected
+                                          ? UpriseColors.primaryDark.withAlpha(
+                                              90,
+                                            )
+                                          : Colors.transparent,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    c,
+                                    style: GoogleFonts.beVietnamPro(
+                                      fontSize: 11.5,
+                                      fontWeight: selected
+                                          ? FontWeight.w700
+                                          : FontWeight.w500,
+                                      color: selected
+                                          ? UpriseColors.primaryDark
+                                          : const Color(0xFF475569),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ],
                       ],
                       const SizedBox(height: 12),
                       TextFormField(
@@ -2140,7 +2429,13 @@ class _ProductModalState extends State<_ProductModal> {
                         style: GoogleFonts.beVietnamPro(fontSize: 13),
                       ),
                       const SizedBox(height: 16),
-                      _sectionLabel('Pricing', icon: Icons.payments_outlined),
+                      _sectionLabel(
+                        'Pricing',
+                        icon: Icons.payments_outlined,
+                        hint:
+                            'Only the base price is shown in the app — cost '
+                            'price stays with your org.',
+                      ),
                       Row(
                         children: [
                           Expanded(
@@ -2185,12 +2480,20 @@ class _ProductModalState extends State<_ProductModal> {
                         ],
                       ),
                       _buildProfitMarginLine(),
-                      if (_variants.isEmpty) ...[
-                        const SizedBox(height: 16),
-                        _sectionLabel(
-                          'Inventory',
-                          icon: Icons.inventory_2_outlined,
-                        ),
+                      const SizedBox(height: 16),
+                      _sectionLabel(
+                        'Inventory',
+                        icon: Icons.inventory_2_outlined,
+                        hint:
+                            'Students see "Out of stock" in the app when this '
+                            'reaches zero.',
+                      ),
+                      // Adding a variant used to make this field vanish and
+                      // throw away whatever was typed in it, with nothing to
+                      // say where the number had gone. The field is still
+                      // replaced — variant stocks are the source of truth —
+                      // but now it says so and shows the running total.
+                      if (_variants.isEmpty)
                         TextFormField(
                           controller: _stockCtrl,
                           keyboardType: TextInputType.number,
@@ -2208,43 +2511,131 @@ class _ProductModalState extends State<_ProductModal> {
                             }
                             return null;
                           },
+                        )
+                      else
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8F9FB),
+                            borderRadius: BorderRadius.circular(_DS.radiusSm),
+                            border: Border.all(color: _DS.borderSoft),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.functions_rounded,
+                                size: 16,
+                                color: Color(0xFF64748B),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'Stock is added up from your variants',
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 12.5,
+                                    color: const Color(0xFF475569),
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                '${_variants.fold<int>(0, (sum, v) => sum + v.stock)} total',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: const Color(0xFF1A202C),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ],
                       if (_isEdit) ...[
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: Checkbox(
-                                value: _isDiscontinued,
-                                activeColor: const Color(0xFF6B7280),
-                                materialTapTargetSize:
-                                    MaterialTapTargetSize.shrinkWrap,
-                                onChanged: _submitting
-                                    ? null
-                                    : (v) => setState(
-                                        () => _isDiscontinued = v ?? false,
-                                      ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Mark as Discontinued',
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 13,
+                        const SizedBox(height: 12),
+                        InkWell(
+                          onTap: _submitting
+                              ? null
+                              : () => setState(
+                                  () => _isDiscontinued = !_isDiscontinued,
+                                ),
+                          borderRadius: BorderRadius.circular(_DS.radiusSm),
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: _isDiscontinued
+                                  ? const Color(0xFFF3F4F6)
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(_DS.radiusSm),
+                              border: Border.all(
                                 color: _isDiscontinued
-                                    ? const Color(0xFF6B7280)
-                                    : const Color(0xFF374151),
-                                fontWeight: FontWeight.w500,
+                                    ? const Color(0xFFD1D5DB)
+                                    : _DS.borderSoft,
                               ),
                             ),
-                          ],
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: Checkbox(
+                                    value: _isDiscontinued,
+                                    activeColor: const Color(0xFF6B7280),
+                                    materialTapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    onChanged: _submitting
+                                        ? null
+                                        : (v) => setState(
+                                            () => _isDiscontinued = v ?? false,
+                                          ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Mark as discontinued',
+                                        style: GoogleFonts.beVietnamPro(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: const Color(0xFF374151),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      // Says what actually happens: mobile
+                                      // keeps showing discontinued products,
+                                      // just greyed out and marked. Only
+                                      // archiving removes them.
+                                      Text(
+                                        'Stays in the app but is shown as unavailable. '
+                                        'To remove it from the catalog entirely, '
+                                        'hide it instead.',
+                                        style: GoogleFonts.beVietnamPro(
+                                          fontSize: 11.5,
+                                          height: 1.45,
+                                          color: const Color(0xFF94A3B8),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ],
                       const SizedBox(height: 16),
-                      _sectionLabel('Variants', icon: Icons.tune_rounded),
+                      _sectionLabel(
+                        'Variants',
+                        icon: Icons.tune_rounded,
+                        hint:
+                            'Sizes and colors students pick from on the product '
+                            'page. Each one carries its own stock.',
+                      ),
                       ..._variants.map((v) => _buildVariantChip(v)),
                       if (_variants.isNotEmpty) const SizedBox(height: 8),
                       OutlinedButton.icon(
@@ -2271,14 +2662,20 @@ class _ProductModalState extends State<_ProductModal> {
                       ),
                       const SizedBox(height: 16),
                       _sectionLabel(
-                        'Product Photo',
+                        'Main Photo',
                         icon: Icons.image_outlined,
+                        hint:
+                            'The single image students see in the catalog '
+                            'grid. Square photos crop best.',
                       ),
                       _buildImagePicker(),
                       const SizedBox(height: 16),
                       _sectionLabel(
                         'More Photos (optional)',
                         icon: Icons.collections_outlined,
+                        hint:
+                            'Extra angles become the swipeable gallery on the '
+                            'product page in the app.',
                       ),
                       _buildRotationPhotosPicker(),
                     ],
@@ -2847,33 +3244,52 @@ class _ProductModalState extends State<_ProductModal> {
   // decorative (label text already says what the section is) and this modal
   // has several of these, so it was several near-identical icons in a row.
   // The accent bar still gives each section a splash of color.
-  Widget _sectionLabel(String text, {IconData? icon}) {
+  // [hint] carries the one thing this form could never say before: where the
+  // fields under this heading actually show up in the mobile app.
+  Widget _sectionLabel(String text, {IconData? icon, String? hint}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 3,
-            height: 15,
-            decoration: BoxDecoration(
-              color: UpriseColors.primaryDark,
-              borderRadius: BorderRadius.circular(2),
+          Row(
+            children: [
+              Container(
+                width: 3,
+                height: 15,
+                decoration: BoxDecoration(
+                  color: UpriseColors.primaryDark,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                text,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: UpriseColors.primaryDark,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Divider(color: const Color(0xFFE2E6EA), thickness: 1),
+              ),
+            ],
+          ),
+          if (hint != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 13, top: 4),
+              child: Text(
+                hint,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 11.5,
+                  height: 1.45,
+                  color: const Color(0xFF94A3B8),
+                ),
+              ),
             ),
-          ),
-          const SizedBox(width: 10),
-          Text(
-            text,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: UpriseColors.primaryDark,
-              letterSpacing: 0.3,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Divider(color: const Color(0xFFE2E6EA), thickness: 1),
-          ),
         ],
       ),
     );
@@ -3115,9 +3531,7 @@ class _ProductDetailsModal extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final totalStock = product.variants.isNotEmpty
-        ? product.variants.fold<int>(0, (sum, v) => sum + v.stock)
-        : product.stock;
+    final totalStock = product.totalStock;
 
     final productId = 'PRD-${product.id.substring(0, 4).toUpperCase()}';
 
@@ -3192,7 +3606,7 @@ class _ProductDetailsModal extends StatelessWidget {
                       ],
                     ),
                   ),
-                  _statusBadge(product.status),
+                  _statusBadge(product.status, isArchived: product.isArchived),
                   const SizedBox(width: 4),
                   IconButton(
                     icon: const Icon(
@@ -3228,25 +3642,34 @@ class _ProductDetailsModal extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    // Plain stacked icon+label+value pairs read as a form,
-                    // not a product summary — small tinted cards in a grid
-                    // give each fact its own visual weight.
+                    // The org portal shows two different kinds of fact about
+                    // a product: what students see in the app, and what only
+                    // the org sees. They used to sit in one undifferentiated
+                    // grid, so "Cost Price" read as public and "Sold" read as
+                    // meaningful. Split and labelled instead.
+                    _sectionTitle(
+                      'What students see',
+                      Icons.phone_iphone_rounded,
+                    ),
+                    const SizedBox(height: 10),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
                           child: _detailCard(
-                            'Category',
-                            product.category,
-                            Icons.category_outlined,
+                            'Price',
+                            '₱${NumberFormat('#,##0.##').format(product.price)}',
+                            Icons.sell_outlined,
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: _detailCard(
-                            'Price',
-                            '₱${NumberFormat('#,###').format(product.price)}',
-                            Icons.payments_outlined,
+                            'Category',
+                            product.category.isEmpty
+                                ? 'Uncategorized'
+                                : product.category,
+                            Icons.category_outlined,
                           ),
                         ),
                       ],
@@ -3257,22 +3680,56 @@ class _ProductDetailsModal extends StatelessWidget {
                       children: [
                         Expanded(
                           child: _detailCard(
-                            'Stock',
-                            '$totalStock units',
+                            'Availability',
+                            totalStock <= 0
+                                ? 'Out of stock'
+                                : product.status == 'discontinued'
+                                ? 'Discontinued'
+                                : '$totalStock in stock',
                             Icons.inventory_2_outlined,
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
+                          // Replaces the old "Sold" card, which could only
+                          // ever read 0 with no checkout flow in the app.
                           child: _detailCard(
-                            'Sold',
-                            '${product.sold} units',
-                            Icons.shopping_cart_outlined,
+                            'Likes',
+                            '${product.likeCount} student${product.likeCount == 1 ? '' : 's'}',
+                            Icons.favorite_rounded,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
+                    _sectionTitle('Only you see this', Icons.lock_outline),
+                    const SizedBox(height: 10),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: _detailCard(
+                            'Cost price',
+                            product.costPrice > 0
+                                ? '₱${NumberFormat('#,##0.##').format(product.costPrice)}'
+                                : 'Not set',
+                            Icons.receipt_long_outlined,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _detailCard(
+                            'Profit per item',
+                            (product.costPrice > 0 && product.price > 0)
+                                ? '₱${NumberFormat('#,##0.##').format(product.price - product.costPrice)}'
+                                      ' · ${(((product.price - product.costPrice) / product.price) * 100).toStringAsFixed(0)}%'
+                                : '—',
+                            Icons.trending_up_rounded,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
                     if (product.description.isNotEmpty) ...[
                       _sectionTitle('Description', Icons.notes_rounded),
                       Text(
@@ -3287,7 +3744,10 @@ class _ProductDetailsModal extends StatelessWidget {
                     ],
                     // Variants Section
                     if (product.variants.isNotEmpty) ...[
-                      _sectionTitle('Variants', Icons.tune_rounded),
+                      _sectionTitle(
+                        'Variants students can choose',
+                        Icons.tune_rounded,
+                      ),
                       const SizedBox(height: 8),
                       Container(
                         decoration: BoxDecoration(
@@ -3747,1130 +4207,119 @@ class _ProductDetailsModal extends StatelessWidget {
   }
 }
 
-// ============================================================
-// ORDERS TAB (unchanged)
-// ============================================================
-class _OrdersTab extends StatefulWidget {
-  final String orgId;
-  const _OrdersTab({required this.orgId});
+// ─────────────────────────────────────────────────────────────────────────────
+// Reusable widgets
+// ─────────────────────────────────────────────────────────────────────────────
+/// Segmented control for the one question that actually changes what students
+/// see: is this product in the mobile catalog, or archived out of it. It used
+/// to be an "Archived" entry buried in the availability dropdown, which read
+/// as just another status.
+class _VisibilitySwitch extends StatelessWidget {
+  final _Visibility value;
+  final int liveCount;
+  final int hiddenCount;
+  final ValueChanged<_Visibility> onChanged;
 
-  @override
-  State<_OrdersTab> createState() => _OrdersTabState();
-}
-
-class _OrdersTabState extends State<_OrdersTab> {
-  final TextEditingController _searchController = TextEditingController();
-  // Created once, not inline in build() — _buildTable rebuilds on every
-  // keystroke/filter change/pagination, so constructing fresh
-  // .snapshots() there each time was re-subscribing to Firestore from
-  // scratch on every keystroke.
-  late final Stream<QuerySnapshot> _ordersStream = FirebaseFirestore.instance
-      .collection('orders')
-      .where('orgId', isEqualTo: widget.orgId)
-      .orderBy('createdAt', descending: true)
-      .snapshots();
-  String _searchQuery = '';
-  String _statusFilter = 'All';
-  String _bundleIdFilter = 'All';
-  String _sectionFilter = 'All';
-  String _pickupStatusFilter = 'All';
-  int _currentPage = 1;
-  static const int _pageSize = 10;
-  bool _isBulkUpdating = false;
-
-  final List<String> _statusFilters = [
-    'All',
-    'Pending',
-    'Processing',
-    'Completed',
-  ];
-  List<String> _availableBundleIds = ['All'];
-  List<String> _availableSections = ['All'];
-
-  List<OrderModel> _applyFilters(List<OrderModel> orders) {
-    return orders.where((o) {
-      final matchSearch =
-          _searchQuery.isEmpty ||
-          o.customerName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          o.orderId.toLowerCase().contains(_searchQuery.toLowerCase());
-      final matchStatus =
-          _statusFilter == 'All' ||
-          o.status.toLowerCase() == _statusFilter.toLowerCase();
-      final matchBundle =
-          _bundleIdFilter == 'All' || o.bundleId == _bundleIdFilter;
-      final matchSection =
-          _sectionFilter == 'All' || o.section == _sectionFilter;
-      final matchPickup =
-          _pickupStatusFilter == 'All' || o.pickupStatus == _pickupStatusFilter;
-      return matchSearch &&
-          matchStatus &&
-          matchBundle &&
-          matchSection &&
-          matchPickup;
-    }).toList();
-  }
-
-  void _updateBundleIds(List<OrderModel> orders) {
-    final ids = orders
-        .map((o) => o.bundleId)
-        .where((id) => id.isNotEmpty)
-        .toSet()
-        .toList();
-    ids.sort();
-    final newBundleIds = ['All', ...ids];
-    if (listEquals(_availableBundleIds, newBundleIds) &&
-        (_bundleIdFilter == 'All' || ids.contains(_bundleIdFilter))) {
-      return;
-    }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      setState(() {
-        _availableBundleIds = newBundleIds;
-        if (_bundleIdFilter != 'All' && !ids.contains(_bundleIdFilter)) {
-          _bundleIdFilter = 'All';
-        }
-      });
-    });
-  }
-
-  void _updateSections(List<OrderModel> orders) {
-    final sections = orders
-        .map((o) => o.section)
-        .where((s) => s.isNotEmpty)
-        .toSet()
-        .toList();
-    sections.sort();
-    final newSections = ['All', ...sections];
-    if (listEquals(_availableSections, newSections) &&
-        (_sectionFilter == 'All' || sections.contains(_sectionFilter))) {
-      return;
-    }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      setState(() {
-        _availableSections = newSections;
-        if (_sectionFilter != 'All' && !sections.contains(_sectionFilter)) {
-          _sectionFilter = 'All';
-        }
-      });
-    });
-  }
-
-  Future<void> _updateOrderPickupStatus(
-    String orderId,
-    String pickupStatus,
-  ) async {
-    try {
-      await FirebaseFirestore.instance.collection('orders').doc(orderId).update(
-        {'pickupStatus': pickupStatus},
-      );
-      if (mounted)
-        _showSnack('Updated to "$pickupStatus"', UpriseColors.success);
-    } catch (e) {
-      if (mounted) _showSnack('Error: $e', UpriseColors.error);
-    }
-  }
-
-  Future<void> _bulkUpdateSection(
-    String section,
-    String pickupStatus,
-    List<OrderModel> sectionOrders,
-  ) async {
-    final count = sectionOrders.length;
-    final confirmed = await _showBulkConfirmDialog(
-      title: 'Update Section $section',
-      message:
-          'Mark $count order${count == 1 ? '' : 's'} in section $section as "$pickupStatus"?',
-    );
-    if (!confirmed) return;
-    setState(() => _isBulkUpdating = true);
-    try {
-      final db = FirebaseFirestore.instance;
-      WriteBatch current = db.batch();
-      int opCount = 0;
-      final List<WriteBatch> batches = [];
-      for (final order in sectionOrders) {
-        current.update(db.collection('orders').doc(order.id), {
-          'pickupStatus': pickupStatus,
-        });
-        opCount++;
-        if (opCount >= 500) {
-          batches.add(current);
-          current = db.batch();
-          opCount = 0;
-        }
-      }
-      if (opCount > 0) batches.add(current);
-      for (final b in batches) {
-        await b.commit();
-      }
-      if (mounted)
-        _showSnack(
-          'Updated $count orders to "$pickupStatus"',
-          UpriseColors.success,
-        );
-    } catch (e) {
-      if (mounted) _showSnack('Error: $e', UpriseColors.error);
-    } finally {
-      if (mounted) setState(() => _isBulkUpdating = false);
-    }
-  }
-
-  Future<void> _bulkUpdateAll(
-    String pickupStatus,
-    List<OrderModel> allOrders,
-  ) async {
-    final count = allOrders.length;
-    final confirmed = await _showBulkConfirmDialog(
-      title: 'Mark ALL as "$pickupStatus"',
-      message:
-          'This will update $count order${count == 1 ? '' : 's'} across all sections to "$pickupStatus".',
-    );
-    if (!confirmed) return;
-    setState(() => _isBulkUpdating = true);
-    try {
-      final db = FirebaseFirestore.instance;
-      WriteBatch current = db.batch();
-      int opCount = 0;
-      final List<WriteBatch> batches = [];
-      for (final order in allOrders) {
-        current.update(db.collection('orders').doc(order.id), {
-          'pickupStatus': pickupStatus,
-        });
-        opCount++;
-        if (opCount >= 500) {
-          batches.add(current);
-          current = db.batch();
-          opCount = 0;
-        }
-      }
-      if (opCount > 0) batches.add(current);
-      for (final b in batches) {
-        await b.commit();
-      }
-      if (mounted)
-        _showSnack(
-          'Updated $count orders to "$pickupStatus"',
-          UpriseColors.success,
-        );
-    } catch (e) {
-      if (mounted) _showSnack('Error: $e', UpriseColors.error);
-    } finally {
-      if (mounted) setState(() => _isBulkUpdating = false);
-    }
-  }
-
-  Future<bool> _showBulkConfirmDialog({
-    required String title,
-    required String message,
-  }) async {
-    return await showDialog<bool>(
-          context: context,
-          builder: (ctx) => Dialog(
-            // Was unset — Dialog falls back to Flutter's default Material
-            // surface color, which skews purple/lavender on this app's
-            // unseeded theme.
-            backgroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Container(
-              width: 420,
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFF7ED),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(
-                          Icons.update_rounded,
-                          // Was a stale, more-vivid orange that didn't
-                          // match the rest of this file's UpriseColors.
-                          // primaryDark modals — same drift bug fixed
-                          // elsewhere in the org portal this session.
-                          color: UpriseColors.primaryDark,
-                          size: 20,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          title,
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close_rounded, size: 18),
-                        tooltip: 'Close',
-                        onPressed: () => Navigator.pop(ctx, false),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    message,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 13,
-                      color: const Color(0xFF64748B),
-                      height: 1.5,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      OutlinedButton(
-                        onPressed: () => Navigator.pop(ctx, false),
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: Color(0xFFE2E6EA)),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
-                          ),
-                        ),
-                        child: Text(
-                          'Cancel',
-                          style: GoogleFonts.beVietnamPro(fontSize: 13),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      ElevatedButton(
-                        onPressed: () => Navigator.pop(ctx, true),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: UpriseColors.primaryDark,
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
-                          ),
-                        ),
-                        child: Text(
-                          'Confirm',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ) ??
-        false;
-  }
-
-  void _showSnack(String msg, Color color) {
-    if (color == UpriseColors.error) {
-      AppToast.error(context, msg);
-    } else if (color == UpriseColors.success) {
-      AppToast.success(context, msg);
-    } else if (color == UpriseColors.warning) {
-      AppToast.warning(context, msg);
-    } else {
-      AppToast.info(context, msg);
-    }
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
+  const _VisibilitySwitch({
+    required this.value,
+    required this.liveCount,
+    required this.hiddenCount,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _buildToolbar(),
-        const SizedBox(height: 16),
-        Expanded(child: _buildTable()),
-        const SizedBox(height: 24),
-      ],
-    );
-  }
-
-  Widget _buildToolbar() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 28),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 200,
-            height: 40,
-            child: TextField(
-              controller: _searchController,
-              onChanged: (value) => setState(() {
-                _searchQuery = value;
-                _currentPage = 1;
-              }),
-              style: GoogleFonts.beVietnamPro(fontSize: 13),
-              decoration: InputDecoration(
-                hintText: 'Search orders...',
-                hintStyle: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  color: const Color(0xFF9AA5B4),
-                ),
-                prefixIcon: const Icon(
-                  Icons.search_rounded,
-                  size: 18,
-                  color: Color(0xFF9AA5B4),
-                ),
-                filled: true,
-                fillColor: Colors.white,
-                contentPadding: const EdgeInsets.symmetric(
-                  vertical: 0,
-                  horizontal: 16,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(
-                    color: UpriseColors.primaryDark,
-                    width: 1.5,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          _FilterDropdown(
-            value: _statusFilter,
-            items: _statusFilters,
-            hint: 'Status',
-            icon: Icons.tune_rounded,
-            onChanged: (v) => setState(() {
-              _statusFilter = v!;
-              _currentPage = 1;
-            }),
-          ),
-          const SizedBox(width: 10),
-          if (_availableSections.length > 1) ...[
-            _FilterDropdown(
-              value: _sectionFilter,
-              items: _availableSections,
-              hint: 'Section',
-              icon: Icons.groups_outlined,
-              onChanged: (v) => setState(() {
-                _sectionFilter = v!;
-                _currentPage = 1;
-              }),
-            ),
-            const SizedBox(width: 10),
-          ],
-          _FilterDropdown(
-            value: _pickupStatusFilter,
-            items: const ['All', 'Pending', 'Ready for Pickup', 'Claimed'],
-            hint: 'Pickup',
-            icon: Icons.local_shipping_outlined,
-            onChanged: (v) => setState(() {
-              _pickupStatusFilter = v!;
-              _currentPage = 1;
-            }),
-          ),
-          const SizedBox(width: 10),
-          if (_availableBundleIds.length > 1)
-            _FilterDropdown(
-              value: _bundleIdFilter,
-              items: _availableBundleIds,
-              hint: 'Bundle',
-              icon: Icons.local_offer_outlined,
-              onChanged: (v) => setState(() {
-                _bundleIdFilter = v!;
-                _currentPage = 1;
-              }),
-            ),
-        ],
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F4F8),
+        borderRadius: BorderRadius.circular(_DS.radiusPill),
       ),
-    );
-  }
-
-  Widget _buildTable() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: _ordersStream,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        }
-        final rawOrders = snapshot.data!.docs
-            .map((d) => OrderModel.fromFirestore(d))
-            .toList();
-        _updateBundleIds(rawOrders);
-        _updateSections(rawOrders);
-
-        final Map<String, List<OrderModel>> sectionGroups = {};
-        for (final o in rawOrders) {
-          if (o.section.isNotEmpty) {
-            sectionGroups.putIfAbsent(o.section, () => []).add(o);
-          }
-        }
-        final sortedSections = sectionGroups.keys.toList()..sort();
-
-        var allOrders = _applyFilters(rawOrders);
-
-        final totalPages = allOrders.isEmpty
-            ? 1
-            : (allOrders.length / _pageSize).ceil();
-        final safePage = _currentPage.clamp(1, totalPages);
-        final start = (safePage - 1) * _pageSize;
-        final end = (start + _pageSize).clamp(0, allOrders.length);
-        final pageOrders = allOrders.sublist(start, end);
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (rawOrders.isNotEmpty) _buildGlobalBulkButtons(rawOrders),
-            if (sectionGroups.isNotEmpty)
-              _buildSectionBanner(sortedSections, sectionGroups),
-            if (rawOrders.isNotEmpty || sectionGroups.isNotEmpty)
-              const SizedBox(height: 8),
-            Expanded(
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 28),
-                clipBehavior: Clip.antiAlias,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFFE8ECF0)),
-                  boxShadow: _DS.cardShadow,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: _Visibility.values.map((v) {
+          final selected = v == value;
+          final count = v == _Visibility.live ? liveCount : hiddenCount;
+          return GestureDetector(
+            onTap: () => onChanged(v),
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
                 ),
-                child: Column(
+                decoration: BoxDecoration(
+                  color: selected ? Colors.white : Colors.transparent,
+                  borderRadius: BorderRadius.circular(_DS.radiusPill),
+                  boxShadow: selected
+                      ? [
+                          BoxShadow(
+                            color: Colors.black.withAlpha(18),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    _buildTableHeader(),
-                    Expanded(
-                      child: allOrders.isEmpty
-                          ? _buildEmptyState(
-                              Icons.shopping_cart_outlined,
-                              'No orders yet',
-                              'Orders will appear here after checkout.',
-                            )
-                          : ListView.builder(
-                              itemCount: pageOrders.length,
-                              itemBuilder: (_, i) => _buildOrderRow(
-                                pageOrders[i],
-                                isLast: i == pageOrders.length - 1,
-                              ),
-                            ),
+                    Icon(
+                      v.icon,
+                      size: 14,
+                      color: selected
+                          ? UpriseColors.primaryDark
+                          : const Color(0xFF94A3B8),
                     ),
-                    _buildFooter(allOrders.length, totalPages, start, end),
+                    const SizedBox(width: 7),
+                    Text(
+                      v.label,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12.5,
+                        fontWeight: selected
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                        color: selected
+                            ? const Color(0xFF1A202C)
+                            : const Color(0xFF64748B),
+                      ),
+                    ),
+                    const SizedBox(width: 7),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? UpriseColors.primaryDark.withAlpha(22)
+                            : const Color(0xFFE2E8F0),
+                        borderRadius: BorderRadius.circular(_DS.radiusPill),
+                      ),
+                      child: Text(
+                        '$count',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w700,
+                          color: selected
+                              ? UpriseColors.primaryDark
+                              : const Color(0xFF64748B),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
             ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildGlobalBulkButtons(List<OrderModel> allOrders) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(28, 0, 28, 8),
-      child: Row(
-        children: [
-          Text(
-            'Bulk Actions:',
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: const Color(0xFF64748B),
-            ),
-          ),
-          const SizedBox(width: 10),
-          OutlinedButton.icon(
-            onPressed: _isBulkUpdating
-                ? null
-                : () => _bulkUpdateAll('Ready for Pickup', allOrders),
-            icon: const Icon(Icons.check_circle_outline, size: 14),
-            label: Text(
-              'Mark ALL as Ready',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFF2563EB),
-              side: const BorderSide(color: Color(0xFF93C5FD)),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            ),
-          ),
-          const SizedBox(width: 8),
-          OutlinedButton.icon(
-            onPressed: _isBulkUpdating
-                ? null
-                : () => _bulkUpdateAll('Claimed', allOrders),
-            icon: const Icon(Icons.done_all_rounded, size: 14),
-            label: Text(
-              'Mark ALL as Claimed',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFF059669),
-              side: const BorderSide(color: Color(0xFF6EE7B7)),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            ),
-          ),
-          if (_isBulkUpdating) ...[
-            const SizedBox(width: 12),
-            const SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'Updating…',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 12,
-                color: const Color(0xFF64748B),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSectionBanner(
-    List<String> sortedSections,
-    Map<String, List<OrderModel>> sectionGroups,
-  ) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(28, 0, 28, 0),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFFBEB),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFFEF3C7)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.groups_outlined,
-                size: 15,
-                color: Color(0xFFFB923C),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                'Section Summary',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFFFB923C),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          ...sortedSections.map((section) {
-            final orders = sectionGroups[section]!;
-            final itemCount = orders.fold<int>(
-              0,
-              (sum, o) => sum + o.items.fold<int>(0, (s, i) => s + i.quantity),
-            );
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: UpriseColors.primaryDark.withAlpha(18),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      section,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: UpriseColors.primaryDark,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${orders.length} order${orders.length == 1 ? '' : 's'} / $itemCount item${itemCount == 1 ? '' : 's'}',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 12,
-                      color: const Color(0xFF64748B),
-                    ),
-                  ),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: _isBulkUpdating
-                        ? null
-                        : () => _bulkUpdateSection(
-                            section,
-                            'Ready for Pickup',
-                            orders,
-                          ),
-                    style: TextButton.styleFrom(
-                      foregroundColor: const Color(0xFF2563EB),
-                      backgroundColor: const Color(0xFFEFF6FF),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      minimumSize: Size.zero,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                    ),
-                    child: Text(
-                      'Ready',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  TextButton(
-                    onPressed: _isBulkUpdating
-                        ? null
-                        : () => _bulkUpdateSection(section, 'Claimed', orders),
-                    style: TextButton.styleFrom(
-                      foregroundColor: const Color(0xFF059669),
-                      backgroundColor: const Color(0xFFECFDF5),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      minimumSize: Size.zero,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                    ),
-                    child: Text(
-                      'Claimed',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTableHeader() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF7ED),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-        border: Border(
-          bottom: BorderSide(color: UpriseColors.primaryDark.withAlpha(60)),
-        ),
-      ),
-      child: Row(
-        children: [
-          Expanded(flex: 2, child: _headerCell('ORDER ID')),
-          Expanded(flex: 2, child: _headerCell('CUSTOMER')),
-          Expanded(flex: 1, child: _headerCell('SECTION')),
-          Expanded(flex: 1, child: _headerCell('DATE')),
-          Expanded(flex: 1, child: _headerCell('TOTAL')),
-          Expanded(flex: 2, child: _headerCell('PICKUP STATUS')),
-          Expanded(
-            flex: 1,
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: _headerCell('ACTIONS'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _headerCell(String text) => Text(
-    text,
-    style: GoogleFonts.beVietnamPro(
-      fontSize: 11,
-      fontWeight: FontWeight.w700,
-      color: const Color(0xFF64748B),
-      letterSpacing: 0.7,
-    ),
-  );
-
-  Widget _buildOrderRow(OrderModel order, {required bool isLast}) {
-    final date = DateFormat('MMM d, yyyy').format(order.createdAt.toDate());
-    return InkWell(
-      hoverColor: const Color(0xFFF8F9FB),
-      onTap: () => showDialog(
-        context: context,
-        builder: (_) => _OrderDetailsModal(order: order),
-      ),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        decoration: BoxDecoration(
-          border: isLast
-              ? null
-              : const Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              flex: 2,
-              child: Text(
-                order.orderId,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: UpriseColors.primaryDark,
-                ),
-              ),
-            ),
-            Expanded(
-              flex: 2,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    order.customerName,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: const Color(0xFF1A202C),
-                    ),
-                  ),
-                  Text(
-                    order.customerEmail,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11,
-                      color: const Color(0xFF64748B),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              flex: 1,
-              child: order.section.isEmpty
-                  ? Text(
-                      '—',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 12,
-                        color: const Color(0xFF9AA5B4),
-                      ),
-                    )
-                  : Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: UpriseColors.primaryDark.withAlpha(18),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        order.section,
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: UpriseColors.primaryDark,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-            ),
-            Expanded(
-              flex: 1,
-              child: Text(
-                date,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 12,
-                  color: const Color(0xFF64748B),
-                ),
-              ),
-            ),
-            Expanded(
-              flex: 1,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '₱${NumberFormat('#,###.00').format(order.total)}',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: UpriseColors.primaryDark,
-                    ),
-                  ),
-                  if (order.paymentMethod == 'GCash')
-                    Text(
-                      order.paymentVerified
-                          ? 'GCash · Verified'
-                          : 'GCash · Unverified',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 9.5,
-                        fontWeight: FontWeight.w600,
-                        color: order.paymentVerified
-                            ? UpriseColors.success
-                            : const Color(0xFFD97706),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            Expanded(flex: 2, child: _pickupStatusBadge(order.pickupStatus)),
-            Expanded(
-              flex: 1,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  OrgActionIconButton(
-                    icon: Icons.visibility_outlined,
-                    tooltip: 'View Details',
-                    onTap: () => showDialog(
-                      context: context,
-                      builder: (_) => _OrderDetailsModal(order: order),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  PopupMenuButton<String>(
-                    icon: const Icon(
-                      Icons.more_vert,
-                      size: 16,
-                      color: Color(0xFF64748B),
-                    ),
-                    tooltip: 'Update Pickup Status',
-                    onSelected: (value) =>
-                        _updateOrderPickupStatus(order.id, value),
-                    itemBuilder: (_) => [
-                      PopupMenuItem(
-                        value: 'Pending',
-                        child: Text(
-                          'Pending',
-                          style: GoogleFonts.beVietnamPro(fontSize: 13),
-                        ),
-                      ),
-                      PopupMenuItem(
-                        value: 'Ready for Pickup',
-                        child: Text(
-                          'Ready for Pickup',
-                          style: GoogleFonts.beVietnamPro(fontSize: 13),
-                        ),
-                      ),
-                      PopupMenuItem(
-                        value: 'Claimed',
-                        child: Text(
-                          'Claimed',
-                          style: GoogleFonts.beVietnamPro(fontSize: 13),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _pickupStatusBadge(String status) {
-    final Color bg, fg;
-    final String label;
-    switch (status) {
-      case 'Ready for Pickup':
-        bg = const Color(0xFFEFF6FF);
-        fg = const Color(0xFF2563EB);
-        label = 'READY';
-        break;
-      case 'Claimed':
-        bg = const Color(0xFFECFDF5);
-        fg = const Color(0xFF059669);
-        label = 'CLAIMED';
-        break;
-      default:
-        bg = const Color(0xFFFFFBEB);
-        fg = const Color(0xFFFB923C);
-        label = 'PENDING';
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(_DS.radiusPill),
-      ),
-      child: Text(
-        label,
-        style: GoogleFonts.beVietnamPro(
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          color: fg,
-          letterSpacing: 0.6,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFooter(int total, int totalPages, int start, int end) {
-    const int maxVisible = 5;
-    int firstPage = (_currentPage - maxVisible ~/ 2).clamp(1, totalPages);
-    int lastPage = (firstPage + maxVisible - 1).clamp(1, totalPages);
-    if (lastPage - firstPage + 1 < maxVisible && firstPage > 1) {
-      firstPage = (lastPage - maxVisible + 1).clamp(1, totalPages);
-    }
-    final pages = List.generate(lastPage - firstPage + 1, (i) => firstPage + i);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: Color(0xFFE8ECF0))),
-        color: Color(0xFFF8F9FB),
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(14)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            'Showing ${total == 0 ? 0 : start + 1}–$end of $total orders',
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 12,
-              color: const Color(0xFF64748B),
-            ),
-          ),
-          Row(
-            children: [
-              _PageButton(
-                icon: Icons.chevron_left_rounded,
-                enabled: _currentPage > 1,
-                tooltip: 'Previous Page',
-                onTap: () => setState(() => _currentPage--),
-              ),
-              const SizedBox(width: 4),
-              ...pages.map(
-                (p) => _PageNumButton(
-                  page: p,
-                  isActive: p == _currentPage,
-                  onTap: () => setState(() => _currentPage = p),
-                ),
-              ),
-              if (lastPage < totalPages) ...[
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Text(
-                    '…',
-                    style: GoogleFonts.beVietnamPro(
-                      color: const Color(0xFF64748B),
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-                _PageNumButton(
-                  page: totalPages,
-                  isActive: _currentPage == totalPages,
-                  onTap: () => setState(() => _currentPage = totalPages),
-                ),
-              ],
-              const SizedBox(width: 4),
-              _PageButton(
-                icon: Icons.chevron_right_rounded,
-                enabled: _currentPage < totalPages,
-                tooltip: 'Next Page',
-                onTap: () => setState(() => _currentPage++),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmptyState(IconData icon, String message, String subtitle) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              color: const Color(0xFFF1F5F9),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Icon(icon, size: 40, color: const Color(0xFF9AA5B4)),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            message,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: const Color(0xFF374151),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            subtitle,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 13,
-              color: const Color(0xFF64748B),
-            ),
-          ),
-        ],
+          );
+        }).toList(),
       ),
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Reusable widgets
-// ─────────────────────────────────────────────────────────────────────────────
 class _FilterDropdown extends StatelessWidget {
   final String value;
   final List<String> items;
@@ -4888,6 +4337,7 @@ class _FilterDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final active = value != 'All';
     return AnchoredMenuTrigger<String>(
       items: items,
       labelOf: (s) => s,
@@ -4898,1161 +4348,54 @@ class _FilterDropdown extends StatelessWidget {
         alignment: Alignment.centerLeft,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: active ? UpriseColors.primaryDark.withAlpha(14) : Colors.white,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: const Color(0xFFE2E6EA)),
+          border: Border.all(
+            color: active
+                ? UpriseColors.primaryDark.withAlpha(90)
+                : _DS.borderSoft,
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             // [icon] used to be accepted but never actually rendered —
-            // Category and Status looked identical at a glance.
-            Icon(icon, size: 15, color: const Color(0xFF9AA5B4)),
+            // Category and Availability looked identical at a glance.
+            Icon(
+              icon,
+              size: 15,
+              color: active
+                  ? UpriseColors.primaryDark
+                  : const Color(0xFF9AA5B4),
+            ),
             const SizedBox(width: 8),
-            Text(
-              value,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 13,
-                color: const Color(0xFF374151),
+            Flexible(
+              child: Text(
+                active ? value : hint,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+                  color: active
+                      ? UpriseColors.primaryDark
+                      : const Color(0xFF374151),
+                ),
               ),
             ),
             const SizedBox(width: 6),
-            const Icon(
+            Icon(
               Icons.keyboard_arrow_down_rounded,
               size: 18,
-              color: Color(0xFF9AA5B4),
+              color: active
+                  ? UpriseColors.primaryDark
+                  : const Color(0xFF9AA5B4),
             ),
           ],
         ),
       ),
     );
   }
-}
-
-class _PageButton extends StatelessWidget {
-  final IconData icon;
-  final bool enabled;
-  final VoidCallback onTap;
-  final String? tooltip;
-  const _PageButton({
-    required this.icon,
-    required this.enabled,
-    required this.onTap,
-    this.tooltip,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final button = InkWell(
-      onTap: enabled ? onTap : null,
-      borderRadius: BorderRadius.circular(6),
-      child: Padding(
-        padding: const EdgeInsets.all(4),
-        child: Icon(
-          icon,
-          size: 20,
-          color: enabled ? const Color(0xFF374151) : const Color(0xFFD1D5DB),
-        ),
-      ),
-    );
-    if (tooltip == null) return button;
-    return Tooltip(
-      message: tooltip,
-      waitDuration: const Duration(milliseconds: 400),
-      child: button,
-    );
-  }
-}
-
-class _PageNumButton extends StatelessWidget {
-  final int page;
-  final bool isActive;
-  final VoidCallback onTap;
-  const _PageNumButton({
-    required this.page,
-    required this.isActive,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 2),
-          width: 28,
-          height: 28,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: isActive ? UpriseColors.primaryDark : Colors.transparent,
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Text(
-            '$page',
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 12,
-              fontWeight: isActive ? FontWeight.w700 : FontWeight.normal,
-              color: isActive ? Colors.white : const Color(0xFF374151),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ============================================================
-// ORDER DETAILS MODAL
-// ============================================================
-class _OrderDetailsModal extends StatefulWidget {
-  final OrderModel order;
-  const _OrderDetailsModal({required this.order});
-
-  @override
-  State<_OrderDetailsModal> createState() => _OrderDetailsModalState();
-}
-
-class _OrderDetailsModalState extends State<_OrderDetailsModal> {
-  bool _verifying = false;
-  late bool _paymentVerified = widget.order.paymentVerified;
-
-  OrderModel get order => widget.order;
-
-  Future<void> _markPaymentVerified() async {
-    setState(() => _verifying = true);
-    try {
-      await FirebaseFirestore.instance
-          .collection('orders')
-          .doc(order.id)
-          .update({'paymentVerified': true});
-      await activity_log.ActivityLogger.log(
-        action: 'verify_gcash_payment',
-        module: 'merchandise',
-        details: {'orgId': order.orgId, 'orderId': order.orderId},
-      );
-      if (mounted) setState(() => _paymentVerified = true);
-    } catch (e) {
-      if (mounted) {
-        AppToast.error(context, 'Error: $e');
-      }
-    } finally {
-      if (mounted) setState(() => _verifying = false);
-    }
-  }
-
-  void _viewProof() {
-    final raw = order.gcashProofBase64;
-    if (raw.isEmpty) return;
-    showDialog(
-      context: context,
-      builder: (_) => Dialog(
-        // Explicit, not just unset — this is a bare image viewer with no
-        // card chrome around it, so it should be transparent on purpose
-        // (matching the same pattern elsewhere in the app), not fall back
-        // to Flutter's default Material surface color, which would show
-        // as a purple/lavender edge around the image on this app's
-        // unseeded theme.
-        backgroundColor: Colors.transparent,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Image.memory(
-            base64Decode(raw.contains(',') ? raw.split(',').last : raw),
-            fit: BoxFit.contain,
-          ),
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      // Was unset — Dialog falls back to Flutter's default Material
-      // surface color, which skews purple/lavender on this app's
-      // unseeded theme.
-      backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      child: Container(
-        width: 520,
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.85,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
-              decoration: const BoxDecoration(
-                color: Color(0xFFF8F9FB),
-                borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: UpriseColors.primaryDark.withAlpha(26),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.receipt_outlined,
-                      size: 18,
-                      color: UpriseColors.primaryDark,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Text(
-                      'Order Details',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(
-                      Icons.close_rounded,
-                      size: 20,
-                      color: Color(0xFF64748B),
-                    ),
-                    tooltip: 'Close',
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Order ID: ${order.orderId}',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 12,
-                        color: const Color(0xFF64748B),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    _sectionTitle('Customer Information'),
-                    const SizedBox(height: 8),
-                    _infoRow(Icons.person_outline, order.customerName),
-                    _infoRow(Icons.email_outlined, order.customerEmail),
-                    _infoRow(Icons.phone_outlined, order.customerPhone),
-                    if (order.customerAddress.isNotEmpty)
-                      _infoRow(
-                        Icons.location_on_outlined,
-                        order.customerAddress,
-                      ),
-                    const SizedBox(height: 16),
-                    _sectionTitle('Order Items'),
-                    const SizedBox(height: 8),
-                    ...order.items.map(
-                      (item) => Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        child: Row(
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: _itemThumbnail(item.imageBase64),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    item.name,
-                                    style: GoogleFonts.beVietnamPro(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  Text(
-                                    '₱${NumberFormat('#,###').format(item.price)} each',
-                                    style: GoogleFonts.beVietnamPro(
-                                      fontSize: 11,
-                                      color: const Color(0xFF64748B),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text(
-                                  'Qty: ${item.quantity}',
-                                  style: GoogleFonts.beVietnamPro(
-                                    fontSize: 11,
-                                    color: const Color(0xFF64748B),
-                                  ),
-                                ),
-                                Text(
-                                  '₱${NumberFormat('#,###.00').format(item.totalPrice)}',
-                                  style: GoogleFonts.beVietnamPro(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700,
-                                    color: UpriseColors.primaryDark,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    _sectionTitle('Order Summary'),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8F9FB),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: const Color(0xFFE2E6EA)),
-                      ),
-                      child: Column(
-                        children: [
-                          _summaryLine(
-                            'Subtotal',
-                            '₱${NumberFormat('#,###.00').format(order.total)}',
-                          ),
-                          const SizedBox(height: 4),
-                          _summaryLine('Payment Method', order.paymentMethod),
-                          if (order.paymentMethod == 'GCash') ...[
-                            const SizedBox(height: 4),
-                            _summaryLine(
-                              'GCash Reference No.',
-                              order.gcashReferenceNumber.isNotEmpty
-                                  ? order.gcashReferenceNumber
-                                  : '—',
-                            ),
-                            const SizedBox(height: 4),
-                            _summaryLine(
-                              'Payment Status',
-                              _paymentVerified
-                                  ? 'Verified'
-                                  : 'Awaiting Verification',
-                              valueColor: _paymentVerified
-                                  ? UpriseColors.success
-                                  : const Color(0xFFD97706),
-                            ),
-                            if (order.gcashProofBase64.isNotEmpty) ...[
-                              const SizedBox(height: 8),
-                              InkWell(
-                                onTap: _viewProof,
-                                child: Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.image_outlined,
-                                      size: 15,
-                                      color: UpriseColors.primaryDark,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      'View payment screenshot',
-                                      style: GoogleFonts.beVietnamPro(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        color: UpriseColors.primaryDark,
-                                        decoration: TextDecoration.underline,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ],
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: Divider(
-                              color: const Color(0xFFE2E6EA),
-                              height: 1,
-                            ),
-                          ),
-                          _summaryLine(
-                            'Total Amount',
-                            '₱${NumberFormat('#,###.00').format(order.total)}',
-                            bold: true,
-                            valueColor: UpriseColors.primaryDark,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _sectionTitle('Order Timeline'),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.schedule,
-                          size: 14,
-                          color: Color(0xFF64748B),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Order placed: ${DateFormat('MMM d, yyyy h:mm a').format(order.createdAt.toDate())}',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 12,
-                            color: const Color(0xFF64748B),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
-              decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: Color(0xFFE8ECF0))),
-                color: Color(0xFFF8F9FB),
-                borderRadius: BorderRadius.vertical(
-                  bottom: Radius.circular(18),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  if (order.paymentMethod == 'GCash' && !_paymentVerified) ...[
-                    ElevatedButton.icon(
-                      onPressed: _verifying ? null : _markPaymentVerified,
-                      icon: _verifying
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.check_circle_outline, size: 16),
-                      label: Text(
-                        'Mark Payment Verified',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: UpriseColors.success,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 11,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                  ],
-                  OutlinedButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFFE2E6EA)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
-                    child: Text(
-                      'Close',
-                      style: GoogleFonts.beVietnamPro(fontSize: 13),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _itemThumbnail(String imageBase64) {
-    if (imageBase64.isNotEmpty) {
-      try {
-        final raw = imageBase64.contains(',')
-            ? imageBase64.split(',').last
-            : imageBase64;
-        return Image.memory(
-          base64Decode(raw),
-          width: 40,
-          height: 40,
-          fit: BoxFit.cover,
-          cacheWidth: 80,
-          cacheHeight: 80,
-          errorBuilder: (_, __, ___) => _itemThumbnailFallback(),
-        );
-      } catch (_) {
-        return _itemThumbnailFallback();
-      }
-    }
-    return _itemThumbnailFallback();
-  }
-
-  Widget _itemThumbnailFallback() => Container(
-    width: 40,
-    height: 40,
-    decoration: BoxDecoration(
-      color: UpriseColors.primaryDark.withAlpha(20),
-      borderRadius: BorderRadius.circular(8),
-    ),
-    child: const Icon(
-      Icons.shopping_bag_outlined,
-      size: 20,
-      color: UpriseColors.primaryDark,
-    ),
-  );
-
-  Widget _sectionTitle(String text) => Text(
-    text,
-    style: GoogleFonts.beVietnamPro(
-      fontSize: 13,
-      fontWeight: FontWeight.w700,
-      color: const Color(0xFF1A202C),
-    ),
-  );
-  Widget _infoRow(IconData icon, String text) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 3),
-    child: Row(
-      children: [
-        Icon(icon, size: 14, color: const Color(0xFF64748B)),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(text, style: GoogleFonts.beVietnamPro(fontSize: 12)),
-        ),
-      ],
-    ),
-  );
-  Widget _summaryLine(
-    String label,
-    String value, {
-    bool bold = false,
-    Color? valueColor,
-  }) => Row(
-    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-    children: [
-      Text(
-        label,
-        style: GoogleFonts.beVietnamPro(
-          fontSize: 12,
-          fontWeight: bold ? FontWeight.w700 : FontWeight.normal,
-        ),
-      ),
-      Text(
-        value,
-        style: GoogleFonts.beVietnamPro(
-          fontSize: 12,
-          fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
-          color: valueColor,
-        ),
-      ),
-    ],
-  );
-}
-
-// ============================================================
-// SALES REPORT MODAL
-// ============================================================
-class _SalesReportModal extends StatelessWidget {
-  final String orgId;
-  const _SalesReportModal({required this.orgId});
-
-  void _exportReport(BuildContext context, List<OrderModel> orders) {
-    final buf = StringBuffer();
-    buf.writeln('MERCHANDISE SALES REPORT');
-    buf.writeln(
-      'Generated: ${DateFormat('MMM dd, yyyy HH:mm').format(DateTime.now())}\n',
-    );
-    buf.writeln('Order ID,Customer,Total,Status,Date,Bundle ID');
-    for (final o in orders) {
-      final date = DateFormat('MM/dd/yyyy').format(o.createdAt.toDate());
-      buf.writeln(
-        '"${o.orderId}","${o.customerName}","${o.total.toStringAsFixed(2)}","${o.status}","$date","${o.bundleId}"',
-      );
-    }
-    final bytes = utf8.encode(buf.toString());
-    final blob = html.Blob([bytes], 'text/csv');
-    final url = html.Url.createObjectUrlFromBlob(blob);
-    html.AnchorElement(href: url)
-      ..setAttribute(
-        'download',
-        'sales_report_${DateFormat('yyyyMMdd').format(DateTime.now())}.csv',
-      )
-      ..click();
-    html.Url.revokeObjectUrl(url);
-  }
-
-  Future<void> _exportReportPdf(
-    BuildContext context,
-    List<OrderModel> orders,
-  ) async {
-    try {
-      String orgName = 'Organization';
-      String orgLogoUrl = '';
-      final orgDoc = await FirebaseFirestore.instance
-          .collection('organizations')
-          .doc(orgId)
-          .get();
-      if (orgDoc.exists) {
-        orgName = orgDoc.data()?['name'] ?? orgName;
-        orgLogoUrl = orgDoc.data()?['logoUrl'] ?? '';
-      }
-
-      final headers = [
-        'Order ID',
-        'Customer',
-        'Items',
-        'Total',
-        'Status',
-        'Date',
-      ];
-      final rows = orders.map((o) {
-        final itemsSummary = o.items
-            .map((it) => '${it.quantity}× ${it.name}')
-            .join(', ');
-        return [
-          o.orderId,
-          o.customerName,
-          itemsSummary,
-          '₱${o.total.toStringAsFixed(2)}',
-          o.status,
-          DateFormat('MM/dd/yyyy').format(o.createdAt.toDate()),
-        ];
-      }).toList();
-
-      final pdfBytes = await OrgExportPdf.generateTablePdf(
-        title: 'Merchandise Sales Report',
-        subtitle: '$orgName - Merchandise Performance',
-        headers: headers,
-        rows: rows,
-        orgLogoUrl: orgLogoUrl,
-      );
-      await OrgExportUtil.saveBytes(
-        pdfBytes,
-        'sales_report_${DateFormat('yyyyMMdd').format(DateTime.now())}.pdf',
-        mimeType: 'application/pdf',
-      );
-    } catch (e) {
-      if (context.mounted) {
-        AppToast.error(context, 'PDF export failed: $e');
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      // Was unset — Dialog falls back to Flutter's default Material
-      // surface color, which skews purple/lavender on this app's
-      // unseeded theme.
-      backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      child: Container(
-        width: 720,
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.85,
-        ),
-        child: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('products')
-              .where('orgId', isEqualTo: orgId)
-              .snapshots(),
-          builder: (context, productSnap) {
-            final Map<String, double> costByProductId = {};
-            for (final doc in productSnap.data?.docs ?? []) {
-              final d = doc.data() as Map<String, dynamic>;
-              costByProductId[doc.id] = (d['costPrice'] ?? 0).toDouble();
-            }
-            return StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('orders')
-                  .where('orgId', isEqualTo: orgId)
-                  .orderBy('createdAt', descending: true)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                final orders = snapshot.hasData
-                    ? snapshot.data!.docs
-                          .map((d) => OrderModel.fromFirestore(d))
-                          .toList()
-                    : <OrderModel>[];
-
-                double totalRevenue = 0;
-                int completed = 0, processing = 0;
-                for (final o in orders) {
-                  totalRevenue += o.total;
-                  if (o.status.toLowerCase() == 'completed') completed++;
-                  if (o.status.toLowerCase() == 'processing') processing++;
-                }
-
-                final Map<String, double> monthly = {};
-                for (final o in orders) {
-                  final m = DateFormat('yyyy-MM').format(o.createdAt.toDate());
-                  monthly[m] = (monthly[m] ?? 0) + o.total;
-                }
-                final months = monthly.keys.toList()..sort();
-
-                final Map<String, int> unitsSold = {};
-                final Map<String, double> revByProduct = {};
-                final Map<String, double> profitByProduct = {};
-                double totalProfit = 0;
-                for (final o in orders) {
-                  for (final item in o.items) {
-                    unitsSold[item.name] =
-                        (unitsSold[item.name] ?? 0) + item.quantity;
-                    revByProduct[item.name] =
-                        (revByProduct[item.name] ?? 0) + item.totalPrice;
-                    final cost = costByProductId[item.productId] ?? 0;
-                    final itemProfit = (item.price - cost) * item.quantity;
-                    profitByProduct[item.name] =
-                        (profitByProduct[item.name] ?? 0) + itemProfit;
-                    totalProfit += itemProfit;
-                  }
-                }
-                final top5 =
-                    (unitsSold.entries.toList()
-                          ..sort((a, b) => b.value.compareTo(a.value)))
-                        .take(5)
-                        .toList();
-
-                return Column(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFF8F9FB),
-                        borderRadius: BorderRadius.vertical(
-                          top: Radius.circular(18),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Sales Report',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              Text(
-                                'Merchandise Performance',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 11,
-                                  color: const Color(0xFF64748B),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const Spacer(),
-                          OutlinedButton.icon(
-                            onPressed: orders.isEmpty
-                                ? null
-                                : () => _exportReport(context, orders),
-                            icon: const Icon(Icons.download_outlined, size: 15),
-                            label: Text(
-                              'Export CSV',
-                              style: GoogleFonts.beVietnamPro(fontSize: 12),
-                            ),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: UpriseColors.primaryDark,
-                              side: BorderSide(color: UpriseColors.primaryDark),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          ElevatedButton.icon(
-                            onPressed: orders.isEmpty
-                                ? null
-                                : () => _exportReportPdf(context, orders),
-                            icon: const Icon(
-                              Icons.picture_as_pdf_outlined,
-                              size: 15,
-                            ),
-                            label: Text(
-                              'Export PDF',
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: UpriseColors.primaryDark,
-                              foregroundColor: Colors.white,
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          IconButton(
-                            onPressed: () => Navigator.pop(context),
-                            icon: const Icon(
-                              Icons.close_rounded,
-                              size: 20,
-                              color: Color(0xFF64748B),
-                            ),
-                            tooltip: 'Close',
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _sectionTitle('Overview'),
-                            const SizedBox(height: 10),
-                            // Two cards, not five. The three count-only
-                            // stats (sales, completed, processing) say more
-                            // as one text line than as three more bordered
-                            // boxes; the two the original already marked as
-                            // highlighted are the money figures, so those
-                            // are the ones that stay as cards.
-                            StatCardsRow(
-                              isMobile: false,
-                              gap: 12,
-                              cards: [
-                                StatCard(
-                                  label: 'Total Revenue',
-                                  value:
-                                      '₱${NumberFormat('#,###').format(totalRevenue)}',
-                                  icon: Icons.payments_outlined,
-                                  color: UpriseColors.primaryDark,
-                                ),
-                                StatCard(
-                                  label: 'Total Profit',
-                                  value:
-                                      '₱${NumberFormat('#,###').format(totalProfit)}',
-                                  icon: Icons.trending_up_rounded,
-                                  color: UpriseColors.success,
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-                            StatStrip(
-                              items: [
-                                StatStripItem.count(
-                                  label: 'Total sales',
-                                  count: orders.length,
-                                ),
-                                StatStripItem.count(
-                                  label: 'Completed',
-                                  count: completed,
-                                ),
-                                StatStripItem.count(
-                                  label: 'Processing',
-                                  count: processing,
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 20),
-                            _sectionTitle('Monthly Revenue'),
-                            const SizedBox(height: 12),
-                            SizedBox(
-                              height: 180,
-                              child: months.isEmpty
-                                  ? Center(
-                                      child: Text(
-                                        'No data yet',
-                                        style: GoogleFonts.beVietnamPro(
-                                          color: const Color(0xFF64748B),
-                                        ),
-                                      ),
-                                    )
-                                  : BarChart(
-                                      BarChartData(
-                                        alignment:
-                                            BarChartAlignment.spaceAround,
-                                        maxY:
-                                            monthly.values.reduce(
-                                              (a, b) => a > b ? a : b,
-                                            ) *
-                                            1.2,
-                                        barGroups: months
-                                            .asMap()
-                                            .entries
-                                            .map(
-                                              (e) => BarChartGroupData(
-                                                x: e.key,
-                                                barRods: [
-                                                  BarChartRodData(
-                                                    toY: monthly[e.value] ?? 0,
-                                                    color: UpriseColors
-                                                        .primaryDark,
-                                                    width: 20,
-                                                    borderRadius:
-                                                        const BorderRadius.vertical(
-                                                          top: Radius.circular(
-                                                            4,
-                                                          ),
-                                                        ),
-                                                  ),
-                                                ],
-                                              ),
-                                            )
-                                            .toList(),
-                                        titlesData: FlTitlesData(
-                                          bottomTitles: AxisTitles(
-                                            sideTitles: SideTitles(
-                                              showTitles: true,
-                                              getTitlesWidget: (v, m) {
-                                                final i = v.toInt();
-                                                if (i >= 0 && i < months.length)
-                                                  return Text(
-                                                    DateFormat('MMM').format(
-                                                      DateTime.parse(
-                                                        '${months[i]}-01',
-                                                      ),
-                                                    ),
-                                                    style:
-                                                        GoogleFonts.beVietnamPro(
-                                                          fontSize: 10,
-                                                        ),
-                                                  );
-                                                return const Text('');
-                                              },
-                                            ),
-                                          ),
-                                          leftTitles: AxisTitles(
-                                            sideTitles: SideTitles(
-                                              showTitles: true,
-                                              reservedSize: 48,
-                                              getTitlesWidget: (v, m) => Text(
-                                                '₱${NumberFormat.compact().format(v)}',
-                                                style: GoogleFonts.beVietnamPro(
-                                                  fontSize: 9,
-                                                  color: const Color(
-                                                    0xFF64748B,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                          topTitles: const AxisTitles(
-                                            sideTitles: SideTitles(
-                                              showTitles: false,
-                                            ),
-                                          ),
-                                          rightTitles: const AxisTitles(
-                                            sideTitles: SideTitles(
-                                              showTitles: false,
-                                            ),
-                                          ),
-                                        ),
-                                        gridData: FlGridData(
-                                          show: true,
-                                          drawVerticalLine: false,
-                                          getDrawingHorizontalLine: (v) =>
-                                              FlLine(
-                                                color: const Color(0xFFE2E6EA),
-                                                strokeWidth: 0.8,
-                                              ),
-                                        ),
-                                        borderData: FlBorderData(show: false),
-                                      ),
-                                    ),
-                            ),
-                            const SizedBox(height: 20),
-                            _sectionTitle('Popular Items'),
-                            const SizedBox(height: 10),
-                            if (top5.isEmpty)
-                              Text(
-                                'No product sales yet',
-                                style: GoogleFonts.beVietnamPro(
-                                  color: const Color(0xFF64748B),
-                                  fontSize: 12,
-                                ),
-                              )
-                            else
-                              ...top5.map((entry) {
-                                final rev = revByProduct[entry.key] ?? 0;
-                                final profit = profitByProduct[entry.key] ?? 0;
-                                return Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 6,
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        width: 36,
-                                        height: 36,
-                                        decoration: BoxDecoration(
-                                          color: UpriseColors.primaryDark
-                                              .withAlpha(20),
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
-                                        ),
-                                        child: const Icon(
-                                          Icons.shopping_bag_outlined,
-                                          size: 18,
-                                          color: UpriseColors.primaryDark,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              entry.key,
-                                              style: GoogleFonts.beVietnamPro(
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                            Text(
-                                              '${entry.value} units sold',
-                                              style: GoogleFonts.beVietnamPro(
-                                                fontSize: 11,
-                                                color: const Color(0xFF64748B),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.end,
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 10,
-                                              vertical: 3,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: UpriseColors.primaryDark
-                                                  .withAlpha(20),
-                                              borderRadius:
-                                                  BorderRadius.circular(20),
-                                            ),
-                                            child: Text(
-                                              '₱${NumberFormat('#,###').format(rev)}',
-                                              style: GoogleFonts.beVietnamPro(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w700,
-                                                color: UpriseColors.primaryDark,
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(height: 3),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 10,
-                                              vertical: 3,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: UpriseColors.success
-                                                  .withAlpha(26),
-                                              borderRadius:
-                                                  BorderRadius.circular(20),
-                                            ),
-                                            child: Text(
-                                              'Profit ₱${NumberFormat('#,###').format(profit)}',
-                                              style: GoogleFonts.beVietnamPro(
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w700,
-                                                color: UpriseColors.success,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }),
-                          ],
-                        ),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
-                      decoration: const BoxDecoration(
-                        border: Border(
-                          top: BorderSide(color: Color(0xFFE8ECF0)),
-                        ),
-                        color: Color(0xFFF8F9FB),
-                        borderRadius: BorderRadius.vertical(
-                          bottom: Radius.circular(18),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          ElevatedButton(
-                            onPressed: () => Navigator.pop(context),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: UpriseColors.primaryDark,
-                              foregroundColor: Colors.white,
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 20,
-                                vertical: 10,
-                              ),
-                            ),
-                            child: Text(
-                              'Done',
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                );
-              },
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _sectionTitle(String text) => Text(
-    text,
-    style: GoogleFonts.beVietnamPro(
-      fontSize: 13,
-      fontWeight: FontWeight.w700,
-      color: const Color(0xFF1A202C),
-    ),
-  );
 }
 
 // ============================================================
@@ -6111,6 +4454,11 @@ class ProductModel {
   // just [imageBase64] when empty, so existing products with a single photo
   // still render fine.
   final List<String> rotationPhotos;
+  // Students and guests heart products from the mobile catalog into this
+  // array — with no checkout flow left, it is the only real feedback the
+  // shop produces, so the org portal reads it too.
+  final List<String> likedBy;
+  final DateTime? createdAt;
 
   ProductModel({
     required this.id,
@@ -6128,6 +4476,8 @@ class ProductModel {
     this.isArchived = false,
     this.variants = const [],
     this.rotationPhotos = const [],
+    this.likedBy = const [],
+    this.createdAt,
   });
 
   factory ProductModel.fromFirestore(DocumentSnapshot doc) {
@@ -6150,350 +4500,24 @@ class ProductModel {
           .map((v) => ProductVariant.fromMap(v as Map<String, dynamic>))
           .toList(),
       rotationPhotos: ((d['rotationPhotos'] as List?) ?? []).cast<String>(),
+      likedBy: ((d['likedBy'] as List?) ?? [])
+          .map((e) => e.toString())
+          .toList(),
+      createdAt: (d['createdAt'] as Timestamp?)?.toDate(),
     );
   }
 
   // Falls back to the single main photo when no dedicated photo set was
   // uploaded, so the gallery always has at least one image to show.
+  int get likeCount => likedBy.length;
+
+  // Total on hand: variant stocks are the source of truth once any variant
+  // exists, otherwise the flat [stock] field.
+  int get totalStock => variants.isNotEmpty
+      ? variants.fold<int>(0, (sum, v) => sum + v.stock)
+      : stock;
+
   List<String> get displayPhotos => rotationPhotos.isNotEmpty
       ? rotationPhotos
       : (imageBase64 != null && imageBase64!.isNotEmpty ? [imageBase64!] : []);
-}
-
-class OrderItem {
-  final String productId;
-  final String name;
-  final int quantity;
-  final double price;
-  final double totalPrice;
-  final String imageBase64;
-
-  OrderItem({
-    required this.productId,
-    required this.name,
-    required this.quantity,
-    required this.price,
-    required this.totalPrice,
-    this.imageBase64 = '',
-  });
-
-  factory OrderItem.fromMap(Map<String, dynamic> map) => OrderItem(
-    productId: map['productId'] ?? '',
-    name: map['name'] ?? '',
-    quantity: map['quantity'] ?? 0,
-    price: (map['price'] ?? 0).toDouble(),
-    totalPrice: (map['totalPrice'] ?? 0).toDouble(),
-    imageBase64: map['imageBase64'] ?? '',
-  );
-}
-
-class OrderModel {
-  final String id;
-  final String orderId;
-  final String orgId;
-  final String customerName;
-  final String customerEmail;
-  final String customerPhone;
-  final String customerAddress;
-  final List<OrderItem> items;
-  final double total;
-  final String paymentMethod;
-  final String status;
-  final Timestamp createdAt;
-  final String bundleId;
-  final String section;
-  final String pickupStatus;
-  final String gcashReferenceNumber;
-  final String gcashProofBase64;
-  final String gcashProofFormat;
-  final bool paymentVerified;
-
-  OrderModel({
-    required this.id,
-    required this.orderId,
-    required this.orgId,
-    required this.customerName,
-    required this.customerEmail,
-    required this.customerPhone,
-    required this.customerAddress,
-    required this.items,
-    required this.total,
-    required this.paymentMethod,
-    required this.status,
-    required this.createdAt,
-    required this.bundleId,
-    this.section = '',
-    this.pickupStatus = 'Pending',
-    this.gcashReferenceNumber = '',
-    this.gcashProofBase64 = '',
-    this.gcashProofFormat = '',
-    this.paymentVerified = false,
-  });
-
-  factory OrderModel.fromFirestore(DocumentSnapshot doc) {
-    final d = doc.data() as Map<String, dynamic>;
-    final rawItems = (d['items'] as List?) ?? [];
-    return OrderModel(
-      id: doc.id,
-      orderId: d['orderId'] ?? 'ORD-${doc.id.substring(0, 6).toUpperCase()}',
-      orgId: d['orgId'] ?? '',
-      customerName: d['customerName'] ?? '',
-      customerEmail: d['customerEmail'] ?? '',
-      customerPhone: d['customerPhone'] ?? '',
-      customerAddress: d['customerAddress'] ?? '',
-      items: rawItems
-          .map((i) => OrderItem.fromMap(i as Map<String, dynamic>))
-          .toList(),
-      total: (d['total'] ?? 0).toDouble(),
-      paymentMethod: d['paymentMethod'] ?? '',
-      status: d['status'] ?? 'pending',
-      createdAt: d['createdAt'] as Timestamp,
-      bundleId: d['bundleId'] ?? '',
-      section: d['section'] ?? '',
-      pickupStatus: d['pickupStatus'] ?? 'Pending',
-      gcashReferenceNumber: d['gcashReferenceNumber'] ?? '',
-      gcashProofBase64: d['gcashProofBase64'] ?? '',
-      gcashProofFormat: d['gcashProofFormat'] ?? '',
-      paymentVerified: d['paymentVerified'] as bool? ?? false,
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────
-// GCash Settings Dialog
-// ─────────────────────────────────────────────────────────────
-class _GcashSettingsDialog extends StatefulWidget {
-  final String orgId;
-  const _GcashSettingsDialog({required this.orgId});
-
-  @override
-  State<_GcashSettingsDialog> createState() => _GcashSettingsDialogState();
-}
-
-class _GcashSettingsDialogState extends State<_GcashSettingsDialog> {
-  final _numberCtrl = TextEditingController();
-  final _nameCtrl = TextEditingController();
-  bool _loading = true;
-  bool _saving = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadGcashInfo();
-  }
-
-  @override
-  void dispose() {
-    _numberCtrl.dispose();
-    _nameCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _loadGcashInfo() async {
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('organizations')
-          .doc(widget.orgId)
-          .get();
-      if (doc.exists) {
-        final data = doc.data() ?? {};
-        setState(() {
-          _numberCtrl.text = data['gcashNumber'] as String? ?? '';
-          _nameCtrl.text = data['gcashName'] as String? ?? '';
-          _loading = false;
-        });
-      } else {
-        setState(() => _loading = false);
-      }
-    } catch (_) {
-      setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _saveGcashInfo() async {
-    final number = _numberCtrl.text.trim();
-    if (number.isEmpty) {
-      _showSnack('Please enter a GCash number.');
-      return;
-    }
-    if (!RegExp(r'^09\d{9}$').hasMatch(number)) {
-      _showSnack('Enter a valid 11-digit GCash number (e.g., 09171234567).');
-      return;
-    }
-    if (_nameCtrl.text.trim().isEmpty) {
-      _showSnack('Please enter the GCash account name.');
-      return;
-    }
-
-    setState(() => _saving = true);
-    try {
-      await FirebaseFirestore.instance
-          .collection('organizations')
-          .doc(widget.orgId)
-          .update({
-            'gcashNumber': _numberCtrl.text.trim(),
-            'gcashName': _nameCtrl.text.trim(),
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
-      if (mounted) {
-        _showSnack('GCash settings saved successfully!', isSuccess: true);
-        Navigator.pop(context);
-      }
-    } catch (e) {
-      if (mounted) _showSnack('Error: $e');
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  void _showSnack(String msg, {bool isSuccess = false}) {
-    if (isSuccess) {
-      AppToast.success(context, msg);
-    } else {
-      AppToast.error(context, msg);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      // Was unset — Dialog falls back to Flutter's default Material
-      // surface color, which skews purple/lavender on this app's
-      // unseeded theme.
-      backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      child: Container(
-        width: 480,
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: UpriseColors.primaryDark.withAlpha(18),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(
-                    Icons.account_balance_wallet_outlined,
-                    color: UpriseColors.primaryDark,
-                    size: 22,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Text(
-                    'GCash Payment Settings',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF1A202C),
-                    ),
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close_rounded, size: 20),
-                  tooltip: 'Close',
-                  onPressed: _saving ? null : () => Navigator.pop(context),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Enter the GCash account details that students will pay to.',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 13,
-                color: const Color(0xFF64748B),
-              ),
-            ),
-            const SizedBox(height: 24),
-            if (_loading)
-              const Center(child: CircularProgressIndicator())
-            else ...[
-              TextFormField(
-                controller: _numberCtrl,
-                decoration: _DS.inputDecoration(
-                  'GCash Number',
-                  hint: 'e.g., 09171234567',
-                  icon: Icons.phone_android_outlined,
-                ),
-                style: GoogleFonts.beVietnamPro(fontSize: 13),
-                keyboardType: TextInputType.phone,
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _nameCtrl,
-                decoration: _DS.inputDecoration(
-                  'GCash Account Name',
-                  hint: 'e.g., Juan Dela Cruz',
-                  icon: Icons.person_outline_rounded,
-                ),
-                style: GoogleFonts.beVietnamPro(fontSize: 13),
-              ),
-              const SizedBox(height: 28),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  OutlinedButton(
-                    onPressed: _saving ? null : () => Navigator.pop(context),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFFE2E6EA)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
-                    child: Text(
-                      'Cancel',
-                      style: GoogleFonts.beVietnamPro(fontSize: 13),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  ElevatedButton.icon(
-                    onPressed: _saving ? null : _saveGcashInfo,
-                    icon: _saving
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.save_rounded, size: 16),
-                    label: Text(
-                      _saving ? 'Saving...' : 'Save Settings',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: UpriseColors.primaryDark,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 11,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
 }

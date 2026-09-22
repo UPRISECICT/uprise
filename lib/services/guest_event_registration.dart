@@ -177,28 +177,6 @@ Future<void> registerGuestForEvent({
   });
 }
 
-/// Releases a guest's slot, decrementing the counter symmetrically.
-Future<void> cancelGuestRegistration({
-  required String uid,
-  required String eventId,
-}) async {
-  final db = FirebaseFirestore.instance;
-  final regRef = db.collection('registrations').doc(guestRegistrationId(uid, eventId));
-  final evRef = db.collection('events').doc(eventId);
-
-  await db.runTransaction((tx) async {
-    final regDoc = await tx.get(regRef);
-    if (!regDoc.exists) return;
-    tx.delete(regRef);
-    // Guard against driving the counter negative if it ever drifts.
-    final evDoc = await tx.get(evRef);
-    final current = evDoc.data()?['registeredCount'] as num?;
-    if ((current?.toInt() ?? 0) > 0) {
-      tx.update(evRef, {'registeredCount': FieldValue.increment(-1)});
-    }
-  });
-}
-
 class GuestRegistrationException implements Exception {
   final GuestRegistrationBlock block;
   const GuestRegistrationException(this.block);

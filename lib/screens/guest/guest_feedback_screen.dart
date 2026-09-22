@@ -27,6 +27,7 @@ import 'package:intl/intl.dart';
 import 'guest_auth_service.dart';
 import '../../services/certificate_auto_issue_service.dart';
 import '../../utils/feedback_helper.dart';
+import '../../widgets/common/error_state.dart';
 import '../../widgets/common/review_identity.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../widgets/student/student_app_bar.dart';
@@ -135,14 +136,27 @@ class _GuestFeedbackScreenState extends State<GuestFeedbackScreen>
       // 3. Check attendance records — real check-ins are written by the org's
       // QR scanner into events/{id}/attendances (see org_attendance_qr.dart
       // _markGuestAttendance), keyed by guestEmail.
-      final attendSnap = await FirebaseFirestore.instance
-          .collectionGroup('attendances')
-          .where('guestEmail', isEqualTo: _email)
-          .get();
-      final attendedIds = attendSnap.docs
-          .map((d) => d.reference.parent.parent?.id ?? '')
-          .where((id) => id.isNotEmpty)
-          .toSet();
+      //
+      // Isolated in its own try/catch: this is the only query on this screen
+      // that needs a custom collection-group index, so its failure must not
+      // take the rest of the screen down with it. Steps 1, 2 and 4 don't
+      // depend on the result — attendance only decides whether a card can be
+      // tapped to leave a review — so falling through with nothing attended
+      // still renders the guest's events and past reviews.
+      var attendedIds = <String>{};
+      try {
+        final attendSnap = await FirebaseFirestore.instance
+            .collectionGroup('attendances')
+            .where('guestEmail', isEqualTo: _email)
+            .get();
+        attendedIds = attendSnap.docs
+            .map((d) => d.reference.parent.parent?.id ?? '')
+            .where((id) => id.isNotEmpty)
+            .toSet();
+      } catch (_) {
+        // Leaves every event un-attended: cards stay untappable rather than
+        // the whole screen collapsing into an error state.
+      }
 
       // 4. Existing feedback, from BOTH collections — this form dual-writes,
       // and reading only `feedback` would miss a review submitted through any
@@ -236,7 +250,11 @@ class _GuestFeedbackScreenState extends State<GuestFeedbackScreen>
           ? const Center(
               child: CircularProgressIndicator(color: _kOrange))
           : _error != null
-              ? _ErrorView(message: _error!, onRetry: _load)
+              ? ErrorStateView(
+                  title: 'Could not load feedback',
+                  detail: _error,
+                  onRetry: _load,
+                )
               : _events.isEmpty
                   ? _EmptyView()
                   : Column(
@@ -1233,53 +1251,6 @@ class _EmptyView extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: GoogleFonts.beVietnamPro(
                     fontSize: 13, color: Colors.grey, height: 1.5)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ErrorView extends StatelessWidget {
-  final String       message;
-  final VoidCallback onRetry;
-  const _ErrorView({required this.message, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.cloud_off_outlined,
-                size: 48, color: Colors.black26),
-            const SizedBox(height: 12),
-            Text('Could not load feedback',
-                style: GoogleFonts.beVietnamPro(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black54)),
-            const SizedBox(height: 6),
-            Text(message,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.beVietnamPro(
-                    fontSize: 11, color: Colors.black38)),
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh, size: 16),
-              label: Text('Retry',
-                  style: GoogleFonts.beVietnamPro(
-                      fontWeight: FontWeight.w600)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _kOrange,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
-              ),
-            ),
           ],
         ),
       ),

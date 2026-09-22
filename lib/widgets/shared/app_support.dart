@@ -270,7 +270,8 @@ class PrivacySecurityScreen extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => const StudentChangePasswordScreen(),
+                    builder: (_) =>
+                        const StudentChangePasswordScreen(forced: false),
                   ),
                 );
               },

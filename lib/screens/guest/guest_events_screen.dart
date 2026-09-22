@@ -13,12 +13,13 @@ import '../../widgets/common/error_state.dart';
 import '../../widgets/common/event_badges.dart';
 import '../../widgets/common/event_browsing.dart';
 import '../../widgets/common/event_card.dart';
-import '../../widgets/common/image_viewer.dart';
+import '../../widgets/common/info_tile.dart';
 import '../../widgets/common/loading_widget.dart' show SkeletonLoader;
 import '../../widgets/student/app_colors.dart';
-import '../../widgets/student/app_image.dart';
 import '../../widgets/student/event_image.dart';
 import '../../widgets/student/student_app_bar.dart';
+import '../student/student_organization_details_screen.dart';
+import 'guest_organizations_screen.dart';
 
 // Shared by both the browse-list filter (which just hides events a guest
 // classification isn't allowed to see) and the registration screen (which
@@ -819,73 +820,21 @@ class _GuestVisibilityNotice extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Banner widget — uses org logo or fallback gradient
-// ─────────────────────────────────────────────────────────────
-/// The detail screen's hero. Renders the event's real banner when it has one,
-/// falling back to the org-coloured initial.
-///
-/// It used to render *only* the coloured initial and never read the banner at
-/// all — the same gap the note on [FirestoreEvent.imageUrl] describes for the
-/// cards, left behind here. EventImage does the decoding (including the
-/// authenticated Firebase Storage fetch) and makes the hero tappable.
-class _EventBanner extends StatelessWidget {
-  final String orgName;
-  final String imageUrl;
-  final double height;
-  const _EventBanner({
-    required this.orgName,
-    this.imageUrl = '',
-    required this.height,
-  });
-
-  Color _bgColor() {
-    final hash = orgName.hashCode.abs();
-    const colors = [
-      Color(0xFF1A237E),
-      Color(0xFF4A148C),
-      Color(0xFF880E4F),
-      Color(0xFF1B5E20),
-      Color(0xFF0D47A1),
-      Color(0xFF37474F),
-      Color(0xFF4E342E),
-      Color(0xFF263238),
-    ];
-    return colors[hash % colors.length];
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (imageUrl.isNotEmpty) {
-      return EventImage(
-        imageUrl: imageUrl,
-        height: height,
-        width: double.infinity,
-        fit: BoxFit.cover,
-        showLoadingIndicator: true,
-        expandable: true,
-      );
-    }
-    return Container(
-      height: height,
-      width: double.infinity,
-      color: _bgColor(),
-      child: Center(
-        child: Text(
-          orgName.isNotEmpty ? orgName[0].toUpperCase() : '?',
-          style: TextStyle(
-            fontSize: height * 0.35,
-            fontWeight: FontWeight.w900,
-            color: Colors.white.withAlpha(38),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────
 // Detail Screen
 // ─────────────────────────────────────────────────────────────
+/// Mirrors the student detail screen (`EventDetailScreen` in
+/// student_events_screen.dart) so the same event reads the same way on both
+/// sides: StudentAppBar, flat banner, a run of InfoRows, then an inline
+/// register block rather than a pinned bottom bar.
+///
+/// Two things here have no student counterpart and must survive any further
+/// alignment work:
+///   • the visitor state — a guest with no account gets "Sign in to register",
+///     pointing at the guest gateway rather than a student sign-in;
+///   • eligibility, which is the guest classification rule
+///     ([classificationAllowsAudience]), not the student membership rule.
+///
+/// There is deliberately no cancel path, matching the student side.
 class GuestEventDetailScreen extends StatefulWidget {
   final FirestoreEvent event;
   const GuestEventDetailScreen({super.key, required this.event});
@@ -902,10 +851,20 @@ class _GuestEventDetailScreenState extends State<GuestEventDetailScreen> {
   bool _registered = false;
   bool _busy = false;
 
+  // Capacity lives on events/{id}, not on FirestoreEvent — the guest model is
+  // built from list and calendar snapshots that never carried it. One read
+  // gets both halves of the "x/y slots filled" line, and `registeredCount` is
+  // the same field registerGuestForEvent's capacity gate increments, so the
+  // row and the gate can't disagree.
+  int? _capacity;
+  int? _registeredCount;
+  bool _loadingStats = true;
+
   @override
   void initState() {
     super.initState();
     _resolve();
+    _loadEventStats();
   }
 
   Future<void> _resolve() async {
@@ -925,11 +884,33 @@ class _GuestEventDetailScreenState extends State<GuestEventDetailScreen> {
     });
   }
 
-  /// The event is over once its end time (or, lacking one, the end of its
-  /// calendar day) has passed — `date` alone is day-granular. Reads the same
-  /// classification the Discover chips filter on, rather than a second
-  /// hand-rolled end-time comparison beside it.
-  bool get _isPast => widget.event.timeStatus == EventTimeStatus.completed;
+  /// Reads capacity and registeredCount off events/{id}.
+  ///
+  /// Proposal-backed events reach this screen with id `proposal_<docId>` and
+  /// have no `events` document at all, so the read is skipped — capacity stays
+  /// null, which hides the slots row rather than claiming "0/0 slots filled"
+  /// for something that has no capacity concept yet.
+  Future<void> _loadEventStats() async {
+    if (widget.event.id.startsWith('proposal_')) {
+      if (mounted) setState(() => _loadingStats = false);
+      return;
+    }
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('events')
+          .doc(widget.event.id)
+          .get();
+      final data = doc.data();
+      if (!mounted) return;
+      setState(() {
+        _capacity = (data?['capacity'] as num?)?.toInt();
+        _registeredCount = (data?['registeredCount'] as num?)?.toInt() ?? 0;
+        _loadingStats = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingStats = false);
+    }
+  }
 
   bool get _isEligible => _identity == null
       ? false
@@ -938,6 +919,22 @@ class _GuestEventDetailScreenState extends State<GuestEventDetailScreen> {
           _identity!.classification,
         );
 
+  bool get _isFull =>
+      _capacity != null &&
+      _registeredCount != null &&
+      _registeredCount! >= _capacity!;
+
+  /// Registration closes the moment an event starts — the same rule, reading
+  /// the same `timeStatus`, the student screen uses.
+  bool get _registrationOpen =>
+      widget.event.timeStatus == EventTimeStatus.upcoming;
+
+  String? get _registrationClosedReason => switch (widget.event.timeStatus) {
+    EventTimeStatus.upcoming => null,
+    EventTimeStatus.ongoing => 'Registration closed — event has started',
+    EventTimeStatus.completed => 'Registration closed — event has ended',
+  };
+
   Future<void> _register() async {
     final identity = _identity;
     if (identity == null || _busy) return;
@@ -945,8 +942,13 @@ class _GuestEventDetailScreenState extends State<GuestEventDetailScreen> {
     try {
       await registerGuestForEvent(identity: identity, eventId: widget.event.id);
       if (!mounted) return;
-      setState(() => _registered = true);
-      _snack('You\'re registered for this event.', ok: true);
+      setState(() {
+        _registered = true;
+        // The transaction already incremented the stored count; mirroring it
+        // locally keeps the slots line honest without a second read.
+        if (_registeredCount != null) _registeredCount = _registeredCount! + 1;
+      });
+      _snack('You are registered for this event.', ok: true);
     } catch (e) {
       if (!mounted) return;
       _snack(e.toString().replaceAll('Exception: ', ''));
@@ -955,77 +957,149 @@ class _GuestEventDetailScreenState extends State<GuestEventDetailScreen> {
     }
   }
 
-  Future<void> _cancel() async {
-    final identity = _identity;
-    if (identity == null || _busy) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Cancel registration?'),
-        content: const Text(
-          'Your slot will be released and someone else can take it.',
+  /// Opens the shared org profile with the *guest* browsing config. Without it
+  /// the profile screen falls back to OrgBrowsingConfig.student, which would
+  /// hand a guest the member-only broadcast icon and unfiltered CICT-Only
+  /// content. Mirrors GuestHomeScreen._openOrg.
+  void _openOrg(String orgId) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => StudentOrganizationsDetailsScreen(
+          orgId: orgId,
+          config: guestOrgBrowsingConfig(
+            _identity?.classification ?? 'Outsider',
+          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Keep it'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _kPrimary,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Cancel it'),
-          ),
-        ],
       ),
     );
-    if (confirmed != true || !mounted) return;
-
-    setState(() => _busy = true);
-    try {
-      await cancelGuestRegistration(
-        uid: identity.uid,
-        eventId: widget.event.id,
-      );
-      if (!mounted) return;
-      setState(() => _registered = false);
-      _snack('Registration cancelled.', ok: true);
-    } catch (e) {
-      if (!mounted) return;
-      _snack(e.toString().replaceAll('Exception: ', ''));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
   }
 
-  /// The bottom action bar.
+  ButtonStyle _btnStyle() => ElevatedButton.styleFrom(
+    backgroundColor: _kPrimary,
+    foregroundColor: Colors.white,
+    elevation: 0,
+    padding: const EdgeInsets.symmetric(vertical: 14),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+  );
+
+  /// Grey, non-pressable button stating why registration is unavailable. Kept
+  /// on screen rather than hidden so the reason is visible instead of implied
+  /// by a missing button — the same call the student screen makes.
+  Widget _disabledButton({
+    required IconData icon,
+    required String label,
+    required double fontSize,
+  }) => SizedBox(
+    width: double.infinity,
+    child: ElevatedButton.icon(
+      onPressed: null,
+      icon: Icon(icon, size: 18),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.grey.shade300,
+        disabledBackgroundColor: Colors.grey.shade300,
+        disabledForegroundColor: Colors.grey.shade600,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      label: Text(
+        label,
+        textAlign: TextAlign.center,
+        style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.w700),
+      ),
+    ),
+  );
+
+  Widget _caption(String text) =>
+      Text(text, style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600));
+
+  Widget _banner({
+    required String text,
+    required Color background,
+    required Color border,
+    required Color foreground,
+    required double fontSize,
+  }) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.symmetric(vertical: 14),
+    decoration: BoxDecoration(
+      color: background,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: border),
+    ),
+    child: Center(
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: fontSize,
+          fontWeight: FontWeight.w700,
+          color: foreground,
+        ),
+      ),
+    ),
+  );
+
+  /// The inline register block.
   ///
-  /// Four distinct states rather than one disabled button, because "you can't
-  /// register" has four different fixes: finish loading, make an account, be
-  /// the right audience, or nothing (it already happened).
-  Widget? _buildRegisterBar() {
-    if (_resolving) return null;
-    if (_isPast) {
-      return _bar(
-        child: const Text(
-          'This event has ended',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-            color: Colors.grey,
+  /// Several states rather than one disabled button, because "you can't
+  /// register" has different fixes: wait for the lookup, make a guest account,
+  /// be the right audience, arrive before the event starts, or arrive before
+  /// the slots run out.
+  ///
+  /// Two deliberate divergences from the student ordering:
+  ///   • the student wraps its whole button group in `!_isFull`, so a past
+  ///     *and* full event shows nothing at all; here time is checked before
+  ///     capacity, so such an event correctly reads "event has ended";
+  ///   • the student hides the registered banner once an event is over,
+  ///     because it has MY EVENT and feedback sections below to carry that
+  ///     state. This screen has neither, so the banner shows regardless of
+  ///     time — otherwise a registered guest opening a finished event would
+  ///     see a grey "registration closed" button and no sign they ever
+  ///     signed up.
+  List<Widget> _buildRegisterSection() {
+    if (_resolving || _loadingStats) {
+      return const [
+        Center(
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: CircularProgressIndicator(strokeWidth: 2),
           ),
         ),
-      );
+      ];
     }
 
-    // Visitor — the fix is a guest account, not a CICT student sign-in, so
-    // this points at the gateway rather than the student prompt sheet.
+    if (_registered) {
+      return [
+        _banner(
+          text: '✓ You are registered',
+          background: Colors.green.shade50,
+          border: Colors.green.shade200,
+          foreground: Colors.green,
+          fontSize: 16,
+        ),
+      ];
+    }
+
+    if (!_registrationOpen) {
+      return [
+        _disabledButton(
+          icon: Icons.timer_off_outlined,
+          label: _registrationClosedReason ?? 'Registration closed',
+          fontSize: 14.5,
+        ),
+        const SizedBox(height: 6),
+        _caption(
+          'Registration closes when an event begins. You can still view the '
+          'details here.',
+        ),
+      ];
+    }
+
+    // Guest-only: a visitor has no account to register with. The fix is a
+    // guest account, so this points at the gateway, not a student sign-in.
     if (_identity == null) {
-      return _bar(
-        child: SizedBox(
+      return [
+        SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
             onPressed: () => Navigator.push(
@@ -1035,88 +1109,65 @@ class _GuestEventDetailScreenState extends State<GuestEventDetailScreen> {
               ),
             ),
             icon: const Icon(Icons.person_add_alt_1_outlined, size: 18),
-            label: const Text('Sign in to register'),
+            label: const Text(
+              'Sign in to register',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
             style: _btnStyle(),
           ),
         ),
-      );
+        const SizedBox(height: 6),
+        _caption('Registering needs an approved guest account.'),
+      ];
     }
 
     if (!_isEligible) {
-      return _bar(
-        child: const Row(
-          children: [
-            Icon(Icons.lock_outline_rounded, size: 16, color: Colors.grey),
-            SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'This event is limited to a different audience.',
-                style: TextStyle(fontSize: 12.5, color: Colors.grey),
-              ),
-            ),
-          ],
+      return [
+        _disabledButton(
+          icon: Icons.lock_outline,
+          label: 'Restricted Event',
+          fontSize: 16,
         ),
-      );
+        const SizedBox(height: 6),
+        _caption('This event is limited to a different audience.'),
+      ];
     }
 
-    return _bar(
-      child: SizedBox(
+    if (_isFull) {
+      return [
+        _banner(
+          text: 'Event Full — no more slots available',
+          background: Colors.red.shade50,
+          border: Colors.red.shade200,
+          foreground: Colors.red.shade700,
+          fontSize: 15,
+        ),
+      ];
+    }
+
+    return [
+      SizedBox(
         width: double.infinity,
-        child: _registered
-            ? OutlinedButton.icon(
-                onPressed: _busy ? null : _cancel,
-                icon: _busy
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.check_circle, size: 18),
-                label: Text(_busy ? 'Working…' : 'Registered · Tap to cancel'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF059669),
-                  side: const BorderSide(color: Color(0xFF059669)),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+        child: ElevatedButton(
+          onPressed: _busy ? null : _register,
+          style: _btnStyle(),
+          child: _busy
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
                   ),
+                )
+              : const Text(
+                  'Register Now',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                 ),
-              )
-            : ElevatedButton.icon(
-                onPressed: _busy ? null : _register,
-                icon: _busy
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.how_to_reg_outlined, size: 18),
-                label: Text(_busy ? 'Registering…' : 'Register for this event'),
-                style: _btnStyle(),
-              ),
+        ),
       ),
-    );
+    ];
   }
-
-  Widget _bar({required Widget child}) => Container(
-    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      boxShadow: [BoxShadow(color: Colors.black.withAlpha(20), blurRadius: 12)],
-    ),
-    child: SafeArea(top: false, child: child),
-  );
-
-  ButtonStyle _btnStyle() => ElevatedButton.styleFrom(
-    backgroundColor: _kPrimary,
-    foregroundColor: Colors.white,
-    elevation: 0,
-    padding: const EdgeInsets.symmetric(vertical: 14),
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-  );
 
   void _snack(String msg, {bool ok = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -1130,386 +1181,113 @@ class _GuestEventDetailScreenState extends State<GuestEventDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final event = widget.event;
+    final hasOrg = event.orgId.isNotEmpty;
 
     return Scaffold(
-      backgroundColor: _kBg,
-      bottomNavigationBar: _buildRegisterBar(),
-      body: Stack(
-        children: [
-          CustomScrollView(
-            slivers: [
-              SliverAppBar(
-                expandedHeight: 250,
-                pinned: true,
-                backgroundColor: Colors.white,
-                foregroundColor: Colors.black,
-                elevation: 0,
-                leading: Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white.withAlpha(235),
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withAlpha(26),
-                            blurRadius: 6,
-                          ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.arrow_back,
-                        size: 20,
-                        color: Colors.black87,
-                      ),
-                    ),
-                  ),
-                ),
-                title: const Text(
-                  'Event Details',
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black87,
-                  ),
-                ),
-                flexibleSpace: FlexibleSpaceBar(
-                  // Tap-to-expand hangs off the whole Stack, not the banner
-                  // alone: the scrim and title block layered over it are
-                  // Containers with a BoxDecoration, and BoxDecoration.hitTest
-                  // returns true for a plain rectangle, so as siblings painted
-                  // above the banner they swallowed the tap. An ancestor still
-                  // receives what a child absorbs.
-                  background: expandableImage(
-                    context: context,
-                    source: event.imageUrl,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        _EventBanner(
-                          orgName: event.orgName,
-                          imageUrl: event.imageUrl,
-                          height: 250,
-                        ),
-                        Container(
-                          decoration: const BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [Color(0x44000000), Color(0xCC000000)],
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          bottom: 16,
-                          left: 16,
-                          right: 16,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Row(
-                                children: [
-                                  CategoryBadge(category: event.category),
-                                  if (event.audience
-                                      .split(',')
-                                      .map((s) => s.trim())
-                                      .contains('CICT Only')) ...[
-                                    const SizedBox(width: 6),
-                                    _AudienceBadge(audience: event.audience),
-                                  ],
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                event.title,
-                                style: const TextStyle(
-                                  fontSize: 26,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              Text(
-                                event.orgName.toUpperCase(),
-                                style: const TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white60,
-                                  letterSpacing: 1.4,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-              SliverToBoxAdapter(
-                child: Container(
-                  color: Colors.white,
-                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 100),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Organizer row
-                      Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 22,
-                            backgroundColor: Colors.grey[200],
-                            backgroundImage: event.orgLogoUrl.isNotEmpty
-                                ? AppImage.provider(event.orgLogoUrl)
-                                : null,
-                            child: event.orgLogoUrl.isEmpty
-                                ? Text(
-                                    event.orgName.isNotEmpty
-                                        ? event.orgName[0].toUpperCase()
-                                        : '?',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: _kPrimary,
-                                    ),
-                                  )
-                                : null,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  event.orgName,
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.black87,
-                                  ),
-                                ),
-                                const Text(
-                                  'ORGANIZATION',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 16),
-                      const Divider(height: 1, color: Color(0xFFF0F0F0)),
-                      const SizedBox(height: 16),
-
-                      // Info tiles
-                      _InfoTile(
-                        icon: Icons.calendar_today_outlined,
-                        iconColor: _kPrimary,
-                        label: 'Date',
-                        value: event.dateDisplay,
-                      ),
-                      if (event.startTime.isNotEmpty) ...[
-                        const SizedBox(height: 10),
-                        _InfoTile(
-                          icon: Icons.access_time_outlined,
-                          iconColor: const Color(0xFF1565C0),
-                          label: 'Time',
-                          value: event.timeDisplay,
-                        ),
-                      ],
-                      const SizedBox(height: 10),
-                      _InfoTile(
-                        icon: Icons.location_on_outlined,
-                        iconColor: const Color(0xFF2E7D32),
-                        label: 'Location',
-                        value: event.location,
-                      ),
-                      const SizedBox(height: 10),
-                      _InfoTile(
-                        icon: Icons.people_outline,
-                        iconColor: const Color(0xFF6A1B9A),
-                        label: 'Audience',
-                        value: event.audience.isNotEmpty
-                            ? event.audience
-                            : 'Public',
-                      ),
-
-                      const SizedBox(height: 16),
-                      const Divider(height: 1, color: Color(0xFFF0F0F0)),
-                      const SizedBox(height: 16),
-
-                      const Text(
-                        'ABOUT THIS EVENT',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF888888),
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        event.description.isNotEmpty
-                            ? event.description
-                            : 'No description provided.',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Colors.black87,
-                          height: 1.65,
-                        ),
-                      ),
-
-                      const SizedBox(height: 20),
-                      const Divider(height: 1, color: Color(0xFFF0F0F0)),
-                      const SizedBox(height: 16),
-
-                      const Text(
-                        'LOCATION',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF888888),
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      _LocationCard(location: event.location),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AudienceBadge extends StatelessWidget {
-  final String audience;
-  const _AudienceBadge({required this.audience});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1565C0),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        audience.toUpperCase(),
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 9,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.8,
-        ),
-      ),
-    );
-  }
-}
-
-class _InfoTile extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final String label;
-  final String value;
-  const _InfoTile({
-    required this.icon,
-    required this.iconColor,
-    required this.label,
-    required this.value,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: iconColor.withAlpha(26),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(icon, size: 18, color: iconColor),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
+      backgroundColor: Colors.white,
+      appBar: const StudentAppBar(title: 'Event Details'),
+      // The register block scrolls with the content now that the pinned bar is
+      // gone, so it needs the bottom inset the bar's own SafeArea used to give.
+      body: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: Colors.grey,
-                  fontWeight: FontWeight.w500,
-                ),
+              EventImage(
+                imageUrl: event.imageUrl,
+                height: 220,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                showLoadingIndicator: true,
+                expandable: true,
               ),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: Colors.black87,
-                  fontWeight: FontWeight.w600,
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CategoryBadge(category: event.category),
+                    const SizedBox(height: 12),
+                    Text(
+                      event.title,
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    InkWell(
+                      onTap: hasOrg ? () => _openOrg(event.orgId) : null,
+                      child: Text(
+                        'Hosted by ${event.orgName}',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: hasOrg ? AppColors.primaryDark : Colors.grey,
+                          fontWeight: hasOrg
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                          decoration: hasOrg
+                              ? TextDecoration.underline
+                              : TextDecoration.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    InfoRow(
+                      icon: Icons.calendar_today_outlined,
+                      text: event.dateDisplay,
+                    ),
+                    // timeDisplay is empty rather than a dash when the event
+                    // carries no start time, so the row is dropped entirely.
+                    if (event.startTime.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      InfoRow(icon: Icons.access_time, text: event.timeDisplay),
+                    ],
+                    const SizedBox(height: 12),
+                    InfoRow(
+                      icon: Icons.location_on_outlined,
+                      text: event.location,
+                    ),
+                    const SizedBox(height: 12),
+                    AudienceBadgeRow(audience: event.audience),
+                    if (_capacity != null) ...[
+                      const SizedBox(height: 12),
+                      InfoRow(
+                        icon: Icons.groups_outlined,
+                        text: _registeredCount == null
+                            ? '$_capacity slots'
+                            : '$_registeredCount/$_capacity slots filled',
+                        color: _isFull ? Colors.red.shade600 : null,
+                      ),
+                    ],
+                    const SizedBox(height: 20),
+                    const Text(
+                      'About the Event',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      event.description.isNotEmpty
+                          ? event.description
+                          : 'No description provided.',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.black87,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    ..._buildRegisterSection(),
+                    const SizedBox(height: 30),
+                  ],
                 ),
               ),
             ],
           ),
-        ),
-      ],
-    );
-  }
-}
-
-class _LocationCard extends StatelessWidget {
-  final String location;
-  const _LocationCard({required this.location});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFFF7F7F7),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFEEEEEE)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: _kPrimaryBg,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(
-                Icons.location_on_outlined,
-                size: 18,
-                color: _kPrimary,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                location,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: Colors.black87,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ],
         ),
       ),
     );

@@ -150,6 +150,7 @@
       "collectionGroup": "attendances",
       "fieldPath": "guestEmail",
       "indexes": [
+        { "order": "ASCENDING", "queryScope": "COLLECTION" },
         { "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }
       ]
     },
@@ -157,6 +158,7 @@
       "collectionGroup": "attendances",
       "fieldPath": "studentId",
       "indexes": [
+        { "order": "ASCENDING", "queryScope": "COLLECTION" },
         { "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }
       ]
     }

@@ -12,6 +12,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import 'guest_auth_service.dart';
+import '../../widgets/common/error_state.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../widgets/student/student_app_bar.dart';
 
@@ -96,7 +97,14 @@ class _GuestParticipatedEventsScreenState extends State<GuestParticipatedEventsS
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: _kOrange))
           : _error != null
-              ? Center(child: Text(_error!, style: GoogleFonts.beVietnamPro(fontSize: 13, color: Colors.grey)))
+              ? ErrorStateView(
+                  title: 'Could not load events',
+                  detail: _error,
+                  onRetry: () {
+                    setState(() { _loading = true; _error = null; });
+                    _load();
+                  },
+                )
               : _events.isEmpty
                   ? Center(
                       child: Padding(

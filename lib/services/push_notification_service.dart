@@ -23,6 +23,22 @@ class PushNotificationService {
 
   static String? _registeredUid;
 
+  // ── Tap handling ──
+  //
+  // Set by main.dart (mobile) to open the tapped notification. Deliberately
+  // a callback rather than importing the student screens here: this file is
+  // also imported by main_web.dart and auth_service.dart, and the student
+  // screen chain pulls in `dart:io` (student_events_screen.dart), which does
+  // not compile for web. The web entry simply never sets this and taps stay
+  // a no-op there, which is correct — web pushes are org/admin surfaces.
+  static void Function(String notificationId)? onNotificationTap;
+
+  static void _handleTap(RemoteMessage message) {
+    final id = (message.data['notificationId'] ?? '').toString();
+    if (id.isEmpty) return;
+    onNotificationTap?.call(id);
+  }
+
   // ── Foreground display ──
   //
   // Android does NOT show an FCM notification while the app is open — the
@@ -66,6 +82,8 @@ class PushNotificationService {
           );
 
       FirebaseMessaging.onMessage.listen(_showForeground);
+      // App alive in the background, student taps the push in the tray.
+      FirebaseMessaging.onMessageOpenedApp.listen(_handleTap);
     } catch (e) {
       debugPrint('PushNotificationService.initialize failed: $e');
     }
@@ -118,6 +136,17 @@ class PushNotificationService {
       _registeredUid = uid;
 
       messaging.onTokenRefresh.listen((refreshed) => _saveToken(uid, refreshed));
+
+      // Cold start: the app was fully closed and launched BY the tap, so
+      // onMessageOpenedApp never fires and the message is waiting here
+      // instead. Handled in register() rather than initialize() because
+      // register() runs from RoleRouter once a uid exists, by which point
+      // there is a Navigator to push onto and an auth user to load the
+      // notification for.
+      if (!kIsWeb) {
+        final initial = await messaging.getInitialMessage();
+        if (initial != null) _handleTap(initial);
+      }
     } catch (e) {
       debugPrint('PushNotificationService.register failed: $e');
     }

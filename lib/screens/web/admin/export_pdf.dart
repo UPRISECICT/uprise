@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 import 'package:intl/intl.dart';
@@ -307,12 +309,25 @@ class AdminExportPdf {
   /// page is that image at full bleed — with the signature overlaid on the
   /// last page. Visually identical to the original, but with a real stamp
   /// on the actual document instead of a bolted-on cover sheet.
+  static const double _signatureStampWidth = 170;
+
+  /// [xPct]/[yPct] are the drag position (0..1 of the last page's own
+  /// width/height) an admin picked in the on-screen preview, marking the
+  /// center of where the signature block should land — matching the same
+  /// percentage-of-page approach org_certificates.dart uses for its
+  /// signatory placements, so the position transfers correctly regardless
+  /// of what DPI the preview vs. the final stamp were rasterized at. Left
+  /// null (e.g. no legacy call site passes them), the original fixed
+  /// bottom-right spot is kept as-is.
   static Future<Uint8List> stampSignatureOnPdf({
     required Uint8List originalPdfBytes,
     required Uint8List signatureBytes,
     required String signedByName,
     required DateTime signedAt,
     String remark = '',
+    String role = 'Admin, Uprise',
+    double? xPct,
+    double? yPct,
   }) async {
     // 110 DPI keeps the stamped copy legible while meaningfully cutting the
     // raster + re-encode work for multi-page documents (this whole pipeline
@@ -332,11 +347,26 @@ class AdminExportPdf {
     for (var i = 0; i < rasterPages.length; i++) {
       final raster = rasterPages[i];
       final pageImage = pw.MemoryImage(await raster.toPng());
-      final pageFormat = PdfPageFormat(
-        raster.width / dpi * PdfPageFormat.inch,
-        raster.height / dpi * PdfPageFormat.inch,
-      );
+      final pageWidthPts = raster.width / dpi * PdfPageFormat.inch;
+      final pageHeightPts = raster.height / dpi * PdfPageFormat.inch;
+      final pageFormat = PdfPageFormat(pageWidthPts, pageHeightPts);
       final isLastPage = i == rasterPages.length - 1;
+
+      // Roughly matches _signatureOverName's own rendered height (56px
+      // signature + ~50px of name/role/timestamp text beneath it) — only
+      // used to keep the dragged drop point centered on the stamp instead
+      // of anchored at its corner.
+      const stampHeight = 90.0;
+      final double? stampLeft = xPct == null
+          ? null
+          : (xPct * pageWidthPts - _signatureStampWidth / 2)
+                .clamp(0.0, math.max(0.0, pageWidthPts - _signatureStampWidth))
+                .toDouble();
+      final double? stampTop = yPct == null
+          ? null
+          : (yPct * pageHeightPts - stampHeight / 2)
+                .clamp(0.0, math.max(0.0, pageHeightPts - stampHeight))
+                .toDouble();
 
       pdf.addPage(
         pw.Page(
@@ -350,13 +380,16 @@ class AdminExportPdf {
               ),
               if (isLastPage)
                 pw.Positioned(
-                  right: 36,
-                  bottom: 48,
+                  left: stampLeft,
+                  top: stampTop,
+                  right: stampLeft == null ? 36 : null,
+                  bottom: stampTop == null ? 48 : null,
                   child: _signatureOverName(
                     signatureImage: signatureImage,
                     signedByName: signedByName,
                     signedAt: signedAt,
                     remark: remark,
+                    role: role,
                   ),
                 ),
             ],

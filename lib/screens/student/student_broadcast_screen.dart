@@ -1,6 +1,5 @@
 
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -9,8 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:file_saver/file_saver.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
 import '../../widgets/common/image_viewer.dart';
@@ -63,10 +61,10 @@ IconData _iconForFileName(String name) {
   }
 }
 
-// Mobile has no "download" concept like a browser — write the bytes to a
-// temp file and hand it to the OS share sheet, same pattern already used
-// for attachment downloads in student_announcements_screen.dart. That lets
-// the user save it, open it in another app, or share it onward.
+// Saves straight to the device (Downloads on Android, Files on iOS) via
+// FileSaver — no OS share sheet in between. Previously this wrote the bytes
+// to a temp file and handed it to Share.shareXFiles, which popped the
+// "Share via…" sheet instead of just downloading the attachment.
 Future<void> _openFileAttachment(
   BuildContext context,
   String fileBase64,
@@ -74,15 +72,17 @@ Future<void> _openFileAttachment(
 ) async {
   try {
     final bytes = _bytesFromBase64(fileBase64);
-    final tempDir = await getTemporaryDirectory();
-    final file = File('${tempDir.path}/$fileName');
-    await file.writeAsBytes(bytes);
-    await Share.shareXFiles([XFile(file.path)], text: fileName);
+    await FileSaver.instance.saveFile(name: fileName, bytes: bytes);
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Downloaded $fileName')));
+    }
   } catch (e) {
     if (context.mounted) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Could not open file: $e')));
+      ).showSnackBar(SnackBar(content: Text('Could not download file: $e')));
     }
   }
 }

@@ -4,7 +4,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../widgets/student/student_app_bar.dart';
 import '../../widgets/common/loading_widget.dart';
+import '../../models/event_model.dart';
 import 'student_broadcast_screen.dart';
+import 'student_events_screen.dart';
 import 'student_certificates_screen.dart';
 import 'student_feedback_screen.dart';
 
@@ -70,7 +72,15 @@ bool _isStudentNotification(QueryDocumentSnapshot doc) {
 }
 
 class StudentNotificationsScreen extends StatefulWidget {
-  const StudentNotificationsScreen({super.key});
+  /// When set, the notification with this id is opened as if the student had
+  /// tapped it in the list. Used by PushNotificationService when a student
+  /// taps an OS push: routing a push through this screen reuses
+  /// [_onNotificationTap] wholesale instead of duplicating it, so in-app
+  /// taps and push taps can never drift apart, and it leaves the student on
+  /// the notification list when they press back.
+  final String? initialNotificationId;
+
+  const StudentNotificationsScreen({super.key, this.initialNotificationId});
 
   @override
   State<StudentNotificationsScreen> createState() =>
@@ -85,6 +95,31 @@ class _StudentNotificationsScreenState
   void initState() {
     super.initState();
     _uid = FirebaseAuth.instance.currentUser?.uid;
+    final pushedId = widget.initialNotificationId;
+    if (pushedId != null && pushedId.isNotEmpty) {
+      // After the first frame so this screen is mounted and can be the
+      // route the target screen is pushed on top of.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _openNotificationById(pushedId);
+      });
+    }
+  }
+
+  Future<void> _openNotificationById(String notificationId) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('notifications')
+          .doc(notificationId)
+          .get();
+      if (!doc.exists || !mounted) return;
+      final notif = AppNotification.fromFirestore(doc);
+      // A push should only ever open a student-facing notification, and only
+      // the recipient's own.
+      if (!notif.isStudentFacing) return;
+      _onNotificationTap(notif);
+    } catch (e) {
+      debugPrint('Could not open pushed notification $notificationId: $e');
+    }
   }
 
   ({IconData icon, Color bg, Color fg}) _typeStyle(String type) {
@@ -130,6 +165,12 @@ class _StudentNotificationsScreenState
         return (
           icon: Icons.chat_bubble_rounded,
           bg: AppColors.primaryDark.withOpacity(0.1),
+          fg: AppColors.primaryDark,
+        );
+      case 'certificate':
+        return (
+          icon: Icons.workspace_premium_rounded,
+          bg: AppColors.primaryDark.withAlpha(26),
           fg: AppColors.primaryDark,
         );
       default:
@@ -191,6 +232,30 @@ class _StudentNotificationsScreenState
     }
   }
 
+  Future<void> _openEvent(String eventId) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('events')
+          .doc(eventId)
+          .get();
+      if (!doc.exists || !mounted) return;
+      final event = EventModel.fromFirestore(doc);
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => EventDetailScreen(
+            event: event,
+            onRegistered: () {},
+            isPastEvent: event.fullDateTime.isBefore(DateTime.now()),
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('Could not open event $eventId: $e');
+    }
+  }
+
   void _onNotificationTap(AppNotification notif) {
     _markAsRead(notif.id);
 
@@ -214,6 +279,26 @@ class _StudentNotificationsScreenState
         context,
         MaterialPageRoute(builder: (_) => const StudentCertificatesScreen()),
       );
+      return;
+    }
+
+    // Every 'event' notification this app writes carries an eventId in
+    // `data`, so all of them open the event: the "new event published"
+    // broadcast and the pre-event reminders (functions/index.js), and the
+    // attendance check-in notices (org_attendance_qr.dart and
+    // webinar_attendance_service.dart, which both send
+    // data: {'eventId': ..., 'status': ...}).
+    //
+    // Note this changes what a check-in notification does: before this
+    // branch existed they matched no case, fell through, and only got
+    // marked read, so tapping "You're Marked Present!" did nothing
+    // visible. It now opens that event, in past mode - the event has by
+    // definition already started if someone checked in to it.
+    if (notif.type == 'event') {
+      final eventId = notif.data?['eventId'] as String?;
+      if (eventId != null && eventId.isNotEmpty) {
+        _openEvent(eventId);
+      }
       return;
     }
 

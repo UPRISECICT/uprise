@@ -8,6 +8,7 @@ import 'export_pdf.dart';
 import 'export_excel.dart';
 import '../../../theme/admin_theme.dart';
 import '../../../widgets/anchored_dropdown.dart';
+import '../../../widgets/app_toast.dart';
 import '../../../widgets/stat_cards.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1330,8 +1331,6 @@ class _ExportLogsButton extends StatelessWidget {
   }
 
   Future<void> _doExport(BuildContext context, String format) async {
-    final messenger = ScaffoldMessenger.of(context);
-
     try {
       final snap = await FirebaseFirestore.instance
           .collection('activity_logs')
@@ -1339,15 +1338,7 @@ class _ExportLogsButton extends StatelessWidget {
           .get();
 
       if (snap.docs.isEmpty) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: const Text('No data to export.'),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        );
+        if (context.mounted) AppToast.info(context, 'No data to export.');
         return;
       }
 
@@ -1437,14 +1428,7 @@ class _ExportLogsButton extends StatelessWidget {
         throw UnsupportedError('Unsupported export format: $format');
       }
     } catch (e) {
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text('Export failed: $e'),
-          backgroundColor: AdminColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      );
+      if (context.mounted) AppToast.error(context, 'Export failed: $e');
     }
   }
 }

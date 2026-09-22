@@ -19,6 +19,7 @@ import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/stat_cards.dart';
 import '../../../widgets/app_confirmation_dialog.dart';
 import '../../../services/notification_service.dart';
+import '../../../widgets/app_toast.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens
@@ -1043,12 +1044,7 @@ class _ReportsManagementState extends State<ReportsManagement>
           .doc(event.id)
           .get();
       if (!doc.exists) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Event not found'),
-            backgroundColor: UpriseColors.error,
-          ),
-        );
+        AppToast.error(context, 'Event not found');
         return;
       }
 
@@ -1081,12 +1077,7 @@ class _ReportsManagementState extends State<ReportsManagement>
     } catch (e) {
       debugPrint('Error loading event details: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to load event details: $e'),
-            backgroundColor: UpriseColors.error,
-          ),
-        );
+        AppToast.error(context, 'Failed to load event details: $e');
       }
     } finally {
       if (mounted) setState(() => _loadingEventDetail = false);
@@ -1133,12 +1124,7 @@ class _ReportsManagementState extends State<ReportsManagement>
       if (mounted) {
         setState(() => _loadingFinancial = false);
         // Show a snackbar to let you know something went wrong
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to load financial reports: $e'),
-            backgroundColor: UpriseColors.error,
-          ),
-        );
+        AppToast.error(context, 'Failed to load financial reports: $e');
       }
     }
   }
@@ -1182,12 +1168,7 @@ class _ReportsManagementState extends State<ReportsManagement>
       debugPrint('Error loading accomplishment reports: $e');
       if (mounted) {
         setState(() => _loadingAccomplishment = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to load accomplishment reports: $e'),
-            backgroundColor: UpriseColors.error,
-          ),
-        );
+        AppToast.error(context, 'Failed to load accomplishment reports: $e');
       }
     }
   }
@@ -1226,28 +1207,10 @@ class _ReportsManagementState extends State<ReportsManagement>
       _setReportArchived(report, true);
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Report archived successfully'),
-          backgroundColor: UpriseColors.success,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(_DS.radiusSm),
-          ),
-        ),
-      );
+      AppToast.success(context, 'Report archived successfully');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error archiving report: $e'),
-          backgroundColor: UpriseColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(_DS.radiusSm),
-          ),
-        ),
-      );
+      AppToast.error(context, 'Error archiving report: $e');
     }
   }
 
@@ -1284,28 +1247,10 @@ class _ReportsManagementState extends State<ReportsManagement>
       _setReportArchived(report, false);
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Report restored successfully'),
-          backgroundColor: UpriseColors.success,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(_DS.radiusSm),
-          ),
-        ),
-      );
+      AppToast.success(context, 'Report restored successfully');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error restoring report: $e'),
-          backgroundColor: UpriseColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(_DS.radiusSm),
-          ),
-        ),
-      );
+      AppToast.error(context, 'Error restoring report: $e');
     }
   }
 
@@ -1378,28 +1323,10 @@ class _ReportsManagementState extends State<ReportsManagement>
       });
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Event archived successfully'),
-          backgroundColor: UpriseColors.success,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(_DS.radiusSm),
-          ),
-        ),
-      );
+      AppToast.success(context, 'Event archived successfully');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error archiving event: $e'),
-          backgroundColor: UpriseColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(_DS.radiusSm),
-          ),
-        ),
-      );
+      AppToast.error(context, 'Error archiving event: $e');
     }
   }
 
@@ -1439,28 +1366,10 @@ class _ReportsManagementState extends State<ReportsManagement>
       });
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Event restored successfully'),
-          backgroundColor: UpriseColors.success,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(_DS.radiusSm),
-          ),
-        ),
-      );
+      AppToast.success(context, 'Event restored successfully');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error restoring event: $e'),
-          backgroundColor: UpriseColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(_DS.radiusSm),
-          ),
-        ),
-      );
+      AppToast.error(context, 'Error restoring event: $e');
     }
   }
 
@@ -2012,9 +1921,7 @@ class _ReportsManagementState extends State<ReportsManagement>
 
   Future<void> _exportEventSummaryCsv() async {
     if (_filteredEvents.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('No data to export.')));
+      AppToast.info(context, 'No data to export.');
       return;
     }
     final bytes = AdminExportExcel.generateStyledTable(
@@ -2030,9 +1937,7 @@ class _ReportsManagementState extends State<ReportsManagement>
 
   Future<void> _exportEventSummaryPdf() async {
     if (_filteredEvents.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('No data to export.')));
+      AppToast.info(context, 'No data to export.');
       return;
     }
     final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
@@ -2469,9 +2374,7 @@ class _ReportsManagementState extends State<ReportsManagement>
     List<AdminReport> reports,
   ) async {
     if (reports.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('No data to export.')));
+      AppToast.info(context, 'No data to export.');
       return;
     }
     final rows = reports
@@ -2507,9 +2410,7 @@ class _ReportsManagementState extends State<ReportsManagement>
     List<AdminReport> reports,
   ) async {
     if (reports.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('No data to export.')));
+      AppToast.info(context, 'No data to export.');
       return;
     }
     final rows = reports
@@ -3854,9 +3755,7 @@ class _ReportsManagementState extends State<ReportsManagement>
     final finRows = _filterSubmissionRows(_financialSubs);
     final accRows = _filterSubmissionRows(_accomplishmentSubs);
     if (finRows.isEmpty && accRows.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('No data to export.')));
+      AppToast.info(context, 'No data to export.');
       return;
     }
     final rows = <List<String>>[];
@@ -3888,9 +3787,7 @@ class _ReportsManagementState extends State<ReportsManagement>
     final finRows = _filterSubmissionRows(_financialSubs);
     final accRows = _filterSubmissionRows(_accomplishmentSubs);
     if (finRows.isEmpty && accRows.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('No data to export.')));
+      AppToast.info(context, 'No data to export.');
       return;
     }
     final rows = <List<String>>[];
@@ -5504,15 +5401,7 @@ class _ReportsManagementState extends State<ReportsManagement>
               return MouseRegion(
                 cursor: SystemMouseCursors.click,
                 child: GestureDetector(
-                  onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Opening: $fileUrl'),
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(_DS.radiusSm),
-                      ),
-                    ),
-                  ),
+                  onTap: () => AppToast.info(context, 'Opening: $fileUrl'),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 14,
@@ -6068,27 +5957,9 @@ class _ReportsManagementState extends State<ReportsManagement>
       html.document.body?.append(anchor);
       anchor.click();
       anchor.remove();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Opening file in a new tab...'),
-          backgroundColor: UpriseColors.success,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(_DS.radiusSm),
-          ),
-        ),
-      );
+      AppToast.success(context, 'Opening file in a new tab...');
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not open file: $e'),
-          backgroundColor: UpriseColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(_DS.radiusSm),
-          ),
-        ),
-      );
+      AppToast.error(context, 'Could not open file: $e');
     }
   }
 
@@ -6104,27 +5975,9 @@ class _ReportsManagementState extends State<ReportsManagement>
       html.document.body?.append(anchor);
       anchor.click();
       anchor.remove();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Download started...'),
-          backgroundColor: UpriseColors.success,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(_DS.radiusSm),
-          ),
-        ),
-      );
+      AppToast.success(context, 'Download started...');
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not download file: $e'),
-          backgroundColor: UpriseColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(_DS.radiusSm),
-          ),
-        ),
-      );
+      AppToast.error(context, 'Could not download file: $e');
     }
   }
 
@@ -6140,17 +5993,9 @@ class _ReportsManagementState extends State<ReportsManagement>
   }) async {
     if (!sub.hasApprovedEvent) {
       if (showSnack && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'No approved event found for ${sub.orgName}. Reminder not sent.',
-            ),
-            backgroundColor: UpriseColors.error,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(_DS.radiusSm),
-            ),
-          ),
+        AppToast.error(
+          context,
+          'No approved event found for ${sub.orgName}. Reminder not sent.',
         );
       }
       return false;
@@ -6178,32 +6023,15 @@ class _ReportsManagementState extends State<ReportsManagement>
         orgId: sub.orgId,
       );
       if (showSnack && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Reminder sent to ${sub.orgName}$eventLabel for $reportType report$when',
-            ),
-            backgroundColor: UpriseColors.primaryDark,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(_DS.radiusSm),
-            ),
-          ),
+        AppToast.success(
+          context,
+          'Reminder sent to ${sub.orgName}$eventLabel for $reportType report$when',
         );
       }
       return true;
     } catch (e) {
       if (showSnack && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to send reminder to ${sub.orgName}: $e'),
-            backgroundColor: UpriseColors.error,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(_DS.radiusSm),
-            ),
-          ),
-        );
+        AppToast.error(context, 'Failed to send reminder to ${sub.orgName}: $e');
       }
       return false;
     }
@@ -6223,16 +6051,7 @@ class _ReportsManagementState extends State<ReportsManagement>
     }).toList();
 
     if (overdue.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('No overdue submissions to remind right now.'),
-          backgroundColor: UpriseColors.warning,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(_DS.radiusSm),
-          ),
-        ),
-      );
+      AppToast.warning(context, 'No overdue submissions to remind right now.');
       return;
     }
 
@@ -6256,22 +6075,17 @@ class _ReportsManagementState extends State<ReportsManagement>
     }
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          sent == overdue.length
-              ? 'Reminder sent to $sent organization${sent == 1 ? '' : 's'}.'
-              : 'Sent $sent of ${overdue.length} reminders — some failed.',
-        ),
-        backgroundColor: sent == overdue.length
-            ? UpriseColors.primaryDark
-            : UpriseColors.warning,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(_DS.radiusSm),
-        ),
-      ),
-    );
+    if (sent == overdue.length) {
+      AppToast.success(
+        context,
+        'Reminder sent to $sent organization${sent == 1 ? '' : 's'}.',
+      );
+    } else {
+      AppToast.warning(
+        context,
+        'Sent $sent of ${overdue.length} reminders — some failed.',
+      );
+    }
   }
 
   // ── Helpers ───────────────────────────────────────────────────────
@@ -6727,12 +6541,7 @@ class _ViewAdminReportModal extends StatelessWidget {
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error opening attachment: $e'),
-            backgroundColor: const Color(0xFFDC2626),
-          ),
-        );
+        AppToast.error(context, 'Error opening attachment: $e');
       }
     }
   }

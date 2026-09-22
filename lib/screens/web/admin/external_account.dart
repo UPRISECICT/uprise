@@ -1675,25 +1675,37 @@ class _ExternalAccountState extends State<ExternalAccount> {
                         'Account Information',
                         icon: Icons.info_outline_rounded,
                       ),
-                      _infoGrid([
+                      ..._detailRows([
                         (
                           'Full Name',
                           req.userName.isNotEmpty ? req.userName : '—',
+                          Icons.person_outline_rounded,
                         ),
-                        ('Email', req.email.isNotEmpty ? req.email : '—'),
-                        ('Guest Type', req.classification),
+                        (
+                          'Email',
+                          req.email.isNotEmpty ? req.email : '—',
+                          Icons.email_outlined,
+                        ),
+                        (
+                          'Guest Type',
+                          req.classification,
+                          Icons.category_outlined,
+                        ),
                         if (req.isBulSUan) ...[
                           (
                             'College',
                             req.college.isNotEmpty ? req.college : '—',
+                            Icons.school_outlined,
                           ),
                           (
                             'Year Level',
                             req.yearLevel.isNotEmpty ? req.yearLevel : '—',
+                            Icons.calendar_today_outlined,
                           ),
                           (
                             'Section',
                             req.section.isNotEmpty ? req.section : '—',
+                            Icons.groups_outlined,
                           ),
                         ] else
                           (
@@ -1703,8 +1715,13 @@ class _ExternalAccountState extends State<ExternalAccount> {
                                 : (req.university.isNotEmpty
                                       ? req.university
                                       : '—'),
+                            Icons.apartment_outlined,
                           ),
-                        ('User ID', req.userId.isNotEmpty ? req.userId : '—'),
+                        (
+                          'User ID',
+                          req.userId.isNotEmpty ? req.userId : '—',
+                          Icons.fingerprint_rounded,
+                        ),
                         (
                           'Account Status',
                           req.accountCreated
@@ -1712,6 +1729,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
                               : (req.status == 'approved'
                                     ? 'Approved — pending account creation'
                                     : 'No account yet'),
+                          Icons.verified_outlined,
                         ),
                       ]),
                       if (req.purpose.isNotEmpty) ...[
@@ -1834,48 +1852,113 @@ class _ExternalAccountState extends State<ExternalAccount> {
     );
   }
 
-  Widget _infoGrid(List<(String, String)> items) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E6EA)),
-      ),
-      child: Wrap(
-        spacing: 0,
-        runSpacing: 12,
-        children: items
-            .map(
-              (item) => SizedBox(
-                width: 210,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      item.$1,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFF64748B),
-                        letterSpacing: 0.4,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      item.$2,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: const Color(0xFF1A202C),
-                      ),
-                    ),
-                  ],
+  // Mirrors student_accounts.dart's _showStudentDetailDialog layout — a
+  // per-field icon + label + value, paired into 2-column rows — instead of
+  // the old boxed Wrap, which tipped over into a single stacked column at
+  // this dialog's 500px width.
+  List<Widget> _detailRows(List<(String, String, IconData)> items) {
+    final rows = <Widget>[];
+    for (var i = 0; i < items.length; i += 2) {
+      if (i > 0) rows.add(const SizedBox(height: 16));
+      final first = items[i];
+      final hasSecond = i + 1 < items.length;
+      rows.add(
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: _detailItem(first.$1, first.$2, first.$3),
+            ),
+            if (hasSecond) ...[
+              const SizedBox(width: 16),
+              Expanded(
+                child: _detailItem(
+                  items[i + 1].$1,
+                  items[i + 1].$2,
+                  items[i + 1].$3,
                 ),
               ),
-            )
-            .toList(),
+            ],
+          ],
+        ),
+      );
+    }
+    return rows;
+  }
+
+  // Colored icon-badge card, matching event_proposals.dart / letter_request.dart's
+  // _detailItem — each field gets a distinct accent color instead of one flat icon.
+  Widget _detailItem(
+    String label,
+    String value,
+    IconData icon, {
+    Color? valueColor,
+  }) {
+    final accent =
+        valueColor ??
+        switch (label) {
+          'Full Name' => const Color(0xFF2563EB),
+          'Email' => const Color(0xFF0891B2),
+          'Guest Type' => const Color(0xFFF97316),
+          'College' => const Color(0xFF0F766E),
+          'Year Level' => const Color(0xFF4F46E5),
+          'Section' => const Color(0xFF7C3AED),
+          'Affiliation / Organization' => const Color(0xFFDB2777),
+          'User ID' => const Color(0xFF6366F1),
+          'Account Status' => const Color(0xFF059669),
+          _ => const Color(0xFF64748B),
+        };
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE8ECF0)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: accent.withAlpha(28),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 14, color: accent),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label.toUpperCase(),
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF64748B),
+                    letterSpacing: 0.4,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  value,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: valueColor ?? const Color(0xFF1A202C),
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

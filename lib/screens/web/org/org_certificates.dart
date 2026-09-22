@@ -576,25 +576,48 @@ class CertificateBatch {
       records.map((r) => r.date).reduce((a, b) => a.isAfter(b) ? a : b);
   String? get eventId => primary.eventId;
 
-  int get totalRecipients => records.length;
-  int get sentCount => records.where((r) => r.status == 'distributed').length;
+  // A doc in this batch is one of two unrelated things: a single draft
+  // placeholder standing in for N intended recipients (N lives in its own
+  // `recipients` field), or one issued certificate belonging to one person.
+  // Counting docs treats those as the same unit, which is where the table's
+  // numbers came apart — a draft batch for twenty people reported "1",
+  // because the batch was one placeholder doc.
+  Iterable<CertificateRecord> get _issued =>
+      records.where((r) => r.status != 'draft');
+
+  int get _intendedFromDraft => records
+      .where((r) => r.status == 'draft')
+      .fold<int>(0, (n, r) => n + r.recipients);
+
+  int get sentCount => _issued.where((r) => r.status == 'distributed').length;
+
+  // A headcount. Before anything is issued the draft's own figure is the
+  // only population there is; once certificates exist they are the
+  // population, and the draft's figure still counts only while it is the
+  // larger of the two — which is exactly while people are still waiting.
+  int get totalRecipients {
+    final issued = _issued.length;
+    final intended = _intendedFromDraft;
+    return issued > intended ? issued : intended;
+  }
+
+  int get pendingCount {
+    final left = totalRecipients - sentCount;
+    return left < 0 ? 0 : left;
+  }
+
   int get failedCount => records.where((r) => r.sendStatus == 'failed').length;
   bool get isArchived => records.every((r) => r.archived);
 
+  // Read off the same two numbers the table prints, so the badge and the
+  // count cannot disagree. They used to be derived separately — batchStatus
+  // dropped the draft placeholder from its denominator while
+  // totalRecipients kept it — which is how one row could read "All Sent"
+  // next to "2/3".
   String get batchStatus {
     if (isArchived) return 'archived';
-
-    // Count only REAL certificates (not the draft placeholder)
-    final realRecords = records.where((r) => r.status != 'draft').toList();
-    if (realRecords.isEmpty) return 'draft';
-
-    final sentCount = realRecords
-        .where((r) => r.status == 'distributed')
-        .length;
-    final total = realRecords.length;
-
     if (sentCount == 0) return 'draft';
-    if (sentCount < total) return 'partially_sent';
+    if (sentCount < totalRecipients) return 'partially_sent';
     return 'sent';
   }
 
@@ -641,6 +664,12 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
   int? _selectedStatCard;
   bool Function(CertificateBatch)? _statCardFilter;
 
+  // Set while the batch detail page is showing. The batch *key*, not the
+  // batch object: the batch is re-resolved from the live stream on every
+  // build, so a certificate issued from inside the page updates the page it
+  // was issued from, with no refresh.
+  String? _detailBatchKey;
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -674,16 +703,22 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildStatsRow(isMobile, isTablet),
-          _buildToolbar(isMobile, isTablet),
-          SizedBox(height: isMobile ? 12 : 16),
-          Expanded(child: _buildTable(isMobile, isTablet)),
-          SizedBox(height: isMobile ? 16 : 24),
-        ],
-      ),
+      // The batch detail view takes over the body instead of opening on top
+      // of it, so the sidebar and top bar org_dashboard.dart wraps this
+      // screen in stay visible — the same swap as the Pending Reports page
+      // in org_reports.dart and Event Overview in org_events_schedule.dart.
+      body: _detailBatchKey != null
+          ? _buildDetailPage(_detailBatchKey!)
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildStatsRow(isMobile, isTablet),
+                _buildToolbar(isMobile, isTablet),
+                SizedBox(height: isMobile ? 12 : 16),
+                Expanded(child: _buildTable(isMobile, isTablet)),
+                SizedBox(height: isMobile ? 16 : 24),
+              ],
+            ),
     );
   }
 
@@ -692,41 +727,28 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
       stream: _certsStream,
       builder: (context, snapshot) {
         final docs = snapshot.data?.docs ?? [];
-        final total = docs.length;
-        final totalRec = docs.fold<int>(
-          0,
-          (s, d) =>
-              s +
-              ((d.data() as Map<String, dynamic>)['recipients'] as num? ?? 1)
-                  .toInt(),
-        );
-        // Counted from the same grouped batches the "Distributed"/"Pending"
-        // cards actually filter to when clicked (selectCard below), instead
-        // of a raw per-record `status` check — each Firestore doc here is
-        // one recipient's certificate, and its `status` field is only ever
-        // 'draft' or 'distributed', never literally 'pending'. Counting raw
-        // docs with status=='pending' always came out to 0 while the click
-        // filter (which operates on grouped-by-event batches) could still
-        // find batches that aren't fully sent yet — the card said 0 while
-        // clicking it showed real rows.
-        final allRecordsForCounts = docs
-            .map((d) => CertificateRecord.fromFirestore(d))
-            .toList();
         final batchesForCounts = CertificateBatch.groupByEvent(
-          allRecordsForCounts,
+          docs.map((d) => CertificateRecord.fromFirestore(d)).toList(),
         );
-        final distributed = batchesForCounts
-            .where((b) => b.sentCount > 0)
-            .length;
-        // Archiving a batch is the org's own "I'm done with this, hide it"
-        // action — an archived batch counting as "Pending" meant a batch
-        // the org had already dismissed (e.g. one stuck with a leftover
-        // draft placeholder from before that cleanup bug was fixed) could
-        // sit here forever, showing a nonzero Pending count with nothing
-        // in the visible/default table actually needing action.
-        final pending = batchesForCounts
-            .where((b) => !b.isArchived && b.sentCount < b.totalRecipients)
-            .length;
+        // The table hides archived batches under every filter but
+        // "Archived", so the cards summarising it work off the same set.
+        final active = batchesForCounts.where((b) => !b.isArchived).toList();
+
+        // Rows, i.e. what the table below actually lists. This card counted
+        // raw Firestore docs while the table — and this card's own footer,
+        // "N certificate batches" — counted grouped events, so one page
+        // carried two different numbers for the same word.
+        final batchCount = active.length;
+
+        // People, for all three of the rest. They share one unit and the
+        // last two add up to the first: every recipient is either holding a
+        // certificate or waiting for one. Before, Distributed counted
+        // batches with any send and Pending counted batches with any gap,
+        // so a half-sent batch landed in both and the pair could sum past
+        // the total.
+        final totalRec = active.fold<int>(0, (n, b) => n + b.totalRecipients);
+        final distributed = active.fold<int>(0, (n, b) => n + b.sentCount);
+        final pending = active.fold<int>(0, (n, b) => n + b.pendingCount);
 
         final horizontalPadding = isMobile ? 16.0 : (isTablet ? 20.0 : 28.0);
         final cardGap = isMobile ? 8.0 : 14.0;
@@ -746,8 +768,8 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
 
         final statCards = [
           StatCard(
-            label: 'Total Certificates',
-            value: '$total',
+            label: 'Certificate Batches',
+            value: '$batchCount',
             icon: Icons.card_membership_outlined,
             color: UpriseColors.primaryDark,
             selected: _selectedStatCard == 0,
@@ -1210,19 +1232,7 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
                 ),
               ),
             ),
-            Expanded(
-              flex: 2,
-              child: Text(
-                b.batchStatus == 'draft'
-                    ? '${b.totalRecipients}'
-                    : '${b.sentCount}/${b.totalRecipients}',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF1A202C),
-                ),
-              ),
-            ),
+            Expanded(flex: 2, child: _recipientsCell(b)),
             Expanded(
               flex: 2,
               child: Align(
@@ -1282,29 +1292,104 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
     );
   }
 
-  void _viewBatch(CertificateBatch b) {
-    showDialog(
-      context: context,
-      barrierColor: Colors.black54,
-      builder: (_) => _BatchDetailModal(
-        batch: b,
-        eventId: b.eventId ?? '',
-        onSendAll: () async {
-          await _sendCertificates(b.primary);
-          // Close the modal after sending
-          if (mounted) {
-            Navigator.of(context, rootNavigator: true).pop();
-          }
-        },
-        onSendSingle: (key, name, isGuest) => _sendSingleCertificate(
-          draftMeta: b.primary,
-          eventId: b.eventId ?? '',
-          recipientKey: key,
-          recipientName: name,
-          isGuest: isGuest,
+  // One quantity on every row — how many of this event's recipients are
+  // holding their certificate — instead of a bare headcount on draft rows
+  // and a ratio on sent ones. The bare number was also wrong: a draft batch
+  // is a single placeholder doc, so it always printed "1" however many
+  // people the draft was for.
+  Widget _recipientsCell(CertificateBatch b) {
+    final total = b.totalRecipients;
+    final sent = b.sentCount;
+    final progress = total == 0 ? 0.0 : (sent / total).clamp(0.0, 1.0);
+    final done = total > 0 && sent >= total;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '$sent / $total',
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: const Color(0xFF1A202C),
+          ),
         ),
-        onResend: (record) => _resendCertificate(record),
-      ),
+        const SizedBox(height: 5),
+        // The same fact as the fraction, read without parsing it — this is
+        // what lets you spot the one half-finished batch in a column of ten
+        // by looking instead of by reading.
+        ClipRRect(
+          borderRadius: BorderRadius.circular(2),
+          child: SizedBox(
+            width: 72,
+            height: 4,
+            child: LinearProgressIndicator(
+              value: progress,
+              backgroundColor: const Color(0xFFE8ECF0),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                done ? UpriseColors.success : UpriseColors.primaryDark,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _viewBatch(CertificateBatch b) =>
+      setState(() => _detailBatchKey = b.batchKey);
+
+  void _closeDetailPage() => setState(() => _detailBatchKey = null);
+
+  // Resolved from the live stream rather than from the CertificateBatch the
+  // row handed over, so the counts and the status badge on this page move
+  // the moment a certificate is issued from it.
+  Widget _buildDetailPage(String batchKey) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _certsStream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final batches = CertificateBatch.groupByEvent(
+          (snapshot.data?.docs ?? [])
+              .map((d) => CertificateRecord.fromFirestore(d))
+              .toList(),
+        );
+        CertificateBatch? found;
+        for (final candidate in batches) {
+          if (candidate.batchKey == batchKey) {
+            found = candidate;
+            break;
+          }
+        }
+        // The last certificate in a batch can be deleted out from under this
+        // page while it is open. There is nothing left to show, so go back
+        // instead of rendering an empty shell.
+        if (found == null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _closeDetailPage();
+          });
+          return const SizedBox.shrink();
+        }
+        final b = found;
+        return _BatchDetailPage(
+          key: ValueKey(batchKey),
+          batch: b,
+          eventId: b.eventId ?? '',
+          onBack: _closeDetailPage,
+          onSendAll: () => _sendCertificates(b.primary),
+          onSendSingle: (key, name, isGuest) => _sendSingleCertificate(
+            draftMeta: b.primary,
+            eventId: b.eventId ?? '',
+            recipientKey: key,
+            recipientName: name,
+            isGuest: isGuest,
+          ),
+          onResend: (record) => _resendCertificate(record),
+        );
+      },
     );
   }
 
@@ -1379,11 +1464,11 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
         data: {'eventId': eventId},
       );
     }
-    if (mounted) {
-      // Close any open dialogs first
-      Navigator.of(context, rootNavigator: true).pop();
-      setState(() {});
-    }
+    // No pop. This used to dismiss the dialog it was raised from, but the
+    // batch detail view is a page now — the only route left to pop is the
+    // dashboard itself. The page re-reads its recipient list when this
+    // returns, and the table behind it is on a stream.
+    if (mounted) setState(() {});
   }
 
   Future<void> _toggleArchive(CertificateBatch b) async {
@@ -1542,13 +1627,10 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
     }
 
     _showToast('Sent ${toIssue.length} certificate(s).');
-    // Close the dialog first before updating state
-    if (mounted) {
-      // Close the current dialog
-      Navigator.of(context, rootNavigator: true).pop();
-      // Then rebuild
-      setState(() {});
-    }
+    // Same as _sendSingleCertificate: no pop. This one was also reachable
+    // from the table's own Send icon, where there was never a dialog open
+    // to close in the first place.
+    if (mounted) setState(() {});
   }
 
   Future<void> _resendCertificate(CertificateRecord r) async {
@@ -1937,29 +2019,34 @@ class _PageNumButton extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BATCH DETAIL MODAL - The View button destination
+// BATCH DETAIL PAGE - The View button destination
 // ─────────────────────────────────────────────────────────────────────────────
-class _BatchDetailModal extends StatefulWidget {
+class _BatchDetailPage extends StatefulWidget {
   final CertificateBatch batch;
   final String eventId;
-  final VoidCallback onSendAll;
+  final VoidCallback onBack;
+  // Awaited, not fired and forgotten: the page stays on screen afterwards
+  // and has to re-read its recipient list once the write lands.
+  final Future<void> Function() onSendAll;
   final Future<void> Function(String key, String name, bool isGuest)
   onSendSingle;
   final Future<void> Function(CertificateRecord record) onResend;
 
-  const _BatchDetailModal({
+  const _BatchDetailPage({
+    super.key,
     required this.batch,
     required this.eventId,
+    required this.onBack,
     required this.onSendAll,
     required this.onSendSingle,
     required this.onResend,
   });
 
   @override
-  State<_BatchDetailModal> createState() => _BatchDetailModalState();
+  State<_BatchDetailPage> createState() => _BatchDetailPageState();
 }
 
-class _BatchDetailModalState extends State<_BatchDetailModal> {
+class _BatchDetailPageState extends State<_BatchDetailPage> {
   // 'All' | 'evaluated' | 'waiting' | 'ready' — set by tapping a summary
   // card, filters the recipient list below to just that status.
   String _statusFilter = 'All';
@@ -1974,8 +2061,20 @@ class _BatchDetailModalState extends State<_BatchDetailModal> {
   // summary card to filter), which is what made this one modal feel so
   // much slower than every other one. Caching it once here means both
   // FutureBuilders below share the same in-flight/completed future.
-  late final Future<List<_RecipientStatusRow>> _recipientStatusFuture =
+  late Future<List<_RecipientStatusRow>> _recipientStatusFuture =
       fetchRecipientStatus(widget.eventId);
+
+  // The modal this replaced was closed by its own send handlers, so a
+  // one-shot cache never had to outlive a send. A page stays open, so the
+  // recipient list has to be re-read afterwards or it goes on listing
+  // people as waiting who already have their certificate.
+  Future<void> _runSend(Future<void> Function() action) async {
+    await action();
+    if (!mounted) return;
+    setState(() {
+      _recipientStatusFuture = fetchRecipientStatus(widget.eventId);
+    });
+  }
 
   // Same admin remark shown in the Import Template modal's Signatories
   // section (signatoryAuthorization.remarks on the originating proposal)
@@ -2137,10 +2236,9 @@ class _BatchDetailModalState extends State<_BatchDetailModal> {
           else if (canSend)
             ElevatedButton.icon(
               onPressed: () async {
-                await widget.onSendSingle(row.key, row.name, row.isGuest);
-                if (mounted) {
-                  setState(() {});
-                }
+                await _runSend(
+                  () => widget.onSendSingle(row.key, row.name, row.isGuest),
+                );
               },
               icon: const Icon(Icons.send_rounded, size: 14),
               label: const Text('Send'),
@@ -2252,160 +2350,241 @@ class _BatchDetailModalState extends State<_BatchDetailModal> {
     );
   }
 
+  // The same light header the Pending Reports page uses: a white bar with
+  // a back arrow, because this sits directly under org_dashboard.dart's own
+  // top bar and a second heavy banner would just be page chrome twice. The
+  // "Send All Eligible" button was the modal's footer action; a page has no
+  // footer, so it rides up here where it stays put while you scroll the
+  // recipient list.
+  Widget _buildPageHeader(CertificateBatch b) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 12, 20, 12),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Color(0xFFE8ECF0))),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(
+              Icons.arrow_back_rounded,
+              color: UpriseColors.primaryDark,
+              size: 20,
+            ),
+            tooltip: 'Back to Certificates',
+            onPressed: widget.onBack,
+          ),
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: UpriseColors.primaryDark.withAlpha(20),
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: const Icon(
+              Icons.card_membership_outlined,
+              color: UpriseColors.primaryDark,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  b.eventName,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF1A202C),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                // Reads as the same sentence the table's column does, in
+                // the same order, so moving from the row to the page does
+                // not mean re-reading a differently phrased count.
+                Text(
+                  '${b.sentCount} of ${b.totalRecipients} recipient'
+                  '${b.totalRecipients == 1 ? '' : 's'} sent',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 12.5,
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          _batchBadge(b.batchStatus),
+          const SizedBox(width: 12),
+          FutureBuilder<List<_RecipientStatusRow>>(
+            future: _recipientStatusFuture,
+            builder: (context, snapshot) {
+              final hasEligible =
+                  snapshot.data?.any((r) => r.evaluated && !r.certSent) ??
+                  false;
+              return ElevatedButton.icon(
+                onPressed: hasEligible
+                    ? () => _runSend(widget.onSendAll)
+                    : null,
+                icon: const Icon(Icons.send_rounded, size: 15),
+                label: Text(
+                  hasEligible ? 'Send All Eligible' : 'No One to Send',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: hasEligible
+                      ? UpriseColors.primaryDark
+                      : UpriseColors.darkGray,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 11,
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final b = widget.batch;
     final eventId = widget.eventId;
 
     if (eventId.isEmpty) {
-      return Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildPageHeader(b),
+          Expanded(
+            child: Center(
+              child: Text(
+                'This batch is not linked to an event.',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13.5,
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+            ),
           ),
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            'This batch is not linked to an event.',
-            style: GoogleFonts.beVietnamPro(),
-          ),
-        ),
+        ],
       );
     }
 
-    return OrgModalShell(
-      accentColor: UpriseColors.primaryDark,
-      icon: Icons.card_membership_outlined,
-      title: b.eventName,
-      width: 1040,
-      maxHeightFraction: 0.85,
-      subtitleWidget: Row(
-        children: [
-          Flexible(
-            child: Text(
-              '${b.totalRecipients} recipient(s) · ${b.sentCount} sent',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 11,
-                color: Colors.white.withAlpha(179),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildPageHeader(b),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(28, 20, 28, 28),
+            child: Container(
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE8ECF0)),
+                boxShadow: _DS.cardShadow,
               ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(width: 8),
-          _batchBadge(b.batchStatus),
-        ],
-      ),
-      footerActions: [
-        // Use FutureBuilder to check if there are eligible recipients
-        FutureBuilder<List<_RecipientStatusRow>>(
-          future: _recipientStatusFuture,
-          builder: (context, snapshot) {
-            // Check if there's anyone eligible
-            final hasEligible =
-                snapshot.data?.any((r) => r.evaluated && !r.certSent) ?? false;
-
-            return ElevatedButton.icon(
-              onPressed: hasEligible ? widget.onSendAll : null,
-              icon: const Icon(Icons.send_rounded, size: 15),
-              label: Text(
-                hasEligible ? 'Send All Eligible' : 'No One to Send',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: hasEligible
-                    ? UpriseColors.primaryDark
-                    : UpriseColors.darkGray,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 11,
-                ),
-              ),
-            );
-          },
-        ),
-      ],
-      // Certificate Preview on the left, Summary + Recipients on the
-      // right — a bounded-height Row instead of one long scrolling
-      // column, so the design and the recipient list are visible side by
-      // side rather than the design scrolling out of view once you're
-      // looking at recipients.
-      body: SizedBox(
-        height: 560,
-        child: FutureBuilder<List<_RecipientStatusRow>>(
-          future: _recipientStatusFuture,
-          builder: (context, snapshot) {
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  flex: 5,
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildTemplatePreview(b),
-                        FutureBuilder<String?>(
-                          future: _adminRemarksFuture,
-                          builder: (context, remarksSnap) {
-                            final remarks = remarksSnap.data;
-                            if (remarks == null || remarks.isEmpty) {
-                              return const SizedBox.shrink();
-                            }
-                            return Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                              child: Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFEFF6FF),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: const Color(0xFFBFDBFE),
-                                  ),
-                                ),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Icon(
-                                      Icons.info_outline_rounded,
-                                      size: 15,
-                                      color: Color(0xFF2563EB),
+              // Certificate preview on the left, summary + recipients on
+              // the right. As a modal this Row was pinned to 560px inside a
+              // 1040px dialog; as a page it takes the height and width the
+              // window actually has, which is the whole reason the
+              // recipient list was cramped.
+              child: FutureBuilder<List<_RecipientStatusRow>>(
+                future: _recipientStatusFuture,
+                builder: (context, snapshot) {
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        flex: 5,
+                        child: SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildTemplatePreview(b),
+                              FutureBuilder<String?>(
+                                future: _adminRemarksFuture,
+                                builder: (context, remarksSnap) {
+                                  final remarks = remarksSnap.data;
+                                  if (remarks == null || remarks.isEmpty) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  return Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      16,
+                                      0,
+                                      16,
+                                      16,
                                     ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        'Note from admin: $remarks',
-                                        style: GoogleFonts.beVietnamPro(
-                                          fontSize: 11.5,
-                                          color: const Color(0xFF1E3A8A),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFEFF6FF),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: const Color(0xFFBFDBFE),
                                         ),
                                       ),
+                                      child: Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          const Icon(
+                                            Icons.info_outline_rounded,
+                                            size: 15,
+                                            color: Color(0xFF2563EB),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              'Note from admin: $remarks',
+                                              style: GoogleFonts.beVietnamPro(
+                                                fontSize: 11.5,
+                                                color: const Color(0xFF1E3A8A),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                  ],
-                                ),
+                                  );
+                                },
                               ),
-                            );
-                          },
+                            ],
+                          ),
                         ),
-                      ],
-                    ),
-                  ),
-                ),
-                const VerticalDivider(width: 1, color: Color(0xFFE8ECF0)),
-                Expanded(flex: 6, child: _buildRecipientsColumn(b, snapshot)),
-              ],
-            );
-          },
+                      ),
+                      const VerticalDivider(width: 1, color: Color(0xFFE8ECF0)),
+                      Expanded(
+                        flex: 6,
+                        child: _buildRecipientsColumn(b, snapshot),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
         ),
-      ),
+      ],
     );
   }
 
@@ -3181,28 +3360,15 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
     if (_formKey.currentState?.validate() != true) return;
     if (_selectedTemplateUrl == null) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Upload your certificate design first.',
-              style: GoogleFonts.beVietnamPro(color: Colors.white),
-            ),
-            backgroundColor: UpriseColors.error,
-          ),
-        );
+        AppToast.error(context, 'Upload your certificate design first.');
       }
       return;
     }
     if (distribute && !_hasEligibleRecipients) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'No attendees have completed their evaluation yet — certificates can only be distributed to attendees who attended and evaluated the event.',
-              style: GoogleFonts.beVietnamPro(color: Colors.white),
-            ),
-            backgroundColor: UpriseColors.error,
-          ),
+        AppToast.error(
+          context,
+          'No attendees have completed their evaluation yet — certificates can only be distributed to attendees who attended and evaluated the event.',
         );
       }
       return;
@@ -3220,14 +3386,9 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
       final missing = _missingSignatoryKeys(roster);
       if (missing.isNotEmpty) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Missing signatory data for: ${missing.join(", ")}. Add them in Admin Settings → Signatories first.',
-                style: GoogleFonts.beVietnamPro(color: Colors.white),
-              ),
-              backgroundColor: UpriseColors.error,
-            ),
+          AppToast.error(
+            context,
+            'Missing signatory data for: ${missing.join(", ")}. Add them in Admin Settings → Signatories first.',
           );
         }
         return;
@@ -3387,32 +3548,16 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
       );
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              distribute
-                  ? 'Distributed ${_eligibleRecipients.length} certificate(s)!'
-                  : 'Saved as draft.',
-              style: GoogleFonts.beVietnamPro(color: Colors.white),
-            ),
-            backgroundColor: distribute
-                ? UpriseColors.success
-                : UpriseColors.darkGray,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
+        AppToast.success(
+          context,
+          distribute
+              ? 'Distributed ${_eligibleRecipients.length} certificate(s)!'
+              : 'Saved as draft.',
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: UpriseColors.error,
-          ),
-        );
+        AppToast.error(context, 'Error: $e');
       }
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
@@ -4448,13 +4593,9 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
     // like the picker is just hanging and then mysteriously failing.
     if ((picked.size) > _maxBytes) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '${picked.name} is ${(picked.size / (1024 * 1024)).toStringAsFixed(1)} MB — max size is 5 MB.',
-            ),
-            backgroundColor: UpriseColors.error,
-          ),
+        AppToast.error(
+          context,
+          '${picked.name} is ${(picked.size / (1024 * 1024)).toStringAsFixed(1)} MB — max size is 5 MB.',
         );
       }
       return;
@@ -4532,12 +4673,7 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: UpriseColors.error,
-          ),
-        );
+        AppToast.error(context, 'Error: $e');
       }
     } finally {
       if (mounted) setState(() => _isUploading = false);

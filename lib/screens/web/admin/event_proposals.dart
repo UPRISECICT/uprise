@@ -1190,49 +1190,99 @@ class _EventProposalsState extends State<EventProposals> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDlg) {
           return Dialog(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 28,
+            ),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(20),
             ),
             child: Container(
               width: 460,
               constraints: BoxConstraints(
                 maxHeight: MediaQuery.of(context).size.height * 0.85,
               ),
-              padding: const EdgeInsets.all(28),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x330F172A),
+                    blurRadius: 32,
+                    offset: Offset(0, 14),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(28, 24, 28, 18),
+                    child: Stack(
                       children: [
-                        Container(
-                          width: 42,
-                          height: 42,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFECFDF5),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: const Icon(
-                            Icons.check_circle_outline_rounded,
-                            color: Color(0xFF059669),
-                            size: 20,
+                        // SizedBox(width: double.infinity) stretches this to
+                        // the header's full width so the Stack itself sizes
+                        // to that width — otherwise the Stack shrink-wraps to
+                        // this Column's intrinsic (narrower) width and the
+                        // Positioned close button below ends up pinned to
+                        // that narrower edge, next to the title, instead of
+                        // the dialog's true top-right corner.
+                        SizedBox(
+                          width: double.infinity,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 56,
+                                height: 56,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFECFDF5),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.check_circle_outline_rounded,
+                                  color: Color(0xFF059669),
+                                  size: 26,
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              Text(
+                                'Approve Proposal',
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w700,
+                                  color: const Color(0xFF1A202C),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Text(
-                            'Approve Proposal',
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w700,
-                              color: const Color(0xFF1A202C),
-                            ),
+                        Positioned(
+                          top: -8,
+                          right: -8,
+                          child: IconButton(
+                            tooltip: 'Close',
+                            onPressed: submitting
+                                ? null
+                                : () => Navigator.pop(ctx),
+                            icon: const Icon(Icons.close_rounded),
+                            color: const Color(0xFF94A3B8),
+                            iconSize: 20,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
+                  ),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(28, 0, 28, 24),
+                      child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
                       '"$title" issues certificates. Decide whether the org needs an admin e-signature on them before it can be used.',
                       style: GoogleFonts.beVietnamPro(
@@ -1409,8 +1459,18 @@ class _EventProposalsState extends State<EventProposals> {
                         contentPadding: const EdgeInsets.all(12),
                       ),
                     ),
-                    const SizedBox(height: 24),
-                    Row(
+                  ],
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
+                    decoration: const BoxDecoration(
+                      border: Border(
+                        top: BorderSide(color: Color(0xFFE8ECF0)),
+                      ),
+                    ),
+                    child: Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         OutlinedButton(
@@ -1495,8 +1555,8 @@ class _EventProposalsState extends State<EventProposals> {
                         ),
                       ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           );
@@ -1513,140 +1573,186 @@ class _EventProposalsState extends State<EventProposals> {
       context: context,
       barrierColor: Colors.black54,
       builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Container(
-          width: 420,
-          padding: const EdgeInsets.all(28),
+          width: 460,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x330F172A),
+                blurRadius: 32,
+                offset: Offset(0, 14),
+              ),
+            ],
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEF2F2),
-                      borderRadius: BorderRadius.circular(10),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(28, 24, 28, 18),
+                child: Stack(
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 56,
+                            height: 56,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFFEF2F2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.cancel_outlined,
+                              color: Color(0xFFDC2626),
+                              size: 26,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          Text(
+                            'Reject Proposal',
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF1A202C),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    child: const Icon(
-                      Icons.cancel_outlined,
-                      color: Color(0xFFDC2626),
-                      size: 20,
+                    Positioned(
+                      top: -8,
+                      right: -8,
+                      child: IconButton(
+                        tooltip: 'Close',
+                        onPressed: () => Navigator.pop(ctx),
+                        icon: const Icon(Icons.close_rounded),
+                        color: const Color(0xFF94A3B8),
+                        iconSize: 20,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 14),
-                  Text(
-                    'Reject Proposal',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF1A202C),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Provide a reason for rejecting "$title". This will be visible to the organization.',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 14,
-                  color: const Color(0xFF64748B),
-                  height: 1.4,
+                  ],
                 ),
               ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: reasonController,
-                maxLines: 3,
-                maxLength: 1000,
-                style: GoogleFonts.beVietnamPro(fontSize: 13),
-                decoration: InputDecoration(
-                  hintText: 'Reason for rejection…',
-                  hintStyle: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    color: const Color(0xFF9AA5B4),
-                  ),
-                  filled: true,
-                  fillColor: const Color(0xFFF8F9FB),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(
-                      color: Color(0xFFDC2626),
-                      width: 1.5,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(28, 0, 28, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Provide a reason for rejecting "$title". This will be visible to the organization.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13.5,
+                        color: const Color(0xFF64748B),
+                        height: 1.5,
+                      ),
                     ),
-                  ),
-                  contentPadding: const EdgeInsets.all(12),
+                    const SizedBox(height: 18),
+                    TextField(
+                      controller: reasonController,
+                      maxLines: 3,
+                      maxLength: 1000,
+                      style: GoogleFonts.beVietnamPro(fontSize: 13),
+                      decoration: InputDecoration(
+                        hintText: 'Reason for rejection…',
+                        hintStyle: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          color: const Color(0xFF9AA5B4),
+                        ),
+                        filled: true,
+                        fillColor: const Color(0xFFF8F9FB),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFDC2626),
+                            width: 1.5,
+                          ),
+                        ),
+                        contentPadding: const EdgeInsets.all(12),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  OutlinedButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFFE2E6EA)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
-                    child: Text(
-                      'Cancel',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        color: const Color(0xFF374151),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  ElevatedButton(
-                    onPressed: () async {
-                      final reason = reasonController.text.trim();
-                      if (reason.isEmpty) {
-                        AppToast.warning(
-                          ctx,
-                          'Please provide a reason for rejection.',
-                        );
-                        return;
-                      }
-                      Navigator.pop(ctx);
-                      await _rejectProposalWithReason(docId, title, reason);
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFDC2626),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
+              Container(
+                padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
+                decoration: const BoxDecoration(
+                  border: Border(top: BorderSide(color: Color(0xFFE8ECF0))),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF475569),
+                          side: const BorderSide(color: Color(0xFFE2E6EA)),
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: Text(
+                          'Cancel',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                       ),
                     ),
-                    child: Text(
-                      'Reject',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          final reason = reasonController.text.trim();
+                          if (reason.isEmpty) {
+                            AppToast.warning(
+                              ctx,
+                              'Please provide a reason for rejection.',
+                            );
+                            return;
+                          }
+                          Navigator.pop(ctx);
+                          await _rejectProposalWithReason(docId, title, reason);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFDC2626),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: Text(
+                          'Reject',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
@@ -1834,144 +1940,189 @@ class _EventProposalsState extends State<EventProposals> {
     showDialog(
       context: parentCtx,
       builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Container(
-          width: 420,
-          padding: const EdgeInsets.all(24),
+          width: 460,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x330F172A),
+                blurRadius: 32,
+                offset: Offset(0, 14),
+              ),
+            ],
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFF7ED),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(
-                      Icons.rate_review_rounded,
-                      color: AdminColors.primaryDark,
-                      size: 18,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Request Revision',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF1A202C),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(28, 24, 28, 18),
+                child: Stack(
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 56,
+                            height: 56,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFFFF7ED),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.rate_review_rounded,
+                              color: AdminColors.primaryDark,
+                              size: 26,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          Text(
+                            'Request Revision',
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF1A202C),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Your feedback will be visible to the organization.',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 12,
-                  color: const Color(0xFF64748B),
+                    Positioned(
+                      top: -8,
+                      right: -8,
+                      child: IconButton(
+                        tooltip: 'Close',
+                        onPressed: () => Navigator.pop(ctx),
+                        icon: const Icon(Icons.close_rounded),
+                        color: const Color(0xFF94A3B8),
+                        iconSize: 20,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: ctrl,
-                maxLines: 4,
-                maxLength: 1000,
-                style: GoogleFonts.beVietnamPro(fontSize: 13),
-                decoration: InputDecoration(
-                  hintText:
-                      'e.g. Please update the venue details and resubmit...',
-                  hintStyle: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    color: const Color(0xFF9AA5B4),
-                  ),
-                  filled: true,
-                  fillColor: const Color(0xFFF8F9FB),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(
-                      color: Color(0xFF7C3AED),
-                      width: 1.5,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(28, 0, 28, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Your feedback will be visible to the organization.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13.5,
+                        color: const Color(0xFF64748B),
+                        height: 1.5,
+                      ),
                     ),
-                  ),
-                  contentPadding: const EdgeInsets.all(12),
+                    const SizedBox(height: 18),
+                    TextField(
+                      controller: ctrl,
+                      maxLines: 4,
+                      maxLength: 1000,
+                      style: GoogleFonts.beVietnamPro(fontSize: 13),
+                      decoration: InputDecoration(
+                        hintText:
+                            'e.g. Please update the venue details and resubmit...',
+                        hintStyle: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          color: const Color(0xFF9AA5B4),
+                        ),
+                        filled: true,
+                        fillColor: const Color(0xFFF8F9FB),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(
+                            color: Color(0xFF7C3AED),
+                            width: 1.5,
+                          ),
+                        ),
+                        contentPadding: const EdgeInsets.all(12),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  OutlinedButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFFE2E6EA)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
-                      ),
-                    ),
-                    child: Text(
-                      'Cancel',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        color: const Color(0xFF374151),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  ElevatedButton.icon(
-                    onPressed: () async {
-                      final feedback = ctrl.text.trim();
-                      if (feedback.isEmpty) {
-                        AppToast.warning(
-                          ctx,
-                          'Please describe what needs to be revised.',
-                        );
-                        return;
-                      }
-                      Navigator.pop(ctx);
-                      Navigator.pop(parentCtx);
-                      await _requestRevision(docId, title, feedback);
-                    },
-                    icon: const Icon(Icons.send_rounded, size: 14),
-                    label: Text(
-                      'Send Feedback',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
+              Container(
+                padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
+                decoration: const BoxDecoration(
+                  border: Border(top: BorderSide(color: Color(0xFFE8ECF0))),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF475569),
+                          side: const BorderSide(color: Color(0xFFE2E6EA)),
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: Text(
+                          'Cancel',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                       ),
                     ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AdminColors.primaryDark,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () async {
+                          final feedback = ctrl.text.trim();
+                          if (feedback.isEmpty) {
+                            AppToast.warning(
+                              ctx,
+                              'Please describe what needs to be revised.',
+                            );
+                            return;
+                          }
+                          Navigator.pop(ctx);
+                          Navigator.pop(parentCtx);
+                          await _requestRevision(docId, title, feedback);
+                        },
+                        icon: const Icon(Icons.send_rounded, size: 14),
+                        label: Text(
+                          'Send Feedback',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AdminColors.primaryDark,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
@@ -2555,45 +2706,48 @@ class _EventProposalsState extends State<EventProposals> {
                 child: Column(
                   children: [
                     if (status == 'pending') ...[
+                      // Approve is the primary, most-expected action here —
+                      // full-width and solid so it reads as the default path,
+                      // with Reject/Revision demoted to a lighter secondary
+                      // row instead of competing for equal visual weight.
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            _confirmSetStatus(
+                              docId,
+                              data['title'] ?? 'this event',
+                              'approved',
+                            );
+                          },
+                          icon: const Icon(
+                            Icons.check_circle_rounded,
+                            size: 16,
+                          ),
+                          label: Text(
+                            'Approve',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF059669),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
                       Row(
                         children: [
                           Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: () {
-                                Navigator.pop(ctx);
-                                _confirmSetStatus(
-                                  docId,
-                                  data['title'] ?? 'this event',
-                                  'approved',
-                                );
-                              },
-                              icon: const Icon(
-                                Icons.check_circle_rounded,
-                                size: 15,
-                              ),
-                              label: Text(
-                                'Approve',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF059669),
-                                foregroundColor: Colors.white,
-                                elevation: 0,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 11,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: OutlinedButton.icon(
+                            child: TextButton.icon(
                               onPressed: () {
                                 Navigator.pop(ctx);
                                 _showRejectReasonDialog(
@@ -2601,28 +2755,26 @@ class _EventProposalsState extends State<EventProposals> {
                                   data['title'] ?? 'this event',
                                 );
                               },
-                              icon: const Icon(Icons.cancel_outlined, size: 15),
+                              icon: const Icon(Icons.cancel_outlined, size: 14),
                               label: Text(
                                 'Reject',
-                                style: GoogleFonts.beVietnamPro(fontSize: 13),
+                                style: GoogleFonts.beVietnamPro(fontSize: 12.5),
                               ),
-                              style: OutlinedButton.styleFrom(
+                              style: TextButton.styleFrom(
                                 foregroundColor: const Color(0xFFDC2626),
-                                side: const BorderSide(
-                                  color: Color(0xFFDC2626),
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
                                 padding: const EdgeInsets.symmetric(
-                                  vertical: 11,
+                                  vertical: 9,
                                 ),
                               ),
                             ),
                           ),
-                          const SizedBox(width: 10),
+                          Container(
+                            width: 1,
+                            height: 16,
+                            color: const Color(0xFFE2E6EA),
+                          ),
                           Expanded(
-                            child: OutlinedButton.icon(
+                            child: TextButton.icon(
                               onPressed: () => _showRevisionDialog(
                                 ctx,
                                 docId,
@@ -2630,22 +2782,16 @@ class _EventProposalsState extends State<EventProposals> {
                               ),
                               icon: const Icon(
                                 Icons.rate_review_rounded,
-                                size: 15,
+                                size: 14,
                               ),
                               label: Text(
                                 'Revision',
-                                style: GoogleFonts.beVietnamPro(fontSize: 13),
+                                style: GoogleFonts.beVietnamPro(fontSize: 12.5),
                               ),
-                              style: OutlinedButton.styleFrom(
+                              style: TextButton.styleFrom(
                                 foregroundColor: const Color(0xFF7C3AED),
-                                side: const BorderSide(
-                                  color: Color(0xFF7C3AED),
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
                                 padding: const EdgeInsets.symmetric(
-                                  vertical: 11,
+                                  vertical: 9,
                                 ),
                               ),
                             ),
@@ -2872,12 +3018,7 @@ class _EventProposalsState extends State<EventProposals> {
 
       if (!hasBase64 && !hasUrl) {
         if (_isMounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No attachment found'),
-              backgroundColor: AdminColors.error,
-            ),
-          );
+          AppToast.error(context, 'No attachment found');
         }
         return;
       }
@@ -2954,12 +3095,7 @@ class _EventProposalsState extends State<EventProposals> {
 
       if (bytes.isEmpty) {
         if (_isMounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Empty attachment'),
-              backgroundColor: AdminColors.error,
-            ),
-          );
+          AppToast.error(context, 'Empty attachment');
         }
         return;
       }
@@ -3112,13 +3248,7 @@ class _EventProposalsState extends State<EventProposals> {
     } catch (e) {
       print('❌ Error opening attachment: $e');
       if (_isMounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error opening file: $e'),
-            backgroundColor: AdminColors.error,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        AppToast.error(context, 'Error opening file: $e');
       }
     }
   }
@@ -3366,12 +3496,7 @@ class _ExportProposalsButton extends StatelessWidget {
       }
 
       if (docs.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No data to export.'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        AppToast.info(context, 'No data to export.');
         return;
       }
 
@@ -3440,13 +3565,7 @@ class _ExportProposalsButton extends StatelessWidget {
         throw UnsupportedError('Unsupported export format: $format');
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Export failed: $e'),
-          backgroundColor: AdminColors.error,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      AppToast.error(context, 'Export failed: $e');
     }
   }
 

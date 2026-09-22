@@ -1,6 +1,7 @@
-﻿// lib/screens/web/admin/letter_request.dart - CORRECTED VERSION
+// lib/screens/web/admin/letter_request.dart - CORRECTED VERSION
 
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show compute;
@@ -9,6 +10,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image/image.dart' as img;
+import 'package:printing/printing.dart';
 import 'package:uprise/widgets/admin_export_button.dart';
 import 'package:intl/intl.dart';
 import 'export_util.dart';
@@ -194,7 +196,8 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     IconData icon, {
     Color? valueColor,
   }) {
-    final accent = valueColor ??
+    final accent =
+        valueColor ??
         switch (label) {
           'Requestor' => const Color(0xFF2563EB),
           'Date Submitted' => const Color(0xFF4F46E5),
@@ -214,38 +217,38 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-          children: [
-            Container(
-              width: 26,
-              height: 26,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: accent.withAlpha(26),
-                borderRadius: BorderRadius.circular(10),
+            children: [
+              Container(
+                width: 26,
+                height: 26,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: accent.withAlpha(26),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, size: 13, color: accent),
               ),
-              child: Icon(icon, size: 13, color: accent),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: const Color(0xFF64748B),
-                letterSpacing: 0.4,
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF64748B),
+                  letterSpacing: 0.4,
+                ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-            color: const Color(0xFF1A202C),
+            ],
           ),
-        ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: const Color(0xFF1A202C),
+            ),
+          ),
         ],
       ),
     );
@@ -255,11 +258,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     return StreamBuilder<QuerySnapshot>(
       stream: _letterRequestsStream,
       builder: (context, snapshot) {
-        int total = 0,
-            pending = 0,
-            approved = 0,
-            rejected = 0,
-            archived = 0;
+        int total = 0, pending = 0, approved = 0, rejected = 0, archived = 0;
         if (snapshot.hasData) {
           for (final doc in snapshot.data!.docs) {
             final data = doc.data() as Map;
@@ -1130,7 +1129,9 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     String subject,
   ) async {
     final request = await FirestoreCollections.letterRequests.doc(docId).get();
-    final status = (request.data() as Map<String, dynamic>?)?['status']?.toString().toLowerCase();
+    final status = (request.data() as Map<String, dynamic>?)?['status']
+        ?.toString()
+        .toLowerCase();
     if (status != 'approved' && status != 'rejected') {
       if (mounted) {
         AppToast.warning(
@@ -1433,26 +1434,17 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
         String message =
             'Status updated to ${newStatus[0].toUpperCase()}${newStatus.substring(1)}';
         if (newStatus == 'revision') message = 'Revision requested with notes';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
-            backgroundColor: newStatus == 'approved'
-                ? AdminColors.success
-                : (newStatus == 'revision'
-                      ? AdminColors.info
-                      : AdminColors.error),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        if (newStatus == 'approved') {
+          AppToast.success(context, message);
+        } else if (newStatus == 'revision') {
+          AppToast.info(context, message);
+        } else {
+          AppToast.error(context, message);
+        }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: AdminColors.error,
-          ),
-        );
+        AppToast.error(context, 'Error: $e');
       }
     }
   }
@@ -1493,15 +1485,56 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
         (data['requestedBy'] ?? data['submittedBy'] ?? orgName).toString();
     final signedByName = await _resolveCurrentAdminName();
 
-    final savedSignatures = await _loadSavedSignatures();
+    final signatories = await _loadSignatoriesRepo();
     final remarkCtrl = TextEditingController();
 
+    // Only a real PDF gets stamped page-for-page onto the org's own
+    // document (see _saveESignature) — that's the only case with an
+    // actual page image to drag a signature onto. Anything else falls
+    // back to a synthetic approval certificate with a fixed layout, so
+    // there's nothing here to preview or position against.
+    final attachmentBase64 = data['attachmentBase64']?.toString() ?? '';
+    final attachmentName = (data['attachmentName'] ?? '').toString();
+    final attachmentExt = attachmentName.contains('.')
+        ? attachmentName.split('.').last.toLowerCase()
+        : '';
+    final isPdfAttachment =
+        attachmentBase64.isNotEmpty && attachmentExt == 'pdf';
+
     Uint8List? signatureBytes;
+    String? selectedSignatoryName;
+    String? selectedSignatoryTitle;
     bool isProcessing = false;
     bool isSaving = false;
-    bool justImported =
-        false; // true once a freshly-imported (not saved) signature is ready
     String? error;
+
+    // Drag-to-position state — percentages of the last page's own width/
+    // height, same approach org_certificates.dart uses for signatory
+    // placements on a cert template, so it survives the preview raster
+    // and the final (different-DPI) stamp raster using the same math.
+    // Rasterized once, up front, rather than lazily inside the dialog —
+    // it never changes for the life of this approval, so there's nothing
+    // to gain from a StatefulBuilder-driven loading state for it.
+    Uint8List? lastPagePreviewPng;
+    double previewAspectRatio = 8.5 / 11; // sensible guess if rasterizing fails
+    double positionXPct = 0.72;
+    double positionYPct = 0.82;
+
+    if (isPdfAttachment) {
+      try {
+        final rasterPages = await Printing.raster(
+          base64Decode(attachmentBase64),
+          dpi: 90,
+        ).toList();
+        if (rasterPages.isNotEmpty) {
+          final lastPage = rasterPages.last;
+          lastPagePreviewPng = await lastPage.toPng();
+          previewAspectRatio = lastPage.width / lastPage.height;
+        }
+      } catch (e) {
+        debugPrint('Failed to rasterize letter PDF for preview: $e');
+      }
+    }
 
     if (!mounted) return;
     showDialog(
@@ -1532,8 +1565,9 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
               final pngBytes = await compute(_removeSignatureBackground, bytes);
               setDialogState(() {
                 signatureBytes = pngBytes;
+                selectedSignatoryName = null;
+                selectedSignatoryTitle = null;
                 isProcessing = false;
-                justImported = true;
               });
             } catch (e) {
               setDialogState(() {
@@ -1543,125 +1577,13 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
             }
           }
 
-          void useSavedSignature(Map<String, dynamic> sig) {
+          void useSignatory(Map<String, dynamic> sig) {
             setDialogState(() {
               signatureBytes = sig['bytes'] as Uint8List;
-              justImported = false;
+              selectedSignatoryName = sig['fullName'] as String;
+              selectedSignatoryTitle = sig['title'] as String;
               error = null;
             });
-          }
-
-          Future<void> saveCurrentSignature() async {
-            final nameCtrl = TextEditingController(text: signedByName);
-            final formKey = GlobalKey<FormState>();
-            final label = await showDialog<String>(
-              context: ctx,
-              builder: (dCtx) => AlertDialog(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                title: Text(
-                  'Save Signature',
-                  style: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w700),
-                ),
-                content: Form(
-                  key: formKey,
-                  child: TextFormField(
-                    controller: nameCtrl,
-                    autofocus: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Label (e.g. your name) *',
-                    ),
-                    validator: (v) =>
-                        v == null || v.trim().isEmpty ? 'Required' : null,
-                  ),
-                ),
-                actions: [
-                  OutlinedButton(
-                    onPressed: () => Navigator.pop(dCtx),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF374151),
-                      side: const BorderSide(color: Color(0xFFE2E6EA)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: Text('Cancel', style: GoogleFonts.beVietnamPro()),
-                  ),
-                  ElevatedButton(
-                    onPressed: () {
-                      if (!formKey.currentState!.validate()) return;
-                      Navigator.pop(dCtx, nameCtrl.text.trim());
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AdminColors.primaryDark,
-                      foregroundColor: Colors.white,
-                    ),
-                    child: Text('Save', style: GoogleFonts.beVietnamPro()),
-                  ),
-                ],
-              ),
-            );
-            if (label == null || label.isEmpty || signatureBytes == null)
-              return;
-            await _saveSignatureToLibrary(label, signatureBytes!);
-            final fresh = await _loadSavedSignatures();
-            setDialogState(() {
-              savedSignatures
-                ..clear()
-                ..addAll(fresh);
-              justImported = false;
-            });
-            if (ctx.mounted) {
-              AppToast.success(ctx, 'Saved "$label" for next time.');
-            }
-          }
-
-          Future<void> deleteSavedSignature(Map<String, dynamic> sig) async {
-            final confirmed = await showDialog<bool>(
-              context: ctx,
-              builder: (dCtx) => AlertDialog(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                title: Text(
-                  'Remove "${sig['name']}"?',
-                  style: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w700),
-                ),
-                content: Text(
-                  'This saved signature will be removed from your library.',
-                  style: GoogleFonts.beVietnamPro(
-                    color: const Color(0xFF374151),
-                  ),
-                ),
-                actions: [
-                  OutlinedButton(
-                    onPressed: () => Navigator.pop(dCtx, false),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF374151),
-                      side: const BorderSide(color: Color(0xFFE2E6EA)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: Text('Cancel', style: GoogleFonts.beVietnamPro()),
-                  ),
-                  ElevatedButton(
-                    onPressed: () => Navigator.pop(dCtx, true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AdminColors.error,
-                      foregroundColor: Colors.white,
-                    ),
-                    child: Text('Remove', style: GoogleFonts.beVietnamPro()),
-                  ),
-                ],
-              ),
-            );
-            if (confirmed != true) return;
-            await _deleteSavedSignature(sig['id'] as String);
-            setDialogState(
-              () => savedSignatures.removeWhere((s) => s['id'] == sig['id']),
-            );
           }
 
           return Dialog(
@@ -1753,17 +1675,17 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Import your signature image to digitally sign and approve this letter for $orgName.',
+                            'Pick a signatory to digitally sign and approve this letter for $orgName.',
                             style: GoogleFonts.beVietnamPro(
                               fontSize: 13,
                               color: const Color(0xFF64748B),
                             ),
                           ),
                           if (signatureBytes == null &&
-                              savedSignatures.isNotEmpty) ...[
+                              signatories.isNotEmpty) ...[
                             const SizedBox(height: 16),
                             Text(
-                              'SAVED SIGNATURES',
+                              'SIGNATORIES',
                               style: GoogleFonts.beVietnamPro(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w700,
@@ -1775,15 +1697,15 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                             Wrap(
                               spacing: 8,
                               runSpacing: 8,
-                              children: savedSignatures.map((sig) {
+                              children: signatories.map((sig) {
                                 return InkWell(
-                                  onTap: () => useSavedSignature(sig),
+                                  onTap: () => useSignatory(sig),
                                   borderRadius: BorderRadius.circular(10),
                                   child: Container(
                                     padding: const EdgeInsets.fromLTRB(
                                       10,
                                       8,
-                                      6,
+                                      10,
                                       8,
                                     ),
                                     decoration: BoxDecoration(
@@ -1803,35 +1725,31 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                                           fit: BoxFit.contain,
                                         ),
                                         const SizedBox(width: 8),
-                                        Text(
-                                          (sig['name'] as String),
-                                          style: GoogleFonts.beVietnamPro(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
-                                            color: const Color(0xFF374151),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 2),
-                                        Tooltip(
-                                          message: 'Remove Signature',
-                                          waitDuration: const Duration(
-                                            milliseconds: 400,
-                                          ),
-                                          child: InkWell(
-                                            onTap: () =>
-                                                deleteSavedSignature(sig),
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                            child: const Padding(
-                                              padding: EdgeInsets.all(4),
-                                              child: Icon(
-                                                Icons.close_rounded,
-                                                size: 13,
-                                                color: Color(0xFF9AA5B4),
+                                        Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              (sig['fullName'] as String),
+                                              style: GoogleFonts.beVietnamPro(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                                color: const Color(0xFF374151),
                                               ),
                                             ),
-                                          ),
+                                            if ((sig['title'] as String)
+                                                .isNotEmpty)
+                                              Text(
+                                                (sig['title'] as String),
+                                                style: GoogleFonts.beVietnamPro(
+                                                  fontSize: 10.5,
+                                                  color: const Color(
+                                                    0xFF9AA5B4,
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
                                         ),
                                       ],
                                     ),
@@ -1936,7 +1854,8 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                                             ),
                                             const SizedBox(height: 3),
                                             Text(
-                                              signedByName,
+                                              selectedSignatoryName ??
+                                                  signedByName,
                                               style: GoogleFonts.beVietnamPro(
                                                 fontSize: 12,
                                                 fontWeight: FontWeight.w700,
@@ -1944,7 +1863,8 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                                               ),
                                             ),
                                             Text(
-                                              'Admin, Uprise',
+                                              selectedSignatoryTitle ??
+                                                  'Admin, Uprise',
                                               style: GoogleFonts.beVietnamPro(
                                                 fontSize: 10,
                                                 color: const Color(0xFF64748B),
@@ -1971,9 +1891,11 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                                             color: Color(0xFF9AA5B4),
                                           ),
                                           tooltip: 'Remove',
-                                          onPressed: () => setDialogState(
-                                            () => signatureBytes = null,
-                                          ),
+                                          onPressed: () => setDialogState(() {
+                                            signatureBytes = null;
+                                            selectedSignatoryName = null;
+                                            selectedSignatoryTitle = null;
+                                          }),
                                         ),
                                       ),
                                     ],
@@ -2002,30 +1924,137 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                                     ),
                                   ),
                                 ),
-                                if (justImported) ...[
-                                  const SizedBox(width: 4),
-                                  TextButton.icon(
-                                    onPressed: saveCurrentSignature,
-                                    icon: const Icon(
-                                      Icons.bookmark_add_outlined,
-                                      size: 14,
-                                    ),
-                                    label: Text(
-                                      'Save for next time',
-                                      style: GoogleFonts.beVietnamPro(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    style: TextButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 4,
-                                      ),
-                                      foregroundColor: const Color(0xFF059669),
-                                    ),
-                                  ),
-                                ],
                               ],
+                            ),
+                          ],
+                          if (signatureBytes != null && isPdfAttachment) ...[
+                            const SizedBox(height: 16),
+                            Text(
+                              'POSITION ON DOCUMENT',
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFF9AA5B4),
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Drag the signature to where it should sit on the last page.',
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 11.5,
+                                color: const Color(0xFF9AA5B4),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            AspectRatio(
+                              aspectRatio: previewAspectRatio,
+                              child: LayoutBuilder(
+                                builder: (context, constraints) {
+                                  final boxSize = constraints.biggest;
+                                  return Container(
+                                    decoration: BoxDecoration(
+                                      border: Border.all(
+                                        color: const Color(0xFFE2E6EA),
+                                      ),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    clipBehavior: Clip.antiAlias,
+                                    child: Stack(
+                                      children: [
+                                        Positioned.fill(
+                                          child: lastPagePreviewPng != null
+                                              ? Image.memory(
+                                                  lastPagePreviewPng,
+                                                  fit: BoxFit.fill,
+                                                )
+                                              : Container(
+                                                  color: const Color(
+                                                    0xFFFAFBFC,
+                                                  ),
+                                                ),
+                                        ),
+                                        Positioned(
+                                          left:
+                                              (positionXPct * boxSize.width -
+                                                      45)
+                                                  .clamp(
+                                                    0.0,
+                                                    math.max(
+                                                      0.0,
+                                                      boxSize.width - 90,
+                                                    ),
+                                                  ),
+                                          top:
+                                              (positionYPct * boxSize.height -
+                                                      20)
+                                                  .clamp(
+                                                    0.0,
+                                                    math.max(
+                                                      0.0,
+                                                      boxSize.height - 40,
+                                                    ),
+                                                  ),
+                                          width: 90,
+                                          height: 40,
+                                          child: MouseRegion(
+                                            cursor: SystemMouseCursors.grab,
+                                            child: GestureDetector(
+                                              behavior:
+                                                  HitTestBehavior.translucent,
+                                              onPanUpdate: (details) {
+                                                setDialogState(() {
+                                                  positionXPct =
+                                                      ((positionXPct *
+                                                                      boxSize
+                                                                          .width +
+                                                                  details
+                                                                      .delta
+                                                                      .dx) /
+                                                              boxSize.width)
+                                                          .clamp(0.0, 1.0);
+                                                  positionYPct =
+                                                      ((positionYPct *
+                                                                      boxSize
+                                                                          .height +
+                                                                  details
+                                                                      .delta
+                                                                      .dy) /
+                                                              boxSize.height)
+                                                          .clamp(0.0, 1.0);
+                                                });
+                                              },
+                                              child: Container(
+                                                decoration: BoxDecoration(
+                                                  color: const Color(
+                                                    0xFF059669,
+                                                  ).withAlpha(30),
+                                                  border: Border.all(
+                                                    color: const Color(
+                                                      0xFF059669,
+                                                    ),
+                                                  ),
+                                                  borderRadius:
+                                                      BorderRadius.circular(6),
+                                                ),
+                                                child: Padding(
+                                                  padding: const EdgeInsets.all(
+                                                    4,
+                                                  ),
+                                                  child: Image.memory(
+                                                    signatureBytes!,
+                                                    fit: BoxFit.contain,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
                             ),
                           ],
                           if (error != null) ...[
@@ -2074,7 +2103,9 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                               const SizedBox(width: 6),
                               Expanded(
                                 child: Text(
-                                  'Stamped directly onto the submitted PDF\'s last page, next to the signature.',
+                                  isPdfAttachment
+                                      ? 'Stamped directly onto the submitted PDF\'s last page, at the position you dragged it to above.'
+                                      : 'This attachment isn\'t a PDF, so a standalone approval certificate will be generated instead — positioning isn\'t available.',
                                   style: GoogleFonts.beVietnamPro(
                                     fontSize: 11,
                                     color: const Color(0xFF9AA5B4),
@@ -2139,21 +2170,26 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                                       letterId: letterId,
                                       subject: subject,
                                       requestorName: requestorName,
-                                      signedByName: signedByName,
+                                      signedByName:
+                                          selectedSignatoryName ?? signedByName,
+                                      signedByRole:
+                                          selectedSignatoryTitle ??
+                                          'Admin, Uprise',
                                       signatureBytes: signatureBytes!,
                                       remark: remarkCtrl.text.trim(),
+                                      xPct: isPdfAttachment
+                                          ? positionXPct
+                                          : null,
+                                      yPct: isPdfAttachment
+                                          ? positionYPct
+                                          : null,
                                     );
 
                                     if (ctx.mounted) Navigator.pop(ctx);
                                   } catch (e) {
                                     setDialogState(() => isSaving = false);
                                     if (ctx.mounted) {
-                                      ScaffoldMessenger.of(ctx).showSnackBar(
-                                        SnackBar(
-                                          content: Text('Signing failed: $e'),
-                                          backgroundColor: AdminColors.error,
-                                        ),
-                                      );
+                                      AppToast.error(ctx, 'Signing failed: $e');
                                     }
                                   }
                                 },
@@ -2210,7 +2246,10 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     required String requestorName,
     required String signedByName,
     required Uint8List signatureBytes,
+    String signedByRole = 'Admin, Uprise',
     String remark = '',
+    double? xPct,
+    double? yPct,
   }) async {
     try {
       final signedAt = DateTime.now();
@@ -2234,6 +2273,9 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
           signedByName: signedByName,
           signedAt: signedAt,
           remark: remark,
+          role: signedByRole,
+          xPct: xPct,
+          yPct: yPct,
         );
       } else {
         pdfBytes = await AdminExportPdf.generateSignedLetterPdf(
@@ -2280,67 +2322,45 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Letter approved and digitally signed!'),
-            backgroundColor: AdminColors.success,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        AppToast.success(context, 'Letter approved and digitally signed!');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: AdminColors.error,
-          ),
-        );
+        AppToast.error(context, 'Error: $e');
       }
       rethrow;
     }
   }
 
-  // ── Saved signature library ─────────────────────────────────────────
-  // Lets an admin import + background-strip a signature once, save it
-  // under a label, and reuse it on every future approval instead of
-  // re-importing (and re-processing) the same image each time. Scoped to
-  // the signed-in admin since the printed name under the signature is
-  // identity-bound.
-  Future<List<Map<String, dynamic>>> _loadSavedSignatures() async {
-    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
-    if (uid.isEmpty) return [];
+  // ── Shared signatories repository ───────────────────────────────────
+  // Same `signatories` collection org_certificates.dart already draws
+  // from (managed in Admin Settings) — one shared source of official
+  // signatures instead of each admin keeping their own separate,
+  // personal saved-signature library.
+  Future<List<Map<String, dynamic>>> _loadSignatoriesRepo() async {
     try {
-      final snap = await FirestoreCollections.savedSignatures
-          .where('createdBy', isEqualTo: uid)
-          .orderBy('createdAt', descending: true)
+      final snap = await FirebaseFirestore.instance
+          .collection('signatories')
+          .orderBy('fullName')
           .get();
-      return snap.docs.map((d) {
-        final data = d.data() as Map<String, dynamic>;
-        return {
-          'id': d.id,
-          'name': (data['name'] ?? 'Signature').toString(),
-          'bytes': base64Decode((data['signatureBase64'] ?? '').toString()),
-        };
-      }).toList();
+      return snap.docs
+          .where(
+            (d) => (d.data()['signatureBase64'] ?? '').toString().isNotEmpty,
+          )
+          .map((d) {
+            final data = d.data();
+            return {
+              'id': d.id,
+              'fullName': (data['fullName'] ?? '').toString(),
+              'title': (data['title'] ?? '').toString(),
+              'bytes': base64Decode((data['signatureBase64'] ?? '').toString()),
+            };
+          })
+          .toList();
     } catch (e) {
-      debugPrint('Failed to load saved signatures: $e');
+      debugPrint('Failed to load signatories repository: $e');
       return [];
     }
-  }
-
-  Future<void> _saveSignatureToLibrary(String name, Uint8List bytes) async {
-    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
-    await FirestoreCollections.savedSignatures.add({
-      'name': name,
-      'signatureBase64': base64Encode(bytes),
-      'createdBy': uid,
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-  }
-
-  Future<void> _deleteSavedSignature(String id) async {
-    await FirestoreCollections.savedSignatures.doc(id).delete();
   }
 
   void _showViewDialog(Map<String, dynamic> data, String docId) {
@@ -2394,7 +2414,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                   // ─── HEADER ──────────────────────────────────────────
                   Container(
                     padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
-                  decoration: BoxDecoration(
+                    decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
@@ -2403,12 +2423,12 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                           AdminColors.primaryDark.withAlpha(225),
                         ],
                       ),
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(18),
-                    ),
-                    border: Border(
-                      bottom: BorderSide(color: statusAccent, width: 3),
-                    ),
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(18),
+                      ),
+                      border: Border(
+                        bottom: BorderSide(color: statusAccent, width: 3),
+                      ),
                     ),
                     child: Row(
                       children: [
@@ -3095,12 +3115,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
   void _viewAttachment(Map<String, dynamic> data) {
     final base64 = data['attachmentBase64'];
     if (base64 == null || base64.toString().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No attachment found'),
-          backgroundColor: AdminColors.error,
-        ),
-      );
+      AppToast.error(context, 'No attachment found');
       return;
     }
     _openFileFromBase64(base64, data['attachmentName'] ?? 'attachment');
@@ -3109,12 +3124,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
   void _viewSignedCertificate(Map<String, dynamic> data) {
     final base64 = data['signedDocumentBase64'];
     if (base64 == null || base64.toString().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No signed certificate found'),
-          backgroundColor: AdminColors.error,
-        ),
-      );
+      AppToast.error(context, 'No signed certificate found');
       return;
     }
     final letterId = (data['letterId'] ?? 'letter').toString();
@@ -3125,13 +3135,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     try {
       Uint8List bytes = base64Decode(base64String);
       if (bytes.isEmpty) {
-        if (mounted)
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Empty file'),
-              backgroundColor: AdminColors.error,
-            ),
-          );
+        if (mounted) AppToast.error(context, 'Empty file');
         return;
       }
 
@@ -3287,12 +3291,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     } catch (e) {
       debugPrint('Error opening file: $e');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error opening file: $e'),
-          backgroundColor: AdminColors.error,
-        ),
-      );
+      AppToast.error(context, 'Error opening file: $e');
     }
   }
 
@@ -3480,7 +3479,6 @@ class _ExportButton extends StatelessWidget {
   }
 
   Future<void> _doExport(BuildContext context, String format) async {
-    final messenger = ScaffoldMessenger.of(context);
     try {
       // No server-side orderBy — see the note on _buildTable's stream for
       // why that silently drops any doc missing a 'timestamp' field.
@@ -3515,9 +3513,7 @@ class _ExportButton extends StatelessWidget {
         }).toList();
       }
       if (docs.isEmpty) {
-        messenger.showSnackBar(
-          const SnackBar(content: Text('No data to export.')),
-        );
+        if (context.mounted) AppToast.info(context, 'No data to export.');
         return;
       }
 
@@ -3556,9 +3552,9 @@ class _ExportButton extends StatelessWidget {
           fileName,
           mimeType: xlsxMimeType,
         );
-        messenger.showSnackBar(
-          SnackBar(content: Text('Download started: $fileName')),
-        );
+        if (context.mounted) {
+          AppToast.success(context, 'Download started: $fileName');
+        }
       } else if (format == 'pdf') {
         final rows = docs.map((doc) {
           final d = doc.data() as Map<String, dynamic>?;
@@ -3594,19 +3590,14 @@ class _ExportButton extends StatelessWidget {
           fileName,
           mimeType: 'application/pdf',
         );
-        messenger.showSnackBar(
-          SnackBar(content: Text('Download started: $fileName')),
-        );
+        if (context.mounted) {
+          AppToast.success(context, 'Download started: $fileName');
+        }
       } else {
         throw UnsupportedError('Unsupported export format: $format');
       }
     } catch (e) {
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text('Export failed: $e'),
-          backgroundColor: AdminColors.error,
-        ),
-      );
+      if (context.mounted) AppToast.error(context, 'Export failed: $e');
     }
   }
 }

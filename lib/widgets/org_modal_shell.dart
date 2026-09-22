@@ -384,13 +384,9 @@ class OrgModalSection extends StatelessWidget {
 }
 
 /// A label/value detail row for read-only "View Details"-style modals — a
-/// faint uppercase label above a bold value, with a thin colored accent bar
-/// standing in for what used to be a full icon-in-box badge on every single
-/// row (a 6-row detail modal meant 6 near-identical badges — pure repeated
-/// noise, not 6 pieces of new information). The accent bar still carries
-/// [iconColor]'s meaning (e.g. red for an overdue amount) so rows stay
-/// colorful without the icon clutter. [icon] is kept for existing call
-/// sites but intentionally unused now.
+/// faint uppercase label above a bold value, with a colored icon chip on the
+/// left (matching the admin portal's stat-tile treatment) carrying
+/// [iconColor]'s meaning (e.g. red for an overdue amount).
 class OrgDetailItem extends StatelessWidget {
   final String label;
   final String value;
@@ -413,13 +409,14 @@ class OrgDetailItem extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          width: 3,
+          width: 30,
           height: 30,
-          margin: const EdgeInsets.only(top: 1),
+          alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: iconColor,
-            borderRadius: BorderRadius.circular(2),
+            color: iconColor.withAlpha(25),
+            borderRadius: BorderRadius.circular(9),
           ),
+          child: Icon(icon, size: 15, color: iconColor),
         ),
         const SizedBox(width: 12),
         Expanded(

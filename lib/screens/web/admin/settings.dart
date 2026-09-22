@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../theme/admin_theme.dart';
 import '../../../utils/file_validation.dart';
+import '../../../widgets/app_toast.dart';
 import 'admin_login.dart';
 import '../../../services/app_sign_out.dart';
 
@@ -619,14 +620,11 @@ class _AdminSettingsState extends State<AdminSettings>
 
   void _showSnack(String message, {required bool success}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message, style: GoogleFonts.beVietnamPro(fontSize: 13)),
-        backgroundColor: success ? const Color(0xFF059669) : AdminColors.error,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
+    if (success) {
+      AppToast.success(context, message);
+    } else {
+      AppToast.error(context, message);
+    }
   }
 
   @override
@@ -2007,12 +2005,7 @@ class _SignatoryFormDialogState extends State<_SignatoryFormDialog> {
     final validationError = FileValidation.validateImageBytes(bytes);
     if (validationError != null) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(validationError),
-            backgroundColor: AdminColors.error,
-          ),
-        );
+        AppToast.error(context, validationError);
       }
       return;
     }
@@ -2051,12 +2044,7 @@ class _SignatoryFormDialogState extends State<_SignatoryFormDialog> {
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: AdminColors.error,
-          ),
-        );
+        AppToast.error(context, 'Error: $e');
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);

@@ -165,7 +165,20 @@ class NotificationService {
     await batch.commit();
   }
 
-  // Send an event notification to all registered attendees
+  // Send an event notification to everyone registered for an event.
+  //
+  // Reads the top-level `registrations` collection (`userId` + `eventId`).
+  // This previously read an `events/{eventId}/attendees` subcollection that
+  // nothing in the app has ever written to, so it silently resolved to zero
+  // recipients — the method had no call sites, so that never surfaced.
+  //
+  // No `portal` field is set: absent means student-facing, matching the
+  // filter in student_notifications_screen.dart and the Cloud Function.
+  //
+  // Note the campus-wide "new event published" broadcast and the pre-event
+  // reminders are NOT sent from here — they run server-side in
+  // functions/index.js (notifyStudentsOfNewEvent / studentEventReminders),
+  // so a fan-out can't be left half-written by a browser tab closing.
   static Future<void> sendEventNotification({
     required String eventId,
     required String orgId,
@@ -173,23 +186,28 @@ class NotificationService {
     required String body,
     String type = 'event',
   }) async {
-    final attendeesSnap = await _db
-        .collection('events')
-        .doc(eventId)
-        .collection('attendees')
+    final regsSnap = await _db
+        .collection('registrations')
+        .where('eventId', isEqualTo: eventId)
         .get();
 
-    final enabledFlags = await Future.wait(
-      attendeesSnap.docs.map((doc) => _isEnabledFor(doc.id)),
-    );
+    // One student could conceivably hold two registration rows; don't
+    // notify them twice.
+    final uids = regsSnap.docs
+        .map((doc) => (doc.data()['userId'] ?? '').toString())
+        .where((uid) => uid.isNotEmpty)
+        .toSet()
+        .toList();
+    if (uids.isEmpty) return;
+
+    final enabledFlags = await Future.wait(uids.map(_isEnabledFor));
 
     final batch = _db.batch();
-    for (var i = 0; i < attendeesSnap.docs.length; i++) {
+    for (var i = 0; i < uids.length; i++) {
       if (!enabledFlags[i]) continue;
-      final doc = attendeesSnap.docs[i];
       final ref = _db.collection('notifications').doc();
       batch.set(ref, {
-        'userId': doc.id,
+        'userId': uids[i],
         'orgId': orgId,
         'title': title,
         'body': body,
@@ -235,10 +253,16 @@ class NotificationService {
   }
 
   // Stream notifications for a user. Deliberately NOT combining
-  // `.orderBy('createdAt')` with the `.where('userId', ...)` filter — that
-  // pairing needs a composite Firestore index that isn't deployed for this
-  // collection, and without it the query throws FAILED_PRECONDITION on
-  // every load. Callers must sort client-side by `createdAt` themselves.
+  // `.orderBy('createdAt')` with the `.where('userId', ...)` filter, because
+  // that pairing needs a composite index and the query throws
+  // FAILED_PRECONDITION on every load without it. Callers must sort
+  // client-side by `createdAt` themselves.
+  //
+  // The index IS declared in firestore.indexes.json (`notifications`:
+  // userId ASC + createdAt DESC). Once `firebase deploy --only
+  // firestore:indexes` has actually been run against the project, the
+  // orderBy can move back into the query here and every caller's
+  // client-side sort can go.
   static Stream<QuerySnapshot> notificationsStream(String userId) {
     return _db
         .collection('notifications')

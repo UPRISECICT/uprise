@@ -11,6 +11,7 @@ import '../../../theme/org_theme.dart';
 import '../../../utils/platform_file_utils.dart' as platform_file_utils;
 import '../../../widgets/org_attachment_preview.dart';
 import '../../../widgets/org_modal_shell.dart';
+import '../../../widgets/app_toast.dart';
 import 'org_certificates.dart' show fetchRecipientStatus;
 import 'org_attendance_qr.dart' show showRegistrationAnswers;
 
@@ -1109,12 +1110,7 @@ class _ReportTab extends StatelessWidget {
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error opening file: $e'),
-            backgroundColor: const Color(0xFFDC2626),
-          ),
-        );
+        AppToast.error(context, 'Error opening file: $e');
       }
     }
   }

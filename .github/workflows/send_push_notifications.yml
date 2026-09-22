@@ -1,0 +1,35 @@
+name: Send pending push notifications
+
+# Polls Firestore for new notification docs and sends the matching FCM push
+# for each — a free substitute for the sendPushForNotification Cloud
+# Function, which needs the paid Blaze plan to deploy. See
+# functions/scripts/send_pending_pushes.js for the actual logic.
+on:
+  schedule:
+    # GitHub's minimum cron granularity is 5 minutes, and even that can run
+    # a few minutes late under load — pushes arrive within roughly this
+    # window, not instantly.
+    - cron: "*/5 * * * *"
+  # Lets you trigger a run manually from the Actions tab, to test without
+  # waiting for the schedule.
+  workflow_dispatch:
+
+jobs:
+  send-pushes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        working-directory: functions
+        run: npm ci
+
+      - name: Send pending pushes
+        working-directory: functions
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node scripts/send_pending_pushes.js

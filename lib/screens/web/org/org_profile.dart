@@ -11,6 +11,7 @@ import 'dart:math';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -30,6 +31,7 @@ import '../../../theme/org_theme.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/org_modal_shell.dart';
 import '../../../widgets/admin_export_button.dart';
+import '../../../widgets/app_confirmation_dialog.dart';
 import '../../../widgets/app_toast.dart';
 import '../../../utils/social_link_util.dart';
 import 'export_util.dart';
@@ -491,20 +493,45 @@ Widget _scrollableList({
   required ScrollController controller,
   required List<Widget> children,
 }) {
-  return ConstrainedBox(
-    constraints: const BoxConstraints(maxHeight: _listMaxHeight),
-    child: RawScrollbar(
-      controller: controller,
-      thumbVisibility: true,
-      thickness: 6,
-      radius: const Radius.circular(4),
-      thumbColor: _C.textFaint.withAlpha(120),
-      child: ListView(
+  return Container(
+    padding: const EdgeInsets.all(10),
+    decoration: BoxDecoration(
+      color: _C.surface,
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: _C.borderSoft),
+    ),
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: _listMaxHeight),
+      child: RawScrollbar(
         controller: controller,
-        shrinkWrap: true,
-        // Clears the thumb so it never sits on a tile's action buttons.
-        padding: const EdgeInsets.only(right: 10),
-        children: children,
+        thumbVisibility: true,
+        thickness: 6,
+        radius: const Radius.circular(4),
+        thumbColor: _C.textFaint.withAlpha(120),
+        // Flutter's default ScrollBehavior excludes the mouse from
+        // drag-to-scroll (it's reserved for text selection), so on web a
+        // click-and-drag here would do nothing — only the wheel or the
+        // thin scrollbar thumb would move the list. Widen it to mouse too.
+        child: Builder(
+          builder: (ctx) => ScrollConfiguration(
+            behavior: ScrollConfiguration.of(ctx).copyWith(
+              dragDevices: {
+                PointerDeviceKind.touch,
+                PointerDeviceKind.mouse,
+                PointerDeviceKind.stylus,
+                PointerDeviceKind.trackpad,
+              },
+            ),
+            child: ListView(
+              controller: controller,
+              shrinkWrap: true,
+              physics: const ClampingScrollPhysics(),
+              // Clears the thumb so it never sits on a tile's action buttons.
+              padding: const EdgeInsets.only(right: 10),
+              children: children,
+            ),
+          ),
+        ),
       ),
     ),
   );
@@ -2474,111 +2501,22 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
     }
   }
 
+  // Mirrors _confirmTagMember's shell below — this used to hand-roll its own
+  // Dialog instead of reusing AppConfirmationDialog like its sibling does,
+  // which made "Remove Member" look inconsistent with "Add Member" and with
+  // every other confirm pop-up in the org/admin portal.
   Future<void> _confirmUntagMember(String uid, String name) async {
     final confirm = await showDialog<bool>(
       context: context,
       barrierColor: Colors.black54,
-      builder: (ctx) => Dialog(
-        // Was unset — Dialog falls back to Flutter's default Material
-        // surface color, which skews purple/lavender on this app's
-        // unseeded theme.
-        backgroundColor: _C.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(_DS.radiusLg),
-        ),
-        child: Container(
-          width: 420,
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: _C.errorBg,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.person_remove_outlined,
-                      color: _C.error,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Remove Member',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: _C.charcoal,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Text(
-                'Remove "$name" from this org\'s members? Their student account itself is not affected — this only removes the org tag.',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  color: _C.darkGray,
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  OutlinedButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: _C.borderSoft),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
-                      ),
-                    ),
-                    child: Text(
-                      'Cancel',
-                      style: GoogleFonts.beVietnamPro(fontSize: 13),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  ElevatedButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _C.error,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
-                      ),
-                    ),
-                    child: Text(
-                      'Remove',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+      builder: (_) => AppConfirmationDialog(
+        title: 'Remove Member',
+        message:
+            'Remove "$name" from this org\'s members? Their student account itself is not affected — this only removes the org tag.',
+        confirmLabel: 'Remove',
+        accentColor: _C.error,
+        icon: Icons.person_remove_outlined,
+        onConfirm: () async {},
       ),
     );
     if (confirm == true) await _untagMember(uid, name);
@@ -2591,107 +2529,14 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       barrierColor: Colors.black54,
-      builder: (ctx) => Dialog(
-        // Was unset — Dialog falls back to Flutter's default Material
-        // surface color, which skews purple/lavender on this app's
-        // unseeded theme.
-        backgroundColor: _C.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(_DS.radiusLg),
-        ),
-        child: Container(
-          width: 420,
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: _C.primaryDark.withAlpha(24),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.person_add_alt_1_rounded,
-                      color: _C.primaryDark,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Add Member',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: _C.charcoal,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Text(
-                'Add "$name" as a member of this org? They\'ll be tagged with this org\'s membership right away — double-check this is the right student before confirming.',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  color: _C.darkGray,
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  OutlinedButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: _C.borderSoft),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
-                      ),
-                    ),
-                    child: Text(
-                      'Cancel',
-                      style: GoogleFonts.beVietnamPro(fontSize: 13),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  ElevatedButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _C.primaryDark,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
-                      ),
-                    ),
-                    child: Text(
-                      'Add',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+      builder: (_) => AppConfirmationDialog(
+        title: 'Add Member',
+        message:
+            'Add "$name" as a member of this org? They\'ll be tagged with this org\'s membership right away — double-check this is the right student before confirming.',
+        confirmLabel: 'Add',
+        accentColor: _C.primaryDark,
+        icon: Icons.person_add_alt_1_rounded,
+        onConfirm: () async {},
       ),
     );
     return confirm == true;
@@ -3217,7 +3062,48 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _sectionLabel('Select File', icon: Icons.attach_file_rounded),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: _sectionLabel(
+                        'Select File',
+                        icon: Icons.attach_file_rounded,
+                      ),
+                    ),
+                    MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: InkWell(
+                        onTap: _downloadMemberImportTemplate,
+                        borderRadius: BorderRadius.circular(6),
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.download_rounded,
+                                size: 14,
+                                color: _C.info,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Download Excel template',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: _C.info,
+                                  decoration: TextDecoration.underline,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
                 MouseRegion(
                   cursor: isUploading
                       ? MouseCursor.defer
@@ -3387,6 +3273,67 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
         ),
       ),
     );
+  }
+
+  // Mirrors admin's student_accounts.dart _downloadImportTemplate — a real
+  // .xlsx (not .csv) so it can carry a styled header row and a muted example
+  // row. Columns match _parseMemberFile's exact expected order below.
+  Future<void> _downloadMemberImportTemplate() async {
+    final excel = Excel.createExcel();
+    final sheetName = excel.getDefaultSheet() ?? 'Sheet1';
+    final sheet = excel[sheetName];
+
+    const headers = ['Member ID', 'Full Name', 'Email'];
+    final headerStyle = CellStyle(
+      bold: true,
+      fontColorHex: ExcelColor.white,
+      backgroundColorHex: ExcelColor.fromHexString('FFBE4700'),
+      horizontalAlign: HorizontalAlign.Center,
+      verticalAlign: VerticalAlign.Center,
+    );
+    for (var i = 0; i < headers.length; i++) {
+      final cell = sheet.cell(
+        CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0),
+      );
+      cell.value = TextCellValue(headers[i]);
+      cell.cellStyle = headerStyle;
+    }
+
+    const exampleRow = ['2023100467', 'Dela Cruz, Juan', 'juan.delacruz@example.com'];
+    final exampleStyle = CellStyle(
+      fontColorHex: ExcelColor.fromHexString('FF64748B'),
+      backgroundColorHex: ExcelColor.fromHexString('FFF8F9FB'),
+    );
+    for (var i = 0; i < exampleRow.length; i++) {
+      final cell = sheet.cell(
+        CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 1),
+      );
+      cell.value = TextCellValue(exampleRow[i]);
+      cell.cellStyle = exampleStyle;
+    }
+
+    const columnWidths = [14.0, 24.0, 30.0];
+    for (var i = 0; i < columnWidths.length; i++) {
+      sheet.setColumnWidth(i, columnWidths[i]);
+    }
+
+    final bytes = excel.encode();
+    if (bytes == null) {
+      if (mounted) {
+        _snack('Could not generate the template file.');
+      }
+      return;
+    }
+
+    await OrgExportUtil.saveBytes(
+      bytes,
+      'member_import_template.xlsx',
+      mimeType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    if (mounted) {
+      _snack('Template downloaded.');
+    }
   }
 
   Future<List<Map<String, String>>> _parseMemberFile(XFile xfile) async {

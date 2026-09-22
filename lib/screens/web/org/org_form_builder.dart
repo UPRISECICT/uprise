@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../theme/org_theme.dart';
+import '../../../widgets/app_toast.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Field type definitions
@@ -225,16 +226,7 @@ class _OrgFormBuilderModalState extends State<OrgFormBuilderModal> {
       final label = (f['label'] as String? ?? '').trim();
       if (label.isEmpty) {
         setState(() => _expandedIdx = i);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Question ${i + 1} needs a label before saving.'),
-            backgroundColor: UpriseColors.error,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        );
+        AppToast.error(context, 'Question ${i + 1} needs a label before saving.');
         return false;
       }
       final type = _FTypeX.fromKey(f['type'] ?? 'short_text');
@@ -242,17 +234,9 @@ class _OrgFormBuilderModalState extends State<OrgFormBuilderModal> {
         final options = (f['options'] as List?)?.cast<String>() ?? [];
         if (options.length < 2 || options.any((o) => o.trim().isEmpty)) {
           setState(() => _expandedIdx = i);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Question ${i + 1} ("$label") has a blank option — fill in every option before saving.',
-              ),
-              backgroundColor: UpriseColors.error,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
+          AppToast.error(
+            context,
+            'Question ${i + 1} ("$label") has a blank option — fill in every option before saving.',
           );
           return false;
         }
@@ -275,19 +259,9 @@ class _OrgFormBuilderModalState extends State<OrgFormBuilderModal> {
       }
       await ref.set(payload, SetOptions(merge: true));
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _isPublished
-                  ? 'Form saved and published.'
-                  : 'Form saved as draft.',
-            ),
-            backgroundColor: _kCol,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
+        AppToast.success(
+          context,
+          _isPublished ? 'Form saved and published.' : 'Form saved as draft.',
         );
         // Close on successful save — the old behavior left the modal open
         // with just a snackbar, so saving didn't feel like it actually
@@ -297,13 +271,7 @@ class _OrgFormBuilderModalState extends State<OrgFormBuilderModal> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Save failed: $e'),
-            backgroundColor: UpriseColors.error,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        AppToast.error(context, 'Save failed: $e');
       }
     }
     if (mounted) setState(() => _saving = false);
@@ -1533,9 +1501,9 @@ class _FieldCardState extends State<_FieldCard> {
   }
 
   static const _mediaTypeOptions = [
-    ('both', 'Photos & Videos', Icons.perm_media_rounded),
+    ('both', 'Photos & Video Link', Icons.perm_media_rounded),
     ('image', 'Photos Only', Icons.image_rounded),
-    ('video', 'Videos Only', Icons.videocam_rounded),
+    ('video', 'Video Link Only', Icons.videocam_rounded),
   ];
 
   Widget _buildMediaTypeEditor() {
@@ -1806,8 +1774,8 @@ class _FieldCardState extends State<_FieldCard> {
         final hint = mediaType == 'image'
             ? 'Upload a photo'
             : mediaType == 'video'
-            ? 'Upload a video'
-            : 'Upload a photo or video';
+            ? 'Paste a video link (Drive, YouTube, etc.)'
+            : 'Upload a photo or paste a video link';
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
           decoration: BoxDecoration(

@@ -19,6 +19,7 @@ import '../../../services/notification_service.dart';
 import '../../../utils/profanity_filter.dart';
 import '../../../theme/org_theme.dart' as theme;
 import '../../../widgets/app_confirmation_dialog.dart';
+import '../../../widgets/app_toast.dart';
 import 'export_util.dart';
 
 class _C {
@@ -156,9 +157,7 @@ Future<void> _downloadFileAttachment(
     );
   } catch (e) {
     if (context.mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Could not download file: $e')));
+      AppToast.error(context, 'Could not download file: $e');
     }
   }
 }
@@ -177,9 +176,7 @@ Future<void> _openLink(BuildContext context, String rawUrl) async {
       ? await launchUrl(uri, mode: LaunchMode.externalApplication)
       : false;
   if (!opened && context.mounted) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Could not open that link.')));
+    AppToast.error(context, 'Could not open that link.');
   }
 }
 
@@ -483,9 +480,7 @@ class _OrgBroadcastScreenState extends State<OrgBroadcastScreen> {
       _openConversation(id, fresh.data() ?? {});
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Couldn\'t start conversation: $e')),
-        );
+        AppToast.error(context, 'Couldn\'t start conversation: $e');
       }
     }
   }
@@ -1189,9 +1184,7 @@ class _ChatThreadState extends State<_ChatThread> {
     } catch (e) {
       if (mounted) {
         _textCtrl.text = rawText;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Message failed to send: $e')));
+        AppToast.error(context, 'Message failed to send: $e');
       }
     } finally {
       if (mounted) {
@@ -1243,14 +1236,11 @@ class _ChatThreadState extends State<_ChatThread> {
         .doc(widget.conversationId)
         .update({'blockedByOrg': !currentlyBlocked});
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            !currentlyBlocked
-                ? '$_studentName is now blocked from messaging this org.'
-                : '$_studentName can message this org again.',
-          ),
-        ),
+      AppToast.info(
+        context,
+        !currentlyBlocked
+            ? '$_studentName is now blocked from messaging this org.'
+            : '$_studentName can message this org again.',
       );
     }
   }
@@ -1317,9 +1307,7 @@ class _ChatThreadState extends State<_ChatThread> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Could not unsend message: $e')));
+        AppToast.error(context, 'Could not unsend message: $e');
       }
     }
   }
@@ -1339,12 +1327,9 @@ class _ChatThreadState extends State<_ChatThread> {
       // rather than let a large photo fail with a raw Firestore error.
       if (bytes.length > 700 * 1024) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'That image is too large to send. Please choose a smaller photo.',
-              ),
-            ),
+          AppToast.warning(
+            context,
+            'That image is too large to send. Please choose a smaller photo.',
           );
         }
         return;
@@ -1353,9 +1338,7 @@ class _ChatThreadState extends State<_ChatThread> {
       if (mounted) setState(() => _pendingImageBase64 = b64);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Couldn\'t attach image: $e')));
+        AppToast.error(context, 'Couldn\'t attach image: $e');
       }
     }
   }
@@ -1371,12 +1354,9 @@ class _ChatThreadState extends State<_ChatThread> {
       // and base64 inflates raw bytes by ~33%.
       if (bytes.length > 700 * 1024) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'That file is too large to send. Please choose a smaller file (under ~700KB).',
-              ),
-            ),
+          AppToast.warning(
+            context,
+            'That file is too large to send. Please choose a smaller file (under ~700KB).',
           );
         }
         return;
@@ -1391,9 +1371,7 @@ class _ChatThreadState extends State<_ChatThread> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Couldn\'t attach file: $e')));
+        AppToast.error(context, 'Couldn\'t attach file: $e');
       }
     }
   }
@@ -1423,14 +1401,11 @@ class _ChatThreadState extends State<_ChatThread> {
         .doc(widget.conversationId)
         .update({'archivedByOrg': !currentlyArchived});
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            !currentlyArchived
-                ? 'Conversation archived.'
-                : 'Conversation unarchived.',
-          ),
-        ),
+      AppToast.info(
+        context,
+        !currentlyArchived
+            ? 'Conversation archived.'
+            : 'Conversation unarchived.',
       );
     }
   }

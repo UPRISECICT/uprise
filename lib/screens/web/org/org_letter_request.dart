@@ -16,6 +16,8 @@ import '../../../utils/platform_file_utils.dart' as platform_file_utils;
 import '../../../utils/school_year.dart';
 import '../../../widgets/admin_export_button.dart';
 import '../../../widgets/anchored_dropdown.dart';
+import '../../../widgets/app_confirmation_dialog.dart';
+import '../../../widgets/app_toast.dart';
 import '../../../widgets/org_action_icon_button.dart';
 import '../../../widgets/org_attachment_preview.dart';
 import '../../../widgets/org_modal_shell.dart';
@@ -172,6 +174,11 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _statusFilter = 'All';
   int _currentPage = 1;
+  // Only true once the org has actually clicked a stat card — lets the
+  // Total card show the same "selected" glow the others get on tap,
+  // without it looking pre-selected on first page load (filter starts
+  // equal to 'All' by default, not by choice).
+  bool _statusFilterTouched = false;
   static const int _pageSize = 10;
 
   String _orgName = '';
@@ -218,6 +225,18 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
       .orderBy('timestamp', descending: true)
       .snapshots();
 
+  // Archived requests used to be unreachable in this UI at all — the query
+  // above always excluded them and there was no "Archived" filter to switch
+  // to. Kept as its own stream (rather than dropping the isArchived clause
+  // above and filtering client-side) so the stats row's counts keep meaning
+  // "active requests" without also having to re-filter archived ones out.
+  late final Stream<QuerySnapshot> _archivedRequestsStream = FirestoreCollections
+      .letterRequests
+      .where('orgId', isEqualTo: widget.orgId)
+      .where('isArchived', isEqualTo: true)
+      .orderBy('timestamp', descending: true)
+      .snapshots();
+
   // ── Build ─────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
@@ -258,6 +277,7 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
         }
         void selectStatus(String status) => setState(() {
           _statusFilter = _statusFilter == status ? 'All' : status;
+          _statusFilterTouched = true;
           _currentPage = 1;
         });
 
@@ -271,15 +291,14 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
             value: '$total',
             icon: Icons.description_outlined,
             color: _DS.primary,
-            // 'All' is the default, no-filter state — not a deliberate
-            // selection — so this card never shows the "selected" glow,
-            // even though _statusFilter starts equal to 'All'. Without
-            // this, the very first card always rendered pre-highlighted
-            // on page load, before the user had clicked anything (same
-            // bug as event proposals' stat cards).
-            selected: false,
+            // Highlights once the org deliberately taps back to "All",
+            // same as the other cards — but not on first page load, when
+            // _statusFilter is already 'All' by default rather than by
+            // choice (see _statusFilterTouched).
+            selected: _statusFilter == 'All' && _statusFilterTouched,
             onTap: () => setState(() {
               _statusFilter = 'All';
+              _statusFilterTouched = true;
               _currentPage = 1;
             }),
           ),
@@ -375,6 +394,7 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
           'Rejected',
           'Needs Revision',
           'Resubmitted',
+          'Archived',
         ],
         hint: 'Status',
         icon: Icons.tune_rounded,
@@ -433,7 +453,9 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
   Widget _buildTable(bool isMobile, bool isTablet) {
     final horizontalPadding = isMobile ? 16.0 : (isTablet ? 20.0 : 28.0);
     return StreamBuilder<QuerySnapshot>(
-      stream: _requestsStream,
+      stream: _statusFilter == 'Archived'
+          ? _archivedRequestsStream
+          : _requestsStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -444,7 +466,9 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
 
         var docs = snapshot.data!.docs;
 
-        if (_statusFilter != 'All') {
+        // 'Archived' isn't a `status` value — it's the isArchived stream
+        // switched above, so every doc here already qualifies.
+        if (_statusFilter != 'All' && _statusFilter != 'Archived') {
           final filterValue = _statusFilter == 'Needs Revision'
               ? 'revision'
               : _statusFilter.toLowerCase();
@@ -690,12 +714,20 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
                       request.status == 'revision' ||
                       request.status == 'resubmitted')
                     const SizedBox(width: 6),
-                  OrgActionIconButton(
-                    icon: Icons.archive_outlined,
-                    tooltip: 'Archive',
-                    color: const Color(0xFF6B7280),
-                    onTap: () => _archiveRequest(request),
-                  ),
+                  if (request.isArchived)
+                    OrgActionIconButton(
+                      icon: Icons.unarchive_outlined,
+                      tooltip: 'Restore',
+                      color: _DS.primary,
+                      onTap: () => _restoreRequest(request),
+                    )
+                  else
+                    OrgActionIconButton(
+                      icon: Icons.archive_outlined,
+                      tooltip: 'Archive',
+                      color: const Color(0xFF6B7280),
+                      onTap: () => _archiveRequest(request),
+                    ),
                 ],
               ),
             ),
@@ -863,12 +895,16 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
   }
 
   Future<void> _archiveRequest(LetterRequestModel request) async {
-    final confirm = await _showConfirmDialog(
-      title: 'Archive Request',
-      message:
-          'Archive "${request.subject}"? You can still view it in the archived section.',
-      confirmLabel: 'Archive',
-      isDestructive: false,
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AppConfirmationDialog(
+        title: 'Archive Request',
+        message:
+            'Archive "${request.subject}"? You can still view and restore it from the Archived filter.',
+        confirmLabel: 'Archive',
+        accentColor: const Color(0xFFF59E0B),
+        icon: Icons.archive_outlined,
+      ),
     );
     if (confirm != true) return;
 
@@ -883,6 +919,35 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
         details: {'orgId': widget.orgId, 'requestId': request.id},
       );
       _showSnack('Request archived successfully');
+    } catch (e) {
+      _showSnack('Error: $e', isError: true);
+    }
+  }
+
+  Future<void> _restoreRequest(LetterRequestModel request) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AppConfirmationDialog(
+        title: 'Restore Request',
+        message: 'Restore "${request.subject}" from the archive?',
+        confirmLabel: 'Restore',
+        accentColor: _DS.primary,
+        icon: Icons.unarchive_outlined,
+      ),
+    );
+    if (confirm != true) return;
+
+    try {
+      await FirestoreCollections.letterRequests.doc(request.id).update({
+        'isArchived': false,
+        'archivedAt': FieldValue.delete(),
+      });
+      await activity_log.ActivityLogger.log(
+        action: 'restore_letter_request',
+        module: 'letter_request',
+        details: {'orgId': widget.orgId, 'requestId': request.id},
+      );
+      _showSnack('Request restored successfully');
     } catch (e) {
       _showSnack('Error: $e', isError: true);
     }
@@ -921,12 +986,7 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
 
       if (docs.isEmpty) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No data to export'),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
+          AppToast.warning(context, 'No data to export');
         }
         return;
       }
@@ -993,141 +1053,13 @@ class _OrgLetterRequestScreenState extends State<OrgLetterRequestScreen> {
 
   void _showSnack(String msg, {bool isError = false}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          msg,
-          style: GoogleFonts.beVietnamPro(color: Colors.white),
-        ),
-        backgroundColor: isError
-            ? const Color(0xFFDC2626)
-            : const Color(0xFF059669),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
+    if (isError) {
+      AppToast.error(context, msg);
+    } else {
+      AppToast.success(context, msg);
+    }
   }
 
-  Future<bool?> _showConfirmDialog({
-    required String title,
-    required String message,
-    required String confirmLabel,
-    bool isDestructive = false,
-  }) {
-    return showDialog<bool>(
-      context: context,
-      barrierColor: Colors.black54,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Container(
-          width: 420,
-          padding: const EdgeInsets.all(28),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: isDestructive
-                          ? const Color(0xFFFEF2F2)
-                          : const Color(0xFFFEF3C7),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(
-                      isDestructive
-                          ? Icons.delete_outline_rounded
-                          : Icons.archive_outlined,
-                      color: isDestructive
-                          ? const Color(0xFFDC2626)
-                          : _DS.primary,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Text(
-                    title,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF1A202C),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Text(
-                message,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 14,
-                  color: const Color(0xFF64748B),
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  OutlinedButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFFE2E6EA)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
-                    child: Text(
-                      'Cancel',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        color: const Color(0xFF374151),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  ElevatedButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isDestructive
-                          ? const Color(0xFFDC2626)
-                          : _DS.primary,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
-                    child: Text(
-                      confirmLabel,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1140,12 +1072,7 @@ class _RequestDetailsDialog extends StatelessWidget {
   void _openAttachment(BuildContext context) async {
     final base64 = request.attachmentBase64;
     if (base64 == null || base64.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No attachment found'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      AppToast.error(context, 'No attachment found');
       return;
     }
 
@@ -1196,12 +1123,7 @@ class _RequestDetailsDialog extends StatelessWidget {
         mimeType: mime,
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error opening file: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      AppToast.error(context, 'Error opening file: $e');
     }
   }
 
@@ -1216,12 +1138,7 @@ class _RequestDetailsDialog extends StatelessWidget {
         mimeType: 'application/pdf',
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error opening signed copy: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      AppToast.error(context, 'Error opening signed copy: $e');
     }
   }
 
@@ -1605,6 +1522,51 @@ class _RequestDetailsDialog extends StatelessWidget {
                   ),
                 ),
               ],
+              if (request.status.toLowerCase() == 'approved' &&
+                  (request.signRemark ?? '').isNotEmpty) ...[
+                const SizedBox(height: 14),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFECFDF5),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFA7F3D0)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.check_circle_outline_rounded,
+                            size: 14,
+                            color: Color(0xFF059669),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'REMARK FROM ADMIN',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF059669),
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        request.signRemark!,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          color: const Color(0xFF1A202C),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -1858,19 +1820,11 @@ class _LetterRequestModalState extends State<_LetterRequestModal> {
 
   void _showMsg(String msg, {bool isError = false}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          msg,
-          style: GoogleFonts.beVietnamPro(color: Colors.white),
-        ),
-        backgroundColor: isError
-            ? const Color(0xFFDC2626)
-            : const Color(0xFF059669),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
+    if (isError) {
+      AppToast.error(context, msg);
+    } else {
+      AppToast.success(context, msg);
+    }
   }
 
   Future<void> _pickNeededBy() async {
@@ -2748,6 +2702,7 @@ class LetterRequestModel {
   final String? signedDocumentBase64;
   final Timestamp? signedAt;
   final String? signedBy;
+  final String? signRemark;
 
   LetterRequestModel({
     required this.id,
@@ -2777,6 +2732,7 @@ class LetterRequestModel {
     this.signedDocumentBase64,
     this.signedAt,
     this.signedBy,
+    this.signRemark,
   });
 
   factory LetterRequestModel.fromFirestore(DocumentSnapshot doc) {
@@ -2809,6 +2765,7 @@ class LetterRequestModel {
       signedDocumentBase64: d['signedDocumentBase64'],
       signedAt: d['signedAt'] as Timestamp?,
       signedBy: d['signedBy'],
+      signRemark: d['signRemark'],
     );
   }
 }

@@ -111,7 +111,7 @@ class _AnnouncementsFeedState extends State<AnnouncementsFeed> {
         final docs = (snapshot.data?.docs ?? [])
             .where((d) {
               final data = d.data() as Map<String, dynamic>;
-              if (data['isPublished'] == false || data['isArchived'] == true) {
+              if (!shouldShowAnnouncementToStudent(data)) {
                 return false;
               }
               if (allowed == null) return true;

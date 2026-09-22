@@ -253,6 +253,10 @@ class _CountdownWidgetState extends State<CountdownWidget> {
                   ),
                 ],
                 const SizedBox(height: 12),
+                // Both labels are Flexible: a long formatted date plus a long
+                // time range has no room to grow on a narrow card, and an
+                // unflexed Text in a Row overflows sideways rather than
+                // clipping.
                 Row(
                   children: [
                     const Icon(
@@ -261,11 +265,15 @@ class _CountdownWidgetState extends State<CountdownWidget> {
                       size: 14,
                     ),
                     const SizedBox(width: 6),
-                    Text(
-                      event.formattedDate,
-                      style: TextStyle(
-                        color: Colors.white.withAlpha(230),
-                        fontSize: 12,
+                    Flexible(
+                      child: Text(
+                        event.formattedDate,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withAlpha(230),
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -275,11 +283,15 @@ class _CountdownWidgetState extends State<CountdownWidget> {
                       size: 14,
                     ),
                     const SizedBox(width: 6),
-                    Text(
-                      event.formattedTime,
-                      style: TextStyle(
-                        color: Colors.white.withAlpha(230),
-                        fontSize: 12,
+                    Flexible(
+                      child: Text(
+                        event.formattedTime,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withAlpha(230),
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   ],

@@ -7,6 +7,7 @@ import '../../utils/theme.dart';
 import '../../widgets/common/terms_and_conditions.dart';
 import '../web/org/org_login.dart';
 import '../web/admin/admin_login.dart';
+import '../../services/app_sign_out.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
   final String userId;
@@ -90,7 +91,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       final role = (userDoc.data()?['role'] as String?)?.toLowerCase() ?? '';
       print('ChangePassword success uid=${widget.userId} role=$role');
 
-      await FirebaseAuth.instance.signOut();
+      await AppSignOut.signOut();
 
       if (!mounted) return;
       if (role == 'org') {

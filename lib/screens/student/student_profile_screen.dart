@@ -23,6 +23,7 @@ import '../../widgets/student/app_colors.dart';
 import '../../widgets/student/student_app_bar.dart';
 import '../../widgets/student/app_image.dart';
 import '../../widgets/common/action_tile.dart';
+import '../../services/app_sign_out.dart';
 
 // kCardDecoration / kSectionLabel / kIconBadge / kActionTile moved to
 // widgets/common/action_tile.dart so the guest screens can share them.
@@ -2434,6 +2435,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     );
                   },
                 ),
+                const SizedBox(height: 8),
                 // ❌ Removed "Fix Registrations" tile – admin only.
                 // ❌ Removed "Change Password" inline form – moved to PrivacySecurityScreen.
                 // ❌ Removed "Notifications" tile – placeholder, not implemented.
@@ -2512,7 +2514,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                       if (confirm != true) return;
 
-                      await FirebaseAuth.instance.signOut();
+                      await AppSignOut.signOut();
                       if (context.mounted) {
                         Navigator.of(context).pushAndRemoveUntil(
                           MaterialPageRoute(

@@ -43,6 +43,7 @@ import 'export_excel.dart';
 import '../../../services/notification_service.dart';
 import '../../../services/firestore_collections.dart';
 import '../../../widgets/admin_export_button.dart';
+import '../../../services/app_sign_out.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens (copied from report.dart for the countdown)
@@ -1496,7 +1497,7 @@ class _OrgDashboardState extends State<OrgDashboard> {
 
   Future<void> _logout() async {
     try {
-      await FirebaseAuth.instance.signOut();
+      await AppSignOut.signOut();
     } catch (e) {
       debugPrint('Logout error: $e');
     }

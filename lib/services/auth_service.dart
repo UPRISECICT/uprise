@@ -3,7 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_model.dart';
 import '../utils/constants.dart';
-import 'push_notification_service.dart';
+import 'app_sign_out.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -17,12 +17,9 @@ class AuthService {
     );
   }
 
-  // Sign out
-  Future<void> signOut() async {
-    final uid = _auth.currentUser?.uid;
-    if (uid != null) await PushNotificationService.unregister(uid);
-    await _auth.signOut();
-  }
+  // Sign out — delegates so this and every inline logout button share one
+  // implementation (and one push-token cleanup).
+  Future<void> signOut() => AppSignOut.signOut(_auth);
 
   // Admin can archive a student account (student_accounts.dart) — checked
   // right after sign-in so an archived student is bounced immediately

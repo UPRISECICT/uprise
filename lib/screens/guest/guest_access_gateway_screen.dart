@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../auth_service.dart';
 import '../../services/activity_logger.dart' as activity_log;
+import '../../services/password_change_service.dart';
 import '../../widgets/common/terms_and_conditions.dart';
 import '../../widgets/student/app_colors.dart';
 import 'guest_auth_service.dart'; // GuestAuthService.saveSession() + GuestMode enum
@@ -26,6 +27,7 @@ import 'guest_home_screen.dart'
     hide
         GuestMode; // GuestHomeScreen only — GuestMode comes from guest_auth_service
 import 'guest_profile_screen.dart'; // exposes RegistrationScreen via re-export
+import '../../services/app_sign_out.dart';
 
 // ─────────────────────────────────────────────────────────────
 //  THEME — matches the shared light AppColors palette used across
@@ -522,7 +524,7 @@ class _GuestLoginScreenState extends State<GuestLoginScreen> {
       // approved-request check below is itself a positive test for.
       final role = await AuthService().getRecordedRole(uid);
       if (role != null && role != 'guest') {
-        await FirebaseAuth.instance.signOut();
+        await AppSignOut.signOut();
         await activity_log.ActivityLogger.log(
           action: 'Blocked non-guest login on guest portal',
           module: 'Authentication',
@@ -564,7 +566,7 @@ class _GuestLoginScreenState extends State<GuestLoginScreen> {
       if (snap.docs.isEmpty) {
         // Auth succeeded but no matching approved request — sign out
         // and tell the user their account isn't approved yet.
-        await FirebaseAuth.instance.signOut();
+        await AppSignOut.signOut();
         _snack(
           'Your account is not yet approved. Please wait for admin review.',
         );
@@ -1031,11 +1033,16 @@ class _GuestLoginScreenState extends State<GuestLoginScreen> {
 //  Used two ways:
 //   • forced=true  — shown once after the guest logs in with their
 //     admin-issued tempPassword (can't be skipped/backed out of). Pops
-//     back so _login() can push GuestHomeScreen.
-//   • forced=false — opened voluntarily from GuestSettingsScreen.
-//  Either way, on success it:
-//    • Updates the Firebase Auth password
-//    • Clears mustChangePassword in both external_requests and users
+//     back so _login() can push GuestHomeScreen. The session is seconds
+//     old here, so updatePassword is still "recent" to Firebase and no
+//     current-password confirmation is needed (or possible — all the
+//     guest has is the temp password). On success it also clears
+//     mustChangePassword in both external_requests and users.
+//   • forced=false — opened voluntarily from GuestSettingsScreen, on a
+//     session that may be days old. Firebase rejects updatePassword with
+//     `requires-recent-login` on a stale token, so this path asks for the
+//     current password and reauthenticates first. Nothing else changes:
+//     the first-login flags are already cleared.
 // ─────────────────────────────────────────────────────────────
 class GuestChangePasswordScreen extends StatefulWidget {
   final String uid;
@@ -1055,8 +1062,10 @@ class GuestChangePasswordScreen extends StatefulWidget {
 }
 
 class _GuestChangePasswordScreenState extends State<GuestChangePasswordScreen> {
+  final _currentCtrl = TextEditingController();
   final _newCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
+  bool _obscureCurrent = true;
   bool _obscureNew = true;
   bool _obscureConfirm = true;
   bool _isLoading = false;
@@ -1064,17 +1073,23 @@ class _GuestChangePasswordScreenState extends State<GuestChangePasswordScreen> {
 
   @override
   void dispose() {
+    _currentCtrl.dispose();
     _newCtrl.dispose();
     _confirmCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _changePassword() async {
+    final currentPw = _currentCtrl.text.trim();
     final newPw = _newCtrl.text.trim();
     final confirm = _confirmCtrl.text.trim();
 
     if (newPw.isEmpty || confirm.isEmpty) {
       _snack('Please fill in both fields.');
+      return;
+    }
+    if (!widget.forced && currentPw.isEmpty) {
+      _snack('Please enter your current password.');
       return;
     }
     if (newPw.length < 8) {
@@ -1093,27 +1108,58 @@ class _GuestChangePasswordScreenState extends State<GuestChangePasswordScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Update Firebase Auth password
-      await FirebaseAuth.instance.currentUser?.updatePassword(newPw);
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw FirebaseAuthException(
+          code: 'user-signed-out',
+          message: 'Your session expired. Please sign in again.',
+        );
+      }
 
-      // Clear the mustChangePassword flag in Firestore (both collections)
-      final batch = FirebaseFirestore.instance.batch();
-      batch.update(
-        FirebaseFirestore.instance
-            .collection('external_requests')
-            .doc(widget.docId),
-        {'mustChangePassword': false, 'tempPassword': FieldValue.delete()},
-      );
-      batch.update(
-        FirebaseFirestore.instance.collection('users').doc(widget.uid),
-        {'mustChangePassword': false},
-      );
-      await batch.commit();
+      if (widget.forced) {
+        // Token is seconds old here — Firebase still counts it as recent.
+        await user.updatePassword(newPw);
 
-      if (mounted) Navigator.pop(context); // return to _login flow
+        // First-login cleanup: drop the temp password and the flag that
+        // routed the guest here. Only meaningful on this path.
+        final batch = FirebaseFirestore.instance.batch();
+        batch.update(
+          FirebaseFirestore.instance
+              .collection('external_requests')
+              .doc(widget.docId),
+          {'mustChangePassword': false, 'tempPassword': FieldValue.delete()},
+        );
+        batch.update(
+          FirebaseFirestore.instance.collection('users').doc(widget.uid),
+          {'mustChangePassword': false},
+        );
+        await batch.commit();
+
+        if (mounted) Navigator.pop(context); // return to _login flow
+        return;
+      }
+
+      // Voluntary change from Settings: the session is old, so confirm the
+      // current password to refresh the token before the sensitive call.
+      await reauthenticateAndUpdatePassword(
+        user: user,
+        currentPassword: currentPw,
+        newPassword: newPw,
+      );
+
+      await activity_log.ActivityLogger.log(
+        action: 'Guest changed password',
+        module: 'Authentication',
+        severity: 'security',
+        details: {'uid': widget.uid, 'docId': widget.docId},
+      );
+
+      if (!mounted) return;
+      _snack('Password updated successfully.', success: true);
+      Navigator.pop(context);
     } on FirebaseAuthException catch (e) {
       if (mounted) {
-        _snack(e.message ?? 'Failed to change password.');
+        _snack(passwordChangeErrorMessage(e));
         setState(() => _isLoading = false);
       }
     } catch (e) {
@@ -1124,11 +1170,13 @@ class _GuestChangePasswordScreenState extends State<GuestChangePasswordScreen> {
     }
   }
 
-  void _snack(String msg) {
+  void _snack(String msg, {bool success = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg, style: GoogleFonts.beVietnamPro(fontSize: 13)),
-        backgroundColor: const Color(0xFFDC2626),
+        backgroundColor: success
+            ? const Color(0xFF16A34A)
+            : const Color(0xFFDC2626),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
@@ -1195,6 +1243,20 @@ class _GuestChangePasswordScreenState extends State<GuestChangePasswordScreen> {
 
             const SizedBox(height: 32),
 
+            // Current password — only on the voluntary path, where it is
+            // what refreshes the token Firebase demands for updatePassword.
+            if (!widget.forced) ...[
+              _buildPasswordField(
+                label: 'Current Password',
+                controller: _currentCtrl,
+                hint: 'Enter your current password',
+                obscure: _obscureCurrent,
+                onToggle: () =>
+                    setState(() => _obscureCurrent = !_obscureCurrent),
+              ),
+              const SizedBox(height: 16),
+            ],
+
             // New password field
             _buildPasswordField(
               label: 'New Password',
@@ -1255,7 +1317,9 @@ class _GuestChangePasswordScreenState extends State<GuestChangePasswordScreen> {
                         ),
                       )
                     : Text(
-                        'Set Password & Continue',
+                        widget.forced
+                            ? 'Set Password & Continue'
+                            : 'Update Password',
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 15,
                           fontWeight: FontWeight.w700,

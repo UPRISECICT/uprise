@@ -15,6 +15,7 @@ import 'screens/web/org/org_landing_page.dart';
 import 'screens/student/student_login.dart';
 import 'screens/student/student_home_screen.dart';
 import 'screens/public/certificate_verify_screen.dart';
+import 'services/app_sign_out.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -139,7 +140,7 @@ class _AuthGateState extends State<AuthGate> {
         if (authSnap.hasError) {
           debugPrint('AuthGate stream error: \${authSnap.error}');
           // Sign out to clear bad state, then let the gate rebuild cleanly.
-          FirebaseAuth.instance.signOut();
+          AppSignOut.signOut();
           return const _LoadingScreen();
         }
 
@@ -163,7 +164,7 @@ class _AuthGateState extends State<AuthGate> {
             if (roleSnap.hasError) {
               debugPrint('AuthGate roleSnap error: \${roleSnap.error}');
               WidgetsBinding.instance.addPostFrameCallback(
-                (_) => FirebaseAuth.instance.signOut(),
+                (_) => AppSignOut.signOut(),
               );
               return const _LoadingScreen();
             }
@@ -191,7 +192,7 @@ class _AuthGateState extends State<AuthGate> {
             }
 
             // Unknown / missing role → sign out, back to landing
-            FirebaseAuth.instance.signOut();
+            AppSignOut.signOut();
             return const LandingPage();
           },
         );
@@ -270,7 +271,7 @@ class _WrongPlatformScreen extends StatelessWidget {
               ),
               const SizedBox(height: 30),
               ElevatedButton(
-                onPressed: () => FirebaseAuth.instance.signOut(),
+                onPressed: () => AppSignOut.signOut(),
                 // AuthGate's StreamBuilder will react and show LandingPage
                 child: const Text('Logout'),
               ),

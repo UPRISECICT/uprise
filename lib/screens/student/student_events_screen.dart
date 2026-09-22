@@ -26,7 +26,6 @@ import '../../widgets/common/event_browsing.dart';
 import '../../widgets/common/event_card.dart';
 import '../../widgets/common/info_tile.dart';
 import '../../widgets/student/student_app_bar.dart';
-import 'student_feedback_screen.dart';
 import 'student_certificates_screen.dart';
 import 'student_webinar_code_screen.dart';
 import 'student_organization_details_screen.dart';

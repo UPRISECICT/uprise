@@ -2,13 +2,27 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../services/activity_logger.dart' as activity_log;
+import '../../services/password_change_service.dart';
 import '../../widgets/common/app_intro.dart';
 import '../../widgets/common/terms_and_conditions.dart';
 import '../../widgets/student/app_colors.dart';
 import 'student_login.dart';
+import '../../services/app_sign_out.dart';
 
+/// Used two ways, mirroring the guest screen:
+///  • [forced] = true — the first-login step reached from the router or
+///    straight after sign-in. The session is seconds old, so Firebase still
+///    counts updatePassword as recent; the student agrees to the terms, sees
+///    the intro, and is signed out afterwards to log in afresh.
+///  • [forced] = false — opened voluntarily from Privacy & Security, on a
+///    session that may be days old. Firebase rejects updatePassword with
+///    `requires-recent-login` on a stale token, so this path asks for the
+///    current password and reauthenticates first. No intro, no terms, and
+///    no sign-out — the student stays where they were.
 class StudentChangePasswordScreen extends StatefulWidget {
-  const StudentChangePasswordScreen({super.key});
+  final bool forced;
+
+  const StudentChangePasswordScreen({super.key, this.forced = true});
 
   @override
   State<StudentChangePasswordScreen> createState() =>
@@ -17,24 +31,29 @@ class StudentChangePasswordScreen extends StatefulWidget {
 
 class _StudentChangePasswordScreenState
     extends State<StudentChangePasswordScreen> {
+  final TextEditingController _currentPasswordController =
+      TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
       TextEditingController();
   bool _isLoading = false;
   bool _agreedToTerms = false;
 
-  // This screen is only ever reached once per account (mustChangePassword
-  // flips to false permanently after the first successful change), so a
-  // short "what is UPRISE" guide shown as the first step here naturally
-  // runs exactly once per student without needing a persisted flag.
-  bool _showIntro = true;
+  // The forced screen is only ever reached once per account
+  // (mustChangePassword flips to false permanently after the first
+  // successful change), so a short "what is UPRISE" guide shown as the first
+  // step there naturally runs exactly once per student without needing a
+  // persisted flag. A voluntary change must not replay it.
+  late bool _showIntro = widget.forced;
 
   // UI-only state — does not affect the change-password logic below.
+  bool _obscureCurrent = true;
   bool _obscureNew = true;
   bool _obscureConfirm = true;
 
   @override
   void dispose() {
+    _currentPasswordController.dispose();
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
@@ -44,11 +63,16 @@ class _StudentChangePasswordScreenState
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
+    final currentPassword = _currentPasswordController.text.trim();
     final newPassword = _newPasswordController.text.trim();
     final confirmPassword = _confirmPasswordController.text.trim();
 
     if (newPassword.isEmpty || confirmPassword.isEmpty) {
       _showError('Please fill in all fields');
+      return;
+    }
+    if (!widget.forced && currentPassword.isEmpty) {
+      _showError('Please enter your current password');
       return;
     }
     if (newPassword != confirmPassword) {
@@ -59,7 +83,7 @@ class _StudentChangePasswordScreenState
       _showError('Password must be at least 6 characters');
       return;
     }
-    if (!_agreedToTerms) {
+    if (widget.forced && !_agreedToTerms) {
       _showError('Please agree to the Terms and Conditions to continue');
       return;
     }
@@ -67,7 +91,18 @@ class _StudentChangePasswordScreenState
     setState(() => _isLoading = true);
 
     try {
-      await user.updatePassword(newPassword);
+      if (widget.forced) {
+        // Token is seconds old here — Firebase still counts it as recent.
+        await user.updatePassword(newPassword);
+      } else {
+        // Voluntary change on an old session: confirm the current password
+        // to refresh the token before the sensitive call.
+        await reauthenticateAndUpdatePassword(
+          user: user,
+          currentPassword: currentPassword,
+          newPassword: newPassword,
+        );
+      }
 
       final uid = user.uid;
       final futures = <Future>[
@@ -98,10 +133,25 @@ class _StudentChangePasswordScreenState
         details: {'uid': uid},
       );
 
-      // ✅ Sign out and go back to login
-      await FirebaseAuth.instance.signOut();
+      // A voluntary change already proved identity via reauthentication, so
+      // there is nothing to re-establish — kicking the student back to the
+      // login screen from a Settings page would just lose their place.
+      if (!widget.forced) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Password updated successfully.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pop(context);
+        return;
+      }
 
-      if (context.mounted) {
+      // ✅ Sign out and go back to login
+      await AppSignOut.signOut();
+
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
@@ -117,6 +167,8 @@ class _StudentChangePasswordScreenState
           (route) => false,
         );
       }
+    } on FirebaseAuthException catch (e) {
+      if (mounted) _showError(passwordChangeErrorMessage(e));
     } catch (e) {
       if (mounted) _showError('Error: $e');
     } finally {
@@ -237,10 +289,10 @@ class _StudentChangePasswordScreenState
 
               const SizedBox(height: 24),
 
-              const Text(
-                'Set a New Password',
+              Text(
+                widget.forced ? 'Set a New Password' : 'Change Your Password',
                 textAlign: TextAlign.center,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
                   color: Color(0xFF1B1B1D),
@@ -248,7 +300,9 @@ class _StudentChangePasswordScreenState
               ),
               const SizedBox(height: 6),
               Text(
-                'Please create a new password to secure your account.',
+                widget.forced
+                    ? 'Please create a new password to secure your account.'
+                    : 'Confirm your current password, then choose a new one.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 13.5,
@@ -276,6 +330,25 @@ class _StudentChangePasswordScreenState
                 ),
                 child: Column(
                   children: [
+                    // Current password — only on the voluntary path, where it
+                    // is what refreshes the token Firebase demands for
+                    // updatePassword.
+                    if (!widget.forced) ...[
+                      TextField(
+                        controller: _currentPasswordController,
+                        obscureText: _obscureCurrent,
+                        style: const TextStyle(fontSize: 14.5),
+                        decoration: _fieldDecoration(
+                          label: 'Current Password',
+                          icon: Icons.lock_clock_outlined,
+                          obscure: _obscureCurrent,
+                          onToggle: () => setState(
+                            () => _obscureCurrent = !_obscureCurrent,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
                     TextField(
                       controller: _newPasswordController,
                       obscureText: _obscureNew,
@@ -330,19 +403,22 @@ class _StudentChangePasswordScreenState
 
               const SizedBox(height: 20),
 
-              TermsAgreementCheckbox(
-                value: _agreedToTerms,
-                onChanged: (v) => setState(() => _agreedToTerms = v),
-                accent: AppColors.primaryDark,
-                textColor: Colors.grey.shade700,
-              ),
+              // The terms are a first-login gate; a student changing their
+              // password later has already accepted them.
+              if (widget.forced)
+                TermsAgreementCheckbox(
+                  value: _agreedToTerms,
+                  onChanged: (v) => setState(() => _agreedToTerms = v),
+                  accent: AppColors.primaryDark,
+                  textColor: Colors.grey.shade700,
+                ),
 
               const SizedBox(height: 20),
 
               SizedBox(
                 height: 50,
                 child: ElevatedButton(
-                  onPressed: (_isLoading || !_agreedToTerms)
+                  onPressed: (_isLoading || (widget.forced && !_agreedToTerms))
                       ? null
                       : _changePassword,
                   style: ElevatedButton.styleFrom(
@@ -365,9 +441,11 @@ class _StudentChangePasswordScreenState
                             strokeWidth: 2.2,
                           ),
                         )
-                      : const Text(
-                          'Save New Password',
-                          style: TextStyle(
+                      : Text(
+                          widget.forced
+                              ? 'Save New Password'
+                              : 'Update Password',
+                          style: const TextStyle(
                             fontSize: 14.5,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 0.2,

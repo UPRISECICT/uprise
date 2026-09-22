@@ -17,6 +17,7 @@ import '../../widgets/student/app_colors.dart';
 import 'student_change_password_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../../services/app_sign_out.dart';
 
 class StudentLogin extends StatefulWidget {
   const StudentLogin({super.key});
@@ -152,7 +153,7 @@ class _StudentLoginState extends State<StudentLogin> {
         // 'unknown' and hide which role was actually turned away.
         final recordedRole = await _auth.getRecordedRole(user.uid);
         if (!await _isStudentAccount(user.uid, recordedRole)) {
-          await FirebaseAuth.instance.signOut();
+          await AppSignOut.signOut();
           await activity_log.ActivityLogger.log(
             action: 'Blocked non-student login on student portal',
             module: 'Authentication',

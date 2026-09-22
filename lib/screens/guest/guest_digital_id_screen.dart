@@ -7,16 +7,27 @@
 //   • VERIFIED GUEST badge
 //   • QR code (payload: UPRISE|GUEST|docId|FIRST|LAST|email)
 //   • Fullscreen QR viewer
-//   • "Download Pass" (scaffold action — wire up image_gallery_saver)
+//   • "Download ID" — preview sheet that captures the card and shares it as a PDF
 //
 // Firestore: external_requests/{docId}  (streamed live)
 //
+// The card's look is kept in step with the student Digital ID
+// (student_profile_screen.dart, _StudentIdCard): same gradient bands, stacked
+// detail rows, full-bleed dashed divider and download flow. The QR payload is
+// deliberately NOT shared — org_attendance_qr.dart routes anything without the
+// `UPRISE|GUEST|` prefix to the student lookup.
+//
 
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import 'guest_auth_service.dart';
@@ -29,11 +40,10 @@ import '../../widgets/student/student_app_bar.dart';
 // ─────────────────────────────────────────────────────────────
 const _kOrange = AppColors.primaryDark;
 const _kOrangeLight = AppColors.primarySoft;
-const _kDark        = Color(0xFF1A1A2E);
+const _kDark = Color(0xFF1A1A2E);
 const _kBg = AppColors.background;
 const _kSuccess = AppColors.success;
 const _kSuccessBg = AppColors.successBg;
-
 
 // ─────────────────────────────────────────────────────────────
 //  SCREEN
@@ -43,7 +53,7 @@ class GuestDigitalIdScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final svc   = GuestAuthService();
+    final svc = GuestAuthService();
     final docId = svc.docId;
 
     if (docId == null || docId.isEmpty) {
@@ -59,8 +69,7 @@ class GuestDigitalIdScreen extends StatelessWidget {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             backgroundColor: _kBg,
-            body: Center(
-                child: CircularProgressIndicator(color: _kOrange)),
+            body: Center(child: CircularProgressIndicator(color: _kOrange)),
           );
         }
 
@@ -68,7 +77,7 @@ class GuestDigitalIdScreen extends StatelessWidget {
           return const _NotAuthView();
         }
 
-        final data   = snap.data!.data() as Map<String, dynamic>;
+        final data = snap.data!.data() as Map<String, dynamic>;
         final status = (data['status'] as String?) ?? 'pending';
 
         if (status != 'approved') {
@@ -85,21 +94,21 @@ class GuestDigitalIdScreen extends StatelessWidget {
 //  ID CARD VIEW
 // ─────────────────────────────────────────────────────────────
 class _IdCardView extends StatelessWidget {
-  final String               docId;
+  final String docId;
   final Map<String, dynamic> data;
 
   const _IdCardView({required this.docId, required this.data});
 
-  String get _fullName  => (data['userName']   as String?) ?? 'Guest';
-  String get _email     => (data['email']       as String?) ?? '';
-  String get _school    => (data['university']  as String?) ?? '';
-  String get _phone     => (data['phone']       as String?) ?? '';
-  String get _course    => (data['course']      as String?) ?? '';
-  String get _photoUrl  => (data['photoUrl']    as String?) ?? '';
+  String get _fullName => (data['userName'] as String?) ?? 'Guest';
+  String get _email => (data['email'] as String?) ?? '';
+  String get _school => (data['university'] as String?) ?? '';
+  String get _phone => (data['phone'] as String?) ?? '';
+  String get _course => (data['course'] as String?) ?? '';
+  String get _photoUrl => (data['photoUrl'] as String?) ?? '';
   String get _firstName =>
       (data['firstName'] as String?) ?? _fullName.split(' ').first;
-  String get _lastName  =>
-      (data['lastName']  as String?) ??
+  String get _lastName =>
+      (data['lastName'] as String?) ??
       (_fullName.split(' ').length > 1 ? _fullName.split(' ').last : '');
 
   String get _initials {
@@ -119,7 +128,7 @@ class _IdCardView extends StatelessWidget {
       backgroundColor: _kBg,
       appBar: const StudentAppBar(title: 'Digital ID'),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
+        padding: const EdgeInsets.all(20),
         child: Column(
           children: [
             // ── Instruction banner ─────────────────────────
@@ -129,17 +138,15 @@ class _IdCardView extends StatelessWidget {
 
             // ── ID Card ────────────────────────────────────
             _DigitalIdCard(
-              docId:      docId,
-              fullName:   _fullName,
-              firstName:  _firstName,
-              lastName:   _lastName,
-              email:      _email,
-              school:     _school,
-              phone:      _phone,
-              course:     _course,
-              initials:   _initials,
-              photoUrl:   _photoUrl,
-              qrPayload:  _qrPayload,
+              docId: docId,
+              fullName: _fullName,
+              email: _email,
+              school: _school,
+              phone: _phone,
+              course: _course,
+              initials: _initials,
+              photoUrl: _photoUrl,
+              qrPayload: _qrPayload,
               onFullscreen: () => _openFullscreen(context),
             ),
 
@@ -150,27 +157,37 @@ class _IdCardView extends StatelessWidget {
               onTap: () => _openFullscreen(context),
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 11),
+                  horizontal: 14,
+                  vertical: 12,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                      color: const Color(0xFFEEEEEE)),
+                  border: Border.all(color: const Color(0xFFEEEEEE)),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.open_in_full_rounded,
-                        size: 16, color: _kOrange),
+                    const Icon(
+                      Icons.open_in_full_rounded,
+                      size: 18,
+                      color: _kOrange,
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         'Tap to show full-screen QR for easy scanning',
                         style: GoogleFonts.beVietnamPro(
-                            fontSize: 12, color: Colors.black54),
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF374151),
+                        ),
                       ),
                     ),
-                    const Icon(Icons.chevron_right_rounded,
-                        size: 18, color: Colors.grey),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 20,
+                      color: Colors.grey[400],
+                    ),
                   ],
                 ),
               ),
@@ -178,36 +195,32 @@ class _IdCardView extends StatelessWidget {
 
             const SizedBox(height: 14),
 
-            // ── Contact section ────────────────────────────
-            _ContactSection(
-              email:  _email,
-              phone:  _phone,
-              school: _school,
-              course: _course,
-            ),
-
-            const SizedBox(height: 14),
-
             // ── Download button ────────────────────────────
             SizedBox(
               width: double.infinity,
-              height: 52,
               child: ElevatedButton.icon(
-                onPressed: () => _onDownload(context),
+                onPressed: () => _showDownloadPreview(context),
                 icon: const Icon(Icons.download_rounded, size: 20),
-                label: Text('Download ID',
-                    style: GoogleFonts.beVietnamPro(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700)),
+                label: Text(
+                  'Download ID',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _kOrange,
                   foregroundColor: Colors.white,
                   elevation: 0,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
             ),
+
+            const SizedBox(height: 20),
           ],
         ),
       ),
@@ -218,31 +231,197 @@ class _IdCardView extends StatelessWidget {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => _FullscreenQrScreen(
-          fullName:  _fullName,
-          qrPayload: _qrPayload,
-        ),
+        builder: (_) =>
+            _FullscreenQrScreen(fullName: _fullName, qrPayload: _qrPayload),
       ),
     );
   }
 
-  void _onDownload(BuildContext context) {
+  void _showDownloadPreview(BuildContext context) {
     HapticFeedback.lightImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _GuestIdDownloadSheet(
+        docId: docId,
+        fullName: _fullName,
+        email: _email,
+        school: _school,
+        phone: _phone,
+        course: _course,
+        initials: _initials,
+        photoUrl: _photoUrl,
+        qrPayload: _qrPayload,
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  DOWNLOAD PREVIEW SHEET
+//
+//  Mirrors the student ID's _IdDownloadPreviewSheet: show the card as it will
+//  be exported, capture it off a RepaintBoundary, wrap it in a one-page A4 PDF
+//  and hand it to the platform share sheet.
+// ─────────────────────────────────────────────────────────────
+class _GuestIdDownloadSheet extends StatefulWidget {
+  final String docId;
+  final String fullName;
+  final String email;
+  final String school;
+  final String phone;
+  final String course;
+  final String initials;
+  final String photoUrl;
+  final String qrPayload;
+
+  const _GuestIdDownloadSheet({
+    required this.docId,
+    required this.fullName,
+    required this.email,
+    required this.school,
+    required this.phone,
+    required this.course,
+    required this.initials,
+    required this.photoUrl,
+    required this.qrPayload,
+  });
+
+  @override
+  State<_GuestIdDownloadSheet> createState() => _GuestIdDownloadSheetState();
+}
+
+class _GuestIdDownloadSheetState extends State<_GuestIdDownloadSheet> {
+  final GlobalKey _cardKey = GlobalKey();
+  bool _isGenerating = false;
+
+  Future<Uint8List?> _captureCard(GlobalKey key) async {
+    final boundary =
+        key.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+    if (boundary == null) return null;
+    final ui.Image image = await boundary.toImage(pixelRatio: 3.0);
+    final ByteData? byteData = await image.toByteData(
+      format: ui.ImageByteFormat.png,
+    );
+    if (byteData == null) return null;
+    return byteData.buffer.asUint8List();
+  }
+
+  Future<void> _downloadAsPdf() async {
+    setState(() => _isGenerating = true);
+
+    try {
+      // Give a remote avatar a chance to decode before the capture — an
+      // undecoded AppImage falls back to the initials placeholder in the PDF.
+      await Future.delayed(const Duration(milliseconds: 150));
+
+      final cardBytes = await _captureCard(_cardKey);
+      if (cardBytes == null) {
+        throw Exception('Could not capture the ID card.');
+      }
+
+      final cardImage = pw.MemoryImage(cardBytes);
+      final doc = pw.Document();
+
+      doc.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(24),
+          build: (context) =>
+              pw.Center(child: pw.Image(cardImage, fit: pw.BoxFit.contain)),
+        ),
+      );
+
+      final pdfBytes = await doc.save();
+      final fileName = 'UPRISE_GUEST_ID_${widget.docId}.pdf';
+
+      if (!mounted) return;
+      setState(() => _isGenerating = false);
+      Navigator.pop(context);
+
+      await Printing.sharePdf(bytes: pdfBytes, filename: fileName);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isGenerating = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to generate ID PDF: $e')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFFE8E8E8),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.check_circle_outline,
-                color: Colors.white, size: 18),
-            const SizedBox(width: 8),
-            Text('ID saved to your gallery',
-                style: GoogleFonts.beVietnamPro(fontSize: 13)),
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: Colors.grey[400],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            RepaintBoundary(
+              key: _cardKey,
+              // No onFullscreen: the exported card shows "Scan to verify"
+              // instead of a tap affordance that means nothing on paper.
+              child: _DigitalIdCard(
+                docId: widget.docId,
+                fullName: widget.fullName,
+                email: widget.email,
+                school: widget.school,
+                phone: widget.phone,
+                course: widget.course,
+                initials: widget.initials,
+                photoUrl: widget.photoUrl,
+                qrPayload: widget.qrPayload,
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _isGenerating ? null : _downloadAsPdf,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _kOrange,
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: _kOrange.withAlpha(153),
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: _isGenerating
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.4,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Text(
+                        'Download',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+              ),
+            ),
           ],
         ),
-        backgroundColor: _kOrange,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10)),
       ),
     );
   }
@@ -263,15 +442,15 @@ class _InfoBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.info_outline_rounded,
-              size: 18, color: _kOrange),
+          const Icon(Icons.info_outline_rounded, size: 18, color: _kOrange),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               'This is your verified guest identity card. Present it or show the QR code to CICT event staff.',
               style: GoogleFonts.beVietnamPro(
-                  fontSize: 12,
-                  color: const Color(0xFF7A3300)),
+                fontSize: 12,
+                color: const Color(0xFF7A3300),
+              ),
             ),
           ),
         ],
@@ -284,24 +463,23 @@ class _InfoBanner extends StatelessWidget {
 //  DIGITAL ID CARD  (ticket-style, matching Figma design)
 // ─────────────────────────────────────────────────────────────
 class _DigitalIdCard extends StatelessWidget {
-  final String   docId;
-  final String   fullName;
-  final String   firstName;
-  final String   lastName;
-  final String   email;
-  final String   school;
-  final String   phone;
-  final String   course;
-  final String   initials;
-  final String   photoUrl;
-  final String   qrPayload;
-  final VoidCallback onFullscreen;
+  final String docId;
+  final String fullName;
+  final String email;
+  final String school;
+  final String phone;
+  final String course;
+  final String initials;
+  final String photoUrl;
+  final String qrPayload;
+
+  /// Opens the full-screen QR. Null when the card is being rendered for the
+  /// PDF capture, which swaps "Tap to enlarge" for "Scan to verify".
+  final VoidCallback? onFullscreen;
 
   const _DigitalIdCard({
     required this.docId,
     required this.fullName,
-    required this.firstName,
-    required this.lastName,
     required this.email,
     required this.school,
     required this.phone,
@@ -309,7 +487,7 @@ class _DigitalIdCard extends StatelessWidget {
     required this.initials,
     required this.photoUrl,
     required this.qrPayload,
-    required this.onFullscreen,
+    this.onFullscreen,
   });
 
   @override
@@ -320,13 +498,15 @@ class _DigitalIdCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withAlpha(26),
-              blurRadius: 20,
-              offset: const Offset(0, 6)),
+            color: Colors.black.withAlpha(26),
+            blurRadius: 20,
+            offset: const Offset(0, 6),
+          ),
           BoxShadow(
-              color: _kOrange.withAlpha(15),
-              blurRadius: 32,
-              offset: const Offset(0, 10)),
+            color: _kOrange.withAlpha(15),
+            blurRadius: 32,
+            offset: const Offset(0, 10),
+          ),
         ],
       ),
       clipBehavior: Clip.antiAlias,
@@ -336,8 +516,7 @@ class _DigitalIdCard extends StatelessWidget {
           Container(
             height: 8,
             decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                  colors: [_kOrange, Color(0xFFD47A00)]),
+              gradient: LinearGradient(colors: [_kOrange, Color(0xFFD47A00)]),
             ),
           ),
 
@@ -361,77 +540,99 @@ class _DigitalIdCard extends StatelessWidget {
                             fit: BoxFit.contain,
                           ),
                           const SizedBox(width: 6),
-                          Text('UPRISE',
-                              style: GoogleFonts.beVietnamPro(
-                                  color: _kOrange,
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 14,
-                                  letterSpacing: 1.4)),
+                          Text(
+                            'UPRISE',
+                            style: GoogleFonts.beVietnamPro(
+                              color: _kOrange,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 14,
+                              letterSpacing: 1.4,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 2),
                       Text(
                         'ID: ${docId.length >= 8 ? docId.substring(0, 8).toUpperCase() : docId.toUpperCase()}…',
                         style: GoogleFonts.beVietnamPro(
-                            fontSize: 10,
-                            color: const Color(0xFF999999),
-                            letterSpacing: 0.3),
+                          fontSize: 9,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey[500],
+                          letterSpacing: 0.6,
+                        ),
                       ),
                       const SizedBox(height: 10),
                       Text(
                         fullName.toUpperCase(),
                         style: GoogleFonts.beVietnamPro(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.black87,
-                            letterSpacing: 0.3,
-                            height: 1.15),
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.black87,
+                          letterSpacing: 0.3,
+                          height: 1.15,
+                        ),
                       ),
-                      const SizedBox(height: 3),
+                      const SizedBox(height: 4),
                       // Verified badge
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
                         decoration: BoxDecoration(
                           color: _kSuccessBg,
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                              color: _kSuccess.withAlpha(77)),
+                          border: Border.all(color: _kSuccess.withAlpha(77)),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.verified_rounded,
-                                size: 10, color: _kSuccess),
+                            const Icon(
+                              Icons.verified_rounded,
+                              size: 10,
+                              color: _kSuccess,
+                            ),
                             const SizedBox(width: 4),
-                            Text('VERIFIED GUEST',
-                                style: GoogleFonts.beVietnamPro(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w800,
-                                    color: _kSuccess,
-                                    letterSpacing: 0.6)),
+                            Text(
+                              'VERIFIED GUEST',
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                                color: _kSuccess,
+                                letterSpacing: 0.6,
+                              ),
+                            ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(email,
+                      if (email.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          email,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.beVietnamPro(
-                              fontSize: 10,
-                              color: const Color(0xFFAAAAAA),
-                              letterSpacing: 0.2)),
+                            fontSize: 10,
+                            color: const Color(0xFFAAAAAA),
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
                 const SizedBox(width: 12),
                 // Avatar — photo if available, otherwise initials
                 Container(
-                  width: 70, height: 70,
+                  width: 70,
+                  height: 70,
                   decoration: BoxDecoration(
                     color: _kOrangeLight,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                        color: _kOrange.withAlpha(64),
-                        width: 1.5),
+                      color: _kOrange.withAlpha(64),
+                      width: 1.5,
+                    ),
                   ),
                   clipBehavior: Clip.antiAlias,
                   // AppImage rather than Image + a local provider: it takes the
@@ -446,11 +647,14 @@ class _DigitalIdCard extends StatelessWidget {
                     fit: BoxFit.cover,
                     showLoadingIndicator: false,
                     placeholder: Center(
-                      child: Text(initials,
-                          style: GoogleFonts.beVietnamPro(
-                              fontSize: 26,
-                              fontWeight: FontWeight.w900,
-                              color: _kOrange)),
+                      child: Text(
+                        initials,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w900,
+                          color: _kOrange,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -488,25 +692,32 @@ class _DigitalIdCard extends StatelessWidget {
                       // Approved chip
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: _kSuccessBg,
                           borderRadius: BorderRadius.circular(6),
-                          border: Border.all(
-                              color: _kSuccess.withAlpha(102)),
+                          border: Border.all(color: _kSuccess.withAlpha(102)),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.check_circle_rounded,
-                                size: 10, color: _kSuccess),
+                            const Icon(
+                              Icons.check_circle_rounded,
+                              size: 10,
+                              color: _kSuccess,
+                            ),
                             const SizedBox(width: 4),
-                            Text('APPROVED',
-                                style: GoogleFonts.beVietnamPro(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w800,
-                                    color: _kSuccess,
-                                    letterSpacing: 0.6)),
+                            Text(
+                              'APPROVED',
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                                color: _kSuccess,
+                                letterSpacing: 0.6,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -524,45 +735,60 @@ class _DigitalIdCard extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                              color: const Color(0xFFEEEEEE)),
+                          border: Border.all(color: const Color(0xFFEEEEEE)),
                           boxShadow: [
                             BoxShadow(
-                                color:
-                                    Colors.black.withAlpha(15),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2)),
+                              color: Colors.black.withAlpha(15),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
                           ],
                         ),
                         child: QrImageView(
-                          data:            qrPayload,
-                          version:         QrVersions.auto,
-                          size:            100,
+                          data: qrPayload,
+                          version: QrVersions.auto,
+                          size: 100,
                           backgroundColor: Colors.white,
                           eyeStyle: const QrEyeStyle(
                             eyeShape: QrEyeShape.square,
-                            color:    _kDark,
+                            color: _kDark,
                           ),
                           dataModuleStyle: const QrDataModuleStyle(
                             dataModuleShape: QrDataModuleShape.square,
-                            color:           _kDark,
+                            color: _kDark,
                           ),
                         ),
                       ),
                       const SizedBox(height: 5),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.open_in_full_rounded,
-                              size: 10, color: _kOrange),
-                          const SizedBox(width: 3),
-                          Text('Tap to enlarge',
+                      if (onFullscreen == null)
+                        Text(
+                          'Scan to verify',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 9,
+                            color: Colors.grey[500],
+                            fontWeight: FontWeight.w600,
+                          ),
+                        )
+                      else
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.open_in_full_rounded,
+                              size: 9,
+                              color: Colors.grey[500],
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              'Tap to enlarge',
                               style: GoogleFonts.beVietnamPro(
-                                  fontSize: 9,
-                                  color: _kOrange,
-                                  fontWeight: FontWeight.w600)),
-                        ],
-                      ),
+                                fontSize: 9,
+                                color: Colors.grey[500],
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
                     ],
                   ),
                 ),
@@ -574,75 +800,9 @@ class _DigitalIdCard extends StatelessWidget {
           Container(
             height: 6,
             decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                  colors: [_kOrange, Color(0xFFD47A00)]),
+              gradient: LinearGradient(colors: [_kOrange, Color(0xFFD47A00)]),
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────
-//  CONTACT SECTION
-// ─────────────────────────────────────────────────────────────
-class _ContactSection extends StatelessWidget {
-  final String email;
-  final String phone;
-  final String school;
-  final String course;
-
-  const _ContactSection({
-    required this.email,
-    required this.phone,
-    required this.school,
-    required this.course,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFF0F0F0)),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Contact Information',
-              style: GoogleFonts.beVietnamPro(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black87)),
-          const SizedBox(height: 14),
-          _ContactRow(
-              icon: Icons.email_outlined,
-              label: 'EMAIL',
-              value: email.isNotEmpty ? email : '—'),
-          if (phone.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            _ContactRow(
-                icon: Icons.phone_outlined,
-                label: 'PHONE',
-                value: phone),
-          ],
-          if (school.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            _ContactRow(
-                icon: Icons.school_outlined,
-                label: 'INSTITUTION',
-                value: school),
-          ],
-          if (course.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            _ContactRow(
-                icon: Icons.menu_book_outlined,
-                label: 'COURSE',
-                value: course),
-          ],
         ],
       ),
     );
@@ -656,10 +816,7 @@ class _FullscreenQrScreen extends StatelessWidget {
   final String fullName;
   final String qrPayload;
 
-  const _FullscreenQrScreen({
-    required this.fullName,
-    required this.qrPayload,
-  });
+  const _FullscreenQrScreen({required this.fullName, required this.qrPayload});
 
   @override
   Widget build(BuildContext context) {
@@ -676,35 +833,44 @@ class _FullscreenQrScreen extends StatelessWidget {
               color: Colors.white.withAlpha(26),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.arrow_back,
-                size: 18, color: Colors.white),
+            child: const Icon(Icons.arrow_back, size: 18, color: Colors.white),
           ),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text('Guest ID — Scan QR',
-            style: GoogleFonts.beVietnamPro(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: Colors.white)),
+        title: Text(
+          'Guest ID — Scan QR',
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: Colors.white,
+          ),
+        ),
       ),
       body: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(
-            fullName.toUpperCase(),
-            style: GoogleFonts.beVietnamPro(
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Text(
+              fullName.toUpperCase(),
+              style: GoogleFonts.beVietnamPro(
                 fontSize: 22,
                 fontWeight: FontWeight.w900,
                 color: Colors.white,
-                letterSpacing: 0.5),
-            textAlign: TextAlign.center,
+                letterSpacing: 0.5,
+              ),
+              textAlign: TextAlign.center,
+            ),
           ),
           const SizedBox(height: 4),
-          Text('VERIFIED GUEST',
-              style: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  color: _kOrange,
-                  fontWeight: FontWeight.w600)),
+          Text(
+            'VERIFIED GUEST',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 13,
+              color: _kOrange,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 32),
           Container(
             padding: const EdgeInsets.all(20),
@@ -713,23 +879,24 @@ class _FullscreenQrScreen extends StatelessWidget {
               borderRadius: BorderRadius.circular(24),
               boxShadow: [
                 BoxShadow(
-                    color: _kOrange.withAlpha(64),
-                    blurRadius: 40,
-                    spreadRadius: 5),
+                  color: _kOrange.withAlpha(64),
+                  blurRadius: 40,
+                  spreadRadius: 5,
+                ),
               ],
             ),
             child: QrImageView(
-              data:            qrPayload,
-              version:         QrVersions.auto,
-              size:            240,
+              data: qrPayload,
+              version: QrVersions.auto,
+              size: 240,
               backgroundColor: Colors.white,
               eyeStyle: const QrEyeStyle(
                 eyeShape: QrEyeShape.square,
-                color:    _kDark,
+                color: _kDark,
               ),
               dataModuleStyle: const QrDataModuleStyle(
                 dataModuleShape: QrDataModuleShape.square,
-                color:           _kDark,
+                color: _kDark,
               ),
             ),
           ),
@@ -738,14 +905,21 @@ class _FullscreenQrScreen extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                width: 8, height: 8,
+                width: 8,
+                height: 8,
                 decoration: const BoxDecoration(
-                    color: _kOrange, shape: BoxShape.circle),
+                  color: _kOrange,
+                  shape: BoxShape.circle,
+                ),
               ),
               const SizedBox(width: 8),
-              Text('Show to event staff for scanning',
-                  style: GoogleFonts.beVietnamPro(
-                      fontSize: 12, color: Colors.white54)),
+              Text(
+                'Show to event staff for scanning',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 12,
+                  color: Colors.white54,
+                ),
+              ),
             ],
           ),
         ],
@@ -772,26 +946,37 @@ class _NotAuthView extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 90, height: 90,
+                width: 90,
+                height: 90,
                 decoration: BoxDecoration(
-                    color: _kOrangeLight, shape: BoxShape.circle),
-                child: const Icon(Icons.badge_outlined,
-                    size: 46, color: _kOrange),
+                  color: _kOrangeLight,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.badge_outlined,
+                  size: 46,
+                  color: _kOrange,
+                ),
               ),
               const SizedBox(height: 20),
-              Text('Not Logged In',
-                  style: GoogleFonts.beVietnamPro(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.black87)),
+              Text(
+                'Not Logged In',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.black87,
+                ),
+              ),
               const SizedBox(height: 8),
               Text(
-                  'Log in as a verified guest to access your digital ID.',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.beVietnamPro(
-                      fontSize: 13,
-                      color: Colors.grey,
-                      height: 1.5)),
+                'Log in as a verified guest to access your digital ID.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: Colors.grey,
+                  height: 1.5,
+                ),
+              ),
             ],
           ),
         ),
@@ -820,7 +1005,8 @@ class _PendingView extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 90, height: 90,
+                width: 90,
+                height: 90,
                 decoration: BoxDecoration(
                   color: isPending
                       ? const Color(0xFFFFFBEB)
@@ -839,13 +1025,12 @@ class _PendingView extends StatelessWidget {
               ),
               const SizedBox(height: 20),
               Text(
-                isPending
-                    ? 'Awaiting Approval'
-                    : 'Application Rejected',
+                isPending ? 'Awaiting Approval' : 'Application Rejected',
                 style: GoogleFonts.beVietnamPro(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.black87),
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.black87,
+                ),
               ),
               const SizedBox(height: 8),
               Text(
@@ -854,9 +1039,10 @@ class _PendingView extends StatelessWidget {
                     : 'Your application was not approved. Please contact the CICT admin for details.',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    color: Colors.grey,
-                    height: 1.5),
+                  fontSize: 13,
+                  color: Colors.grey,
+                  height: 1.5,
+                ),
               ),
             ],
           ),
@@ -869,6 +1055,8 @@ class _PendingView extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────
 //  SHARED SMALL WIDGETS
 // ─────────────────────────────────────────────────────────────
+/// Label-over-value row on the ID card, matching the student ID's
+/// `_IdDetailRow` (student_profile_screen.dart).
 class _DetailRow extends StatelessWidget {
   final String label;
   final String value;
@@ -876,60 +1064,27 @@ class _DetailRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(
-          width: 50,
-          child: Text(label,
-              style: GoogleFonts.beVietnamPro(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFFAAAAAA),
-                  letterSpacing: 0.5)),
+        Text(
+          label,
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 8,
+            fontWeight: FontWeight.w700,
+            color: const Color(0xFFAAAAAA),
+            letterSpacing: 0.8,
+          ),
         ),
-        const SizedBox(width: 4),
-        Expanded(
-          child: Text(value,
-              style: GoogleFonts.beVietnamPro(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.black87)),
-        ),
-      ],
-    );
-  }
-}
-
-class _ContactRow extends StatelessWidget {
-  final IconData icon;
-  final String   label;
-  final String   value;
-  const _ContactRow(
-      {required this.icon, required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 18, color: Colors.grey),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label,
-                  style: GoogleFonts.beVietnamPro(
-                      fontSize: 10,
-                      color: Colors.grey,
-                      letterSpacing: 0.5,
-                      fontWeight: FontWeight.w600)),
-              const SizedBox(height: 2),
-              Text(value,
-                  style: GoogleFonts.beVietnamPro(
-                      fontSize: 13, color: Colors.black87)),
-            ],
+        const SizedBox(height: 1),
+        Text(
+          value.trim().isNotEmpty ? value.toUpperCase() : '—',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w700,
+            color: Colors.black87,
           ),
         ),
       ],
@@ -940,27 +1095,11 @@ class _ContactRow extends StatelessWidget {
 class _DashedDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          Container(
-            width: 12, height: 12,
-            decoration: const BoxDecoration(
-                color: _kBg, shape: BoxShape.circle),
-          ),
-          Expanded(
-            child: CustomPaint(
-              painter: _DashedLinePainter(),
-              child: const SizedBox(height: 1),
-            ),
-          ),
-          Container(
-            width: 12, height: 12,
-            decoration: const BoxDecoration(
-                color: _kBg, shape: BoxShape.circle),
-          ),
-        ],
+    return SizedBox(
+      height: 1,
+      child: CustomPaint(
+        size: const Size(double.infinity, 1),
+        painter: _DashedLinePainter(),
       ),
     );
   }
@@ -970,12 +1109,12 @@ class _DashedLinePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color       = const Color(0xFFEEEEEE)
-      ..strokeWidth = 1.5
-      ..style       = PaintingStyle.stroke;
-    const dashW = 6.0;
-    const gapW  = 4.0;
-    double x    = 0;
+      ..color = const Color(0xFFEEEEEE)
+      ..strokeWidth = 1
+      ..style = PaintingStyle.stroke;
+    const dashW = 5.0;
+    const gapW = 4.0;
+    double x = 0;
     while (x < size.width) {
       canvas.drawLine(
         Offset(x, 0),

@@ -12,7 +12,13 @@ import '../../widgets/student/event_image.dart';
 import '../../services/certificate_auto_issue_service.dart';
 
 class StudentFeedbackScreen extends StatefulWidget {
-  const StudentFeedbackScreen({super.key});
+  /// When set, the screen opens straight into this event's rating sheet
+  /// instead of just listing everything. Comes from an `evaluation`
+  /// notification's `data['eventId']` — the evaluation itself lives here
+  /// rather than in the notification, so there is only one form to maintain.
+  final String? initialEventId;
+
+  const StudentFeedbackScreen({super.key, this.initialEventId});
 
   @override
   State<StudentFeedbackScreen> createState() => _StudentFeedbackScreenState();
@@ -22,6 +28,15 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen>
     with SingleTickerProviderStateMixin {
   List<Map<String, dynamic>> _events = [];
   bool _isLoading = true;
+
+  /// Events with a surviving attendance record. Not `_events.length` — that
+  /// also holds reviews recovered without one, which are reviewed but can no
+  /// longer be proven attended.
+  int _attendedCount = 0;
+
+  /// The deep link fires once. Without this the refresh button and the
+  /// reload after a submit would both re-open the sheet.
+  bool _deepLinkHandled = false;
 
   late final TabController _tabController = TabController(
     length: 2,
@@ -91,26 +106,125 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen>
         });
       }
 
-      // Most recently reviewed first within My Reviews; To Rate keeps the
-      // attendance order it came back in.
+      // Counted before any orphan is appended: "Attended" answers how many
+      // events the student has an attendance record for, which is a different
+      // question from how many they have reviewed.
+      final attendedCount = events.length;
+
+      // The loop above is attendance-driven, so it can only surface a review
+      // that still has a live attendance doc AND a live events doc behind it.
+      // Flip an attendance to 'absent', delete it, or delete the event, and a
+      // review the student really did submit silently disappears from My
+      // Reviews. loadMyFeedback already returned every one of them, so recover
+      // the ones the join dropped and let the review stand on its own.
+      try {
+        final seen = events.map((e) => e['eventId'] as String).toSet();
+        final orphanIds = myFeedback.keys
+            .where((id) => !seen.contains(id))
+            .toList();
+
+        if (orphanIds.isNotEmpty) {
+          // The common orphan is an attendance correction, where events/{id}
+          // is still there and still has the banner — so fetch it, and fall
+          // back to the review's own denormalised copy only when it is gone.
+          final eventDocs = await Future.wait(
+            orphanIds.map(
+              (id) =>
+                  FirebaseFirestore.instance.collection('events').doc(id).get(),
+            ),
+          );
+
+          for (var i = 0; i < orphanIds.length; i++) {
+            final review = myFeedback[orphanIds[i]]!;
+            final eventData = eventDocs[i].exists
+                ? eventDocs[i].data() as Map<String, dynamic>
+                : const <String, dynamic>{};
+
+            events.add({
+              'eventId': orphanIds[i],
+              'eventName':
+                  (eventData['title'] ?? '').toString().trim().isNotEmpty
+                  ? eventData['title']
+                  : FeedbackHelper.eventTitle(review),
+              'organization':
+                  (eventData['orgName'] ?? review['organization'] ?? '')
+                      .toString(),
+              'orgId': (eventData['orgId'] ?? review['orgId'] ?? '').toString(),
+              'bannerUrl': (eventData['bannerUrl'] ?? '').toString(),
+              'rated': true,
+              'review': review,
+            });
+          }
+        }
+      } catch (e) {
+        // Recovering orphans must never cost the student the list that did
+        // build — the outer catch would leave the whole screen empty.
+        print('Error recovering orphaned reviews: $e');
+      }
+
+      // Most recently reviewed first within My Reviews. Undated rows sort
+      // last: that is every unrated event, plus a review whose server
+      // timestamp is still round-tripping. Returning 0 for those instead
+      // would leave recovered reviews stuck wherever they were appended.
       events.sort((a, b) {
         final ra = a['review'] as Map<String, dynamic>?;
         final rb = b['review'] as Map<String, dynamic>?;
-        if (ra == null || rb == null) return 0;
-        final da = FeedbackHelper.submittedAt(ra);
-        final db = FeedbackHelper.submittedAt(rb);
-        if (da == null || db == null) return 0;
+        final da = ra == null ? null : FeedbackHelper.submittedAt(ra);
+        final db = rb == null ? null : FeedbackHelper.submittedAt(rb);
+        if (da == null && db == null) return 0;
+        if (da == null) return 1;
+        if (db == null) return -1;
         return db.compareTo(da);
       });
 
       setState(() {
         _events = events;
+        _attendedCount = attendedCount;
         _isLoading = false;
       });
+
+      // After the list exists, not before — the sheet needs the event's row.
+      WidgetsBinding.instance.addPostFrameCallback((_) => _handleDeepLink());
     } catch (e) {
       print('Error loading events: $e');
       setState(() => _isLoading = false);
     }
+  }
+
+  /// Opens the rating sheet for [StudentFeedbackScreen.initialEventId], the
+  /// event an `evaluation` notification pointed at.
+  void _handleDeepLink() {
+    final targetId = widget.initialEventId;
+    if (targetId == null || targetId.isEmpty) return;
+    if (_deepLinkHandled || !mounted) return;
+    _deepLinkHandled = true;
+
+    final match = _events.cast<Map<String, dynamic>?>().firstWhere(
+      (e) => e?['eventId'] == targetId,
+      orElse: () => null,
+    );
+
+    // _loadEvents only lists events the student was marked present/late for
+    // AND whose events/{id} doc still exists, so a stale notification can name
+    // something that isn't in the list. Say so rather than failing silently.
+    if (match == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("This event isn't in your attended list yet."),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    if (match['rated'] == true) {
+      // Already reviewed — show them the review they left instead of a form.
+      _tabController.index = 1;
+      return;
+    }
+
+    _tabController.index = 0;
+    _showFeedbackDialog(match);
   }
 
   Future<void> _submitFeedback({
@@ -130,7 +244,7 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen>
           ? ''
           : await FeedbackHelper.currentStudentReviewerName();
 
-      await FirebaseFirestore.instance.collection('event_feedback').add({
+      final data = {
         'eventId': event['eventId'],
         'eventName': event['eventName'],
         'organization': event['organization'],
@@ -139,9 +253,28 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen>
         'comment': comment.trim(),
         'userId': user.uid,
         'isAnonymous': isAnonymous,
-        if (authorName.isNotEmpty) 'authorName': authorName,
+        // Not a conditional key: this merges into a possibly existing doc, so
+        // an anonymous re-submit has to actively clear a name left behind by
+        // an earlier attributed one.
+        'authorName': authorName.isNotEmpty ? authorName : FieldValue.delete(),
         'submittedAt': FieldValue.serverTimestamp(),
-      });
+      };
+
+      // A deterministic id rather than .add(): this screen is now the only
+      // student-side writer, and a random id per submit is what let one
+      // student accumulate several event_feedback docs for one event.
+      // loadMyFeedback already handed us the existing doc's id, so reusing it
+      // costs no extra read.
+      final review = event['review'] as Map<String, dynamic>?;
+      String? existingId;
+      if (review != null && review['sourceCollection'] == 'event_feedback') {
+        existingId = review['id'] as String?;
+      }
+
+      await FirebaseFirestore.instance
+          .collection('event_feedback')
+          .doc(existingId ?? '${user.uid}_${event['eventId']}')
+          .set(data, SetOptions(merge: true));
 
       // If the org already distributed certificates for this event before
       // this feedback came in, issue this student's certificate right now
@@ -405,7 +538,7 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen>
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
       child: Row(
         children: [
-          _stat('${_events.length}', 'Attended'),
+          _stat('$_attendedCount', 'Attended'),
           _statDivider(),
           _stat('${_reviewed.length}', 'Reviewed'),
           _statDivider(),
@@ -546,7 +679,11 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen>
 
   Widget _reviewCard(Map<String, dynamic> event) {
     final review = event['review'] as Map<String, dynamic>? ?? {};
-    final rating = (review['rating'] as num?)?.toInt() ?? 0;
+    // Legacy `feedback` docs store the headline score under `overallRating`,
+    // and recovered reviews are disproportionately legacy ones — without the
+    // fallback they render as five grey stars. Matches the guest card.
+    final rating =
+        ((review['rating'] ?? review['overallRating']) as num?)?.toInt() ?? 0;
     final comment = (review['comment'] ?? '').toString().trim();
     final submitted = FeedbackHelper.submittedAt(review);
     final anonymous = reviewIsAnonymous(review);

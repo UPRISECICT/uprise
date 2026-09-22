@@ -93,7 +93,6 @@ class PushNotificationService {
 
   static Future<void> register(String uid) async {
     if (uid.isEmpty || _registeredUid == uid) return;
-    _registeredUid = uid;
 
     try {
       final messaging = FirebaseMessaging.instance;
@@ -102,6 +101,10 @@ class PushNotificationService {
         badge: true,
         sound: true,
       );
+      // Claim the uid only once a token is actually on file. Setting it up
+      // front meant a single denied permission prompt turned register() into
+      // a permanent no-op: the user could grant notifications in OS settings
+      // afterwards and still never get a token until the process restarted.
       if (settings.authorizationStatus == AuthorizationStatus.denied) return;
 
       final token = kIsWeb
@@ -109,7 +112,10 @@ class PushNotificationService {
               vapidKey: _webVapidKey.isEmpty ? null : _webVapidKey,
             )
           : await messaging.getToken();
-      if (token != null) await _saveToken(uid, token);
+      if (token == null) return;
+
+      await _saveToken(uid, token);
+      _registeredUid = uid;
 
       messaging.onTokenRefresh.listen((refreshed) => _saveToken(uid, refreshed));
     } catch (e) {
@@ -125,19 +131,38 @@ class PushNotificationService {
 
   // Called on sign-out so a shared/borrowed device stops receiving the
   // previous user's pushes once they log out.
+  //
+  // Do not call this directly from a screen — use AppSignOut.signOut(), which
+  // guarantees it runs before FirebaseAuth.signOut(). Removing the token from
+  // users/{uid} needs the outgoing user's own auth context, so the order
+  // matters, and a logout that skips this step leaves the device registered to
+  // that account forever.
   static Future<void> unregister(String uid) async {
     if (uid.isEmpty) return;
     _registeredUid = null;
     try {
+      final messaging = FirebaseMessaging.instance;
       final token = kIsWeb
-          ? await FirebaseMessaging.instance.getToken(
+          ? await messaging.getToken(
               vapidKey: _webVapidKey.isEmpty ? null : _webVapidKey,
             )
-          : await FirebaseMessaging.instance.getToken();
+          : await messaging.getToken();
       if (token == null) return;
+
       await FirebaseFirestore.instance.collection('users').doc(uid).set({
         'fcmTokens': FieldValue.arrayRemove([token]),
       }, SetOptions(merge: true));
-    } catch (_) {}
+
+      // Drop the token itself, not just this user's reference to it. Without
+      // this the next account to log in on this device is handed the SAME
+      // token, so one stale entry left behind anywhere re-links the two
+      // accounts. getToken() mints a fresh one on the next register().
+      await messaging.deleteToken();
+    } catch (e) {
+      // Surfaced rather than swallowed: a failed arrayRemove is exactly how a
+      // device ends up receiving a previous user's notifications, and silence
+      // made that invisible.
+      debugPrint('PushNotificationService.unregister failed for $uid: $e');
+    }
   }
 }

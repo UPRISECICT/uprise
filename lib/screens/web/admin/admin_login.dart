@@ -9,6 +9,7 @@ import 'admin_dashboard.dart';
 import 'admin_forgot_password.dart';
 import 'admin_landing_page.dart';
 import '../../../widgets/app_toast.dart';
+import '../../../services/app_sign_out.dart';
 
 class AdminLogin extends StatefulWidget {
   const AdminLogin({super.key});
@@ -170,7 +171,7 @@ class _AdminLoginState extends State<AdminLogin> with TickerProviderStateMixin {
             );
           }
         } else {
-          await FirebaseAuth.instance.signOut();
+          await AppSignOut.signOut();
           _registerFailedAttempt('This account is not authorized as Admin');
         }
       } else {

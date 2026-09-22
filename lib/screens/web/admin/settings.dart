@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../../../theme/admin_theme.dart';
 import '../../../utils/file_validation.dart';
 import 'admin_login.dart';
+import '../../../services/app_sign_out.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Activity Logger
@@ -1279,7 +1280,7 @@ class _AdminSettingsState extends State<AdminSettings>
                     const SizedBox(height: 16),
                     OutlinedButton.icon(
                       onPressed: () async {
-                        await FirebaseAuth.instance.signOut();
+                        await AppSignOut.signOut();
                         if (context.mounted) {
                           Navigator.of(context).pushAndRemoveUntil(
                             MaterialPageRoute(

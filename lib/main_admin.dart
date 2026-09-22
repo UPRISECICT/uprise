@@ -6,6 +6,7 @@ import 'auth_service.dart';
 import 'firebase_options.dart';
 import 'screens/web/admin/admin_dashboard.dart';
 import 'screens/web/admin/admin_landing_page.dart';
+import 'services/app_sign_out.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -76,7 +77,7 @@ class _AdminAuthGateState extends State<AdminAuthGate> {
               return const AdminDashboard();
             }
 
-            FirebaseAuth.instance.signOut();
+            AppSignOut.signOut();
             _clearCache();
             return const AdminLandingPage();
           },

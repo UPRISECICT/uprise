@@ -1,6 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'services/push_notification_service.dart';
+import 'services/app_sign_out.dart';
 
 class AuthService {
   static final Map<String, String> _roleCache = {};
@@ -104,11 +104,9 @@ class AuthService {
     }
   }
 
-  Future<void> logout() async {
-    final uid = _auth.currentUser?.uid;
-    if (uid != null) await PushNotificationService.unregister(uid);
-    await _auth.signOut();
-  }
+  // Delegates so this and every inline logout button share one implementation
+  // (and one push-token cleanup).
+  Future<void> logout() => AppSignOut.signOut(_auth);
 
   Future<bool> needsPasswordChange(String uid) async {
     try {

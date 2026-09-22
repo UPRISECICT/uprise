@@ -16,6 +16,7 @@ import '../../auth/change_password_screen.dart';
 import 'org_dashboard.dart';
 import 'org_forgot_password.dart';
 import 'org_landing_page.dart';
+import '../../../services/app_sign_out.dart';
 
 class OrganizationLogin extends StatefulWidget {
   const OrganizationLogin({super.key});
@@ -154,7 +155,7 @@ class _OrganizationLoginState extends State<OrganizationLogin>
       }
       final role = await _auth.getUserRole(user.uid) ?? '';
       if (role != 'org') {
-        await FirebaseAuth.instance.signOut();
+        await AppSignOut.signOut();
         _registerFailedAttempt(
           'This account is not authorized for the Organization Portal',
         );
@@ -198,7 +199,7 @@ class _OrganizationLoginState extends State<OrganizationLogin>
       _registerFailedAttempt(msg);
       if (mounted) setState(() => _isLoading = false);
     } on FirebaseException catch (e) {
-      await FirebaseAuth.instance.signOut();
+      await AppSignOut.signOut();
       _registerFailedAttempt('Database error: ${e.message ?? e.code}');
       if (mounted) setState(() => _isLoading = false);
     } catch (e) {

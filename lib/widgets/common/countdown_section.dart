@@ -115,29 +115,38 @@ class _PersonalOrNextEventCountdownState
         final isPersonal = widget.fetchMyRegisteredEvents != null;
 
         if (isPersonal) {
-          // CountdownWidget's content is all text (org name, title, the
-          // DAYS/HOURS/MINUTES/SECONDS blocks, then three metadata rows), so
-          // its natural height tracks the device font scale. A flat 240 left
-          // the Column only ~5px of slack at 1.0x and overflowed as soon as
-          // the system font size was bumped — scale the box with the text.
-          final textScale = MediaQuery.textScalerOf(
-            context,
-          ).scale(1).clamp(1.0, 1.6);
-          return SizedBox(
-            height: 248 * textScale,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              itemCount: events.length,
-              itemBuilder: (context, index) {
-                return Padding(
-                  padding: const EdgeInsets.only(right: 12),
-                  child: SizedBox(
-                    width: 400,
-                    child: CountdownWidget(event: events[index]),
-                  ),
-                );
-              },
+          // No fixed height. CountdownWidget's content is all text — org name,
+          // title, the DAYS/HOURS/MINUTES/SECONDS blocks, then three metadata
+          // rows — so its real height depends on the font's line metrics, the
+          // device text scale and the locale. Every attempt to name that
+          // number ahead of time (240, then 248 * textScale) has eventually
+          // overflowed on some device, because the card is taller in
+          // Be Vietnam Pro than the arithmetic assumed.
+          //
+          // IntrinsicHeight asks the tallest card what it actually needs and
+          // sizes the row to that; stretch makes the shorter cards match it so
+          // the carousel still reads as one band. The parent is a
+          // SliverToBoxAdapter, so the vertical space is unbounded and this is
+          // free to be as tall as it needs.
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (var i = 0; i < events.length; i++)
+                    Padding(
+                      padding: EdgeInsets.only(
+                        right: i == events.length - 1 ? 0 : 12,
+                      ),
+                      child: SizedBox(
+                        width: 400,
+                        child: CountdownWidget(event: events[i]),
+                      ),
+                    ),
+                ],
+              ),
             ),
           );
         }

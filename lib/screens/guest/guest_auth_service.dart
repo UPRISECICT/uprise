@@ -12,9 +12,9 @@
 //     auth state changes
 //
 
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../services/app_sign_out.dart';
 
 // ─────────────────────────────────────────────────────────────
 //  MODE ENUM
@@ -110,7 +110,7 @@ class GuestAuthService extends ChangeNotifier {
   // session on the next launch.
   static Future<void> clearSession() async {
     try {
-      await FirebaseAuth.instance.signOut();
+      await AppSignOut.signOut();
     } catch (e) {
       // Keep going: a failed sign-out must not leave the prefs half-cleared
       // and the app showing a guest as still logged in.

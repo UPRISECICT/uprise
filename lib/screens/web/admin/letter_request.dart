@@ -1,4 +1,4 @@
-// lib/screens/web/admin/letter_request.dart - CORRECTED VERSION
+﻿// lib/screens/web/admin/letter_request.dart - CORRECTED VERSION
 
 import 'dart:convert';
 import 'dart:math' as math;
@@ -150,6 +150,191 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     return result == true;
   }
 
+  // Same shell as AppConfirmationDialog (circular icon badge, centered
+  // title/message, X close button, pill buttons) but with a required
+  // textarea in between — for actions like Reject/Request Revision that
+  // need a reason, which the plain confirm dialog has no slot for.
+  Future<String?> _showActionInputDialog({
+    required IconData icon,
+    required Color accentColor,
+    required String heading,
+    required String body,
+    required String hint,
+    required String actionLabel,
+    required String emptyWarning,
+  }) {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+        child: Container(
+          width: 460,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x330F172A),
+                blurRadius: 32,
+                offset: Offset(0, 14),
+              ),
+            ],
+          ),
+          child: Stack(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(32, 40, 32, 28),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        color: accentColor.withAlpha(22),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(icon, color: accentColor, size: 34),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      heading,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF1A202C),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      body,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13.5,
+                        height: 1.5,
+                        color: const Color(0xFF64748B),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    TextField(
+                      controller: controller,
+                      maxLines: 3,
+                      maxLength: 1000,
+                      style: GoogleFonts.beVietnamPro(fontSize: 13),
+                      decoration: InputDecoration(
+                        hintText: hint,
+                        hintStyle: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          color: const Color(0xFF9AA5B4),
+                        ),
+                        filled: true,
+                        fillColor: const Color(0xFFF8F9FB),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFE2E6EA),
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFE2E6EA),
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: accentColor,
+                            width: 1.5,
+                          ),
+                        ),
+                        contentPadding: const EdgeInsets.all(12),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFF475569),
+                              side: const BorderSide(
+                                color: Color(0xFFE2E6EA),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 14,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: Text(
+                              'Cancel',
+                              style: GoogleFonts.beVietnamPro(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              final text = controller.text.trim();
+                              if (text.isEmpty) {
+                                AppToast.warning(ctx, emptyWarning);
+                                return;
+                              }
+                              Navigator.pop(ctx, text);
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: accentColor,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 14,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: Text(
+                              actionLabel,
+                              style: GoogleFonts.beVietnamPro(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Positioned(
+                top: 12,
+                right: 12,
+                child: IconButton(
+                  tooltip: 'Close',
+                  onPressed: () => Navigator.pop(ctx),
+                  icon: const Icon(Icons.close_rounded),
+                  color: const Color(0xFF94A3B8),
+                  iconSize: 20,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<String> _fetchOrgLogo(String orgId) async {
     if (_orgLogoCache.containsKey(orgId)) {
       return _orgLogoCache[orgId]!;
@@ -196,16 +381,12 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     IconData icon, {
     Color? valueColor,
   }) {
-    final accent =
-        valueColor ??
-        switch (label) {
-          'Requestor' => const Color(0xFF2563EB),
-          'Date Submitted' => const Color(0xFF4F46E5),
-          'Subject' => const Color(0xFFF97316),
-          'School Year' => const Color(0xFF059669),
-          'Semester' => const Color(0xFF7C3AED),
-          _ => const Color(0xFF64748B),
-        };
+    // Fields with a real semantic color (valueColor passed in) keep a
+    // tinted badge in that color; purely descriptive fields get a solid
+    // badge in the modal header's own color, echoing it instead of sitting
+    // flat gray against it.
+    final hasSemanticColor = valueColor != null;
+    final badgeColor = valueColor ?? AdminColors.primaryDark;
     return Container(
       padding: const EdgeInsets.all(11),
       decoration: BoxDecoration(
@@ -223,10 +404,16 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                 height: 26,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: accent.withAlpha(26),
+                  color: hasSemanticColor
+                      ? badgeColor.withAlpha(26)
+                      : badgeColor,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(icon, size: 13, color: accent),
+                child: Icon(
+                  icon,
+                  size: 13,
+                  color: hasSemanticColor ? badgeColor : Colors.white,
+                ),
               ),
               const SizedBox(width: 6),
               Text(
@@ -875,82 +1062,23 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     );
   }
 
-  void _requestRevision(Map<String, dynamic> data, String docId) {
-    final commentController = TextEditingController();
+  Future<void> _requestRevision(Map<String, dynamic> data, String docId) async {
+    final orgName = data['orgName'] ?? 'Request';
 
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
-          'Request Revision',
-          style: GoogleFonts.beVietnamPro(
-            fontWeight: FontWeight.w700,
-            color: const Color(0xFF1A202C),
-          ),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text.rich(
-              TextSpan(
-                text: 'Please provide feedback/revision notes:',
-                style: GoogleFonts.beVietnamPro(color: const Color(0xFF374151)),
-                children: [
-                  TextSpan(
-                    text: ' *',
-                    style: TextStyle(color: AdminColors.error),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: commentController,
-              maxLines: 4,
-              maxLength: 1000,
-              decoration: const InputDecoration(
-                hintText: 'e.g., Please provide a more detailed letter...',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          OutlinedButton(
-            onPressed: () => Navigator.pop(ctx),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFF374151),
-              side: const BorderSide(color: Color(0xFFE2E6EA)),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: Text('Cancel', style: GoogleFonts.beVietnamPro()),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final comment = commentController.text.trim();
-              if (comment.isEmpty) {
-                AppToast.warning(context, 'Please provide revision notes');
-                return;
-              }
-              Navigator.pop(ctx);
-              await _updateStatus(
-                docId,
-                'revision',
-                data['orgName'] ?? 'Request',
-                revisionNote: comment,
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AdminColors.primaryDark,
-            ),
-            child: const Text('Send Revision Request'),
-          ),
-        ],
-      ),
+    final comment = await _showActionInputDialog(
+      icon: Icons.edit_note_outlined,
+      accentColor: const Color(0xFF2563EB),
+      heading: 'Request Revision',
+      body:
+          'Provide feedback or revision notes for "$orgName". This will be '
+          'visible to the organization.',
+      hint: 'e.g., Please provide a more detailed letter...',
+      actionLabel: 'Send Revision Request',
+      emptyWarning: 'Please provide revision notes',
     );
+    if (comment == null) return;
+
+    await _updateStatus(docId, 'revision', orgName, revisionNote: comment);
   }
 
   Widget _buildStatusBadge(String status) {
@@ -1216,157 +1344,20 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
   }
 
   Future<void> _confirmRejectLetter(String docId, String orgName) async {
-    final reasonController = TextEditingController();
-    await showDialog(
-      context: context,
-      barrierColor: Colors.black54,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Container(
-          width: 420,
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEF2F2),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.cancel_outlined,
-                      color: AdminColors.error,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Text(
-                    'Reject Letter Request',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF1A202C),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Provide a reason for rejecting the letter request from '
-                '"$orgName". This will be visible to the organization.',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 14,
-                  color: const Color(0xFF64748B),
-                  height: 1.4,
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: reasonController,
-                maxLines: 3,
-                maxLength: 1000,
-                style: GoogleFonts.beVietnamPro(fontSize: 13),
-                decoration: InputDecoration(
-                  hintText: 'Reason for rejection…',
-                  hintStyle: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    color: const Color(0xFF9AA5B4),
-                  ),
-                  filled: true,
-                  fillColor: const Color(0xFFF8F9FB),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(
-                      color: AdminColors.error,
-                      width: 1.5,
-                    ),
-                  ),
-                  contentPadding: const EdgeInsets.all(12),
-                ),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  OutlinedButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFFE2E6EA)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
-                    child: Text(
-                      'Cancel',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        color: const Color(0xFF374151),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  ElevatedButton(
-                    onPressed: () async {
-                      final reason = reasonController.text.trim();
-                      if (reason.isEmpty) {
-                        AppToast.warning(
-                          ctx,
-                          'Please provide a reason for rejection.',
-                        );
-                        return;
-                      }
-                      Navigator.pop(ctx);
-                      await _updateStatus(
-                        docId,
-                        'rejected',
-                        orgName,
-                        rejectionReason: reason,
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AdminColors.error,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
-                    child: Text(
-                      'Reject',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
+    final reason = await _showActionInputDialog(
+      icon: Icons.cancel_outlined,
+      accentColor: AdminColors.error,
+      heading: 'Reject Letter Request',
+      body:
+          'Provide a reason for rejecting the letter request from '
+          '"$orgName". This will be visible to the organization.',
+      hint: 'Reason for rejection…',
+      actionLabel: 'Reject',
+      emptyWarning: 'Please provide a reason for rejection.',
     );
+    if (reason == null) return;
+
+    await _updateStatus(docId, 'rejected', orgName, rejectionReason: reason);
   }
 
   Future<void> _updateStatus(
@@ -2661,6 +2652,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                                 message.toString(),
                                 style: GoogleFonts.beVietnamPro(
                                   fontSize: 13,
+                                  fontWeight: FontWeight.w600,
                                   color: const Color(0xFF374151),
                                   height: 1.6,
                                 ),

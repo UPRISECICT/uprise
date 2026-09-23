@@ -1793,7 +1793,16 @@ class _AdviserRolesState extends State<AdviserRoles> {
       padding: const EdgeInsets.only(bottom: 4),
       child: Row(
         children: [
-          Icon(icon, size: 14, color: AdminColors.primaryDark.withAlpha(150)),
+          Container(
+            width: 22,
+            height: 22,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AdminColors.primaryDark,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Icon(icon, size: 11, color: Colors.white),
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(

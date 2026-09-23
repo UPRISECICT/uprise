@@ -211,6 +211,10 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
   bool _showPendingPage = false;
   final TextEditingController _pendingSearchController =
       TextEditingController();
+  // Quick filters on the Pending Reports page — kept separate from the
+  // table's own _typeFilter so switching one never resets the other.
+  String? _pendingUrgencyFilter; // null | 'overdue' | 'dueSoon'
+  String? _pendingTypeFilter; // null | 'financial' | 'accomplishment'
 
   @override
   void initState() {
@@ -480,12 +484,24 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
     List<_PendingEventDeadline> pending,
     Map<String, List<_PendingEventDeadline>> groups,
     List<String> orderedEventIds,
+    Map<String, Set<String>> submittedTypesByEvent,
   })
   _pendingDeadlines(List<ReportModel> all) {
-    final submittedKeys = all
-        .where((r) => r.status != 'archived' && (r.eventId ?? '').isNotEmpty)
+    final submittedReports = all.where(
+      (r) => r.status != 'archived' && (r.eventId ?? '').isNotEmpty,
+    );
+    final submittedKeys = submittedReports
         .map((r) => '${r.eventId}_${r.type}')
         .toSet();
+
+    // Which of the two report types already came in for a given event —
+    // read alongside submittedKeys above, not a new source of truth. Lets
+    // a card that still owes one report say the other was already
+    // submitted instead of just omitting it.
+    final submittedTypesByEvent = <String, Set<String>>{};
+    for (final r in submittedReports) {
+      submittedTypesByEvent.putIfAbsent(r.eventId!, () => {}).add(r.type);
+    }
 
     final pending =
         _finishedEventDeadlines
@@ -509,7 +525,12 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
         return da.compareTo(db);
       });
 
-    return (pending: pending, groups: groups, orderedEventIds: orderedEventIds);
+    return (
+      pending: pending,
+      groups: groups,
+      orderedEventIds: orderedEventIds,
+      submittedTypesByEvent: submittedTypesByEvent,
+    );
   }
 
   // ── Deadline row ── UPDATED WITH PROFESSIONAL UI ──────────────────────────
@@ -806,21 +827,44 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
     final deadlines = _pendingDeadlines(all);
     final groups = deadlines.groups;
     final orderedEventIds = deadlines.orderedEventIds;
+    final submittedTypesByEvent = deadlines.submittedTypesByEvent;
     final eventCount = orderedEventIds.length;
     final overdueCount = orderedEventIds
         .where((id) => groups[id]!.any((d) => now.isAfter(d.deadline)))
         .length;
 
+    bool isOverdue(_PendingEventDeadline d) => now.isAfter(d.deadline);
+    bool isDueSoonItem(_PendingEventDeadline d) =>
+        !isOverdue(d) && now.difference(d.deadline).inDays.abs() <= 3;
+
     final query = _pendingSearchController.text.trim().toLowerCase();
-    final visibleEventIds = query.isEmpty
-        ? orderedEventIds
-        : orderedEventIds
-              .where(
-                (id) => groups[id]!.any(
-                  (d) => d.eventTitle.toLowerCase().contains(query),
-                ),
-              )
-              .toList();
+    // Chained, not combined into one predicate — search narrows by name,
+    // urgency and type each narrow by their own facet of the same list, so
+    // any combination (e.g. "Overdue" + "Financial") is just two filters
+    // applied in sequence rather than a special case to keep in sync.
+    final visibleEventIds = orderedEventIds
+        .where(
+          (id) =>
+              query.isEmpty ||
+              groups[id]!.any(
+                (d) => d.eventTitle.toLowerCase().contains(query),
+              ),
+        )
+        .where(
+          (id) =>
+              _pendingUrgencyFilter == null ||
+              groups[id]!.any(
+                (d) => _pendingUrgencyFilter == 'overdue'
+                    ? isOverdue(d)
+                    : isDueSoonItem(d),
+              ),
+        )
+        .where(
+          (id) =>
+              _pendingTypeFilter == null ||
+              groups[id]!.any((d) => d.type == _pendingTypeFilter),
+        )
+        .toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -984,6 +1028,69 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
               ),
             ),
           ),
+        // ── Quick filters ─────────────────────────────────────────────────
+        // Each facet narrows the same list from a different angle — urgency
+        // and type are independent, so both can be active at once.
+        if (eventCount > 0)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(28, 12, 28, 0),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _PendingFilterChip(
+                  label: 'All',
+                  selected:
+                      _pendingUrgencyFilter == null &&
+                      _pendingTypeFilter == null,
+                  color: _DS.textSecondary,
+                  onTap: () => setState(() {
+                    _pendingUrgencyFilter = null;
+                    _pendingTypeFilter = null;
+                  }),
+                ),
+                _PendingFilterChip(
+                  label: 'Overdue',
+                  selected: _pendingUrgencyFilter == 'overdue',
+                  color: _DS.statusOverdue,
+                  onTap: () => setState(
+                    () => _pendingUrgencyFilter =
+                        _pendingUrgencyFilter == 'overdue' ? null : 'overdue',
+                  ),
+                ),
+                _PendingFilterChip(
+                  label: 'Due Soon',
+                  selected: _pendingUrgencyFilter == 'dueSoon',
+                  color: _DS.statusDueSoon,
+                  onTap: () => setState(
+                    () => _pendingUrgencyFilter =
+                        _pendingUrgencyFilter == 'dueSoon' ? null : 'dueSoon',
+                  ),
+                ),
+                _PendingFilterChip(
+                  label: 'Financial',
+                  selected: _pendingTypeFilter == 'financial',
+                  color: _DS.typeFinancial,
+                  onTap: () => setState(
+                    () => _pendingTypeFilter = _pendingTypeFilter == 'financial'
+                        ? null
+                        : 'financial',
+                  ),
+                ),
+                _PendingFilterChip(
+                  label: 'Accomplishment',
+                  selected: _pendingTypeFilter == 'accomplishment',
+                  color: _DS.typeAccomplishment,
+                  onTap: () => setState(
+                    () => _pendingTypeFilter =
+                        _pendingTypeFilter == 'accomplishment'
+                        ? null
+                        : 'accomplishment',
+                  ),
+                ),
+              ],
+            ),
+          ),
         const SizedBox(height: 16),
         // ── Grid ──────────────────────────────────────────────────────────
         // A catalogue grid rather than a table, on the merch screen's
@@ -1008,7 +1115,9 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
                       Text(
                         eventCount == 0
                             ? 'All reports for your finished events are submitted.'
-                            : 'No pending reports match "$query".',
+                            : query.isNotEmpty
+                            ? 'No pending reports match "$query".'
+                            : 'No pending reports match the selected filters.',
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 13.5,
                           color: _DS.textSecondary,
@@ -1026,19 +1135,27 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
                   gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                     // Wider than the merch grid's 280. A product photo is
                     // square; an event banner is not, and a narrower column
-                    // squeezed "Upload Accomplishment" against the edge of
-                    // its own button.
+                    // squeezed the report rows against the edge of the card.
                     maxCrossAxisExtent: 360,
-                    mainAxisExtent: 272,
+                    mainAxisExtent: 306,
                     crossAxisSpacing: 18,
                     mainAxisSpacing: 18,
                   ),
                   itemCount: visibleEventIds.length,
                   itemBuilder: (_, idx) {
                     final eventId = visibleEventIds[idx];
+                    final eventItems = groups[eventId]!;
+                    final eventSubmitted =
+                        submittedTypesByEvent[eventId] ?? const {};
                     return _PendingEventCard(
-                      items: groups[eventId]!,
+                      items: eventItems,
+                      submittedTypes: eventSubmitted,
                       onUpload: (type) => _openPrefillModal(eventId, type),
+                      onOpenDetails: () => _openPendingReportDetails(
+                        eventItems,
+                        eventSubmitted,
+                        (type) => _openPrefillModal(eventId, type),
+                      ),
                     );
                   },
                 ),
@@ -1501,6 +1618,30 @@ class _OrgReportsScreenState extends State<OrgReportsScreen> {
     );
   }
 
+  // Raised by a tap on a _PendingEventCard's body. Takes the same
+  // per-event items/submittedTypes the card itself was built from — no
+  // extra Firestore read — and hands its own Upload taps straight to
+  // onUpload after closing itself, so the flow is identical to pressing
+  // Upload on the card directly.
+  void _openPendingReportDetails(
+    List<_PendingEventDeadline> items,
+    Set<String> submittedTypes,
+    ValueChanged<String> onUpload,
+  ) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (dialogContext) => _PendingReportDetailsModal(
+        items: items,
+        submittedTypes: submittedTypes,
+        onUpload: (type) {
+          Navigator.pop(dialogContext);
+          onUpload(type);
+        },
+      ),
+    );
+  }
+
   Future<void> _archiveReport(ReportModel report) async {
     final ok = await _confirm(
       title: 'Archive Report',
@@ -1613,18 +1754,31 @@ class _PendingEventDeadline {
 }
 
 // ── Card for the Pending Reports grid ────────────────────────────────────
-// The merch card's shape — banner on top, details beneath, actions that
-// surface on hover — because this is the one list in the portal where a
-// picture already does the identifying.
-//
-// One thing the merch card never has to do: that screen is a catalogue and
-// this page is a to-do list. Letting the banner take most of the card would
-// bury the only thing the page exists to say, so the status rides on the
-// banner as a pill as well as under it as text.
+// A task queue, not a catalogue. The banner used to be the card — full
+// height, with "Upload Financial"/"Upload Accomplishment" hidden behind an
+// AnimatedOpacity overlay that only appeared on hover, so 15 of 16 cards in
+// a grid showed no action at all. The banner is now a small identifier, and
+// every report the event still owes gets its own row with its own
+// always-visible button — nothing here needs a hover to be understood.
 class _PendingEventCard extends StatefulWidget {
   final List<_PendingEventDeadline> items;
+  // Types already submitted for this event — disjoint from `items` by
+  // construction (_pendingDeadlines only ever puts a type in one or the
+  // other), read here only to render a "Submitted" row instead of letting
+  // the report silently disappear from the card.
+  final Set<String> submittedTypes;
   final ValueChanged<String> onUpload;
-  const _PendingEventCard({required this.items, required this.onUpload});
+  // Opens the Pending Report Details modal — fired by a tap anywhere on the
+  // card body. The Upload buttons nested inside carry their own InkWell, so
+  // a tap on one of those is claimed by that inner recognizer during the
+  // gesture arena's sweep and never reaches this outer handler as well.
+  final VoidCallback onOpenDetails;
+  const _PendingEventCard({
+    required this.items,
+    required this.submittedTypes,
+    required this.onUpload,
+    required this.onOpenDetails,
+  });
 
   @override
   State<_PendingEventCard> createState() => _PendingEventCardState();
@@ -1633,13 +1787,21 @@ class _PendingEventCard extends StatefulWidget {
 class _PendingEventCardState extends State<_PendingEventCard> {
   bool _hovering = false;
 
-  // Financial first, so the two buttons never swap places between cards.
+  // Financial first, so it never swaps position with Accomplishment
+  // between cards — same order the report rows below are drawn in.
   List<_PendingEventDeadline> get _ordered {
     final sorted = [...widget.items];
     sorted.sort(
       (a, b) => a.type == b.type ? 0 : (a.type == 'financial' ? -1 : 1),
     );
     return sorted;
+  }
+
+  DateTime? _deadlineFor(String type) {
+    for (final d in widget.items) {
+      if (d.type == type) return d.deadline;
+    }
+    return null;
   }
 
   Widget _banner(_PendingEventDeadline first) {
@@ -1651,7 +1813,7 @@ class _PendingEventCardState extends State<_PendingEventCard> {
         child: Text(
           title.isEmpty ? '?' : title[0].toUpperCase(),
           style: GoogleFonts.beVietnamPro(
-            fontSize: 42,
+            fontSize: 26,
             fontWeight: FontWeight.w700,
             color: _DS.primary.withAlpha(80),
           ),
@@ -1678,8 +1840,7 @@ class _PendingEventCardState extends State<_PendingEventCard> {
     final earliest = items
         .map((d) => d.deadline)
         .reduce((a, b) => a.isBefore(b) ? a : b);
-    final daysLeft = now.difference(earliest).inDays.abs();
-    final isDueSoon = !anyOverdue && daysLeft <= 3;
+    final isDueSoon = !anyOverdue && now.difference(earliest).inDays.abs() <= 3;
 
     final statusColor = anyOverdue
         ? _DS.statusOverdue
@@ -1692,50 +1853,65 @@ class _PendingEventCardState extends State<_PendingEventCard> {
         ? Icons.schedule_rounded
         : Icons.check_circle_outline_rounded;
 
+    // Fixed order — Financial, then Accomplishment — built from whichever
+    // of the two are either still pending or already submitted, so a type
+    // this event never required (not pending, not submitted) draws no row.
+    final requiredTypes = <String>[
+      if (items.any((d) => d.type == 'financial') ||
+          widget.submittedTypes.contains('financial'))
+        'financial',
+      if (items.any((d) => d.type == 'accomplishment') ||
+          widget.submittedTypes.contains('accomplishment'))
+        'accomplishment',
+    ];
+
     return MouseRegion(
+      cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
-      child: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: _DS.border),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(11),
-                  boxShadow: _hovering
-                      ? [
-                          BoxShadow(
-                            color: Colors.black.withAlpha(30),
-                            blurRadius: 18,
-                            offset: const Offset(0, 8),
-                          ),
-                        ]
-                      : _DS.cardShadow,
-                ),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onOpenDetails,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: _hovering ? _DS.primary.withAlpha(90) : _DS.border,
+            ),
+            boxShadow: _hovering
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withAlpha(26),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                  ]
+                : _DS.cardShadow,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Banner ── identifies the event; no longer carries the
+              // page's only action, so it no longer needs most of the card.
+              SizedBox(
+                height: 76,
+                width: double.infinity,
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(11),
+                  borderRadius: BorderRadius.circular(10),
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
                       _banner(first),
-                      // On the banner, so it survives the picture taking
-                      // most of the card — this is what you scan the grid
-                      // for. Icon and word together, never the colour alone.
                       Positioned(
-                        left: 8,
-                        top: 8,
+                        left: 7,
+                        top: 7,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 9,
-                            vertical: 5,
+                            horizontal: 8,
+                            vertical: 4,
                           ),
                           decoration: BoxDecoration(
                             color: statusColor,
@@ -1744,16 +1920,12 @@ class _PendingEventCardState extends State<_PendingEventCard> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(statusIcon, size: 12, color: Colors.white),
+                              Icon(statusIcon, size: 11, color: Colors.white),
                               const SizedBox(width: 4),
                               Text(
-                                anyOverdue
-                                    ? 'Overdue'
-                                    : isDueSoon
-                                    ? 'Due Soon'
-                                    : 'On Track',
+                                _cardStatusLabel(anyOverdue, earliest, now),
                                 style: GoogleFonts.beVietnamPro(
-                                  fontSize: 10,
+                                  fontSize: 9.5,
                                   fontWeight: FontWeight.w700,
                                   color: Colors.white,
                                 ),
@@ -1762,148 +1934,280 @@ class _PendingEventCardState extends State<_PendingEventCard> {
                           ),
                         ),
                       ),
-                      // Revealed on hover, the way the merch card reveals
-                      // its edit and archive icons. The scrim is what keeps
-                      // the buttons legible over a banner of any colour.
-                      Positioned.fill(
-                        child: IgnorePointer(
-                          ignoring: !_hovering,
-                          child: AnimatedOpacity(
-                            duration: const Duration(milliseconds: 150),
-                            opacity: _hovering ? 1 : 0,
-                            child: Container(
-                              padding: const EdgeInsets.all(10),
-                              alignment: Alignment.bottomCenter,
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.center,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    Colors.black.withAlpha(0),
-                                    Colors.black.withAlpha(170),
-                                  ],
-                                ),
-                              ),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  for (var i = 0; i < items.length; i++) ...[
-                                    if (i > 0) const SizedBox(height: 6),
-                                    _UploadNowButton(
-                                      label: items[i].type == 'financial'
-                                          ? 'Upload Financial'
-                                          : 'Upload Accomplishment',
-                                      color: items[i].type == 'financial'
-                                          ? _DS.typeFinancial
-                                          : _DS.typeAccomplishment,
-                                      onTap: () =>
-                                          widget.onUpload(items[i].type),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
                     ],
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 10),
-            // The same two hues the buttons wear, so the chip and the
-            // button you press for it are recognisably the same thing.
-            Row(
-              children: [
-                for (var i = 0; i < items.length; i++) ...[
-                  if (i > 0) const SizedBox(width: 5),
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: items[i].type == 'financial'
-                          ? _DS.typeFinancial
-                          : _DS.typeAccomplishment,
-                      shape: BoxShape.circle,
+              const SizedBox(height: 10),
+              // ── Event info ── name carries the most weight; when it
+              // happened is secondary, read off the same eventDate the
+              // deadline itself was computed from.
+              Text(
+                first.eventTitle,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: _DS.textPrimary,
+                  height: 1.2,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 3),
+              Row(
+                children: [
+                  Icon(
+                    Icons.event_available_rounded,
+                    size: 12,
+                    color: _DS.textHint,
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      'Held ${DateFormat('MMM d, yyyy').format(first.eventDate)}',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 11,
+                        color: _DS.textSecondary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
-                const SizedBox(width: 7),
-                Expanded(
-                  child: Text(
-                    items
-                        .map(
-                          (d) => d.type == 'financial'
-                              ? 'Financial'
-                              : 'Accomplishment',
-                        )
-                        .join(' & ')
-                        .toUpperCase(),
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.w700,
-                      color: _DS.textSecondary,
-                      letterSpacing: 0.4,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              first.eventTitle,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: _DS.textPrimary,
-                height: 1.25,
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Icon(statusIcon, size: 12, color: statusColor),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    anyOverdue
-                        ? 'Overdue by $daysLeft day${daysLeft > 1 ? 's' : ''}'
-                        : 'Due in $daysLeft day${daysLeft > 1 ? 's' : ''}',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: statusColor,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+              const SizedBox(height: 10),
+              Text(
+                'REPORTS REQUIRED',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w700,
+                  color: _DS.textHint,
+                  letterSpacing: 0.6,
+                ),
+              ),
+              const SizedBox(height: 6),
+              for (var i = 0; i < requiredTypes.length; i++) ...[
+                if (i > 0) const SizedBox(height: 6),
+                _ReportRequirementRow(
+                  type: requiredTypes[i],
+                  deadline: _deadlineFor(requiredTypes[i]),
+                  submitted: widget.submittedTypes.contains(requiredTypes[i]),
+                  now: now,
+                  onUpload: () => widget.onUpload(requiredTypes[i]),
                 ),
               ],
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-// Coloured by which report it uploads, not by how late that report is.
-// This button has now been three colours: #DC2626, which made the one thing
-// you are meant to press look like a fourth restatement of the problem; then
-// brand orange, which was correct but told you nothing, and sat dark and
-// heavy over a photograph. Financial and Accomplishment are two different
-// errands, and that is the only thing the colour of the button has to say.
+// "Overdue · N days" / "Due today" / "Due tomorrow" / "Due Sep 30" for the
+// banner pill — the card-level rollup across every report this event still
+// owes. _ReportRequirementRow phrases the same math per report ("Overdue
+// by N days") since each report can carry its own deadline.
+String _cardStatusLabel(bool anyOverdue, DateTime deadline, DateTime now) {
+  if (anyOverdue) {
+    final days = _daysBetween(deadline, now);
+    return 'Overdue · $days day${days == 1 ? '' : 's'}';
+  }
+  final diff = _daysBetween(now, deadline);
+  if (diff == 0) return 'Due today';
+  if (diff == 1) return 'Due tomorrow';
+  return 'Due ${DateFormat('MMM d').format(deadline)}';
+}
+
+int _daysBetween(DateTime a, DateTime b) {
+  final da = DateTime(a.year, a.month, a.day);
+  final db = DateTime(b.year, b.month, b.day);
+  return db.difference(da).inDays.abs();
+}
+
+// "Overdue by N days" / "Due today" / "Due tomorrow" / "Due Sep 30" for a
+// single report's own deadline — shared by _ReportRequirementRow (grid
+// card) and the Pending Report Details modal so the wording never drifts
+// between the two places the same deadline gets shown.
+String _reportDueLabel(DateTime deadline, DateTime now) {
+  final overdue = now.isAfter(deadline);
+  if (overdue) {
+    final days = _daysBetween(deadline, now);
+    return 'Overdue by $days day${days == 1 ? '' : 's'}';
+  }
+  final diff = _daysBetween(now, deadline);
+  if (diff == 0) return 'Due today';
+  if (diff == 1) return 'Due tomorrow';
+  return 'Due ${DateFormat('MMM d').format(deadline)}';
+}
+
+// One row per report the event owes — replaces the old "FINANCIAL &
+// ACCOMPLISHMENT" caption line. Financial and Accomplishment are told apart
+// by icon and label, not colour — both share the one UPRISE brand colour
+// (_DS.primary), matching the Pending Report Details modal's upload
+// buttons. _DS.typeFinancial/typeAccomplishment still exist for the page's
+// own quick-filter chips, just not for this row anymore. A report already
+// turned in renders as a resolved state instead of just vanishing.
+class _ReportRequirementRow extends StatelessWidget {
+  final String type; // 'financial' | 'accomplishment'
+  final DateTime? deadline;
+  final bool submitted;
+  final DateTime now;
+  final VoidCallback onUpload;
+  const _ReportRequirementRow({
+    required this.type,
+    required this.deadline,
+    required this.submitted,
+    required this.now,
+    required this.onUpload,
+  });
+
+  bool get _isFinancial => type == 'financial';
+
+  @override
+  Widget build(BuildContext context) {
+    final typeLabel = _isFinancial
+        ? 'Financial Report'
+        : 'Accomplishment Report';
+
+    IconData badgeIcon;
+    Color badgeColor;
+    Color subColor;
+    String subLabel;
+
+    if (submitted) {
+      badgeIcon = Icons.check_circle_rounded;
+      badgeColor = _DS.statusOnTrack;
+      subColor = _DS.statusOnTrack;
+      subLabel = 'Submitted';
+    } else {
+      badgeIcon = _isFinancial
+          ? Icons.account_balance_outlined
+          : Icons.assignment_turned_in_outlined;
+      // One UPRISE brand color for both report types, matching the Pending
+      // Report Details modal's _ModalUploadButton — the row's own icon and
+      // label already say Financial vs Accomplishment, so the button only
+      // needs to read as "act on this", not restate which report it is.
+      badgeColor = _DS.primary;
+      final d = deadline ?? now;
+      final overdue = now.isAfter(d);
+      final dueSoon = !overdue && now.difference(d).inDays.abs() <= 3;
+      subColor = overdue
+          ? _DS.statusOverdue
+          : dueSoon
+          ? _DS.statusDueSoon
+          : _DS.statusOnTrack;
+      subLabel = _reportDueLabel(d, now);
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Container(
+          width: 22,
+          height: 22,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: badgeColor.withAlpha(28),
+            borderRadius: BorderRadius.circular(7),
+          ),
+          child: Icon(badgeIcon, size: 12, color: badgeColor),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                typeLabel,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: _DS.textPrimary,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(
+                subLabel,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w600,
+                  color: subColor,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+        if (!submitted) ...[
+          const SizedBox(width: 6),
+          _UploadNowButton(color: _DS.primary, onTap: onUpload),
+        ],
+      ],
+    );
+  }
+}
+
+// Compact and always visible — this used to be a full-width button hidden
+// inside an AnimatedOpacity overlay that only appeared on hover. It is now
+// sized to its own label so a grid of many cards doesn't turn into a wall
+// of saturated colour, but it never needs a hover to be seen or pressed.
+// `color` is now always _DS.primary at the one call site (see
+// _ReportRequirementRow) — kept as a parameter rather than hardcoded so a
+// future caller isn't forced to reuse this exact brand colour.
 class _UploadNowButton extends StatelessWidget {
-  final String label;
   final Color color;
   final VoidCallback onTap;
-  const _UploadNowButton({
+  const _UploadNowButton({required this.color, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(7),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(7),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.upload_rounded, size: 12, color: Colors.white),
+              const SizedBox(width: 4),
+              Text(
+                'Upload',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Small toggle pill for the Pending Reports quick filters — see
+// _buildPendingPage's chained .where() calls for how urgency and type each
+// narrow the grid independently.
+class _PendingFilterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
+  const _PendingFilterChip({
     required this.label,
+    required this.selected,
     required this.color,
     required this.onTap,
   });
@@ -1913,29 +2217,497 @@ class _UploadNowButton extends StatelessWidget {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+          decoration: BoxDecoration(
+            color: selected ? color.withAlpha(24) : Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: selected ? color.withAlpha(140) : _DS.border,
+            ),
+          ),
+          child: Text(
+            label,
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: selected ? color : _DS.textSecondary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pending Report Details Modal
+// ─────────────────────────────────────────────────────────────────────────────
+// Opened by tapping a _PendingEventCard. Built on the same OrgModalShell /
+// OrgModalSection / OrgDetailItem shell org_event_proposals.dart's own
+// details modal (_ViewProposalModal) uses — dark compact header, image on
+// the left, sectioned details on the right — so the two read as one
+// system. Takes the exact items/submittedTypes the card already computed
+// from _pendingDeadlines; no separate Firestore read of its own.
+class _PendingReportDetailsModal extends StatelessWidget {
+  final List<_PendingEventDeadline> items;
+  final Set<String> submittedTypes;
+  final ValueChanged<String> onUpload;
+  const _PendingReportDetailsModal({
+    required this.items,
+    required this.submittedTypes,
+    required this.onUpload,
+  });
+
+  // Financial first, matching the card and every other list on this page.
+  List<_PendingEventDeadline> get _ordered {
+    final sorted = [...items];
+    sorted.sort(
+      (a, b) => a.type == b.type ? 0 : (a.type == 'financial' ? -1 : 1),
+    );
+    return sorted;
+  }
+
+  DateTime? _deadlineFor(String type) {
+    for (final d in items) {
+      if (d.type == type) return d.deadline;
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ordered = _ordered;
+    final first = ordered.first;
+    final now = DateTime.now();
+    final anyOverdue = ordered.any((d) => now.isAfter(d.deadline));
+    final earliest = ordered
+        .map((d) => d.deadline)
+        .reduce((a, b) => a.isBefore(b) ? a : b);
+    final isDueSoon = !anyOverdue && now.difference(earliest).inDays.abs() <= 3;
+    final overallLabel = anyOverdue
+        ? 'Overdue'
+        : isDueSoon
+        ? 'Due Soon'
+        : 'On Track';
+    final overallColor = anyOverdue
+        ? _DS.statusOverdue
+        : isDueSoon
+        ? _DS.statusDueSoon
+        : _DS.statusOnTrack;
+
+    // Same fixed order and membership rule the card uses: a type draws a
+    // row only if it is still pending or was already submitted for this
+    // event, so a type this event never required is simply absent.
+    final requiredTypes = <String>[
+      if (ordered.any((d) => d.type == 'financial') ||
+          submittedTypes.contains('financial'))
+        'financial',
+      if (ordered.any((d) => d.type == 'accomplishment') ||
+          submittedTypes.contains('accomplishment'))
+        'accomplishment',
+    ];
+
+    return OrgModalShell(
+      accentColor: UpriseColors.primaryDark,
+      headerColor: UpriseColors.primaryDark,
+      compactHeader: true,
+      icon: Icons.assignment_late_rounded,
+      title: first.eventTitle,
+      width: 840,
+      maxHeightFraction: 0.85,
+      subtitleWidget: Row(
+        children: [
+          _pendingStatusBadge(overallLabel, overallColor),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '${requiredTypes.length} report${requiredTypes.length == 1 ? '' : 's'} required',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 12,
+                color: Colors.white.withAlpha(180),
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+      footerActions: [
+        OutlinedButton(
+          onPressed: () => Navigator.pop(context),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: _DS.textSecondary,
+            side: const BorderSide(color: _DS.border),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
+          ),
+          child: Text(
+            'Close',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+      // Fixed-height Row, image left / details right — the same shape
+      // _ViewProposalModal's body uses, just with report content instead
+      // of proposal fields on the right.
+      body: SizedBox(
+        height: 460,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              flex: 4,
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: _DS.primaryBg,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFE2E6EA)),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: first.bannerUrl.isEmpty
+                            ? Center(
+                                child: Text(
+                                  first.eventTitle.trim().isEmpty
+                                      ? '?'
+                                      : first.eventTitle
+                                            .trim()[0]
+                                            .toUpperCase(),
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 40,
+                                    fontWeight: FontWeight.w700,
+                                    color: _DS.primary.withAlpha(80),
+                                  ),
+                                ),
+                              )
+                            : EventImage(
+                                imageUrl: first.bannerUrl,
+                                fit: BoxFit.cover,
+                                showLoadingIndicator: false,
+                              ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    // ── Deadline summary ── red for overdue, the same
+                    // soft warning tint the "Due Soon" pill elsewhere on
+                    // this page uses for upcoming ones.
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: anyOverdue
+                            ? const Color(0xFFFEF2F2)
+                            : isDueSoon
+                            ? const Color(0xFFFFFBEB)
+                            : const Color(0xFFECFDF5),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: anyOverdue
+                              ? const Color(0xFFFCA5A5)
+                              : isDueSoon
+                              ? const Color(0xFFFDE68A)
+                              : const Color(0xFFA7F3D0),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'REPORT DEADLINE',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: _DS.textHint,
+                              letterSpacing: 0.6,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            DateFormat('MMM d, yyyy').format(earliest),
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: _DS.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            _reportDueLabel(earliest, now),
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: overallColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Expanded(
+              flex: 6,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(4, 20, 24, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    OrgModalSection(
+                      title: 'Event / Report Details',
+                      icon: Icons.info_outline_rounded,
+                      accentColor: UpriseColors.primaryDark,
+                      child: Column(
+                        children: [
+                          OrgDetailItem(
+                            label: 'Event Date',
+                            value: DateFormat(
+                              'MMMM d, yyyy',
+                            ).format(first.eventDate),
+                            icon: Icons.event_rounded,
+                            iconColor: UpriseColors.primaryDark,
+                          ),
+                          const SizedBox(height: 14),
+                          OrgDetailItem(
+                            label: 'Report Deadline',
+                            value: DateFormat('MMMM d, yyyy').format(earliest),
+                            icon: Icons.schedule_rounded,
+                            iconColor: UpriseColors.primaryDark,
+                          ),
+                          const SizedBox(height: 14),
+                          OrgDetailItem(
+                            label: 'Overall Status',
+                            value: overallLabel,
+                            icon: anyOverdue
+                                ? Icons.error_outline_rounded
+                                : isDueSoon
+                                ? Icons.schedule_rounded
+                                : Icons.check_circle_outline_rounded,
+                            iconColor: overallColor,
+                            valueColor: overallColor,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    OrgModalSection(
+                      title: 'Reports Required',
+                      icon: Icons.assignment_outlined,
+                      accentColor: UpriseColors.primaryDark,
+                      child: Column(
+                        children: [
+                          for (var i = 0; i < requiredTypes.length; i++) ...[
+                            if (i > 0) const SizedBox(height: 10),
+                            _ModalReportRow(
+                              type: requiredTypes[i],
+                              deadline: _deadlineFor(requiredTypes[i]),
+                              submitted: submittedTypes.contains(
+                                requiredTypes[i],
+                              ),
+                              now: now,
+                              onUpload: () => onUpload(requiredTypes[i]),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Small status pill for the details modal's header — same bg/border/fg
+// recipe _buildPendingPage's own "N Overdue" header badge already uses, so
+// the color language stays identical between the page and this modal.
+Widget _pendingStatusBadge(String label, Color color) {
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(_DS.radiusPill),
+    ),
+    child: Text(
+      label.toUpperCase(),
+      style: GoogleFonts.beVietnamPro(
+        fontSize: 10,
+        fontWeight: FontWeight.w700,
+        color: color,
+        letterSpacing: 0.8,
+      ),
+    ),
+  );
+}
+
+// One row per required report inside the details modal — the boxed
+// counterpart of _ReportRequirementRow on the card, laid out the same way
+// ([icon] [info Expanded] [Upload]) so long titles never push the button
+// out of the card, per _ModalUploadButton's fixed size below.
+class _ModalReportRow extends StatelessWidget {
+  final String type; // 'financial' | 'accomplishment'
+  final DateTime? deadline;
+  final bool submitted;
+  final DateTime now;
+  final VoidCallback onUpload;
+  const _ModalReportRow({
+    required this.type,
+    required this.deadline,
+    required this.submitted,
+    required this.now,
+    required this.onUpload,
+  });
+
+  bool get _isFinancial => type == 'financial';
+
+  @override
+  Widget build(BuildContext context) {
+    final typeLabel = _isFinancial
+        ? 'Financial Report'
+        : 'Accomplishment Report';
+
+    IconData badgeIcon;
+    Color badgeColor;
+    Color subColor;
+    String subLabel;
+
+    if (submitted) {
+      badgeIcon = Icons.check_circle_rounded;
+      badgeColor = _DS.statusOnTrack;
+      subColor = _DS.statusOnTrack;
+      subLabel = 'Submitted';
+    } else {
+      badgeIcon = _isFinancial
+          ? Icons.account_balance_outlined
+          : Icons.assignment_turned_in_outlined;
+      // One brand color for both report types in this modal — deliberately
+      // not the card's cyan/indigo identity colors. The row's own icon and
+      // label already say which report this is; the button only has to
+      // say "act on this", so both buttons read as the same UPRISE action.
+      badgeColor = _DS.primary;
+      final d = deadline ?? now;
+      final overdue = now.isAfter(d);
+      final dueSoon = !overdue && now.difference(d).inDays.abs() <= 3;
+      subColor = overdue
+          ? _DS.statusOverdue
+          : dueSoon
+          ? _DS.statusDueSoon
+          : _DS.statusOnTrack;
+      subLabel = _reportDueLabel(d, now);
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFBFCFE),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _DS.border),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: badgeColor.withAlpha(28),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(badgeIcon, size: 16, color: badgeColor),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  typeLabel,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: _DS.textPrimary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subLabel,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: subColor,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          if (!submitted) ...[
+            const SizedBox(width: 12),
+            _ModalUploadButton(onTap: onUpload),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// Both report rows share this exact button — same color, size, radius,
+// typography and padding — so the right edge of every Upload button in the
+// modal lines up regardless of which row it belongs to. Fixed width rather
+// than sized to the "Upload" label so that alignment can't drift.
+class _ModalUploadButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _ModalUploadButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: InkWell(
         borderRadius: BorderRadius.circular(8),
         onTap: onTap,
         child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          width: 96,
+          height: 34,
+          alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: color,
+            color: _DS.primary,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(
-                Icons.upload_file_rounded,
-                size: 14,
-                color: Colors.white,
-              ),
-              const SizedBox(width: 6),
+              const Icon(Icons.upload_rounded, size: 14, color: Colors.white),
+              const SizedBox(width: 5),
               Text(
-                label,
+                'Upload',
                 style: GoogleFonts.beVietnamPro(
-                  fontSize: 12,
+                  fontSize: 12.5,
                   fontWeight: FontWeight.w700,
                   color: Colors.white,
                 ),
@@ -2146,13 +2918,13 @@ class _ViewReportModal extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: _DS.primary.withAlpha(20),
+                        color: _DS.primary,
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Icon(
+                      child: const Icon(
                         Icons.insert_drive_file_rounded,
                         size: 20,
-                        color: _DS.primary,
+                        color: Colors.white,
                       ),
                     ),
                     const SizedBox(width: 12),

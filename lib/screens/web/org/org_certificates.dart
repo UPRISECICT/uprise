@@ -1,5 +1,6 @@
 // ignore_for_file: unnecessary_cast, unused_field, deprecated_member_use
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../widgets/stat_cards.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -15,7 +16,6 @@ import '../../../theme/org_theme.dart';
 import '../../../widgets/certificate_preview.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/org_action_icon_button.dart';
-import '../../../widgets/org_modal_shell.dart';
 import '../../../widgets/app_toast.dart';
 
 // ─── STATUS SUMMARY ITEM ──────────────────────────────────────
@@ -144,13 +144,24 @@ bool _feedbackMarkedGuest(Map<String, dynamic> data) =>
     data['isGuest'] == true || data['type'] == 'guest';
 
 Future<List<_RecipientStatusRow>> fetchRecipientStatus(String eventId) async {
-  final attSnap = await FirebaseFirestore.instance
+  // All four reads are independent of one another, so they run together
+  // instead of one after the other (this used to be three round trips in a
+  // row before the recipient list could appear).
+  final attFuture = FirebaseFirestore.instance
       .collection('events')
       .doc(eventId)
       .collection('attendances')
       .where('status', whereIn: ['present', 'late'])
       .get();
-  final fbDocs = await _fetchAllFeedbackForEvent(eventId);
+  final fbFuture = _fetchAllFeedbackForEvent(eventId);
+  final certFuture = FirebaseFirestore.instance
+      .collection('certificates')
+      .where('eventId', isEqualTo: eventId)
+      .where('status', isEqualTo: 'distributed')
+      .get();
+  final attSnap = await attFuture;
+  final fbDocs = await fbFuture;
+  final certSnap = await certFuture;
 
   final evaluatedUids = fbDocs
       .map((d) => d.data()['userId']?.toString())
@@ -161,12 +172,6 @@ Future<List<_RecipientStatusRow>> fetchRecipientStatus(String eventId) async {
       .map((d) => d.data()['guestEmail']?.toString())
       .whereType<String>()
       .toSet();
-
-  final certSnap = await FirebaseFirestore.instance
-      .collection('certificates')
-      .where('eventId', isEqualTo: eventId)
-      .where('status', isEqualTo: 'distributed')
-      .get();
 
   final certByKey = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
   for (final doc in certSnap.docs) {
@@ -239,6 +244,17 @@ String _renderableTemplateUrl(String url) {
   }
   return url;
 }
+
+// Preview-sized provider for a template image. Previews are shown at roughly
+// 600 logical px wide, so decoding the full-resolution file (Canva exports are
+// often 3000px+) is wasted work; the stored URL and the file itself are left
+// untouched, so anything that renders the certificate at full size still gets
+// full quality.
+ImageProvider _previewImageProvider(String url) => ResizeImage.resizeIfNeeded(
+  1400,
+  null,
+  NetworkImage(_renderableTemplateUrl(url)),
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Badge styles
@@ -572,8 +588,12 @@ class CertificateBatch {
   String get eventName => primary.eventName;
   String get organization => primary.organization;
   String get templateType => primary.templateType;
-  DateTime get date =>
-      records.map((r) => r.date).reduce((a, b) => a.isAfter(b) ? a : b);
+  // The derived values below are read many times per build (every row, the
+  // stat cards, the filters), so each is computed once per batch. `records`
+  // is final, which is what makes that safe.
+  late final DateTime date = records
+      .map((r) => r.date)
+      .reduce((a, b) => a.isAfter(b) ? a : b);
   String? get eventId => primary.eventId;
 
   // A doc in this batch is one of two unrelated things: a single draft
@@ -582,24 +602,25 @@ class CertificateBatch {
   // Counting docs treats those as the same unit, which is where the table's
   // numbers came apart — a draft batch for twenty people reported "1",
   // because the batch was one placeholder doc.
-  Iterable<CertificateRecord> get _issued =>
-      records.where((r) => r.status != 'draft');
+  late final List<CertificateRecord> _issued = records
+      .where((r) => r.status != 'draft')
+      .toList();
 
-  int get _intendedFromDraft => records
+  late final int _intendedFromDraft = records
       .where((r) => r.status == 'draft')
       .fold<int>(0, (n, r) => n + r.recipients);
 
-  int get sentCount => _issued.where((r) => r.status == 'distributed').length;
+  late final int sentCount = _issued
+      .where((r) => r.status == 'distributed')
+      .length;
 
   // A headcount. Before anything is issued the draft's own figure is the
   // only population there is; once certificates exist they are the
   // population, and the draft's figure still counts only while it is the
   // larger of the two — which is exactly while people are still waiting.
-  int get totalRecipients {
-    final issued = _issued.length;
-    final intended = _intendedFromDraft;
-    return issued > intended ? issued : intended;
-  }
+  late final int totalRecipients = _issued.length > _intendedFromDraft
+      ? _issued.length
+      : _intendedFromDraft;
 
   int get pendingCount {
     final left = totalRecipients - sentCount;
@@ -607,7 +628,7 @@ class CertificateBatch {
   }
 
   int get failedCount => records.where((r) => r.sendStatus == 'failed').length;
-  bool get isArchived => records.every((r) => r.archived);
+  late final bool isArchived = records.every((r) => r.archived);
 
   // Read off the same two numbers the table prints, so the badge and the
   // count cannot disagree. They used to be derived separately — batchStatus
@@ -670,17 +691,47 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
   // was issued from, with no refresh.
   String? _detailBatchKey;
 
+  // One live listener for the whole screen. The stat cards, the table and
+  // the detail page all read the batches grouped from it, so a snapshot is
+  // grouped once instead of once per widget on every rebuild (typing in the
+  // search box used to re-group every certificate three times per keystroke)
+  // and switching to the detail page can't resubscribe and sit on a spinner.
+  // Null until the first snapshot arrives.
+  StreamSubscription<QuerySnapshot>? _certsSub;
+  List<CertificateBatch>? _allBatches;
+  Object? _certsError;
+
+  @override
+  void initState() {
+    super.initState();
+    _certsSub = FirebaseFirestore.instance
+        .collection('certificates')
+        .where('orgId', isEqualTo: widget.orgId)
+        .orderBy('issuedAt', descending: true)
+        .snapshots()
+        .listen(
+          (snap) {
+            final batches = CertificateBatch.groupByEvent(
+              snap.docs.map((d) => CertificateRecord.fromFirestore(d)).toList(),
+            );
+            if (!mounted) return;
+            setState(() {
+              _allBatches = batches;
+              _certsError = null;
+            });
+          },
+          onError: (Object e) {
+            if (mounted) setState(() => _certsError = e);
+          },
+        );
+  }
+
   @override
   void dispose() {
+    _certsSub?.cancel();
     _searchController.dispose();
     super.dispose();
   }
-
-  late final Stream<QuerySnapshot> _certsStream = FirebaseFirestore.instance
-      .collection('certificates')
-      .where('orgId', isEqualTo: widget.orgId)
-      .orderBy('issuedAt', descending: true)
-      .snapshots();
 
   void _openGenerateFlow() {
     showDialog(
@@ -702,7 +753,7 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
     final isTablet = screenWidth < 1200;
 
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      backgroundColor: const Color(0xFFFBFCFE),
       // The batch detail view takes over the body instead of opening on top
       // of it, so the sidebar and top bar org_dashboard.dart wraps this
       // screen in stay visible — the same swap as the Pending Reports page
@@ -723,13 +774,11 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
   }
 
   Widget _buildStatsRow(bool isMobile, bool isTablet) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: _certsStream,
-      builder: (context, snapshot) {
-        final docs = snapshot.data?.docs ?? [];
-        final batchesForCounts = CertificateBatch.groupByEvent(
-          docs.map((d) => CertificateRecord.fromFirestore(d)).toList(),
-        );
+    return Builder(
+      builder: (context) {
+        final loading = _allBatches == null;
+        final batchesForCounts = _allBatches ?? const <CertificateBatch>[];
+        String fmt(int n) => loading ? '–' : '$n';
         // The table hides archived batches under every filter but
         // "Archived", so the cards summarising it work off the same set.
         final active = batchesForCounts.where((b) => !b.isArchived).toList();
@@ -769,7 +818,7 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
         final statCards = [
           StatCard(
             label: 'Certificate Batches',
-            value: '$batchCount',
+            value: fmt(batchCount),
             icon: Icons.card_membership_outlined,
             color: UpriseColors.primaryDark,
             selected: _selectedStatCard == 0,
@@ -777,7 +826,7 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
           ),
           StatCard(
             label: 'Total Recipients',
-            value: '$totalRec',
+            value: fmt(totalRec),
             icon: Icons.people_outline_rounded,
             color: UpriseColors.accent,
             selected: _selectedStatCard == 1,
@@ -785,7 +834,7 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
           ),
           StatCard(
             label: 'Distributed',
-            value: '$distributed',
+            value: fmt(distributed),
             icon: Icons.assignment_turned_in_outlined,
             color: UpriseColors.success,
             selected: _selectedStatCard == 2,
@@ -793,7 +842,7 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
           ),
           StatCard(
             label: 'Pending',
-            value: '$pending',
+            value: fmt(pending),
             icon: Icons.pending_outlined,
             color: UpriseColors.warning,
             selected: _selectedStatCard == 3,
@@ -865,7 +914,7 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
                     controller: _searchController,
                     style: GoogleFonts.beVietnamPro(fontSize: 12),
                     decoration: InputDecoration(
-                      hintText: 'Search certificates...',
+                      hintText: 'Search by event name or certificate ID…',
                       hintStyle: GoogleFonts.beVietnamPro(
                         fontSize: 12,
                         color: UpriseColors.greyText,
@@ -963,7 +1012,7 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
                       controller: _searchController,
                       style: GoogleFonts.beVietnamPro(fontSize: 13),
                       decoration: InputDecoration(
-                        hintText: 'Search by ID, event name, or organization…',
+                        hintText: 'Search by event name or certificate ID…',
                         hintStyle: GoogleFonts.beVietnamPro(
                           fontSize: 13,
                           color: UpriseColors.greyText,
@@ -1057,21 +1106,15 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
   Widget _buildTable(bool isMobile, bool isTablet) {
     final horizontalMargin = isMobile ? 12.0 : (isTablet ? 16.0 : 28.0);
 
-    return StreamBuilder<QuerySnapshot>(
-      stream: _certsStream,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+    return Builder(
+      builder: (context) {
+        if (_certsError != null && _allBatches == null) {
+          return Center(child: Text('Error: $_certsError'));
         }
-        if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        }
-
-        final docs = (snapshot.data?.docs ?? []).cast<QueryDocumentSnapshot>();
-        final allRecords = docs
-            .map((d) => CertificateRecord.fromFirestore(d))
-            .toList();
-        var batches = CertificateBatch.groupByEvent(allRecords);
+        // The page shell (stat cards, toolbar, table header) is already on
+        // screen; only the rows wait on the first snapshot.
+        final loading = _allBatches == null;
+        var batches = _allBatches ?? const <CertificateBatch>[];
 
         // Archived batches are hidden from every other filter (including
         // "All") and only surface when "Archived" is explicitly selected —
@@ -1124,7 +1167,9 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
             children: [
               _buildTableHeader(),
               Expanded(
-                child: batches.isEmpty
+                child: loading
+                    ? _buildSkeletonRows()
+                    : batches.isEmpty
                     ? _buildEmptyState()
                     : ListView.builder(
                         itemCount: pageItems.length,
@@ -1132,7 +1177,8 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
                             _buildRow(pageItems[i], i == pageItems.length - 1),
                       ),
               ),
-              _buildFooter(batches.length, totalPages, start, end, isMobile),
+              if (!loading)
+                _buildFooter(batches.length, totalPages, start, end, isMobile),
             ],
           ),
         );
@@ -1160,11 +1206,9 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF7ED),
+        color: const Color(0xFFF8FAFC),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-        border: Border(
-          bottom: BorderSide(color: UpriseColors.primaryDark.withAlpha(60)),
-        ),
+        border: const Border(bottom: BorderSide(color: Color(0xFFE8ECF0))),
       ),
       child: Row(
         children: [
@@ -1200,25 +1244,31 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
   Widget _buildRow(CertificateBatch b, bool isLast) {
     final r = b.primary;
     return InkWell(
-      hoverColor: const Color(0xFFF8F9FB),
+      hoverColor: UpriseColors.primaryDark.withAlpha(10),
       onTap: () => _viewBatch(b),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         decoration: BoxDecoration(
           border: isLast
               ? null
               : const Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
         ),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Expanded(
               flex: 3,
-              child: Text(
-                b.eventName,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: const Color(0xFF1A202C),
+              child: Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: Text(
+                  b.eventName,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF1A202C),
+                  ),
                 ),
               ),
             ),
@@ -1292,6 +1342,51 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
     );
   }
 
+  Widget _buildSkeletonRows() {
+    Widget bar(double w) => Container(
+      width: w,
+      height: 12,
+      decoration: BoxDecoration(
+        color: const Color(0xFFEEF1F5),
+        borderRadius: BorderRadius.circular(4),
+      ),
+    );
+    return ListView.builder(
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: 6,
+      itemBuilder: (_, i) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              flex: 3,
+              child: Align(alignment: Alignment.centerLeft, child: bar(180)),
+            ),
+            Expanded(
+              flex: 2,
+              child: Align(alignment: Alignment.centerLeft, child: bar(80)),
+            ),
+            Expanded(
+              flex: 2,
+              child: Align(alignment: Alignment.centerLeft, child: bar(60)),
+            ),
+            Expanded(
+              flex: 2,
+              child: Align(alignment: Alignment.centerLeft, child: bar(70)),
+            ),
+            Expanded(
+              flex: 3,
+              child: Align(alignment: Alignment.centerRight, child: bar(90)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // One quantity on every row — how many of this event's recipients are
   // holding their certificate — instead of a bare headcount on draft rows
   // and a ratio on sent ones. The bare number was also wrong: a draft batch
@@ -1346,17 +1441,12 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
   // row handed over, so the counts and the status badge on this page move
   // the moment a certificate is issued from it.
   Widget _buildDetailPage(String batchKey) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: _certsStream,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+    return Builder(
+      builder: (context) {
+        final batches = _allBatches;
+        if (batches == null) {
           return const Center(child: CircularProgressIndicator());
         }
-        final batches = CertificateBatch.groupByEvent(
-          (snapshot.data?.docs ?? [])
-              .map((d) => CertificateRecord.fromFirestore(d))
-              .toList(),
-        );
         CertificateBatch? found;
         for (final candidate in batches) {
           if (candidate.batchKey == batchKey) {
@@ -2104,82 +2194,101 @@ class _BatchDetailPageState extends State<_BatchDetailPage> {
     }
   }
 
-  Widget _buildSummarySection(
+  // Held in state, not created inside build: a fresh `.snapshots()` per
+  // build handed the StreamBuilder a "new" stream every time, so the preview
+  // tore down and re-subscribed on every filter tap or batch update.
+  late final Stream<QuerySnapshot> _signatoriesStream = FirebaseFirestore
+      .instance
+      .collection('signatories')
+      .snapshots();
+
+  Widget _cardShell({required String label, required Widget child}) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE8ECF0)),
+        boxShadow: _DS.cardShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w700,
+              color: UpriseColors.darkGray,
+              letterSpacing: 0.7,
+            ),
+          ),
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
+    );
+  }
+
+  // A compact strip, not four cards: the four numbers are also the recipient
+  // list's filters, so each stays a tappable inline "Label 12".
+  Widget _buildSummaryStrip(
     int total,
     int evaluated,
     int awaitingEval,
     int readyToSend,
   ) {
-    // A plain text row, not a card. Four numbers don't need a bordered,
-    // shadowed panel with an orange accent bar and an orange title on top of
-    // them — that framing made the summary compete with the recipient list
-    // for attention when it's really just a caption with a filter attached.
-    // Every count is the same charcoal; the accent color survives only as
-    // the underline under whichever filter is active.
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'SUMMARY',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 10.5,
-            fontWeight: FontWeight.w600,
-            color: UpriseColors.darkGray,
-            letterSpacing: 0.6,
+    void toggle(String value) => setState(() {
+      _filterTouched = true;
+      _statusFilter = _statusFilter == value ? 'All' : value;
+    });
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFE8ECF0)),
+      ),
+      // Wrap, not Row: at a narrow column four label+number pairs would
+      // otherwise overflow rather than move to a second line.
+      child: Wrap(
+        spacing: 22,
+        runSpacing: 8,
+        children: [
+          _StatusSummaryItem(
+            label: 'Total',
+            count: total,
+            color: UpriseColors.charcoal,
+            isSelected: _statusFilter == 'All' && _filterTouched,
+            onTap: () => setState(() {
+              _statusFilter = 'All';
+              _filterTouched = true;
+            }),
           ),
-        ),
-        const SizedBox(height: 10),
-        // Wrap, not Row: at a narrow right column four label+number pairs
-        // would otherwise overflow rather than move to a second line.
-        Wrap(
-          spacing: 20,
-          runSpacing: 8,
-          children: [
-            _StatusSummaryItem(
-              label: 'Total',
-              count: total,
-              color: UpriseColors.charcoal,
-              isSelected: _statusFilter == 'All' && _filterTouched,
-              onTap: () => setState(() {
-                _statusFilter = 'All';
-                _filterTouched = true;
-              }),
-            ),
-            _StatusSummaryItem(
-              label: 'Evaluated',
-              count: evaluated,
-              color: UpriseColors.success,
-              isSelected: _statusFilter == 'evaluated',
-              onTap: () => setState(() {
-                _filterTouched = true;
-                _statusFilter = _statusFilter == 'evaluated'
-                    ? 'All'
-                    : 'evaluated';
-              }),
-            ),
-            _StatusSummaryItem(
-              label: 'Waiting',
-              count: awaitingEval,
-              color: UpriseColors.warning,
-              isSelected: _statusFilter == 'waiting',
-              onTap: () => setState(() {
-                _filterTouched = true;
-                _statusFilter = _statusFilter == 'waiting' ? 'All' : 'waiting';
-              }),
-            ),
-            _StatusSummaryItem(
-              label: 'Ready',
-              count: readyToSend,
-              color: UpriseColors.primaryDark,
-              isSelected: _statusFilter == 'ready',
-              onTap: () => setState(() {
-                _filterTouched = true;
-                _statusFilter = _statusFilter == 'ready' ? 'All' : 'ready';
-              }),
-            ),
-          ],
-        ),
-      ],
+          _StatusSummaryItem(
+            label: 'Evaluated',
+            count: evaluated,
+            color: UpriseColors.success,
+            isSelected: _statusFilter == 'evaluated',
+            onTap: () => toggle('evaluated'),
+          ),
+          _StatusSummaryItem(
+            label: 'Waiting',
+            count: awaitingEval,
+            color: UpriseColors.warning,
+            isSelected: _statusFilter == 'waiting',
+            onTap: () => toggle('waiting'),
+          ),
+          _StatusSummaryItem(
+            label: 'Ready',
+            count: readyToSend,
+            color: UpriseColors.primaryDark,
+            isSelected: _statusFilter == 'ready',
+            onTap: () => toggle('ready'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2187,112 +2296,89 @@ class _BatchDetailPageState extends State<_BatchDetailPage> {
     final bool canSend = row.evaluated && !row.certSent;
     final bool awaitingEval = !row.evaluated;
 
-    // No row tint and no initials avatar. Every row carrying a full-width
-    // colored wash meant a list of ten recipients was ten colored bands,
-    // and the status was already being said twice — once by the band, once
-    // by the badge. The badge says it now; the row stays paper-white so the
-    // names read as a list instead of a stack of alerts.
+    Widget action;
+    if (awaitingEval) {
+      action = Text(
+        'Waiting',
+        style: GoogleFonts.beVietnamPro(
+          fontSize: 11,
+          color: const Color(0xFF9AA5B4),
+          fontWeight: FontWeight.w500,
+        ),
+      );
+    } else if (canSend) {
+      action = ElevatedButton.icon(
+        onPressed: () async {
+          await _runSend(
+            () => widget.onSendSingle(row.key, row.name, row.isGuest),
+          );
+        },
+        icon: const Icon(Icons.send_rounded, size: 14),
+        label: const Text('Send'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: UpriseColors.primaryDark,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+          elevation: 0,
+        ),
+      );
+    } else if (row.certSent) {
+      action = OutlinedButton.icon(
+        onPressed: () {
+          // Find the existing record for this recipient
+          final record = b.records.firstWhere(
+            (r) => r.recipientName == row.name,
+            orElse: () => b.records.first,
+          );
+          widget.onResend(record);
+        },
+        icon: const Icon(Icons.refresh_rounded, size: 14),
+        label: Text(
+          row.resendCount > 0 ? 'Resend ×${row.resendCount + 1}' : 'Resend',
+          style: GoogleFonts.beVietnamPro(fontSize: 11),
+        ),
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+          side: BorderSide(color: UpriseColors.primaryDark.withAlpha(100)),
+        ),
+      );
+    } else {
+      action = const SizedBox.shrink();
+    }
+
+    // Name over status, action on the right — every row reads the same way.
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 10),
       child: Row(
         children: [
-          // Name
           Expanded(
-            flex: 2,
-            child: Text(
-              row.name,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: const Color(0xFF1A202C),
-              ),
-              overflow: TextOverflow.ellipsis,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  row.name,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF1A202C),
+                  ),
+                ),
+                const SizedBox(height: 3),
+                _buildStatusBadge(row),
+              ],
             ),
           ),
-          // Status badge
-          Expanded(
-            flex: 1,
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: _buildStatusBadge(row),
-            ),
-          ),
-          const SizedBox(width: 8),
-          // Action button
-          if (awaitingEval)
-            // Plain text, not a filled pill — nothing is actionable here,
-            // so it shouldn't carry a button's shape.
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              child: Text(
-                'Waiting',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 11,
-                  color: const Color(0xFF9AA5B4),
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            )
-          else if (canSend)
-            ElevatedButton.icon(
-              onPressed: () async {
-                await _runSend(
-                  () => widget.onSendSingle(row.key, row.name, row.isGuest),
-                );
-              },
-              icon: const Icon(Icons.send_rounded, size: 14),
-              label: const Text('Send'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: UpriseColors.primaryDark,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 7,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                elevation: 0,
-              ),
-            )
-          else if (row.certSent)
-            OutlinedButton.icon(
-              onPressed: () {
-                // Find the existing record for this recipient
-                final record = b.records.firstWhere(
-                  (r) => r.recipientName == row.name,
-                  orElse: () => b.records.first,
-                );
-                widget.onResend(record);
-              },
-              icon: const Icon(Icons.refresh_rounded, size: 14),
-              label: Text(
-                row.resendCount > 0
-                    ? 'Resend ×${row.resendCount + 1}'
-                    : 'Resend',
-                style: GoogleFonts.beVietnamPro(fontSize: 11),
-              ),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 7,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                side: BorderSide(
-                  color: UpriseColors.primaryDark.withOpacity(0.4),
-                ),
-              ),
-            )
-          else
-            const SizedBox.shrink(),
+          const SizedBox(width: 12),
+          action,
         ],
       ),
     );
   }
 
-  Widget _buildRecipientsSection(
+  Widget _buildRecipientsList(
     CertificateBatch b,
     List<_RecipientStatusRow> rows,
   ) {
@@ -2303,59 +2389,40 @@ class _BatchDetailPageState extends State<_BatchDetailPage> {
       _ => rows,
     }.toList();
 
-    // Same treatment as Summary — the section card's border, shadow and
-    // orange accent bar are gone, leaving a label and the list itself.
-    // The Expanded still has to sit inside a height-bounded Column (see
-    // _buildRecipientsColumn) or the list has no height to scroll within.
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'RECIPIENTS',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 10.5,
-            fontWeight: FontWeight.w600,
-            color: UpriseColors.darkGray,
-            letterSpacing: 0.6,
+    if (filteredRows.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        child: Center(
+          child: Text(
+            'No recipients match this filter.',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 13,
+              color: const Color(0xFF64748B),
+            ),
           ),
         ),
-        const SizedBox(height: 4),
-        if (filteredRows.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 24),
-            child: Center(
-              child: Text(
-                'No recipients match this filter.',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  color: const Color(0xFF64748B),
-                ),
-              ),
-            ),
-          )
-        else
-          Expanded(
-            child: ListView.separated(
-              padding: EdgeInsets.zero,
-              itemCount: filteredRows.length,
-              separatorBuilder: (_, __) => const Divider(
-                height: 1,
-                thickness: 1,
-                color: Color(0xFFF1F5F9),
-              ),
-              itemBuilder: (_, i) => _buildRecipientRow(b, filteredRows[i]),
-            ),
-          ),
-      ],
+      );
+    }
+    // Sized to its rows, so a batch with two recipients is a short card
+    // rather than a tall one with a void under the list; a long list stops
+    // growing at the cap and scrolls inside it.
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 520),
+      child: ListView.separated(
+        shrinkWrap: true,
+        padding: EdgeInsets.zero,
+        itemCount: filteredRows.length,
+        separatorBuilder: (_, __) =>
+            const Divider(height: 1, thickness: 1, color: Color(0xFFF1F5F9)),
+        itemBuilder: (_, i) => _buildRecipientRow(b, filteredRows[i]),
+      ),
     );
   }
 
-  // The same light header the Pending Reports page uses: a white bar with
-  // a back arrow, because this sits directly under org_dashboard.dart's own
-  // top bar and a second heavy banner would just be page chrome twice. The
-  // "Send All Eligible" button was the modal's footer action; a page has no
-  // footer, so it rides up here where it stays put while you scroll the
-  // recipient list.
+  // A white bar with a back arrow, because this sits directly under
+  // org_dashboard.dart's own top bar and a second heavy banner would just be
+  // page chrome twice. "Send All Eligible" rides up here where it stays put
+  // while the page scrolls.
   Widget _buildPageHeader(CertificateBatch b) {
     return Container(
       width: double.infinity,
@@ -2405,11 +2472,9 @@ class _BatchDetailPageState extends State<_BatchDetailPage> {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
-                // Reads as the same sentence the table's column does, in
-                // the same order, so moving from the row to the page does
-                // not mean re-reading a differently phrased count.
                 Text(
-                  '${b.sentCount} of ${b.totalRecipients} recipient'
+                  'Certificate distribution • ${b.sentCount} of '
+                  '${b.totalRecipients} recipient'
                   '${b.totalRecipients == 1 ? '' : 's'} sent',
                   style: GoogleFonts.beVietnamPro(
                     fontSize: 12.5,
@@ -2492,125 +2557,73 @@ class _BatchDetailPageState extends State<_BatchDetailPage> {
       children: [
         _buildPageHeader(b),
         Expanded(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(28, 20, 28, 28),
-            child: Container(
-              clipBehavior: Clip.antiAlias,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFFE8ECF0)),
-                boxShadow: _DS.cardShadow,
-              ),
-              // Certificate preview on the left, summary + recipients on
-              // the right. As a modal this Row was pinned to 560px inside a
-              // 1040px dialog; as a page it takes the height and width the
-              // window actually has, which is the whole reason the
-              // recipient list was cramped.
-              child: FutureBuilder<List<_RecipientStatusRow>>(
+          child: LayoutBuilder(
+            builder: (context, c) {
+              final stacked = c.maxWidth < 900;
+              // The preview does not wait on the recipient reads: only the
+              // distribution card below is inside the FutureBuilder.
+              final preview = _buildTemplatePreview(b);
+              final distribution = FutureBuilder<List<_RecipientStatusRow>>(
                 future: _recipientStatusFuture,
-                builder: (context, snapshot) {
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(
-                        flex: 5,
-                        child: SingleChildScrollView(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildTemplatePreview(b),
-                              FutureBuilder<String?>(
-                                future: _adminRemarksFuture,
-                                builder: (context, remarksSnap) {
-                                  final remarks = remarksSnap.data;
-                                  if (remarks == null || remarks.isEmpty) {
-                                    return const SizedBox.shrink();
-                                  }
-                                  return Padding(
-                                    padding: const EdgeInsets.fromLTRB(
-                                      16,
-                                      0,
-                                      16,
-                                      16,
-                                    ),
-                                    child: Container(
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFEFF6FF),
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(
-                                          color: const Color(0xFFBFDBFE),
-                                        ),
-                                      ),
-                                      child: Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          const Icon(
-                                            Icons.info_outline_rounded,
-                                            size: 15,
-                                            color: Color(0xFF2563EB),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: Text(
-                                              'Note from admin: $remarks',
-                                              style: GoogleFonts.beVietnamPro(
-                                                fontSize: 11.5,
-                                                color: const Color(0xFF1E3A8A),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
+                builder: (context, snapshot) =>
+                    _buildDistributionCard(b, snapshot),
+              );
+              return SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(28, 20, 28, 28),
+                child: stacked
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          preview,
+                          const SizedBox(height: 16),
+                          distribution,
+                        ],
+                      )
+                    : Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(flex: 6, child: preview),
+                          const SizedBox(width: 20),
+                          Expanded(flex: 5, child: distribution),
+                        ],
                       ),
-                      const VerticalDivider(width: 1, color: Color(0xFFE8ECF0)),
-                      Expanded(
-                        flex: 6,
-                        child: _buildRecipientsColumn(b, snapshot),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ),
+              );
+            },
           ),
         ),
       ],
     );
   }
 
-  Widget _buildRecipientsColumn(
+  Widget _buildDistributionCard(
     CertificateBatch b,
     AsyncSnapshot<List<_RecipientStatusRow>> snapshot,
   ) {
+    Widget body;
     if (snapshot.connectionState == ConnectionState.waiting) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (snapshot.hasError) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Text(
-            'Error: ${snapshot.error}',
-            style: GoogleFonts.beVietnamPro(color: UpriseColors.error),
-          ),
+      Widget bar(double w) => Container(
+        width: w,
+        height: 12,
+        margin: const EdgeInsets.only(bottom: 14),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEEF1F5),
+          borderRadius: BorderRadius.circular(4),
         ),
       );
-    }
-    final rows = snapshot.data ?? [];
-    if (rows.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
+      body = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [bar(220), bar(160), bar(190)],
+      );
+    } else if (snapshot.hasError) {
+      body = Text(
+        'Error: ${snapshot.error}',
+        style: GoogleFonts.beVietnamPro(color: UpriseColors.error),
+      );
+    } else {
+      final rows = snapshot.data ?? [];
+      if (rows.isEmpty) {
+        body = Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
           child: Text(
             'No attendees found for this event.',
             style: GoogleFonts.beVietnamPro(
@@ -2618,72 +2631,85 @@ class _BatchDetailPageState extends State<_BatchDetailPage> {
               color: const Color(0xFF64748B),
             ),
           ),
-        ),
-      );
+        );
+      } else {
+        final total = rows.length;
+        final evaluated = rows.where((r) => r.evaluated).length;
+        final sent = rows.where((r) => r.certSent).length;
+        body = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSummaryStrip(
+              total,
+              evaluated,
+              total - evaluated,
+              evaluated - sent,
+            ),
+            const SizedBox(height: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.info_outline_rounded,
+                  size: 13,
+                  color: Color(0xFF94A3B8),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Recipients become ready once they attended (present or '
+                    'late) and submitted the event evaluation.',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11,
+                      color: const Color(0xFF94A3B8),
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'RECIPIENTS',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w700,
+                color: UpriseColors.darkGray,
+                letterSpacing: 0.7,
+              ),
+            ),
+            const SizedBox(height: 2),
+            _buildRecipientsList(b, rows),
+          ],
+        );
+      }
     }
-
-    final total = rows.length;
-    final evaluated = rows.where((r) => r.evaluated).length;
-    final sent = rows.where((r) => r.certSent).length;
-    final awaitingEval = total - evaluated;
-    final readyToSend = evaluated - sent;
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildSummarySection(total, evaluated, awaitingEval, readyToSend),
-          const SizedBox(height: 20),
-          Expanded(child: _buildRecipientsSection(b, rows)),
-        ],
-      ),
-    );
+    return _cardShell(label: 'DISTRIBUTION', child: body);
   }
 
   Widget _buildTemplatePreview(CertificateBatch b) {
     final r = b.primary;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-      // Matches every other section card in this app's modals (white card,
-      // icon badge + title, divider) instead of a one-off caps-label — was
-      // the only section here that didn't look like it belonged to the
-      // same design system as the Summary/Recipients sections below it.
-      child: OrgModalSection(
-        title: 'Certificate Preview',
-        icon: Icons.image_outlined,
-        accentColor: UpriseColors.primaryDark,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          // Sizing this to the certificate's own 600:424 aspect ratio from
-          // the full card width would need ~480px of height — taller than
-          // this modal has room for once Summary and Recipients are also
-          // on screen, which is what caused the overflow. A bounded height
-          // (up from the original 200px, still comfortably fits the modal)
-          // keeps the FittedBox below guaranteed to fit with no overflow,
-          // just less letterboxing than before.
-          child: Container(
-            height: 260,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              border: Border.all(color: const Color(0xFFE8ECF0)),
-              borderRadius: BorderRadius.circular(10),
-            ),
+    return _cardShell(
+      label: 'CERTIFICATE PREVIEW',
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            border: Border.all(color: const Color(0xFFE8ECF0)),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          // The certificate keeps its own 600:424 ratio at whatever width the
+          // card has, instead of a fixed-height box that letterboxed it.
+          child: AspectRatio(
+            aspectRatio: 600 / 424,
             child: r.templateFileUrl != null
-                // This used to just be the raw uploaded image with no
-                // overlay at all — for a custom/imported template the
-                // recipient name and signatories are placed on top at
-                // render time (same as the Generate modal's Live
-                // Preview), not baked into the file, so skipping that
-                // overlay here meant this preview never showed either
-                // one. '[Recipient Name]' mirrors the placeholder the
-                // generated-template branch below already uses — this is
-                // a preview of the design, not one specific recipient's
+                // A custom template's recipient name and signatories are laid
+                // over the image at render time (same as the Generate modal's
+                // Live Preview), not baked into the file. '[Recipient Name]'
+                // marks this as a preview of the design, not one recipient's
                 // certificate.
                 ? StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('signatories')
-                        .snapshots(),
+                    stream: _signatoriesStream,
                     builder: (context, snap) {
                       final signatories = <String, SignatoryData>{};
                       for (final doc in (snap.data?.docs ?? [])) {
@@ -2721,23 +2747,16 @@ class _BatchDetailPageState extends State<_BatchDetailPage> {
                             ),
                             signatoryPlacements: validPlacements,
                             signatories: signatories,
-                            background: NetworkImage(
-                              _renderableTemplateUrl(r.templateFileUrl!),
+                            background: _previewImageProvider(
+                              r.templateFileUrl!,
                             ),
                           ),
                         ),
                       );
                     },
                   )
-                // CertificatePreview lays itself out at fixed, hardcoded
-                // sizing (unlike CertificateImageWithName, it doesn't scale
-                // its own content to whatever box it's given) — squeezing it
-                // directly into a 200px-tall box overflowed by however much
-                // its natural content exceeded that. FittedBox lets it render
-                // at its real intended size (matching the 600/424 aspect
-                // ratio used everywhere else this widget appears) and then
-                // uniformly scales the whole thing down to fit, guaranteeing
-                // no overflow regardless of its actual content height.
+                // CertificatePreview lays itself out at fixed sizing, so it is
+                // rendered at its real 600x424 and uniformly scaled down.
                 : FittedBox(
                     fit: BoxFit.contain,
                     child: SizedBox(
@@ -2853,14 +2872,19 @@ class _CertificateComposite extends StatelessWidget {
         // Auto-resize (requirement #1): reserve ~65% of the canvas width for
         // the name so it never overflows the certificate layout, regardless
         // of how long the recipient's name is.
-        final fittedFontSize = _autoFitFontSize(
-          text: recipientName,
-          baseFontSize: namePlacement.fontSize,
-          maxWidthPx: boxSize.width * 0.65,
-        );
+        // Box-model placements fit the name to their own field width inside
+        // CertificateImageWithName; only older placements use this estimate.
+        final fittedFontSize = namePlacement.isBox
+            ? namePlacement.fontSize
+            : _autoFitFontSize(
+                text: recipientName,
+                baseFontSize: namePlacement.fontSize,
+                maxWidthPx: boxSize.width * 0.65,
+              );
         final effectivePlacement = namePlacement.copyWith(
           fontSize: fittedFontSize,
         );
+        final scale = boxSize.width / CertificateImageWithName.referenceWidth;
 
         return Stack(
           children: [
@@ -2876,11 +2900,24 @@ class _CertificateComposite extends StatelessWidget {
                   (signatories[entry.key]!.fullName.isNotEmpty ||
                       (signatories[entry.key]!.signatureBase64?.isNotEmpty ??
                           false)))
-                _buildSignatoryOverlay(
-                  boxSize: boxSize,
-                  placement: entry.value,
-                  signatory: signatories[entry.key]!,
-                ),
+                if (entry.value.isBox)
+                  certPlaceBoxField(
+                    placement: entry.value,
+                    canvas: boxSize,
+                    child: CertSignatoryBlock(
+                      placement: entry.value,
+                      name: signatories[entry.key]!.fullName,
+                      title: signatories[entry.key]!.title,
+                      signatureBase64: signatories[entry.key]!.signatureBase64,
+                      scale: scale,
+                    ),
+                  )
+                else
+                  _buildSignatoryOverlay(
+                    boxSize: boxSize,
+                    placement: entry.value,
+                    signatory: signatories[entry.key]!,
+                  ),
           ],
         );
       },
@@ -3018,6 +3055,11 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
 
   Future<Set<String>> _loadProposalIdsWithExistingCert() async {
     try {
+      // Both reads are independent, so they run together.
+      final certsFuture = FirebaseFirestore.instance
+          .collection('certificates')
+          .where('orgId', isEqualTo: widget.orgId)
+          .get();
       final eventsSnap = await FirebaseFirestore.instance
           .collection('events')
           .where('orgId', isEqualTo: widget.orgId)
@@ -3029,12 +3071,14 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
           eventDocIdToProposalId[doc.id] = proposalId;
         }
       }
-      if (eventDocIdToProposalId.isEmpty) return {};
+      if (eventDocIdToProposalId.isEmpty) {
+        // Not awaited below, so swallow its outcome instead of leaving an
+        // unhandled error behind.
+        certsFuture.ignore();
+        return {};
+      }
 
-      final certsSnap = await FirebaseFirestore.instance
-          .collection('certificates')
-          .where('orgId', isEqualTo: widget.orgId)
-          .get();
+      final certsSnap = await certsFuture;
       final result = <String>{};
       for (final doc in certsSnap.docs) {
         final eventId = doc.data()['eventId'] as String?;
@@ -3104,6 +3148,11 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
       builder: (_) => _ImportTemplateModal(
         orgId: widget.orgId,
         proposalId: _selectedEventId,
+        // Sample text for "Preview as" only; nothing here is ever written back.
+        previewNames: [
+          for (final r in _eligibleRecipients)
+            if ((r['recipientName'] ?? '').isNotEmpty) r['recipientName']!,
+        ],
       ),
     );
     if (result != null && result['name'] != null && mounted) {
@@ -3188,8 +3237,8 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
                           namePlacement: livePlacement,
                           signatoryPlacements: validPlacements,
                           signatories: signatories,
-                          background: NetworkImage(
-                            _renderableTemplateUrl(_selectedTemplateUrl!),
+                          background: _previewImageProvider(
+                            _selectedTemplateUrl!,
                           ),
                         ),
                         // Invisible drag handle over the recipient name —
@@ -3564,15 +3613,6 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
     }
   }
 
-  Future<int> _fetchAttendanceCount(String eventDocId) async {
-    final snap = await FirebaseFirestore.instance
-        .collection('events')
-        .doc(eventDocId)
-        .collection('attendances')
-        .get();
-    return snap.docs.length;
-  }
-
   /// Attendees who showed up (present/late) AND submitted their event
   /// evaluation. This is the actual recipient list for distribution —
   /// it's recomputed every time so newly-submitted evaluations are picked up.
@@ -3580,28 +3620,40 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
   /// Returns both students (keyed by uid) and guests (keyed by email) —
   /// disambiguated via the 'isGuest' flag ('true'/'false' string, since this
   /// method's `Map<String, String>` signature is relied on elsewhere).
-  Future<List<Map<String, String>>> _fetchEligibleRecipients(
-    String eventDocId,
-  ) async {
-    final attSnap = await FirebaseFirestore.instance
+  ///
+  /// Also returns the total number of attendance records (any status). That
+  /// used to be a second, separate read of the same subcollection; the
+  /// present/late filter is now applied here instead of in the query, which
+  /// selects exactly the same records.
+  Future<({int attendeeCount, List<Map<String, String>> eligible})>
+  _fetchAttendanceAndEligible(String eventDocId) async {
+    // The three reads don't depend on each other, so they run together.
+    final attFuture = FirebaseFirestore.instance
         .collection('events')
         .doc(eventDocId)
         .collection('attendances')
-        .where('status', whereIn: ['present', 'late'])
         .get();
-
-    // ✅ Check if webinar requires check-out
-    final eventDoc = await FirebaseFirestore.instance
+    final eventFuture = FirebaseFirestore.instance
         .collection('events')
         .doc(eventDocId)
         .get();
+    final feedbackFuture = _fetchAllFeedbackForEvent(eventDocId);
+
+    final allAtt = await attFuture;
+    final attDocs = allAtt.docs.where((d) {
+      final s = d.data()['status'];
+      return s == 'present' || s == 'late';
+    }).toList();
+
+    // Check if webinar requires check-out
+    final eventDoc = await eventFuture;
     final eventData = eventDoc.data() ?? {};
     final isWebinar =
         eventData['type'] == 'webinar' || eventData['isWebinar'] == true;
     final requireCheckOut = eventData['requireCheckOut'] == true;
 
     // Fetch feedback
-    final feedbackDocs = await _fetchAllFeedbackForEvent(eventDocId);
+    final feedbackDocs = await feedbackFuture;
     final evaluatedUids = feedbackDocs
         .map((d) => d.data()['userId']?.toString())
         .whereType<String>()
@@ -3639,7 +3691,7 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
     }
 
     final eligible = <Map<String, String>>[];
-    for (final doc in attSnap.docs) {
+    for (final doc in attDocs) {
       final data = doc.data();
       final status = (data['status'] ?? '').toString();
       if (status != 'present' && status != 'late') continue;
@@ -3678,7 +3730,7 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
         });
       }
     }
-    return eligible;
+    return (attendeeCount: allAtt.docs.length, eligible: eligible);
   }
 
   @override
@@ -3878,12 +3930,8 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
                                             if (mounted &&
                                                 evQ.docs.isNotEmpty) {
                                               final eventDoc = evQ.docs.first;
-                                              final attendeeCount =
-                                                  await _fetchAttendanceCount(
-                                                    eventDoc.id,
-                                                  );
-                                              final eligible =
-                                                  await _fetchEligibleRecipients(
+                                              final result =
+                                                  await _fetchAttendanceAndEligible(
                                                     eventDoc.id,
                                                   );
                                               if (mounted) {
@@ -3891,9 +3939,9 @@ class _GenerateCertificateModalState extends State<_GenerateCertificateModal> {
                                                   _selectedEventDocId =
                                                       eventDoc.id;
                                                   _attendeeCount =
-                                                      attendeeCount;
+                                                      result.attendeeCount;
                                                   _eligibleRecipients =
-                                                      eligible;
+                                                      result.eligible;
                                                   _attendanceSynced = true;
                                                 });
                                               }
@@ -4515,9 +4563,11 @@ class _CertPreviewDialog extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Import Template Modal — upload a design exported from Canva (or anywhere
-// else) as the certificate background. Now also lets the org place
-// signatory placeholders (requirement #2) alongside the recipient name.
+// Import Template Modal — a small visual editor for a certificate design
+// exported from Canva (or anywhere else). The design itself is locked; only
+// the dynamic fields (recipient name, signatories) are selectable, movable
+// and resizable. Everything here is presentation: the recipient name shown
+// is a preview only, and signatory identity comes from the Admin roster.
 // ─────────────────────────────────────────────────────────────────────────────
 class _ImportTemplateModal extends StatefulWidget {
   final String orgId;
@@ -4525,38 +4575,74 @@ class _ImportTemplateModal extends StatefulWidget {
   // signatory(ies) (if any) the admin authorized at approval time. Null
   // means no event picked yet (the signatory picker asks for one first).
   final String? proposalId;
-  const _ImportTemplateModal({required this.orgId, this.proposalId});
+  // Names of real eligible recipients, offered under "Preview as". Only ever
+  // used as sample text on the canvas — never written anywhere.
+  final List<String> previewNames;
+  const _ImportTemplateModal({
+    required this.orgId,
+    this.proposalId,
+    this.previewNames = const [],
+  });
 
   @override
   State<_ImportTemplateModal> createState() => _ImportTemplateModalState();
 }
 
 class _ImportTemplateModalState extends State<_ImportTemplateModal> {
-  String? _name;
-  PlatformFile? _file;
-  bool _isUploading = false;
-  CertNamePlacement _placement = const CertNamePlacement();
-  // Editor-only preview width for the recipient-name box — purely a local
-  // UI affordance for previewing how "Recipient: <name>" reflows at
-  // different widths while placing it. Not part of CertNamePlacement and
-  // never saved: the actual rendered certificate has no stored box width,
-  // it just centers text at the saved xPct/yPct point, so this doesn't
-  // change what gets written to Firestore or how any certificate renders.
-  double _recipientBoxWidth = 150;
-
-  // NEW: signatory placeholders placed on this template — key -> position.
-  final Map<String, CertNamePlacement> _signatoryPlacements = {};
-  String? _activeSignatoryKey; // which chip is currently being dragged/edited
-
   static const int _maxBytes = 5 * 1024 * 1024; // 5 MB
+  static const String _nameKey = 'name';
+  static const List<double> _signatoryStagger = [0.25, 0.75, 0.5, 0.15, 0.85];
 
-  final Map<String, String> _signatoryNames = {};
+  final _nameCtrl = TextEditingController();
+  final _customCtrl = TextEditingController(text: 'Sample Recipient Name');
+  PlatformFile? _file;
+  Widget? _bgImage;
+  bool _isUploading = false;
 
-  // Which signatory IDs the admin authorized for this event at approval
-  // time, resolved once from the proposal doc rather than re-fetched on
-  // every rebuild.
-  late final Future<({Set<String> ids, String remarks})?>
-  _authorizedSignatoryIdsFuture = _loadAuthorizedSignatoryIds();
+  CertNamePlacement _placement = const CertNamePlacement(widthPct: 0.6);
+  // signatory doc id -> its own placement. Independent per signatory.
+  final Map<String, CertNamePlacement> _signatoryPlacements = {};
+  // _nameKey, a signatory id, or null for nothing selected.
+  String? _selected = _nameKey;
+
+  // >= 0 index into widget.previewNames, -1 generic sample, -2 custom text.
+  late int _previewIndex = widget.previewNames.isNotEmpty ? 0 : -1;
+
+  Map<String, SignatoryData> _roster = {};
+  StreamSubscription<QuerySnapshot>? _rosterSub;
+  bool _authLoaded = false;
+  ({Set<String> ids, String remarks})? _auth;
+
+  @override
+  void initState() {
+    super.initState();
+    _rosterSub = FirebaseFirestore.instance
+        .collection('signatories')
+        .snapshots()
+        .listen((snap) {
+          if (!mounted) return;
+          setState(() {
+            _roster = {
+              for (final d in snap.docs) d.id: SignatoryData.fromDoc(d),
+            };
+          });
+        }, onError: (_) {});
+    _loadAuthorizedSignatoryIds().then((v) {
+      if (!mounted) return;
+      setState(() {
+        _auth = v;
+        _authLoaded = true;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _rosterSub?.cancel();
+    _nameCtrl.dispose();
+    _customCtrl.dispose();
+    super.dispose();
+  }
 
   Future<({Set<String> ids, String remarks})?>
   _loadAuthorizedSignatoryIds() async {
@@ -4580,6 +4666,21 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
     }
   }
 
+  bool get _isPdf => (_file?.extension ?? '').toLowerCase() == 'pdf';
+  bool get _canUse =>
+      _file != null && _nameCtrl.text.trim().isNotEmpty && !_isUploading;
+
+  String get _previewText {
+    if (_previewIndex >= 0 && _previewIndex < widget.previewNames.length) {
+      return widget.previewNames[_previewIndex];
+    }
+    if (_previewIndex == -2) {
+      final t = _customCtrl.text.trim();
+      return t.isEmpty ? 'Recipient Name' : t;
+    }
+    return 'Sample Recipient Name';
+  }
+
   Future<void> _pickFile() async {
     final res = await FilePicker.platform.pickFiles(
       withData: true,
@@ -4591,7 +4692,7 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
     // Caught here, before attempting the upload — otherwise an oversized file
     // uploads fully (slow) before Storage's size rule rejects it, which looks
     // like the picker is just hanging and then mysteriously failing.
-    if ((picked.size) > _maxBytes) {
+    if (picked.size > _maxBytes) {
       if (mounted) {
         AppToast.error(
           context,
@@ -4600,11 +4701,25 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
       }
       return;
     }
-    setState(() => _file = picked);
+    final ext = (picked.extension ?? '').toLowerCase();
+    final bytes = picked.bytes;
+    setState(() {
+      _file = picked;
+      // Built once per pick so dragging a field rebuilds the overlay only,
+      // not the image decode.
+      _bgImage = (ext != 'pdf' && bytes != null)
+          ? Image.memory(
+              bytes,
+              fit: BoxFit.cover,
+              cacheWidth: 1400,
+              gaplessPlayback: true,
+            )
+          : null;
+    });
   }
 
   Future<void> _upload() async {
-    if (_file == null || _name?.trim().isEmpty == true) return;
+    if (!_canUse) return;
     setState(() => _isUploading = true);
 
     try {
@@ -4632,30 +4747,24 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
 
       final json = jsonDecode(response.body);
       var url = json['secure_url'] as String;
-      // Cloudinary stores an uploaded PDF as-is — the returned secure_url
-      // points straight at the raw PDF document, which Image.network can't
-      // decode as pixels (it needs an actual raster format). Every place
-      // this URL later gets used as a certificate background — this
-      // modal's own preview, the Generate Certificate preview, the batch
-      // view/print dialogs, and the student's certificate viewer — was
-      // silently failing to render for any org that uploaded a PDF design
-      // (very common, since Canva/Slides export to PDF by default), which
-      // is also why the name/signatory positioning looked broken: with no
-      // image to show, there was nothing to visibly drag against. Cloudinary
-      // renders a PDF's first page as a real image when the same asset is
-      // requested with a raster extension instead — swapping .pdf for .jpg
-      // is enough to get that rendered version instead of the raw document.
+      // Cloudinary stores an uploaded PDF as-is, and Image.network can't
+      // decode a raw PDF. Requesting the same asset with a raster extension
+      // makes Cloudinary render its first page as an image.
       if (url.toLowerCase().endsWith('.pdf')) {
         url = '${url.substring(0, url.length - 4)}.jpg';
       }
 
+      // Only signatories that are still on the canvas and still in the roster
+      // are saved.
       final signatoryPlacementsMap = {
-        for (final e in _signatoryPlacements.entries) e.key: e.value.toMap(),
+        for (final e in _signatoryPlacements.entries)
+          if (_roster.containsKey(e.key)) e.key: e.value.toMap(),
       };
+      final templateName = _nameCtrl.text.trim();
 
       await FirebaseFirestore.instance.collection('certificate_templates').add({
         'orgId': widget.orgId,
-        'name': _name!.trim(),
+        'name': templateName,
         'url': url,
         'namePlacement': _placement.toMap(),
         if (signatoryPlacementsMap.isNotEmpty)
@@ -4665,7 +4774,7 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
 
       if (mounted) {
         Navigator.pop(context, {
-          'name': _name!.trim(),
+          'name': templateName,
           'url': url,
           'namePlacement': _placement.toMap(),
           'signatoryPlacements': signatoryPlacementsMap,
@@ -4680,518 +4789,856 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
     }
   }
 
-  // Lets the org drag the recipient's name onto the right spot on their
-  // uploaded design — everything else (org/event info) is already part of
-  // the image except signatories, which can now also be placed here.
-  // Position is stored as 0..1 fractions of the image, not pixels, so it
-  // stays correct regardless of how big the image is rendered later.
-  Widget _buildPositionPicker() {
-    if (_file == null) return const SizedBox.shrink();
-    final ext = (_file!.extension ?? '').toLowerCase();
-    if (ext == 'pdf') {
-      return Padding(
-        padding: const EdgeInsets.only(top: 14),
-        child: Text(
-          'PDF uploads use a centered default position for the recipient\'s name. Pick PNG/JPG instead to position it yourself.',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 11.5,
-            color: const Color(0xFF94A3B8),
-          ),
-        ),
-      );
-    }
-    final bytes = _file!.bytes;
-    if (bytes == null) return const SizedBox.shrink();
+  // ── placement helpers ────────────────────────────────────────────────────
+  CertNamePlacement _pOf(String id) => id == _nameKey
+      ? _placement
+      : (_signatoryPlacements[id] ?? const CertNamePlacement());
 
-    return Padding(
-      padding: const EdgeInsets.only(top: 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Position the recipient\'s name',
+  void _setP(String id, CertNamePlacement p) {
+    setState(() {
+      if (id == _nameKey) {
+        _placement = p;
+      } else {
+        _signatoryPlacements[id] = p;
+      }
+    });
+  }
+
+  void _select(String id) {
+    if (_selected != id) setState(() => _selected = id);
+  }
+
+  // Rough half-height of a field, used only to keep a dragged field on the
+  // canvas vertically; the real height is content-driven.
+  double _halfHeight(String id, double scale) {
+    final p = _pOf(id);
+    if (id == _nameKey) return p.fontSize * scale * 0.75;
+    final hasSig = (_roster[id]?.signatureBase64 ?? '').isNotEmpty;
+    return p.fontSize * scale * (hasSig ? 2.8 : 1.3);
+  }
+
+  void _dragBy(String id, Offset d, Size size) {
+    final p = _pOf(id);
+    final bw = p.boxWidth(size.width);
+    final scale = size.width / CertificateImageWithName.referenceWidth;
+    final halfH = math.min(_halfHeight(id, scale), size.height / 2);
+    final x =
+        (p.xPct * size.width + d.dx).clamp(bw / 2, size.width - bw / 2) /
+        size.width;
+    final y =
+        (p.yPct * size.height + d.dy).clamp(halfH, size.height - halfH) /
+        size.height;
+    _setP(id, p.copyWith(xPct: x.toDouble(), yPct: y.toDouble()));
+  }
+
+  void _resizeBy(String id, double dx, Size size) {
+    final p = _pOf(id);
+    final w = size.width;
+    final minPx = (id == _nameKey ? 0.15 : 0.10) * w;
+    final left = p.boxLeft(w);
+    final upper = math.max(minPx, math.min(0.95 * w, w - left));
+    final newBw = (p.boxWidth(w) + dx).clamp(minPx, upper).toDouble();
+    _setP(id, p.copyWith(widthPct: newBw / w, xPct: (left + newBw / 2) / w));
+  }
+
+  // Slider-driven width change keeps the box on the canvas by nudging its
+  // centre inward instead of letting it hang off an edge.
+  void _setWidth(String id, double v) {
+    final p = _pOf(id);
+    final half = v / 2;
+    _setP(
+      id,
+      p.copyWith(widthPct: v, xPct: p.xPct.clamp(half, 1 - half).toDouble()),
+    );
+  }
+
+  void _togglePlaced(String id, bool place) {
+    setState(() {
+      if (place) {
+        final n = _signatoryPlacements.length;
+        _signatoryPlacements[id] = CertNamePlacement(
+          xPct: _signatoryStagger[n % _signatoryStagger.length],
+          yPct: 0.8,
+          fontSize: 12,
+          widthPct: 0.24,
+        );
+        _selected = id;
+      } else {
+        _signatoryPlacements.remove(id);
+        if (_selected == id) _selected = _nameKey;
+      }
+    });
+  }
+
+  // ── canvas ───────────────────────────────────────────────────────────────
+  Widget _buildCanvasPanel() {
+    Widget canvas;
+    if (_file == null) {
+      canvas = _canvasPlaceholder(
+        icon: Icons.upload_file_outlined,
+        message: 'Choose your certificate design to start placing fields.',
+        action: OutlinedButton.icon(
+          onPressed: _pickFile,
+          icon: const Icon(Icons.upload_file_outlined, size: 15),
+          label: Text(
+            'Choose file',
             style: GoogleFonts.beVietnamPro(
               fontSize: 12.5,
               fontWeight: FontWeight.w600,
-              color: const Color(0xFF374151),
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            'Drag the labels onto the right spots — everything else is already in your design. Tap "Add Signatory" below to place a signatory placeholder too.',
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 11,
-              color: const Color(0xFF94A3B8),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: UpriseColors.primaryDark,
+            side: BorderSide(color: UpriseColors.primaryDark.withAlpha(110)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
             ),
           ),
-          const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(_DS.radiusSm),
-            child: AspectRatio(
-              aspectRatio: 600 / 424,
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final boxSize = constraints.biggest;
-                  return Stack(
-                    children: [
-                      Positioned.fill(
-                        child: Image.memory(bytes, fit: BoxFit.cover),
-                      ),
-                      Positioned(
-                        left:
-                            (_placement.xPct * boxSize.width -
-                                    _recipientBoxWidth / 2)
-                                .clamp(
-                                  0.0,
-                                  math.max(
-                                    0.0,
-                                    boxSize.width - _recipientBoxWidth,
-                                  ),
-                                ),
-                        top: (_placement.yPct * boxSize.height - 14).clamp(
-                          0.0,
-                          boxSize.height - 28,
-                        ),
-                        width: _recipientBoxWidth,
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            GestureDetector(
-                              onPanUpdate: (details) {
-                                setState(() {
-                                  final newX =
-                                      (_placement.xPct * boxSize.width +
-                                              details.delta.dx)
-                                          .clamp(0.0, boxSize.width);
-                                  final newY =
-                                      (_placement.yPct * boxSize.height +
-                                              details.delta.dy)
-                                          .clamp(0.0, boxSize.height);
-                                  _placement = _placement.copyWith(
-                                    xPct: newX / boxSize.width,
-                                    yPct: newY / boxSize.height,
-                                  );
-                                });
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color:
-                                      (_placement.light
-                                              ? Colors.black
-                                              : Colors.white)
-                                          .withAlpha(180),
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(
-                                    color: UpriseColors.primaryDark,
-                                    width: 1.5,
-                                  ),
-                                ),
-                                // Wraps onto its own line when the box is
-                                // narrow, sits on one line when it's wide
-                                // enough — Wrap does this automatically
-                                // based on the box's actual rendered width,
-                                // no manual text-measuring needed.
-                                child: Wrap(
-                                  alignment: WrapAlignment.center,
-                                  crossAxisAlignment: WrapCrossAlignment.center,
-                                  children: [
-                                    Text(
-                                      'Recipient Name',
-                                      textAlign: TextAlign.center,
-                                      style: GoogleFonts.beVietnamPro(
-                                        fontSize: _placement.fontSize,
-                                        fontWeight: FontWeight.w700,
-                                        color: _placement.light
-                                            ? Colors.white
-                                            : const Color(0xFF1A202C),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            // Resize handle — bottom-right corner, drag to
-                            // widen/narrow the box and watch the text
-                            // above reflow live, the same interaction as a
-                            // typical design editor's text-box handle.
-                            Positioned(
-                              right: -7,
-                              bottom: -7,
-                              child: GestureDetector(
-                                onPanUpdate: (details) {
-                                  setState(() {
-                                    _recipientBoxWidth =
-                                        (_recipientBoxWidth +
-                                                details.delta.dx * 2)
-                                            .clamp(70.0, boxSize.width);
-                                  });
-                                },
-                                child: MouseRegion(
-                                  cursor: SystemMouseCursors.resizeLeftRight,
-                                  child: Container(
-                                    width: 14,
-                                    height: 14,
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: UpriseColors.primaryDark,
-                                        width: 1.5,
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withAlpha(60),
-                                          blurRadius: 3,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      // NEW: draggable chips for each placed signatory.
-                      for (final entry in _signatoryPlacements.entries)
-                        Positioned(
-                          left: (entry.value.xPct * boxSize.width - 45).clamp(
-                            0.0,
-                            math.max(0.0, boxSize.width - 90),
-                          ),
-                          top: (entry.value.yPct * boxSize.height - 12).clamp(
-                            0.0,
-                            math.max(0.0, boxSize.height - 24),
-                          ),
-                          width: 90,
-                          child: GestureDetector(
-                            onPanUpdate: (details) {
-                              setState(() {
-                                final current =
-                                    _signatoryPlacements[entry.key]!;
-                                final newX =
-                                    (current.xPct * boxSize.width +
-                                            details.delta.dx)
-                                        .clamp(0.0, boxSize.width);
-                                final newY =
-                                    (current.yPct * boxSize.height +
-                                            details.delta.dy)
-                                        .clamp(0.0, boxSize.height);
-                                _signatoryPlacements[entry.key] = current
-                                    .copyWith(
-                                      xPct: newX / boxSize.width,
-                                      yPct: newY / boxSize.height,
-                                    );
-                              });
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: UpriseColors.primaryDark.withAlpha(210),
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: Colors.white),
-                              ),
-                              child: Text(
-                                // A dead top-level helper of the same name
-                                // read an always-empty top-level map here
-                                // instead of this class's own populated
-                                // instance field (a name collision — the
-                                // top-level function has no access to
-                                // `this`), so the on-canvas chip showed the
-                                // raw signatory doc ID instead of their name.
-                                _signatoryNames[entry.key] ?? entry.key,
-                                textAlign: TextAlign.center,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  );
-                },
+        ),
+      );
+    } else if (_bgImage == null) {
+      canvas = _canvasPlaceholder(
+        icon: Icons.picture_as_pdf_outlined,
+        message:
+            'PDF designs can\'t be previewed here. The recipient\'s name will '
+            'use a centred default position. Use a PNG or JPG if you want to '
+            'position the fields yourself.',
+      );
+    } else {
+      canvas = _buildCanvas();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        canvas,
+        const SizedBox(height: 12),
+        Text(
+          _bgImage == null
+              ? 'Max file size: 5 MB. Landscape designs work best — '
+                    'certificates render at a 600:424 ratio (roughly 1200×848px).'
+              : 'Click a field to select it. Drag to move it, drag the corner '
+                    'handle to resize. The design itself stays locked.',
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 11.5,
+            color: const Color(0xFF64748B),
+            height: 1.4,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _canvasPlaceholder({
+    required IconData icon,
+    required String message,
+    Widget? action,
+  }) {
+    return AspectRatio(
+      aspectRatio: 600 / 424,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFE2E6EA)),
+        ),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 38, color: const Color(0xFFB8C2CE)),
+            const SizedBox(height: 12),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 12.5,
+                color: const Color(0xFF64748B),
+                height: 1.45,
+              ),
+            ),
+            if (action != null) ...[const SizedBox(height: 14), action],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCanvas() {
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFE2E6EA)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(16),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: AspectRatio(
+        aspectRatio: 600 / 424,
+        child: LayoutBuilder(
+          builder: (context, c) {
+            final size = Size(c.maxWidth, c.maxHeight);
+            final scale = size.width / CertificateImageWithName.referenceWidth;
+
+            final ids = <String>[
+              for (final id in _signatoryPlacements.keys)
+                if (_roster.containsKey(id)) id,
+              _nameKey,
+            ];
+            // The selected field is painted last so it is always the one
+            // under the pointer when fields overlap.
+            if (_selected != null && ids.remove(_selected)) {
+              ids.add(_selected!);
+            }
+
+            Widget contentFor(String id) {
+              final p = _pOf(id);
+              if (id == _nameKey) {
+                return CertNameText(
+                  text: _previewText,
+                  placement: p,
+                  scale: scale,
+                  boxWidthPx: p.boxWidth(size.width),
+                );
+              }
+              final s = _roster[id]!;
+              return CertSignatoryBlock(
+                placement: p,
+                name: s.fullName,
+                title: s.title,
+                signatureBase64: s.signatureBase64,
+                scale: scale,
+              );
+            }
+
+            return Stack(
+              children: [
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => setState(() => _selected = null),
+                    child: _bgImage!,
+                  ),
+                ),
+                for (final id in ids) _editableField(id, size, contentFor(id)),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _editableField(String id, Size size, Widget content) {
+    final selected = _selected == id;
+    final p = _pOf(id);
+    return certPlaceBoxField(
+      placement: p,
+      canvas: size,
+      child: Stack(
+        children: [
+          MouseRegion(
+            cursor: selected
+                ? SystemMouseCursors.move
+                : SystemMouseCursors.click,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapDown: (_) => _select(id),
+              onPanStart: (_) => _select(id),
+              onPanUpdate: (d) => _dragBy(id, d.delta, size),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                color: selected
+                    ? UpriseColors.primaryDark.withAlpha(16)
+                    : Colors.transparent,
+                foregroundDecoration: BoxDecoration(
+                  border: Border.all(
+                    color: selected
+                        ? UpriseColors.primaryDark
+                        : UpriseColors.primaryDark.withAlpha(70),
+                    width: selected ? 1.5 : 1,
+                  ),
+                ),
+                child: content,
               ),
             ),
           ),
-          const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Size',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 11,
-                        color: const Color(0xFF94A3B8),
-                      ),
+          if (selected)
+            Positioned(
+              right: 0,
+              bottom: 0,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.resizeLeftRight,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onPanUpdate: (d) => _resizeBy(id, d.delta.dx, size),
+                  child: Container(
+                    width: 14,
+                    height: 14,
+                    decoration: BoxDecoration(
+                      color: UpriseColors.primaryDark,
+                      borderRadius: BorderRadius.circular(3),
+                      border: Border.all(color: Colors.white, width: 1.5),
                     ),
-                    Slider(
-                      value: _placement.fontSize,
-                      min: 10,
-                      max: 36,
-                      activeColor: UpriseColors.primaryDark,
-                      onChanged: (v) => setState(
-                        () => _placement = _placement.copyWith(fontSize: v),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
-              const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Text Color',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11,
-                      color: const Color(0xFF94A3B8),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      _colorChoiceChip(
-                        label: 'Dark',
-                        selected: !_placement.light,
-                        onTap: () => setState(
-                          () => _placement = _placement.copyWith(light: false),
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      _colorChoiceChip(
-                        label: 'Light',
-                        selected: _placement.light,
-                        onTap: () => setState(
-                          () => _placement = _placement.copyWith(light: true),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildSignatoryPicker(),
+            ),
         ],
       ),
     );
   }
 
-  // NEW: lets the org pick a signatory from the Admin Settings roster and
-  // drop its placeholder onto the canvas above.
-  Widget _buildSignatoryPicker() {
+  // ── properties panel ─────────────────────────────────────────────────────
+  Widget _panelTitle(String text) => Padding(
+    padding: const EdgeInsets.only(bottom: 10),
+    child: Text(
+      text.toUpperCase(),
+      style: GoogleFonts.beVietnamPro(
+        fontSize: 10.5,
+        fontWeight: FontWeight.w700,
+        color: UpriseColors.darkGray,
+        letterSpacing: 0.6,
+      ),
+    ),
+  );
+
+  Widget _propLabel(String text) => Padding(
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Text(
+      text,
+      style: GoogleFonts.beVietnamPro(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        color: const Color(0xFF374151),
+      ),
+    ),
+  );
+
+  Widget _sliderRow({
+    required String label,
+    required String valueText,
+    required double value,
+    required double min,
+    required double max,
+    required ValueChanged<double> onChanged,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                label,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF374151),
+                ),
+              ),
+              Text(
+                valueText,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 11.5,
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+            ],
+          ),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 3,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+            ),
+            child: Slider(
+              value: value.clamp(min, max).toDouble(),
+              min: min,
+              max: max,
+              activeColor: UpriseColors.primaryDark,
+              inactiveColor: const Color(0xFFE2E6EA),
+              onChanged: onChanged,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _colorRow(String id) {
+    final p = _pOf(id);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _propLabel('Text Color'),
+          Row(
+            children: [
+              _colorChoiceChip(
+                label: 'Dark',
+                selected: !p.light,
+                onTap: () => _setP(id, p.copyWith(light: false)),
+              ),
+              const SizedBox(width: 6),
+              _colorChoiceChip(
+                label: 'Light',
+                selected: p.light,
+                onTap: () => _setP(id, p.copyWith(light: true)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _alignRow(String id) {
+    final p = _pOf(id);
+    Widget chip(String value, String label) => Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: _colorChoiceChip(
+        label: label,
+        selected: p.align == value,
+        onTap: () => _setP(id, p.copyWith(align: value)),
+      ),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _propLabel('Alignment'),
+          Row(
+            children: [
+              chip('left', 'Left'),
+              chip('center', 'Center'),
+              chip('right', 'Right'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _previewAsControl() {
+    final names = widget.previewNames;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _propLabel('Preview as'),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8F9FB),
+              borderRadius: BorderRadius.circular(_DS.radiusSm),
+              border: Border.all(color: const Color(0xFFE2E6EA)),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<int>(
+                value: _previewIndex,
+                isExpanded: true,
+                dropdownColor: Colors.white,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: const Color(0xFF1A202C),
+                ),
+                items: [
+                  for (var i = 0; i < names.length; i++)
+                    DropdownMenuItem(
+                      value: i,
+                      child: Text(names[i], overflow: TextOverflow.ellipsis),
+                    ),
+                  const DropdownMenuItem(value: -1, child: Text('Sample name')),
+                  const DropdownMenuItem(
+                    value: -2,
+                    child: Text('Custom text…'),
+                  ),
+                ],
+                onChanged: (v) {
+                  if (v != null) setState(() => _previewIndex = v);
+                },
+              ),
+            ),
+          ),
+          if (_previewIndex == -2) ...[
+            const SizedBox(height: 8),
+            TextField(
+              controller: _customCtrl,
+              onChanged: (_) => setState(() {}),
+              style: GoogleFonts.beVietnamPro(fontSize: 13),
+              decoration: _fieldDecoration(hint: 'Preview text'),
+            ),
+          ],
+          const SizedBox(height: 6),
+          Text(
+            names.isEmpty
+                ? 'Preview only. No evaluated attendees yet, so a sample name is used.'
+                : 'Preview only. This never changes any recipient\'s real name.',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 11,
+              color: const Color(0xFF94A3B8),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _fieldSettings() {
+    final sel = _selected;
+    if (sel == null || (sel != _nameKey && !_roster.containsKey(sel))) {
+      return Text(
+        'Select a field on the certificate to edit it.',
+        style: GoogleFonts.beVietnamPro(
+          fontSize: 12,
+          color: const Color(0xFF94A3B8),
+        ),
+      );
+    }
+    final p = _pOf(sel);
+    if (sel == _nameKey) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _panelTitle('Recipient name'),
+          _previewAsControl(),
+          _sliderRow(
+            label: 'Font size',
+            valueText: '${p.fontSize.round()} pt',
+            value: p.fontSize,
+            min: 12,
+            max: 48,
+            onChanged: (v) => _setP(sel, p.copyWith(fontSize: v)),
+          ),
+          _colorRow(sel),
+          _alignRow(sel),
+          _sliderRow(
+            label: 'Field width',
+            valueText: '${((p.widthPct ?? 0.6) * 100).round()}%',
+            value: p.widthPct ?? 0.6,
+            min: 0.15,
+            max: 0.95,
+            onChanged: (v) => _setWidth(sel, v),
+          ),
+        ],
+      );
+    }
+    final s = _roster[sel]!;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _panelTitle('Signatory'),
         Text(
-          'Signatories',
+          s.fullName,
           style: GoogleFonts.beVietnamPro(
-            fontSize: 12.5,
-            fontWeight: FontWeight.w600,
-            color: const Color(0xFF374151),
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: const Color(0xFF1A202C),
           ),
         ),
-        const SizedBox(height: 8),
-        FutureBuilder<({Set<String> ids, String remarks})?>(
-          future: _authorizedSignatoryIdsFuture,
-          builder: (context, authSnap) {
-            if (widget.proposalId == null) {
-              return Text(
-                'Select an event above first — signatories are limited to '
-                'whoever the admin authorized for that specific event.',
+        if (s.title.isNotEmpty)
+          Text(
+            s.title,
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 12,
+              color: const Color(0xFF64748B),
+            ),
+          ),
+        const SizedBox(height: 14),
+        _sliderRow(
+          label: 'Font size',
+          valueText: '${p.fontSize.round()} pt',
+          value: p.fontSize,
+          min: 10,
+          max: 32,
+          onChanged: (v) => _setP(sel, p.copyWith(fontSize: v)),
+        ),
+        _colorRow(sel),
+        _alignRow(sel),
+        _sliderRow(
+          label: 'Field width',
+          valueText: '${((p.widthPct ?? 0.24) * 100).round()}%',
+          value: p.widthPct ?? 0.24,
+          min: 0.10,
+          max: 0.6,
+          onChanged: (v) => _setWidth(sel, v),
+        ),
+        OutlinedButton.icon(
+          onPressed: () => _togglePlaced(sel, false),
+          icon: const Icon(Icons.remove_circle_outline_rounded, size: 15),
+          label: Text(
+            'Remove from Certificate',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: UpriseColors.error,
+            side: BorderSide(color: UpriseColors.error.withAlpha(110)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _templateSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _panelTitle('Template'),
+        _FieldWrapper(
+          label: 'Template Name *',
+          child: TextField(
+            controller: _nameCtrl,
+            decoration: _fieldDecoration(hint: 'e.g. CICT Awards Design'),
+            style: GoogleFonts.beVietnamPro(fontSize: 13),
+            onChanged: (_) => setState(() {}),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'An internal label, not shown on the certificate.',
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 11,
+            color: const Color(0xFF94A3B8),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Icon(
+              Icons.insert_drive_file_outlined,
+              size: 15,
+              color: UpriseColors.primaryDark,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                _file?.name ?? 'No file selected',
+                overflow: TextOverflow.ellipsis,
                 style: GoogleFonts.beVietnamPro(
-                  fontSize: 11.5,
-                  color: const Color(0xFF9AA5B4),
+                  fontSize: 12.5,
+                  color: _file == null
+                      ? const Color(0xFF9AA5B4)
+                      : const Color(0xFF1A202C),
                 ),
-              );
-            }
-            if (!authSnap.hasData) {
-              return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+            TextButton(
+              onPressed: _isUploading ? null : _pickFile,
+              style: TextButton.styleFrom(
+                foregroundColor: UpriseColors.primaryDark,
+                minimumSize: Size.zero,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              ),
+              child: Text(
+                _file == null ? 'Choose' : 'Replace',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
                 ),
-              );
-            }
-            final authorizedIds = authSnap.data?.ids ?? const {};
-            final remarks = authSnap.data?.remarks ?? '';
-            // The admin's free-text note from the approval dialog (e.g.
-            // why a signatory was/wasn't authorized) — previously only
-            // ever stored on the event_proposals doc and never surfaced
-            // to the org anywhere.
-            final remarksBox = remarks.isEmpty
-                ? const SizedBox.shrink()
-                : Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFEFF6FF),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: const Color(0xFFBFDBFE)),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Icon(
-                            Icons.info_outline_rounded,
-                            size: 15,
-                            color: Color(0xFF2563EB),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Note from admin: $remarks',
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 11.5,
-                                color: const Color(0xFF1E3A8A),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-            if (authorizedIds.isEmpty) {
-              return Column(
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _signatoriesSection() {
+    Widget body;
+    if (_isPdf || _file == null) {
+      body = Text(
+        _isPdf
+            ? 'Signatories can only be placed on PNG or JPG designs.'
+            : 'Choose a design first, then add signatories to it.',
+        style: GoogleFonts.beVietnamPro(
+          fontSize: 11.5,
+          color: const Color(0xFF9AA5B4),
+        ),
+      );
+    } else if (widget.proposalId == null) {
+      body = Text(
+        'Select an event first — signatories are limited to whoever the '
+        'admin authorized for that specific event.',
+        style: GoogleFonts.beVietnamPro(
+          fontSize: 11.5,
+          color: const Color(0xFF9AA5B4),
+        ),
+      );
+    } else if (!_authLoaded) {
+      body = const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    } else {
+      final authorized = _auth?.ids ?? const <String>{};
+      final roster = _roster.values
+          .where((s) => authorized.contains(s.id))
+          .toList();
+      if (authorized.isEmpty) {
+        body = Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFFBEB),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFFFDE68A)),
+          ),
+          child: Text(
+            'No signature was authorized for this event — ask your admin to '
+            'authorize one when approving it, or continue without a signature '
+            'on this certificate.',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 11.5,
+              color: const Color(0xFF92400E),
+            ),
+          ),
+        );
+      } else if (roster.isEmpty) {
+        body = Text(
+          'The signatory authorized for this event no longer exists in '
+          'Admin Settings → Signatories.',
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 11.5,
+            color: const Color(0xFF9AA5B4),
+          ),
+        );
+      } else {
+        body = Column(children: [for (final s in roster) _signatoryRow(s)]);
+      }
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [_panelTitle('Signatories'), body],
+    );
+  }
+
+  Widget _signatoryRow(SignatoryData s) {
+    final placed = _signatoryPlacements.containsKey(s.id);
+    final selected = _selected == s.id;
+    return InkWell(
+      onTap: () => placed ? _select(s.id) : _togglePlaced(s.id, true),
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+        decoration: BoxDecoration(
+          color: selected
+              ? UpriseColors.primaryDark.withAlpha(14)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Checkbox(
+              value: placed,
+              activeColor: UpriseColors.primaryDark,
+              visualDensity: VisualDensity.compact,
+              onChanged: (v) => _togglePlaced(s.id, v ?? false),
+            ),
+            Expanded(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  remarksBox,
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFFBEB),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFFFDE68A)),
-                    ),
-                    child: Text(
-                      'No signature was authorized for this event — ask '
-                      'your admin to authorize one when approving it, or '
-                      'continue without a signature on this certificate.',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 11.5,
-                        color: const Color(0xFF92400E),
-                      ),
+                  Text(
+                    s.fullName,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF1A202C),
                     ),
                   ),
+                  if (s.title.isNotEmpty)
+                    Text(
+                      s.title,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 11,
+                        color: const Color(0xFF64748B),
+                      ),
+                    ),
                 ],
-              );
-            }
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                remarksBox,
-                StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection('signatories')
-                      .snapshots(),
-                  builder: (context, snap) {
-                    final roster = (snap.data?.docs ?? [])
-                        .map((d) => SignatoryData.fromDoc(d))
-                        .where((s) => authorizedIds.contains(s.id))
-                        .toList();
-
-                    for (final s in roster) {
-                      _signatoryNames[s.id] = s.fullName;
-                    }
-                    if (roster.isEmpty) {
-                      return Text(
-                        'The signatory authorized for this event no longer '
-                        'exists in Admin Settings → Signatories.',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 11.5,
-                          color: const Color(0xFF9AA5B4),
-                        ),
-                      );
-                    }
-                    return Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: roster.map((s) {
-                        final placed = _signatoryPlacements.containsKey(s.id);
-                        return InkWell(
-                          onTap: () => setState(() {
-                            if (placed) {
-                              _signatoryPlacements.remove(s.id);
-                            } else {
-                              _signatoryPlacements[s.id] =
-                                  const CertNamePlacement().copyWith(
-                                    xPct: 0.5,
-                                    yPct: 0.75,
-                                  );
-                            }
-                          }),
-                          borderRadius: BorderRadius.circular(8),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 7,
-                            ),
-                            decoration: BoxDecoration(
-                              color: placed
-                                  ? UpriseColors.primaryDark
-                                  : const Color(0xFFF7F8FA),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: placed
-                                    ? UpriseColors.primaryDark
-                                    : const Color(0xFFE4E8EF),
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  placed
-                                      ? Icons.check_rounded
-                                      : Icons.add_rounded,
-                                  size: 13,
-                                  color: placed
-                                      ? Colors.white
-                                      : const Color(0xFF374151),
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  s.fullName,
-                                  style: GoogleFonts.beVietnamPro(
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w600,
-                                    color: placed
-                                        ? Colors.white
-                                        : const Color(0xFF374151),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    );
-                  },
-                ),
-              ],
-            );
-          },
+              ),
+            ),
+          ],
         ),
+      ),
+    );
+  }
+
+  Widget _adminNote() {
+    final remarks = _auth?.remarks ?? '';
+    if (remarks.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8F9FB),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFFE8ECF0)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(
+              Icons.info_outline_rounded,
+              size: 14,
+              color: Color(0xFF94A3B8),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Note from admin: $remarks',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 11,
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPropertiesPanel() {
+    const gap = SizedBox(height: 18);
+    final divider = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 18),
+      child: Divider(height: 1, color: Colors.grey.shade200),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _templateSection(),
+        divider,
+        if (_bgImage != null) ...[_fieldSettings(), divider],
+        _signatoriesSection(),
+        _adminNote(),
+        gap,
       ],
     );
   }
@@ -5205,7 +5652,7 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
       onTap: onTap,
       borderRadius: BorderRadius.circular(6),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
           color: selected ? UpriseColors.primaryDark : const Color(0xFFF7F8FA),
           borderRadius: BorderRadius.circular(6),
@@ -5227,255 +5674,188 @@ class _ImportTemplateModalState extends State<_ImportTemplateModal> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.85,
-        ),
-        // Only the header strip below had an explicit background — the rest
-        // of the dialog had none, so Flutter's default unseeded Material
-        // surface bled through there.
-        child: Container(
-          width: 480,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
+  // ── shell ────────────────────────────────────────────────────────────────
+  Widget _buildHeader() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 18, 16, 18),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Color(0xFFE8ECF0))),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: UpriseColors.primaryDark.withAlpha(26),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.upload_file_outlined,
+              color: UpriseColors.primaryDark,
+              size: 18,
+            ),
           ),
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Import Certificate Template',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  'Customize dynamic fields before using this template.',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 11.5,
+                    color: UpriseColors.darkGray,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close_rounded, size: 20),
+            tooltip: 'Close',
+            onPressed: _isUploading ? null : () => Navigator.pop(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFooter() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 14, 24, 16),
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: Color(0xFFE8ECF0))),
+        color: Colors.white,
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          OutlinedButton(
+            onPressed: _isUploading ? null : () => Navigator.pop(context),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: Color(0xFFE2E6EA)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+            ),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                color: const Color(0xFF374151),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          ElevatedButton.icon(
+            onPressed: _canUse ? _upload : null,
+            icon: _isUploading
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.check_rounded, size: 16),
+            label: Text(
+              'Use Template',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: UpriseColors.primaryDark,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    return LayoutBuilder(
+      builder: (context, c) {
+        if (c.maxWidth >= 860) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Container(
-                padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
-                decoration: const BoxDecoration(
-                  color: Color(0xFFF8F9FB),
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 38,
-                      height: 38,
-                      decoration: BoxDecoration(
-                        color: UpriseColors.primaryDark.withAlpha(26),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(
-                        Icons.upload_file_outlined,
-                        color: UpriseColors.primaryDark,
-                        size: 18,
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Import Certificate Template',
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          Text(
-                            'Bring in a design from outside Uprise',
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 11,
-                              color: UpriseColors.darkGray,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close_rounded, size: 20),
-                      tooltip: 'Close',
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
-                ),
-              ),
-              Flexible(
-                child: SingleChildScrollView(
-                  child: Padding(
+              Expanded(
+                child: Container(
+                  color: const Color(0xFFF8F9FB),
+                  child: SingleChildScrollView(
                     padding: const EdgeInsets.all(24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _FieldWrapper(
-                          label: 'Template Name *',
-                          child: TextField(
-                            decoration: _fieldDecoration(
-                              hint: 'e.g. CICT Awards Design',
-                              icon: Icons.badge_outlined,
-                            ),
-                            style: GoogleFonts.beVietnamPro(fontSize: 13),
-                            onChanged: (v) => setState(() => _name = v),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'A short internal label for this design — not shown '
-                          'on the certificate itself. Used as the "type" on '
-                          'certificates issued from it, so you can tell them '
-                          'apart later.',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 11,
-                            color: const Color(0xFF94A3B8),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        _FieldWrapper(
-                          label: 'File (PNG, JPG, or PDF) *',
-                          child: InkWell(
-                            onTap: _pickFile,
-                            borderRadius: BorderRadius.circular(_DS.radiusSm),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 13,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF7F8FA),
-                                borderRadius: BorderRadius.circular(
-                                  _DS.radiusSm,
-                                ),
-                                border: Border.all(
-                                  color: const Color(0xFFE4E8EF),
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.upload_file_outlined,
-                                    size: 17,
-                                    color: UpriseColors.primaryDark,
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Text(
-                                      _file?.name ?? 'Choose a file…',
-                                      style: GoogleFonts.beVietnamPro(
-                                        fontSize: 13,
-                                        color: _file == null
-                                            ? const Color(0xFF9AA5B4)
-                                            : const Color(0xFF1A202C),
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  Text(
-                                    'Browse',
-                                    style: GoogleFonts.beVietnamPro(
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.w600,
-                                      color: UpriseColors.primaryDark,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Max file size: 5 MB. Landscape designs work best — '
-                          'the preview and every issued certificate render '
-                          'the image at a 600:424 ratio (roughly '
-                          '1200×848px), so a design close to that shape '
-                          'won\'t get cropped or letterboxed.',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 11,
-                            color: const Color(0xFF94A3B8),
-                          ),
-                        ),
-                        _buildPositionPicker(),
-                      ],
-                    ),
+                    child: _buildCanvasPanel(),
                   ),
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
-                decoration: const BoxDecoration(
-                  border: Border(top: BorderSide(color: Color(0xFFE8ECF0))),
-                  color: Color(0xFFF8F9FB),
-                  borderRadius: BorderRadius.vertical(
-                    bottom: Radius.circular(18),
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    OutlinedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: Color(0xFFE2E6EA)),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 18,
-                          vertical: 11,
-                        ),
-                      ),
-                      child: Text(
-                        'Cancel',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 13,
-                          color: const Color(0xFF374151),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    ElevatedButton.icon(
-                      onPressed:
-                          (_file == null ||
-                              _name == null ||
-                              _name!.trim().isEmpty ||
-                              _isUploading)
-                          ? null
-                          : _upload,
-                      icon: _isUploading
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.check_rounded, size: 16),
-                      label: Text(
-                        'Upload',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: UpriseColors.primaryDark,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 11,
-                        ),
-                      ),
-                    ),
-                  ],
+              const VerticalDivider(width: 1, color: Color(0xFFE8ECF0)),
+              SizedBox(
+                width: 380,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: _buildPropertiesPanel(),
                 ),
               ),
             ],
+          );
+        }
+        return SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                color: const Color(0xFFF8F9FB),
+                padding: const EdgeInsets.all(16),
+                child: _buildCanvasPanel(),
+              ),
+              const Divider(height: 1, color: Color(0xFFE8ECF0)),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: _buildPropertiesPanel(),
+              ),
+            ],
           ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mq = MediaQuery.of(context).size;
+    return Dialog(
+      backgroundColor: Colors.white,
+      insetPadding: const EdgeInsets.all(24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
+        width: math.min(1180.0, mq.width - 48),
+        height: math.min(780.0, mq.height - 48),
+        child: Column(
+          children: [
+            _buildHeader(),
+            Expanded(child: _buildBody()),
+            _buildFooter(),
+          ],
         ),
       ),
     );

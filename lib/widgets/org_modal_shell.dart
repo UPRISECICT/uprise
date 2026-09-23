@@ -413,10 +413,10 @@ class OrgDetailItem extends StatelessWidget {
           height: 30,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: iconColor.withAlpha(25),
+            color: iconColor,
             borderRadius: BorderRadius.circular(9),
           ),
-          child: Icon(icon, size: 15, color: iconColor),
+          child: Icon(icon, size: 15, color: Colors.white),
         ),
         const SizedBox(width: 12),
         Expanded(

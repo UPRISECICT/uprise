@@ -117,28 +117,6 @@ class _DS {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Category colors — matches the palette already used in event_calendar.dart
-// / the student & org calendars, so a "Workshop" reads the same color
-// everywhere. Previously every category badge here used the same flat
-// AdminColors.primaryDark tint regardless of category.
-// ─────────────────────────────────────────────────────────────────────────────
-const Map<String, Color> _categoryBadgeColors = {
-  'Workshop': Color(0xFF8B5CF6),
-  'Seminar': Color(0xFF3B82F6),
-  'Competition': Color(0xFFEF4444),
-  'General Assembly': Color(0xFFF97316),
-  'Social': Color(0xFFEC4899),
-  'Outreach': Color(0xFF10B981),
-  'Sports': Color(0xFF14B8A6),
-  'Academic': Color(0xFF6366F1),
-  'Technical': Color(0xFF06B6D4),
-  'Cultural': Color(0xFFD946EF),
-  'Other': Color(0xFF6B7280),
-};
-
-Color _categoryBadgeColor(String category) =>
-    _categoryBadgeColors[category] ?? const Color(0xFF6B7280);
-
 // Pastel bg / solid fg pair per category — same values as
 // event_calendar.dart's CategoryColors, so a category's table badge here
 // reads as the same color as its calendar chip.
@@ -2345,9 +2323,6 @@ class _EventProposalsState extends State<EventProposals> {
                                           ? data['otherCategory']
                                           : (data['category'] ?? '—'),
                                       Icons.category_outlined,
-                                      iconColor: _categoryBadgeColor(
-                                        data['category'] ?? 'Other',
-                                      ),
                                     ),
                                   ),
                                   const SizedBox(width: 12),
@@ -2419,9 +2394,6 @@ class _EventProposalsState extends State<EventProposals> {
                                       'Issues Certificate',
                                       issuesCertificate ? 'Yes' : 'No',
                                       Icons.verified_outlined,
-                                      iconColor: issuesCertificate
-                                          ? const Color(0xFF059669)
-                                          : const Color(0xFF6B7280),
                                     ),
                                   ),
                                 ],
@@ -2438,6 +2410,7 @@ class _EventProposalsState extends State<EventProposals> {
                                     'No description provided.',
                                 style: GoogleFonts.beVietnamPro(
                                   fontSize: 13.5,
+                                  fontWeight: FontWeight.w600,
                                   color: const Color(0xFF374151),
                                   height: 1.65,
                                 ),
@@ -2521,7 +2494,6 @@ class _EventProposalsState extends State<EventProposals> {
                                               data['publishedAt'],
                                             ),
                                             Icons.publish_rounded,
-                                            iconColor: const Color(0xFF2563EB),
                                           ),
                                         ),
                                         const SizedBox(width: 12),
@@ -2935,19 +2907,11 @@ class _EventProposalsState extends State<EventProposals> {
     IconData icon, {
     Color? iconColor,
   }) {
-    final accent = iconColor ??
-        switch (label) {
-          'Category' => const Color(0xFFF97316),
-          'Audience' => const Color(0xFF7C3AED),
-          'Date' => const Color(0xFF2563EB),
-          'Time' => const Color(0xFF4F46E5),
-          'School Year' => const Color(0xFF059669),
-          'Semester' => const Color(0xFF0F766E),
-          'Location' => const Color(0xFFDB2777),
-          'Submitted By' => const Color(0xFF0891B2),
-          'Submitted At' => const Color(0xFF6366F1),
-          _ => const Color(0xFF64748B),
-        };
+    // Fields with a real semantic color (iconColor passed in — Category,
+    // Issues Certificate) keep a tinted badge in that color; purely
+    // descriptive fields get a solid badge in the modal header's own color.
+    final hasSemanticColor = iconColor != null;
+    final badgeColor = iconColor ?? AdminColors.primaryDark;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -2963,10 +2927,14 @@ class _EventProposalsState extends State<EventProposals> {
             height: 30,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: accent.withAlpha(28),
+              color: hasSemanticColor ? badgeColor.withAlpha(28) : badgeColor,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, size: 14, color: accent),
+            child: Icon(
+              icon,
+              size: 14,
+              color: hasSemanticColor ? badgeColor : Colors.white,
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(

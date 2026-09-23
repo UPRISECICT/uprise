@@ -1324,6 +1324,7 @@ class _EventCalendarState extends State<EventCalendar> {
                             event.description,
                             style: GoogleFonts.beVietnamPro(
                               fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
                               color: const Color(0xFF374151),
                               height: 1.65,
                             ),
@@ -1456,14 +1457,6 @@ class _EventCalendarState extends State<EventCalendar> {
 
   // ─── NEW DETAIL CARD helper (used in the dialog) ──────────────────
   Widget _detailCard(String label, String value, IconData icon) {
-    final accent = switch (label) {
-      'Date' => const Color(0xFF2563EB),
-      'Time' => const Color(0xFF7C3AED),
-      'Location' => const Color(0xFFDB2777),
-      'Audience' => const Color(0xFF0891B2),
-      'School Year' => const Color(0xFF059669),
-      _ => const Color(0xFF0F766E),
-    };
     return Container(
       width: 260,
       padding: const EdgeInsets.all(12),
@@ -1479,11 +1472,11 @@ class _EventCalendarState extends State<EventCalendar> {
             width: 32,
             height: 32,
             decoration: BoxDecoration(
-              color: accent.withAlpha(25),
+              color: AdminColors.primaryDark,
               borderRadius: BorderRadius.circular(9),
             ),
             alignment: Alignment.center,
-            child: Icon(icon, size: 16, color: accent),
+            child: Icon(icon, size: 16, color: Colors.white),
           ),
           const SizedBox(width: 10),
           Expanded(

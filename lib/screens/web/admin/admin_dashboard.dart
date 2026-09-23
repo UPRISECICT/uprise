@@ -30,6 +30,7 @@ import 'export_excel.dart';
 import '../../../widgets/app_toast.dart';
 import '../../../widgets/app_confirmation_dialog.dart';
 import '../../../widgets/admin_export_button.dart';
+import '../../../widgets/dashboard_overview_label.dart';
 import '../../../services/firestore_collections.dart';
 import '../../../services/firestore_read_retry.dart';
 
@@ -2002,7 +2003,7 @@ class _DashboardHomeState extends State<DashboardHome> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildWelcomeHeader(true),
-            const SizedBox(height: 20),
+            const SizedBox(height: 14),
             _buildStatCards(true, isTablet),
             const SizedBox(height: 20),
             _buildDynamicPanel(true),
@@ -2022,7 +2023,7 @@ class _DashboardHomeState extends State<DashboardHome> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildWelcomeHeader(false),
-              const SizedBox(height: 20),
+              const SizedBox(height: 14),
               _buildStatCards(false, isTablet),
             ],
           ),
@@ -2039,187 +2040,8 @@ class _DashboardHomeState extends State<DashboardHome> {
   }
 
   Widget _buildWelcomeHeader(bool isMobile) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        decoration: const BoxDecoration(
-          color: UpriseColors.primaryDark,
-          boxShadow: [
-            BoxShadow(
-              color: Color(0x401E293B),
-              blurRadius: 24,
-              offset: Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Stack(
-          children: [
-            Positioned(
-              right: -24,
-              top: -24,
-              child: Container(
-                width: 160,
-                height: 160,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withAlpha(12),
-                ),
-              ),
-            ),
-            Positioned(
-              right: 70,
-              bottom: -28,
-              child: Container(
-                width: 100,
-                height: 100,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withAlpha(8),
-                ),
-              ),
-            ),
-            Positioned(
-              left: -10,
-              bottom: -16,
-              child: Container(
-                width: 70,
-                height: 70,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withAlpha(7),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
-              child: isMobile
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildLivePill(),
-                        const SizedBox(height: 10),
-                        Text(
-                          'Administrator Dashboard',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                            height: 1.1,
-                          ),
-                        ),
-                        const SizedBox(height: 5),
-                        Text(
-                          'CICT Organization Management  •  Welcome back.',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 12.5,
-                            color: Colors.white.withAlpha(180),
-                            height: 1.5,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withAlpha(20),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: Colors.white.withAlpha(35),
-                            ),
-                          ),
-                          child: const Icon(
-                            Icons.admin_panel_settings_rounded,
-                            color: Colors.white,
-                            size: 36,
-                          ),
-                        ),
-                      ],
-                    )
-                  : Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildLivePill(),
-                              const SizedBox(height: 10),
-                              Text(
-                                'Administrator Dashboard',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white,
-                                  height: 1.1,
-                                ),
-                              ),
-                              const SizedBox(height: 5),
-                              Text(
-                                'CICT Organization Management  •  Welcome back.',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 12.5,
-                                  color: Colors.white.withAlpha(180),
-                                  height: 1.5,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 20),
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withAlpha(20),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: Colors.white.withAlpha(35),
-                            ),
-                          ),
-                          child: const Icon(
-                            Icons.admin_panel_settings_rounded,
-                            color: Colors.white,
-                            size: 34,
-                          ),
-                        ),
-                      ],
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLivePill() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: Colors.white.withAlpha(22),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withAlpha(45)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: const BoxDecoration(
-              color: Color(0xFF4ADE80),
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            'Live Dashboard',
-            style: GoogleFonts.beVietnamPro(
-              color: Colors.white.withAlpha(220),
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.5,
-            ),
-          ),
-        ],
-      ),
+    return const DashboardOverviewLabel(
+      subtitle: 'System activity at a glance',
     );
   }
 

@@ -1,4 +1,4 @@
-﻿// lib/screens/web/org/org_event_analytics.dart
+// lib/screens/web/org/org_event_analytics.dart
 
 import 'dart:async';
 import 'dart:math' as math;
@@ -802,7 +802,7 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Analytics',
+              'Analytics Overview',
               style: GoogleFonts.beVietnamPro(
                 fontSize: isMobile ? 16 : 18,
                 fontWeight: FontWeight.w700,
@@ -810,14 +810,11 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
                 letterSpacing: -0.3,
               ),
             ),
-            const SizedBox(width: _DS.s3),
-            const _LiveSyncPill(),
           ],
         ),
         const SizedBox(height: _DS.s1),
         Text(
-          'Registrations, attendance, ratings and event finance across your '
-          'organization.',
+          'Monitor event performance across your organization.',
           style: GoogleFonts.beVietnamPro(fontSize: 12.5, color: _C.muted),
         ),
       ],
@@ -828,7 +825,14 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
     // _listenForUpdates), so there is nothing a manual refresh would fetch
     // that has not already arrived. _refresh() itself stays for the Retry
     // in the error state, where there is no live data yet to wait on.
-    final actions = AdminExportButton(onSelected: _exportAnalytics);
+    final actions = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const _LiveSyncPill(),
+        const SizedBox(width: _DS.s3),
+        AdminExportButton(onSelected: _exportAnalytics),
+      ],
+    );
 
     if (isMobile) {
       return Column(
@@ -859,12 +863,12 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
           key: _distributionKey,
           child: _DistributionCard(data: data),
         ),
-        const SizedBox(height: _DS.s4),
+        const SizedBox(height: _DS.s5),
         KeyedSubtree(
           key: _ratingKey,
           child: _RatingByEventChart(data: data),
         ),
-        const SizedBox(height: _DS.s4),
+        const SizedBox(height: _DS.s5),
         KeyedSubtree(
           key: _regAttendanceKey,
           child: _PerformanceOverviewChart(data: data),
@@ -926,8 +930,14 @@ class _LiveSyncPill extends StatelessWidget {
 class _CardHeader extends StatelessWidget {
   final IconData icon;
   final String title;
+  final String? subtitle;
   final String? trailing;
-  const _CardHeader({required this.icon, required this.title, this.trailing});
+  const _CardHeader({
+    required this.icon,
+    required this.title,
+    this.subtitle,
+    this.trailing,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -936,7 +946,9 @@ class _CardHeader extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(6),
+            width: 32,
+            height: 32,
+            alignment: Alignment.center,
             decoration: BoxDecoration(
               color: _C.chartBrand.withAlpha(20),
               borderRadius: BorderRadius.circular(8),
@@ -945,13 +957,26 @@ class _CardHeader extends StatelessWidget {
           ),
           const SizedBox(width: _DS.s3),
           Expanded(
-            child: Text(
-              title,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: _C.charcoal,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: _C.charcoal,
+                  ),
+                ),
+                if (subtitle != null)
+                  Text(
+                    subtitle!,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11.5,
+                      color: _C.muted,
+                    ),
+                  ),
+              ],
             ),
           ),
           if (trailing != null)
@@ -1094,65 +1119,69 @@ class _KpiStatsRow extends StatelessWidget {
   }
 }
 
-// A real bar chart (fl_chart) instead of a stacked list of labeled progress
-// bars — the numbers were all there before, but a chart reads at a glance
-// where a list has to be read line by line. Capped to the top N so bars
-// (and their labels) stay legible regardless of how many events an org
-// has — the Events tab already lists every event individually if a full
-// breakdown is needed.
-class _RatingByEventChart extends StatelessWidget {
-  final _AnalyticsData data;
-  const _RatingByEventChart({required this.data});
+// Shared bar chart body for the rating and performance cards. One fl_chart
+// scaffold so both read the same: bars widen with the space available (12-32px
+// rather than fl_chart's thin default), the exact value is printed above each
+// bar when the slot is wide enough to hold it, and event names wrap to two
+// lines under the bar instead of being cut after a few characters. Hover
+// tooltips are unchanged and still carry the full event name.
+class _EventBarChart extends StatelessWidget {
+  final List<MapEntry<String, double>> entries;
+  final Color color;
+  final double? fixedMaxY;
+  final double? fixedInterval;
+  final double leftReserved;
+  final String Function(double) axisLabel;
+  final String Function(double) valueLabel;
+  final String Function(double) tooltipValue;
 
-  static const int _maxBars = 8;
+  const _EventBarChart({
+    required this.entries,
+    required this.color,
+    required this.leftReserved,
+    required this.axisLabel,
+    required this.valueLabel,
+    required this.tooltipValue,
+    this.fixedMaxY,
+    this.fixedInterval,
+  });
+
+  static const double _height = 250;
+  // Headroom above the plot so the value label on the tallest bar is not
+  // clipped by the card.
+  static const double _topPad = 22;
+  static const double _bottomReserved = 42;
 
   @override
   Widget build(BuildContext context) {
-    final sorted = data.avgByEvent.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    final shown = sorted.take(_maxBars).toList();
+    final maxValue = entries.fold<double>(0, (m, e) => math.max(m, e.value));
+    final maxY = fixedMaxY ?? (maxValue <= 0 ? 1.0 : maxValue * 1.15);
+    final interval = fixedInterval ?? maxY / 4;
 
-    return Container(
-      decoration: _DS.card(),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _CardHeader(
-            icon: Icons.bar_chart_rounded,
-            title: 'Average rating by event',
-            trailing: sorted.length > shown.length
-                ? 'Top ${shown.length} of ${sorted.length}'
-                : null,
-          ),
-          _DS.fadeDivider(),
-          if (shown.isEmpty)
-            Padding(
-              padding: const EdgeInsets.all(32),
-              child: Center(
-                child: Text(
-                  'No feedback data yet',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    color: _C.muted,
-                  ),
-                ),
-              ),
-            )
-          else
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 20, 20, 8),
-              child: SizedBox(
-                height: 220,
+    return SizedBox(
+      height: _height,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final n = entries.length;
+          final plotW = math.max(0.0, constraints.maxWidth - leftReserved);
+          final slot = plotW / n;
+          final barW = (slot * 0.5).clamp(12.0, 32.0).toDouble();
+          final plotH = _height - _topPad - _bottomReserved;
+          final labelWidth = math.max(24.0, math.min(slot - 8, 140.0));
+
+          return Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned.fill(
+                top: _topPad,
                 child: BarChart(
                   BarChartData(
-                    maxY: 5,
+                    maxY: maxY,
                     alignment: BarChartAlignment.spaceAround,
                     gridData: FlGridData(
                       show: true,
                       drawVerticalLine: false,
-                      horizontalInterval: 1,
+                      horizontalInterval: interval,
                       getDrawingHorizontalLine: (_) =>
                           const FlLine(color: _C.grid, strokeWidth: 1),
                     ),
@@ -1167,10 +1196,10 @@ class _RatingByEventChart extends StatelessWidget {
                       leftTitles: AxisTitles(
                         sideTitles: SideTitles(
                           showTitles: true,
-                          reservedSize: 22,
-                          interval: 1,
+                          reservedSize: leftReserved,
+                          interval: interval,
                           getTitlesWidget: (v, _) => Text(
-                            '${v.toInt()}',
+                            axisLabel(v),
                             style: GoogleFonts.beVietnamPro(
                               fontSize: 10,
                               color: _C.muted,
@@ -1181,26 +1210,27 @@ class _RatingByEventChart extends StatelessWidget {
                       bottomTitles: AxisTitles(
                         sideTitles: SideTitles(
                           showTitles: true,
-                          reservedSize: 34,
+                          reservedSize: _bottomReserved,
                           getTitlesWidget: (v, _) {
                             final i = v.toInt();
-                            if (i < 0 || i >= shown.length) {
+                            if (i < 0 || i >= n) {
                               return const SizedBox.shrink();
                             }
-                            final title = data.eventDisplayTitle(shown[i].key);
-                            final short = title.length > 10
-                                ? '${title.substring(0, 9)}…'
-                                : title;
                             return Padding(
                               padding: const EdgeInsets.only(top: 8),
-                              child: Text(
-                                short,
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 10,
-                                  color: _C.muted,
+                              child: SizedBox(
+                                width: labelWidth,
+                                child: Text(
+                                  entries[i].key,
+                                  textAlign: TextAlign.center,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 10.5,
+                                    height: 1.2,
+                                    color: _C.muted,
+                                  ),
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                               ),
                             );
                           },
@@ -1211,11 +1241,8 @@ class _RatingByEventChart extends StatelessWidget {
                       touchTooltipData: BarTouchTooltipData(
                         getTooltipColor: (_) => _C.charcoal,
                         getTooltipItem: (group, _, rod, __) {
-                          final title = data.eventDisplayTitle(
-                            shown[group.x].key,
-                          );
                           return BarTooltipItem(
-                            '$title\n',
+                            '${entries[group.x].key}\n',
                             GoogleFonts.beVietnamPro(
                               color: Colors.white,
                               fontWeight: FontWeight.w700,
@@ -1223,7 +1250,7 @@ class _RatingByEventChart extends StatelessWidget {
                             ),
                             children: [
                               TextSpan(
-                                text: '${rod.toY.toStringAsFixed(1)} ★ average',
+                                text: tooltipValue(rod.toY),
                                 style: GoogleFonts.beVietnamPro(
                                   color: Colors.white70,
                                   fontSize: 11,
@@ -1234,23 +1261,16 @@ class _RatingByEventChart extends StatelessWidget {
                         },
                       ),
                     ),
-                    barGroups: List.generate(shown.length, (i) {
-                      final score = shown[i].value;
+                    barGroups: List.generate(n, (i) {
                       return BarChartGroupData(
                         x: i,
                         barRods: [
                           BarChartRodData(
-                            toY: score,
-                            // One hue for every bar. This used to call
-                            // _ratingColor(score), which painted each bar by
-                            // its own value - the bar's height already says
-                            // that, so the colour channel was spent saying it
-                            // twice and the chart came out a green/amber/red
-                            // rainbow of nominal event names.
-                            color: _C.chartBrand,
-                            width: 18,
+                            toY: entries[i].value,
+                            color: color,
+                            width: barW,
                             borderRadius: const BorderRadius.vertical(
-                              top: Radius.circular(4),
+                              top: Radius.circular(6),
                             ),
                           ),
                         ],
@@ -1259,6 +1279,108 @@ class _RatingByEventChart extends StatelessWidget {
                   ),
                 ),
               ),
+              // Value labels. Laid over the chart from the same geometry
+              // fl_chart uses (equal slots under spaceAround, plot area =
+              // chart minus the reserved axis titles). IgnorePointer keeps
+              // the bar tooltips reachable.
+              if (slot >= 30)
+                for (var i = 0; i < n; i++)
+                  Positioned(
+                    left: leftReserved + slot * i,
+                    width: slot,
+                    bottom:
+                        _bottomReserved +
+                        (entries[i].value / maxY).clamp(0.0, 1.0) * plotH +
+                        3,
+                    child: IgnorePointer(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          valueLabel(entries[i].value),
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: _C.charcoal,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+// Average rating per event. Capped to the top N so bars and labels stay
+// legible however many events an org has - the Events tab already lists every
+// event individually if a full breakdown is needed.
+class _RatingByEventChart extends StatelessWidget {
+  final _AnalyticsData data;
+  const _RatingByEventChart({required this.data});
+
+  static const int _maxBars = 8;
+
+  @override
+  Widget build(BuildContext context) {
+    final sorted = data.avgByEvent.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final shown = sorted.take(_maxBars).toList();
+    final entries = [
+      for (final e in shown) MapEntry(data.eventDisplayTitle(e.key), e.value),
+    ];
+
+    return Container(
+      decoration: _DS.card(),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _CardHeader(
+            icon: Icons.bar_chart_rounded,
+            title: 'Average Rating by Event',
+            subtitle: 'Compare attendee feedback across your events.',
+            trailing: sorted.length > shown.length
+                ? 'Top ${shown.length} of ${sorted.length}'
+                : null,
+          ),
+          _DS.fadeDivider(),
+          if (shown.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(_DS.s7),
+              child: Center(
+                child: Text(
+                  'No feedback data yet',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 13,
+                    color: _C.muted,
+                  ),
+                ),
+              ),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                _DS.s4,
+                _DS.s3,
+                _DS.s4,
+                _DS.s3,
+              ),
+              child: _EventBarChart(
+                entries: entries,
+                // One hue for every bar - the bar's height already encodes
+                // the score, so colouring by value would say it twice.
+                color: _C.chartBrand,
+                fixedMaxY: 5,
+                fixedInterval: 1,
+                leftReserved: 24,
+                axisLabel: (v) => '${v.toInt()}',
+                valueLabel: (v) => v.toStringAsFixed(1),
+                tooltipValue: (v) => '${v.toStringAsFixed(1)} ★ average',
+              ),
             ),
         ],
       ),
@@ -1266,10 +1388,9 @@ class _RatingByEventChart extends StatelessWidget {
   }
 }
 
-// Single "Performance Overview" card with a tab per metric instead of three
-// full-size stacked bar charts (Registrations/Attendance were previously one
-// grouped chart, Income/Expense another) — switching tabs keeps the same
-// data on screen at a fraction of the vertical space.
+// Single "Performance Overview" card with a tab per metric instead of four
+// full-size stacked bar charts - switching tabs keeps the same data on screen
+// at a fraction of the vertical space.
 class _PerformanceOverviewChart extends StatelessWidget {
   final _AnalyticsData data;
   const _PerformanceOverviewChart({required this.data});
@@ -1317,38 +1438,50 @@ class _PerformanceOverviewChart extends StatelessWidget {
           children: [
             const _CardHeader(
               icon: Icons.insights_rounded,
-              title: 'Performance overview',
+              title: 'Performance Overview',
+              subtitle:
+                  'Compare engagement and financial performance by event.',
             ),
-            Container(
-              decoration: const BoxDecoration(
-                border: Border(bottom: BorderSide(color: _C.border)),
-              ),
+            _DS.fadeDivider(),
+            // Restrained selected state: a soft brand tint behind the label
+            // rather than four button-like tabs.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(_DS.s4, _DS.s3, _DS.s4, 0),
               child: TabBar(
                 isScrollable: true,
                 tabAlignment: TabAlignment.start,
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                labelPadding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 4,
+                dividerColor: Colors.transparent,
+                padding: EdgeInsets.zero,
+                indicatorSize: TabBarIndicatorSize.tab,
+                indicator: BoxDecoration(
+                  color: _C.chartBrand.withAlpha(24),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                labelColor: UpriseColors.primaryDark,
+                splashBorderRadius: BorderRadius.circular(8),
+                overlayColor: WidgetStatePropertyAll(
+                  _C.chartBrand.withAlpha(10),
+                ),
+                labelPadding: const EdgeInsets.symmetric(horizontal: 14),
+                labelColor: _C.chartBrand,
                 unselectedLabelColor: _C.muted,
-                indicatorColor: UpriseColors.primaryDark,
                 labelStyle: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
                 ),
-                unselectedLabelStyle: GoogleFonts.beVietnamPro(fontSize: 13),
+                unselectedLabelStyle: GoogleFonts.beVietnamPro(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w500,
+                ),
                 tabs: const [
-                  Tab(text: 'Registrations'),
-                  Tab(text: 'Attendance'),
-                  Tab(text: 'Income'),
-                  Tab(text: 'Expenses'),
+                  Tab(height: 34, text: 'Registrations'),
+                  Tab(height: 34, text: 'Attendance'),
+                  Tab(height: 34, text: 'Income'),
+                  Tab(height: 34, text: 'Expenses'),
                 ],
               ),
             ),
             SizedBox(
-              height: 272,
+              height: 300,
               child: TabBarView(
                 children: [
                   _SingleSeriesBarChart(
@@ -1369,9 +1502,8 @@ class _PerformanceOverviewChart extends StatelessWidget {
                   ),
                   _SingleSeriesBarChart(
                     entries: incomeEntries,
-                    // Money in. statusGood rather than the _C.green KPI
-                    // accent: that one measures 2.54:1 on the white card,
-                    // under the 3:1 floor for a chart mark.
+                    // Money in. statusGood: it clears the 3:1 floor for a
+                    // chart mark on the white card.
                     color: _C.statusGood,
                     moneyFormat: true,
                     emptyMessage:
@@ -1392,7 +1524,6 @@ class _PerformanceOverviewChart extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 8),
           ],
         ),
       ),
@@ -1400,9 +1531,8 @@ class _PerformanceOverviewChart extends StatelessWidget {
   }
 }
 
-// Shared single-series bar chart body for each Performance Overview tab —
-// same fl_chart scaffolding (grid, axes, tooltip, truncated event labels)
-// the old grouped charts used, just one color/series per tab instead of two.
+// Body of one Performance Overview tab: the shared bar chart plus its
+// "Top N of M" note and empty state.
 class _SingleSeriesBarChart extends StatelessWidget {
   final List<MapEntry<String, double>> entries;
   final Color color;
@@ -1422,10 +1552,10 @@ class _SingleSeriesBarChart extends StatelessWidget {
   Widget build(BuildContext context) {
     if (entries.isEmpty) {
       return Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(_DS.s5),
         child: Row(
           children: [
-            Icon(Icons.bar_chart_rounded, size: 18, color: _C.muted),
+            const Icon(Icons.bar_chart_rounded, size: 18, color: _C.muted),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
@@ -1442,135 +1572,33 @@ class _SingleSeriesBarChart extends StatelessWidget {
     }
 
     final shown = entries.take(_maxBars).toList();
-    final maxValue = shown.fold<double>(0, (m, e) => math.max(m, e.value));
-    final chartMaxY = maxValue <= 0 ? 1.0 : maxValue * 1.15;
     final money = NumberFormat('#,###.00');
+    final compact = NumberFormat.compact();
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 20, 8),
+      padding: const EdgeInsets.fromLTRB(_DS.s4, _DS.s3, _DS.s4, _DS.s2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
           if (entries.length > shown.length)
             Padding(
-              padding: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.only(bottom: _DS.s1),
               child: Text(
                 'Top ${shown.length} of ${entries.length}',
                 style: GoogleFonts.beVietnamPro(fontSize: 11, color: _C.muted),
               ),
             ),
-          SizedBox(
-            height: 220,
-            child: BarChart(
-              BarChartData(
-                maxY: chartMaxY,
-                alignment: BarChartAlignment.spaceAround,
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: false,
-                  horizontalInterval: chartMaxY / 4,
-                  getDrawingHorizontalLine: (_) =>
-                      const FlLine(color: _C.grid, strokeWidth: 1),
-                ),
-                borderData: FlBorderData(show: false),
-                titlesData: FlTitlesData(
-                  topTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  rightTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: moneyFormat ? 44 : 30,
-                      interval: chartMaxY / 4,
-                      getTitlesWidget: (v, _) => Text(
-                        moneyFormat
-                            ? '₱${NumberFormat.compact().format(v)}'
-                            : NumberFormat.compact().format(v),
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 9,
-                          color: _C.muted,
-                        ),
-                      ),
-                    ),
-                  ),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 34,
-                      getTitlesWidget: (v, _) {
-                        final i = v.toInt();
-                        if (i < 0 || i >= shown.length) {
-                          return const SizedBox.shrink();
-                        }
-                        final title = shown[i].key;
-                        final short = title.length > 10
-                            ? '${title.substring(0, 9)}…'
-                            : title;
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Text(
-                            short,
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 10,
-                              color: _C.muted,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-                barTouchData: BarTouchData(
-                  touchTooltipData: BarTouchTooltipData(
-                    getTooltipColor: (_) => _C.charcoal,
-                    getTooltipItem: (group, _, rod, __) {
-                      final title = shown[group.x].key;
-                      final value = moneyFormat
-                          ? '₱${money.format(rod.toY)}'
-                          : rod.toY.toInt().toString();
-                      return BarTooltipItem(
-                        '$title\n',
-                        GoogleFonts.beVietnamPro(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 11,
-                        ),
-                        children: [
-                          TextSpan(
-                            text: value,
-                            style: GoogleFonts.beVietnamPro(
-                              color: Colors.white70,
-                              fontSize: 11,
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                ),
-                barGroups: List.generate(shown.length, (i) {
-                  return BarChartGroupData(
-                    x: i,
-                    barRods: [
-                      BarChartRodData(
-                        toY: shown[i].value,
-                        color: color,
-                        width: 18,
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(4),
-                        ),
-                      ),
-                    ],
-                  );
-                }),
-              ),
-            ),
+          _EventBarChart(
+            entries: shown,
+            color: color,
+            leftReserved: moneyFormat ? 48 : 32,
+            axisLabel: (v) =>
+                moneyFormat ? '₱${compact.format(v)}' : compact.format(v),
+            valueLabel: (v) =>
+                moneyFormat ? '₱${compact.format(v)}' : '${v.toInt()}',
+            tooltipValue: (v) =>
+                moneyFormat ? '₱${money.format(v)}' : v.toInt().toString(),
           ),
         ],
       ),
@@ -1578,6 +1606,8 @@ class _SingleSeriesBarChart extends StatelessWidget {
   }
 }
 
+// "Rating & Attendance" section: a heading, then two equal cards - one donut
+// each - side by side, stacking on narrow widths.
 class _DistributionCard extends StatelessWidget {
   final _AnalyticsData data;
   const _DistributionCard({required this.data});
@@ -1586,9 +1616,8 @@ class _DistributionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final counts = data.starCounts;
     final totalRatings = data.totalFeedbacks;
-    // An ordinal one-hue ramp, darkest at 5. This was a green/emerald/amber/
-    // orange/red rainbow, which reads as five unrelated categories rather
-    // than one ordered scale and re-uses the status hues for non-status data.
+    // An ordinal one-hue ramp, darkest at 5 - one ordered scale, not five
+    // unrelated categories.
     final ratingSlices = [
       _DonutSlice('5 stars', counts[5]!, _C.rating5),
       _DonutSlice('4 stars', counts[4]!, _C.rating4),
@@ -1605,51 +1634,102 @@ class _DistributionCard extends StatelessWidget {
     ];
     final attTotal = attendanceSlices.fold<int>(0, (s, e) => s + e.count);
 
-    return Container(
-      decoration: _DS.card(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _CardHeader(
-            icon: Icons.insert_chart_outlined,
-            title: 'Rating & attendance breakdown',
+    final ratingCard = _DonutCard(
+      icon: Icons.star_outline_rounded,
+      title: 'Average Rating',
+      subtitle: 'Share of feedback at each star level.',
+      child: _DonutSection(
+        slices: ratingSlices,
+        centerBig: totalRatings == 0 ? '—' : data.avgRating.toStringAsFixed(1),
+        centerSmall: 'average',
+        emptyText: 'No feedback yet',
+      ),
+    );
+    final attendanceCard = _DonutCard(
+      icon: Icons.fact_check_outlined,
+      title: 'Attendance Rate',
+      subtitle: 'Present, late and absent across registered slots.',
+      child: _DonutSection(
+        slices: attendanceSlices,
+        centerBig: attTotal == 0
+            ? '—'
+            : '${data.attendanceRate.toStringAsFixed(0)}%',
+        centerSmall: 'attended',
+        emptyText: 'No attendance yet',
+      ),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Rating & Attendance',
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: _C.charcoal,
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(_DS.s4, 0, _DS.s4, _DS.s4),
-            child: IntrinsicHeight(
+        ),
+        const SizedBox(height: 2),
+        Text(
+          'Quick overview of feedback and event participation.',
+          style: GoogleFonts.beVietnamPro(fontSize: 12, color: _C.muted),
+        ),
+        const SizedBox(height: _DS.s3),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth < 680) {
+              return Column(
+                children: [
+                  ratingCard,
+                  const SizedBox(height: _DS.s5),
+                  attendanceCard,
+                ],
+              );
+            }
+            return IntrinsicHeight(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(
-                    child: _DonutSection(
-                      label: 'By rating',
-                      slices: ratingSlices,
-                      centerBig: totalRatings == 0
-                          ? '—'
-                          : data.avgRating.toStringAsFixed(1),
-                      centerSmall: 'average',
-                      emptyText: 'No feedback yet',
-                    ),
-                  ),
-                  Container(
-                    width: 1,
-                    margin: const EdgeInsets.symmetric(horizontal: _DS.s5),
-                    color: _C.border,
-                  ),
-                  Expanded(
-                    child: _DonutSection(
-                      label: 'By attendance',
-                      slices: attendanceSlices,
-                      centerBig: attTotal == 0
-                          ? '—'
-                          : '${data.attendanceRate.toStringAsFixed(0)}%',
-                      centerSmall: 'attended',
-                      emptyText: 'No attendance yet',
-                    ),
-                  ),
+                  Expanded(child: ratingCard),
+                  const SizedBox(width: _DS.s4),
+                  Expanded(child: attendanceCard),
                 ],
               ),
-            ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+// One card of the pair above: the shared card header, then its donut.
+class _DonutCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Widget child;
+  const _DonutCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: _DS.card(),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _CardHeader(icon: icon, title: title, subtitle: subtitle),
+          _DS.fadeDivider(),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(_DS.s5, _DS.s4, _DS.s5, _DS.s5),
+            child: child,
           ),
         ],
       ),
@@ -1659,16 +1739,14 @@ class _DistributionCard extends StatelessWidget {
 
 // One donut + its own legend, with hover: hovering a wedge or a legend row
 // highlights the other and pops a small info chip above the donut showing
-// that slice's exact label/percentage/count — the counts underneath were
+// that slice's exact label/percentage/count - the counts underneath were
 // already there, this just surfaces them without a click.
 class _DonutSection extends StatefulWidget {
-  final String label;
   final List<_DonutSlice> slices;
   final String centerBig;
   final String centerSmall;
   final String emptyText;
   const _DonutSection({
-    required this.label,
     required this.slices,
     required this.centerBig,
     required this.centerSmall,
@@ -1680,7 +1758,7 @@ class _DonutSection extends StatefulWidget {
 }
 
 class _DonutSectionState extends State<_DonutSection> {
-  static const double _size = 140;
+  static const double _size = 150;
   static const double _ringWidth = 24;
   int? _hovered;
 
@@ -1717,111 +1795,120 @@ class _DonutSectionState extends State<_DonutSection> {
   @override
   Widget build(BuildContext context) {
     final total = _total;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          widget.label,
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 11.5,
-            fontWeight: FontWeight.w600,
-            color: _C.muted,
-          ),
-        ),
-        const SizedBox(height: 10),
-        if (total == 0)
-          Container(
-            height: _size,
-            alignment: Alignment.center,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.insert_chart_outlined, size: 32, color: _C.border),
-                const SizedBox(height: 6),
-                Text(
-                  widget.emptyText,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 12,
-                    color: _C.muted,
-                  ),
-                ),
-              ],
+    if (total == 0) {
+      return Container(
+        height: _size + _DS.s4,
+        alignment: Alignment.center,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.insert_chart_outlined, size: 32, color: _C.border),
+            const SizedBox(height: 6),
+            Text(
+              widget.emptyText,
+              style: GoogleFonts.beVietnamPro(fontSize: 12, color: _C.muted),
             ),
-          )
-        else
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Stack(
-                clipBehavior: Clip.none,
-                alignment: Alignment.center,
-                children: [
-                  MouseRegion(
-                    onHover: (e) => _setHover(_hitTest(e.localPosition)),
-                    onExit: (_) => _setHover(null),
-                    child: SizedBox(
-                      width: _size,
-                      height: _size,
-                      child: CustomPaint(
-                        painter: _DonutPainter(
-                          slices: widget.slices,
-                          hoveredIndex: _hovered,
-                          centerBig: widget.centerBig,
-                          centerSmall: widget.centerSmall,
-                        ),
-                      ),
-                    ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Room above the donut for the hover chip.
+        const SizedBox(height: _DS.s5),
+        Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.center,
+          children: [
+            MouseRegion(
+              onHover: (e) => _setHover(_hitTest(e.localPosition)),
+              onExit: (_) => _setHover(null),
+              child: SizedBox(
+                width: _size,
+                height: _size,
+                child: CustomPaint(
+                  painter: _DonutPainter(
+                    slices: widget.slices,
+                    hoveredIndex: _hovered,
+                    centerBig: widget.centerBig,
+                    centerSmall: widget.centerSmall,
                   ),
-                  if (_hovered != null)
-                    Positioned(
-                      top: -32,
-                      child: IgnorePointer(
-                        child: _HoverInfoChip(
-                          slice: widget.slices[_hovered!],
-                          total: total,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  children: [
-                    for (var i = 0; i < widget.slices.length; i++)
-                      _legendRow(i, total),
-                  ],
                 ),
               ),
+            ),
+            if (_hovered != null)
+              Positioned(
+                top: -28,
+                child: IgnorePointer(
+                  child: _HoverInfoChip(
+                    slice: widget.slices[_hovered!],
+                    total: total,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: _DS.s5),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 300),
+          child: Column(
+            children: [
+              for (var i = 0; i < widget.slices.length; i++)
+                _legendRow(i, total),
             ],
           ),
+        ),
       ],
     );
   }
 
+  // Dot + label on the left; count and percentage in fixed-width right
+  // columns so the numbers line up down the legend.
   Widget _legendRow(int i, int total) {
     final s = widget.slices[i];
     final pct = total > 0 ? (s.count / total * 100).toStringAsFixed(0) : '0';
+    final hovered = _hovered == i;
     return MouseRegion(
       onEnter: (_) => _setHover(i),
       onExit: (_) => _setHover(null),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: _DS.s2, vertical: 4),
+        decoration: BoxDecoration(
+          color: hovered ? _C.chipBg : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+        ),
         child: Row(
           children: [
             Container(
-              width: 12,
-              height: 12,
+              width: 10,
+              height: 10,
               decoration: BoxDecoration(color: s.color, shape: BoxShape.circle),
             ),
-            const SizedBox(width: 8),
-            Text(
-              s.label,
-              style: GoogleFonts.beVietnamPro(fontSize: 12, color: _C.muted),
+            const SizedBox(width: _DS.s2),
+            Expanded(
+              child: Text(
+                s.label,
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 12.5,
+                  color: _C.charcoal,
+                ),
+              ),
             ),
-            const SizedBox(width: 10),
+            SizedBox(
+              width: 32,
+              child: Text(
+                '${s.count}',
+                textAlign: TextAlign.right,
+                style: GoogleFonts.beVietnamPro(fontSize: 12, color: _C.muted),
+              ),
+            ),
+            const SizedBox(width: _DS.s2),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              width: 48,
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: _C.chipBg,
                 borderRadius: BorderRadius.circular(4),

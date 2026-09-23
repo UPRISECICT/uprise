@@ -2099,7 +2099,6 @@ class _ViewOrganizationDialog extends StatelessWidget {
                                 'Organization email',
                                 organization.orgEmail,
                                 Icons.mail_outline_rounded,
-                                const Color(0xFF2563EB),
                               ),
                             ),
                             SizedBox(
@@ -2112,7 +2111,6 @@ class _ViewOrganizationDialog extends StatelessWidget {
                                         'MMMM d, yyyy',
                                       ).format(organization.createdAt!),
                                 Icons.calendar_today_outlined,
-                                const Color(0xFF7C3AED),
                               ),
                             ),
                           ],
@@ -2138,6 +2136,7 @@ class _ViewOrganizationDialog extends StatelessWidget {
                             : 'No description added yet.',
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 13,
+                          fontWeight: FontWeight.w600,
                           color: AdminColors.darkGray,
                           height: 1.6,
                         ),
@@ -2342,7 +2341,7 @@ class _ViewOrganizationDialog extends StatelessWidget {
     );
   }
 
-  Widget _contactCard(String label, String value, IconData icon, Color accent) {
+  Widget _contactCard(String label, String value, IconData icon) {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -2356,11 +2355,12 @@ class _ViewOrganizationDialog extends StatelessWidget {
           Container(
             width: 32,
             height: 32,
+            alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: accent.withAlpha(25),
+              color: AdminColors.primaryDark,
               borderRadius: BorderRadius.circular(9),
             ),
-            child: Icon(icon, color: accent, size: 17),
+            child: Icon(icon, color: Colors.white, size: 17),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -2440,7 +2440,16 @@ class _ViewOrganizationDialog extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 6),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: AdminColors.primaryDark.withAlpha(150)),
+          Container(
+            width: 24,
+            height: 24,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AdminColors.primaryDark,
+              borderRadius: BorderRadius.circular(7),
+            ),
+            child: Icon(icon, size: 12, color: Colors.white),
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(

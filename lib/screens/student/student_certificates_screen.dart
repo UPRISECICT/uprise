@@ -954,36 +954,70 @@ class _CertificatesContentState extends State<CertificatesContent> {
   }
 
   Widget _buildLivePreview(Map<String, dynamic> cert) {
-  final templateImageUrl = cert['imageUrl'] as String? ?? '';
-  
-  // If no image, show the fallback preview (keep this part the same)
-  if (templateImageUrl.isEmpty) {
-    // Your existing fallback code here - I'll show you below
-    String templateType = cert['templateType'] as String? ?? '';
-    if (templateType.isEmpty) {
-      templateType = cert['type'] as String? ?? '';
-    }
-    if (templateType.isEmpty) {
-      final templateData = cert['templateData'] as Map<String, dynamic>?;
-      if (templateData != null) {
-        templateType = templateData['type'] as String? ?? '';
+    final templateImageUrl = cert['imageUrl'] as String? ?? '';
+
+    // If no image, show the fallback preview (keep this part the same)
+    if (templateImageUrl.isEmpty) {
+      // Your existing fallback code here - I'll show you below
+      String templateType = cert['templateType'] as String? ?? '';
+      if (templateType.isEmpty) {
+        templateType = cert['type'] as String? ?? '';
       }
-    }
-    if (templateType.isEmpty) {
-      templateType = 'modern';
-    }
+      if (templateType.isEmpty) {
+        final templateData = cert['templateData'] as Map<String, dynamic>?;
+        if (templateData != null) {
+          templateType = templateData['type'] as String? ?? '';
+        }
+      }
+      if (templateType.isEmpty) {
+        templateType = 'modern';
+      }
 
-    final signatories = (cert['signatories'] as List)
-        .whereType<Map>()
-        .map(
-          (s) => CertSignatory(
-            name: (s['name'] ?? '').toString(),
-            title: (s['title'] ?? '').toString(),
-            signatureImageBase64: s['signatureImage'] as String?,
+      final signatories = (cert['signatories'] as List)
+          .whereType<Map>()
+          .map(
+            (s) => CertSignatory(
+              name: (s['name'] ?? '').toString(),
+              title: (s['title'] ?? '').toString(),
+              signatureImageBase64: s['signatureImage'] as String?,
+            ),
+          )
+          .toList();
+
+      return Container(
+        height: 180,
+        width: double.infinity,
+        color: const Color(0xFFF7F8FA),
+        padding: const EdgeInsets.all(8),
+        child: FittedBox(
+          fit: BoxFit.contain,
+          child: SizedBox(
+            width: 500,
+            height: 354,
+            child: CertificatePreview(
+              theme: CertTheme.forType(
+                templateType.isNotEmpty ? templateType : null,
+                primaryDark: UpriseColors.primaryDark,
+                primaryLight: UpriseColors.primaryLight,
+                accentColor: UpriseColors.accent,
+              ),
+              orgName: cert['organization'] as String,
+              eventTitle: cert['title'] as String,
+              eventDate: cert['date'] as String,
+              recipient: (cert['recipientName'] as String).isNotEmpty
+                  ? cert['recipientName'] as String
+                  : 'Recipient',
+              signatories: signatories,
+              verificationCode: null,
+            ),
           ),
-        )
-        .toList();
+        ),
+      );
+    }
 
+    // For an uploaded template the signatures are not baked into the image —
+    // they're overlaid at render time from the `signatories` roster, positioned
+    // by the certificate's own `signatoryPlacements`.
     return Container(
       height: 180,
       width: double.infinity,
@@ -994,46 +1028,11 @@ class _CertificatesContentState extends State<CertificatesContent> {
         child: SizedBox(
           width: 500,
           height: 354,
-          child: CertificatePreview(
-            theme: CertTheme.forType(
-              templateType.isNotEmpty ? templateType : null,
-              primaryDark: UpriseColors.primaryDark,
-              primaryLight: UpriseColors.primaryLight,
-              accentColor: UpriseColors.accent,
-            ),
-            orgName: cert['organization'] as String,
-            eventTitle: cert['title'] as String,
-            eventDate: cert['date'] as String,
-            recipient: (cert['recipientName'] as String).isNotEmpty
-                ? cert['recipientName'] as String
-                : 'Recipient',
-            signatories: signatories,
-            verificationCode: null,
-          ),
+          child: CertificateTemplateWithSignatories(cert: cert),
         ),
       ),
     );
   }
-
-  // For an uploaded template the signatures are not baked into the image —
-  // they're overlaid at render time from the `signatories` roster, positioned
-  // by the certificate's own `signatoryPlacements`.
-  return Container(
-    height: 180,
-    width: double.infinity,
-    color: const Color(0xFFF7F8FA),
-    padding: const EdgeInsets.all(8),
-    child: FittedBox(
-      fit: BoxFit.contain,
-      child: SizedBox(
-        width: 500,
-        height: 354,
-        child: CertificateTemplateWithSignatories(cert: cert),
-      ),
-    ),
-  );
-}
-
 
   Widget _placeholderBanner(
     bool isDraft,
@@ -1422,6 +1421,23 @@ class _CertificateTemplateWithSignatoriesState
                   final signature = (signatory['signatureBase64'] ?? '')
                       .toString();
                   final title = (signatory['title'] ?? '').toString();
+
+                  // Certificates laid out in the org's visual editor carry
+                  // their own width/size/alignment; older ones keep the
+                  // fixed block below.
+                  if (placement.isBox) {
+                    return certPlaceBoxField(
+                      placement: placement,
+                      canvas: Size(w, h),
+                      child: CertSignatoryBlock(
+                        placement: placement,
+                        name: (signatory['fullName'] ?? '').toString(),
+                        title: title,
+                        signatureBase64: signature,
+                        scale: w / CertificateImageWithName.referenceWidth,
+                      ),
+                    );
+                  }
 
                   return Positioned(
                     left: (placement.xPct * w - blockW / 2).clamp(

@@ -157,32 +157,6 @@ Widget _statusBadge(String status) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Category badge — same palette as admin_dashboard.dart's
-// _categoryBadgeColors / event_calendar.dart's _categoryColors, kept
-// identical value-for-value so a category reads as the same color
-// everywhere it shows up (admin, org dashboard, and here). Previously this
-// page rendered every category in one flat brand-orange pill, which read
-// as "everything is highlighted" since nothing visually distinguished a
-// Workshop from a Competition from a Cultural event.
-// ─────────────────────────────────────────────────────────────────────────────
-const Map<String, Color> _categoryBadgeColors = {
-  'Workshop': Color(0xFF8B5CF6),
-  'Seminar': Color(0xFF3B82F6),
-  'Competition': Color(0xFFEF4444),
-  'General Assembly': Color(0xFFF97316),
-  'Social': Color(0xFFEC4899),
-  'Outreach': Color(0xFF10B981),
-  'Sports': Color(0xFF14B8A6),
-  'Academic': Color(0xFF6366F1),
-  'Technical': Color(0xFF06B6D4),
-  'Cultural': Color(0xFFD946EF),
-};
-
-Color _categoryBadgeColor(String category) {
-  return _categoryBadgeColors[category] ?? const Color(0xFF6B7280);
-}
-
 // Pastel bg / solid fg pair per category — same values as
 // event_calendar.dart / org_events_schedule.dart's CategoryColors, so a
 // category's table badge here reads as the same color as its calendar chip.
@@ -4967,9 +4941,6 @@ class _ViewProposalModal extends StatelessWidget {
                                       : (data['category'] ?? '—'),
                                   icon: Icons.category_outlined,
                                   iconColor: UpriseColors.primaryDark,
-                                  valueColor: _categoryBadgeColor(
-                                    (data['category'] ?? '').toString(),
-                                  ),
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -4978,7 +4949,7 @@ class _ViewProposalModal extends StatelessWidget {
                                   label: 'Audience',
                                   value: data['audience'] ?? '—',
                                   icon: Icons.people_outline_rounded,
-                                  iconColor: const Color(0xFF06B6D4),
+                                  iconColor: UpriseColors.primaryDark,
                                 ),
                               ),
                             ],
@@ -4992,7 +4963,7 @@ class _ViewProposalModal extends StatelessWidget {
                                   label: 'Date',
                                   value: _fmt(data['date']),
                                   icon: Icons.calendar_today_outlined,
-                                  iconColor: const Color(0xFF3B82F6),
+                                  iconColor: UpriseColors.primaryDark,
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -5001,7 +4972,7 @@ class _ViewProposalModal extends StatelessWidget {
                                   label: 'Time',
                                   value: timeStr,
                                   icon: Icons.access_time_rounded,
-                                  iconColor: const Color(0xFFF59E0B),
+                                  iconColor: UpriseColors.primaryDark,
                                 ),
                               ),
                             ],
@@ -5015,7 +4986,7 @@ class _ViewProposalModal extends StatelessWidget {
                                   label: 'School Year',
                                   value: data['schoolYear'] ?? '—',
                                   icon: Icons.school_outlined,
-                                  iconColor: const Color(0xFF8B5CF6),
+                                  iconColor: UpriseColors.primaryDark,
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -5024,7 +4995,7 @@ class _ViewProposalModal extends StatelessWidget {
                                   label: 'Semester',
                                   value: data['semester'] ?? '—',
                                   icon: Icons.date_range_outlined,
-                                  iconColor: const Color(0xFF6366F1),
+                                  iconColor: UpriseColors.primaryDark,
                                 ),
                               ),
                             ],
@@ -5038,7 +5009,7 @@ class _ViewProposalModal extends StatelessWidget {
                                   label: 'Location',
                                   value: data['location'] ?? '—',
                                   icon: Icons.location_on_outlined,
-                                  iconColor: const Color(0xFF14B8A6),
+                                  iconColor: UpriseColors.primaryDark,
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -5047,10 +5018,7 @@ class _ViewProposalModal extends StatelessWidget {
                                   label: 'Issues Certificate',
                                   value: issuesCertificate ? 'Yes' : 'No',
                                   icon: Icons.verified_outlined,
-                                  iconColor: const Color(0xFF10B981),
-                                  valueColor: issuesCertificate
-                                      ? const Color(0xFF059669)
-                                      : const Color(0xFF6B7280),
+                                  iconColor: UpriseColors.primaryDark,
                                 ),
                               ),
                             ],
@@ -5066,7 +5034,7 @@ class _ViewProposalModal extends StatelessWidget {
                                       ? 'Unlimited'
                                       : '${data['capacity']} slots',
                                   icon: Icons.groups_outlined,
-                                  iconColor: const Color(0xFFEC4899),
+                                  iconColor: UpriseColors.primaryDark,
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -5087,6 +5055,7 @@ class _ViewProposalModal extends StatelessWidget {
                         data['description'] ?? 'No description provided.',
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 13,
+                          fontWeight: FontWeight.w600,
                           color: const Color(0xFF374151),
                           height: 1.6,
                         ),
@@ -5109,7 +5078,7 @@ class _ViewProposalModal extends StatelessWidget {
                                   label: 'Submitted By',
                                   value: data['submittedByEmail'] ?? '—',
                                   icon: Icons.email_outlined,
-                                  iconColor: const Color(0xFF0EA5E9),
+                                  iconColor: UpriseColors.primaryDark,
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -5118,7 +5087,7 @@ class _ViewProposalModal extends StatelessWidget {
                                   label: 'Submitted At',
                                   value: _fmt(data['submittedAt']),
                                   icon: Icons.access_time_rounded,
-                                  iconColor: const Color(0xFF64748B),
+                                  iconColor: UpriseColors.primaryDark,
                                 ),
                               ),
                             ],
@@ -5141,7 +5110,7 @@ class _ViewProposalModal extends StatelessWidget {
                                         label: 'Reviewed By',
                                         value: name,
                                         icon: Icons.rate_review_outlined,
-                                        iconColor: const Color(0xFF0EA5E9),
+                                        iconColor: UpriseColors.primaryDark,
                                       );
                                     },
                                   ),
@@ -5152,7 +5121,7 @@ class _ViewProposalModal extends StatelessWidget {
                                     label: 'Reviewed At',
                                     value: _fmt(data['reviewedAt']),
                                     icon: Icons.access_time_rounded,
-                                    iconColor: const Color(0xFF64748B),
+                                    iconColor: UpriseColors.primaryDark,
                                   ),
                                 ),
                               ],
@@ -5168,8 +5137,7 @@ class _ViewProposalModal extends StatelessWidget {
                                     label: 'Published to Students',
                                     value: _fmt(data['publishedAt']),
                                     icon: Icons.publish_rounded,
-                                    iconColor: const Color(0xFF10B981),
-                                    valueColor: const Color(0xFF2563EB),
+                                    iconColor: UpriseColors.primaryDark,
                                   ),
                                 ),
                                 const Expanded(child: SizedBox()),

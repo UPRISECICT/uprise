@@ -3736,6 +3736,7 @@ class _ProductDetailsModal extends StatelessWidget {
                         product.description,
                         style: GoogleFonts.beVietnamPro(
                           fontSize: 13,
+                          fontWeight: FontWeight.w600,
                           color: const Color(0xFF475569),
                           height: 1.55,
                         ),
@@ -4130,7 +4131,16 @@ class _ProductDetailsModal extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(icon, size: 13, color: UpriseColors.primaryDark),
+              Container(
+                width: 20,
+                height: 20,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: UpriseColors.primaryDark,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Icon(icon, size: 11, color: Colors.white),
+              ),
               const SizedBox(width: 6),
               Text(
                 label,

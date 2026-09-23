@@ -2921,29 +2921,6 @@ IconData _registrationFieldIcon(String label) {
   return Icons.short_text_rounded;
 }
 
-// Color companion to _registrationFieldIcon — same per-field matching, kept
-// as a separate lookup since not every OrgDetailItem caller wants color
-// (icon-only default is still gray).
-Color _registrationFieldColor(String label) {
-  final l = label.toLowerCase();
-  if (l.contains('name')) return const Color(0xFF3B82F6);
-  if (l.contains('student') || l.contains('id number') || l.contains('id no')) {
-    return const Color(0xFF8B5CF6);
-  }
-  if (l.contains('year') || l.contains('grade')) {
-    return const Color(0xFFF59E0B);
-  }
-  if (l.contains('program') || l.contains('course') || l.contains('section')) {
-    return const Color(0xFF06B6D4);
-  }
-  if (l.contains('email')) return const Color(0xFF10B981);
-  if (l.contains('phone') || l.contains('contact') || l.contains('number')) {
-    return const Color(0xFFEC4899);
-  }
-  if (l.contains('address')) return const Color(0xFF6366F1);
-  return UpriseColors.primaryDark;
-}
-
 // Registration form answers are stored on the registration doc itself —
 // either as `formResponses` (self-describing: {label, value} per field, the
 // current student registration flow) or the older `formAnswers` (raw field
@@ -3033,7 +3010,7 @@ void showRegistrationAnswers(
                         label: e.key.toUpperCase(),
                         value: e.value,
                         icon: _registrationFieldIcon(e.key),
-                        iconColor: _registrationFieldColor(e.key),
+                        iconColor: UpriseColors.primaryDark,
                       ),
                     const SizedBox(height: 14),
                   ],
@@ -3062,13 +3039,13 @@ class _LinkDetailItem extends StatelessWidget {
           height: 26,
           margin: const EdgeInsets.only(top: 1),
           decoration: BoxDecoration(
-            color: const Color(0xFF9AA5B4).withAlpha(28),
+            color: UpriseColors.primaryDark,
             borderRadius: BorderRadius.circular(7),
           ),
           child: const Icon(
             Icons.attach_file_rounded,
             size: 13,
-            color: Color(0xFF9AA5B4),
+            color: Colors.white,
           ),
         ),
         const SizedBox(width: 10),
@@ -3150,13 +3127,13 @@ class _ImageDetailItem extends StatelessWidget {
           height: 26,
           margin: const EdgeInsets.only(top: 1),
           decoration: BoxDecoration(
-            color: const Color(0xFF9AA5B4).withAlpha(28),
+            color: UpriseColors.primaryDark,
             borderRadius: BorderRadius.circular(7),
           ),
           child: const Icon(
             Icons.image_outlined,
             size: 13,
-            color: Color(0xFF9AA5B4),
+            color: Colors.white,
           ),
         ),
         const SizedBox(width: 10),
@@ -3241,13 +3218,13 @@ class _VideoDetailItem extends StatelessWidget {
           height: 26,
           margin: const EdgeInsets.only(top: 1),
           decoration: BoxDecoration(
-            color: const Color(0xFF9AA5B4).withAlpha(28),
+            color: UpriseColors.primaryDark,
             borderRadius: BorderRadius.circular(7),
           ),
           child: const Icon(
             Icons.videocam_outlined,
             size: 13,
-            color: Color(0xFF9AA5B4),
+            color: Colors.white,
           ),
         ),
         const SizedBox(width: 10),

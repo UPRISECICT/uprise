@@ -991,9 +991,6 @@ class _StudentAccountsState extends State<StudentAccounts> {
                               'Status',
                               isArchived ? 'ARCHIVED' : 'ACTIVE',
                               Icons.circle_outlined,
-                              valueColor: isArchived
-                                  ? const Color(0xFF6B7280)
-                                  : const Color(0xFF059669),
                             ),
                           ),
                         ],
@@ -1145,16 +1142,11 @@ class _StudentAccountsState extends State<StudentAccounts> {
     IconData icon, {
     Color? valueColor,
   }) {
-    final accent =
-        valueColor ??
-        switch (label) {
-          'Student ID' => const Color(0xFF2563EB),
-          'Course' => const Color(0xFFF97316),
-          'Year Level' => const Color(0xFF4F46E5),
-          'Section' => const Color(0xFF7C3AED),
-          'Email' => const Color(0xFF0891B2),
-          _ => const Color(0xFF64748B),
-        };
+    // Fields with a real semantic color (valueColor passed in, e.g. Status)
+    // keep a tinted badge in that color; purely descriptive fields get a
+    // solid badge in the modal header's own color instead.
+    final hasSemanticColor = valueColor != null;
+    final badgeColor = valueColor ?? AdminColors.primaryDark;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -1170,10 +1162,14 @@ class _StudentAccountsState extends State<StudentAccounts> {
             height: 30,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: accent.withAlpha(28),
+              color: hasSemanticColor ? badgeColor.withAlpha(28) : badgeColor,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, size: 14, color: accent),
+            child: Icon(
+              icon,
+              size: 14,
+              color: hasSemanticColor ? badgeColor : Colors.white,
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(

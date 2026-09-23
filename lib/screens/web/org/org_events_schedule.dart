@@ -2323,9 +2323,7 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                                                 ).format(event.date),
                                                 icon: Icons
                                                     .calendar_today_rounded,
-                                                iconColor: const Color(
-                                                  0xFF3B82F6,
-                                                ),
+                                                iconColor: catColor,
                                               ),
                                             ),
                                             const SizedBox(width: 16),
@@ -2338,9 +2336,7 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                                                           : startTime)
                                                     : 'TBD',
                                                 icon: Icons.access_time_rounded,
-                                                iconColor: const Color(
-                                                  0xFFF59E0B,
-                                                ),
+                                                iconColor: catColor,
                                               ),
                                             ),
                                           ],
@@ -2363,9 +2359,7 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                                                     : 'TBD',
                                                 icon:
                                                     Icons.location_on_outlined,
-                                                iconColor: const Color(
-                                                  0xFF8B5CF6,
-                                                ),
+                                                iconColor: catColor,
                                               ),
                                             ),
                                             const SizedBox(width: 16),
@@ -2376,9 +2370,7 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                                                     ? event.audience
                                                     : 'Public',
                                                 icon: Icons.group_outlined,
-                                                iconColor: const Color(
-                                                  0xFF06B6D4,
-                                                ),
+                                                iconColor: catColor,
                                               ),
                                             ),
                                           ],
@@ -2397,9 +2389,7 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                                                   label: 'Organization',
                                                   value: event.orgName,
                                                   icon: Icons.business_center,
-                                                  iconColor: const Color(
-                                                    0xFF10B981,
-                                                  ),
+                                                  iconColor: catColor,
                                                 ),
                                               ),
                                               const Expanded(
@@ -2423,6 +2413,7 @@ class _OrgEventsScheduleScreenState extends State<OrgEventsScheduleScreen> {
                                         event.description,
                                         style: GoogleFonts.beVietnamPro(
                                           fontSize: 13.5,
+                                          fontWeight: FontWeight.w600,
                                           color: const Color(0xFF374151),
                                           height: 1.65,
                                         ),

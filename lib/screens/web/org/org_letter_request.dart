@@ -1240,7 +1240,7 @@ class _RequestDetailsDialog extends StatelessWidget {
                             label: 'Letter ID',
                             value: request.letterId,
                             icon: Icons.badge_outlined,
-                            iconColor: const Color(0xFF64748B),
+                            iconColor: _DS.primary,
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -1249,8 +1249,7 @@ class _RequestDetailsDialog extends StatelessWidget {
                             label: 'Status',
                             value: request.status.toUpperCase(),
                             icon: Icons.circle_outlined,
-                            valueColor: _statusColor(request.status),
-                            iconColor: _statusColor(request.status),
+                            iconColor: _DS.primary,
                           ),
                         ),
                       ],
@@ -1266,7 +1265,7 @@ class _RequestDetailsDialog extends StatelessWidget {
                             label: 'Type',
                             value: request.letterType,
                             icon: Icons.label_outlined,
-                            iconColor: const Color(0xFF6366F1),
+                            iconColor: _DS.primary,
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -1277,7 +1276,7 @@ class _RequestDetailsDialog extends StatelessWidget {
                               'MMM dd, yyyy',
                             ).format(request.timestamp.toDate()),
                             icon: Icons.calendar_today_outlined,
-                            iconColor: const Color(0xFF2563EB),
+                            iconColor: _DS.primary,
                           ),
                         ),
                       ],
@@ -1295,7 +1294,7 @@ class _RequestDetailsDialog extends StatelessWidget {
                                 ? request.schoolYear
                                 : '—',
                             icon: Icons.school_outlined,
-                            iconColor: const Color(0xFF0D9488),
+                            iconColor: _DS.primary,
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -1306,7 +1305,7 @@ class _RequestDetailsDialog extends StatelessWidget {
                                 ? request.semester
                                 : '—',
                             icon: Icons.date_range_outlined,
-                            iconColor: const Color(0xFFD97706),
+                            iconColor: _DS.primary,
                           ),
                         ),
                       ],
@@ -1329,7 +1328,7 @@ class _RequestDetailsDialog extends StatelessWidget {
                         label: 'Message',
                         value: request.message!,
                         icon: Icons.message_outlined,
-                        iconColor: const Color(0xFF7C3AED),
+                        iconColor: _DS.primary,
                       ),
                     ],
                   ],
@@ -1346,7 +1345,7 @@ class _RequestDetailsDialog extends StatelessWidget {
                   value:
                       '${request.attachmentName}${request.attachmentSize != null ? ' (${request.attachmentSize})' : ''}',
                   icon: Icons.attach_file_rounded,
-                  iconColor: const Color(0xFFDB2777),
+                  iconColor: _DS.primary,
                 ),
               ],
               if (request.signedDocumentBase64 != null &&
@@ -1672,20 +1671,6 @@ class _RequestDetailsDialog extends StatelessWidget {
     );
   }
 
-  Color _statusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'approved':
-        return const Color(0xFF059669);
-      case 'rejected':
-        return const Color(0xFFDC2626);
-      case 'revision':
-        return const Color(0xFF2563EB);
-      case 'resubmitted':
-        return const Color(0xFF7C3AED);
-      default:
-        return const Color(0xFFFB923C);
-    }
-  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1827,43 +1812,6 @@ class _LetterRequestModalState extends State<_LetterRequestModal> {
     }
   }
 
-  Future<void> _pickNeededBy() async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _neededBy ?? now.add(const Duration(days: 7)),
-      firstDate: now,
-      lastDate: now.add(const Duration(days: 365)),
-      builder: (context, child) {
-        // Material 3's default seed skews purple/indigo unless the scheme
-        // is seeded from the brand color instead — same fix as the other
-        // date pickers in the portal.
-        final base = Theme.of(context);
-        return Theme(
-          data: base.copyWith(
-            colorScheme:
-                ColorScheme.fromSeed(
-                  seedColor: _DS.primary,
-                  brightness: Brightness.light,
-                ).copyWith(
-                  primary: _DS.primary,
-                  onPrimary: Colors.white,
-                  surface: Colors.white,
-                  surfaceTint: Colors.transparent,
-                ),
-          ),
-          child: child!,
-        );
-      },
-    );
-    if (picked != null && mounted) {
-      setState(() {
-        _neededBy = picked;
-        _errorMsg = null;
-      });
-    }
-  }
-
   Future<void> _submit() async {
     setState(() {
       _errorMsg = null;
@@ -1871,10 +1819,6 @@ class _LetterRequestModalState extends State<_LetterRequestModal> {
     });
     if (!_formKey.currentState!.validate()) return;
 
-    if (_neededBy == null) {
-      setState(() => _errorMsg = 'Pick the date you need this letter by.');
-      return;
-    }
     if (widget.existingRequest == null &&
         _attachmentBase64 == null &&
         LetterType.needsAttachment(_letterType)) {
@@ -2049,39 +1993,6 @@ class _LetterRequestModalState extends State<_LetterRequestModal> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Type first: it decides whether an attachment is
-                    // required further down, so asking for it last would
-                    // move the goalposts after the org had already filled
-                    // the form in.
-                    DropdownButtonFormField<String>(
-                      value: _letterType,
-                      isExpanded: true,
-                      decoration: _DS.inputDecoration(
-                        'Type of letter *',
-                        icon: Icons.category_outlined,
-                      ),
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        color: const Color(0xFF1A202C),
-                      ),
-                      items: [
-                        for (final t in LetterType.all)
-                          DropdownMenuItem(value: t.id, child: Text(t.label)),
-                      ],
-                      onChanged: (v) => setState(() {
-                        _letterType = v!;
-                        _errorMsg = null;
-                      }),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      LetterType.byId(_letterType).description,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 11.5,
-                        color: const Color(0xFF9AA5B4),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
                     TextFormField(
                       controller: _subjectCtrl,
                       style: GoogleFonts.beVietnamPro(fontSize: 13),
@@ -2093,57 +2004,6 @@ class _LetterRequestModalState extends State<_LetterRequestModal> {
                       validator: (v) => v?.trim().isEmpty == true
                           ? 'Subject is required'
                           : null,
-                    ),
-                    const SizedBox(height: 14),
-                    TextFormField(
-                      controller: _addressedToCtrl,
-                      style: GoogleFonts.beVietnamPro(fontSize: 13),
-                      decoration: _DS.inputDecoration(
-                        'Addressed to *',
-                        hint: 'e.g. Dean, College of ICT',
-                        icon: Icons.person_outline_rounded,
-                      ),
-                      validator: (v) => v?.trim().isEmpty == true
-                          ? 'Say who the letter is addressed to'
-                          : null,
-                    ),
-                    const SizedBox(height: 14),
-                    TextFormField(
-                      controller: _purposeCtrl,
-                      maxLines: 2,
-                      style: GoogleFonts.beVietnamPro(fontSize: 13),
-                      decoration: _DS.inputDecoration(
-                        'Purpose *',
-                        hint: 'Why the letter is needed',
-                        icon: Icons.flag_outlined,
-                      ),
-                      validator: (v) => v?.trim().isEmpty == true
-                          ? 'Describe the purpose'
-                          : null,
-                    ),
-                    const SizedBox(height: 14),
-                    // Needed-by gives the admin something to triage by;
-                    // before this every request looked equally urgent.
-                    InkWell(
-                      onTap: _pickNeededBy,
-                      borderRadius: BorderRadius.circular(8),
-                      child: InputDecorator(
-                        decoration: _DS.inputDecoration(
-                          'Needed by *',
-                          icon: Icons.event_outlined,
-                        ),
-                        child: Text(
-                          _neededBy == null
-                              ? 'Select a date'
-                              : DateFormat('MMM d, yyyy').format(_neededBy!),
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13,
-                            color: _neededBy == null
-                                ? const Color(0xFF9AA5B4)
-                                : const Color(0xFF1A202C),
-                          ),
-                        ),
-                      ),
                     ),
                     const SizedBox(height: 14),
                     Row(
@@ -2195,11 +2055,14 @@ class _LetterRequestModalState extends State<_LetterRequestModal> {
                       maxLines: 3,
                       style: GoogleFonts.beVietnamPro(fontSize: 13),
                       decoration: _DS.inputDecoration(
-                        'Message (optional)',
+                        'Message *',
                         hint:
                             'Additional instructions or notes for the admin...',
                         icon: Icons.message_outlined,
                       ),
+                      validator: (v) => v?.trim().isEmpty == true
+                          ? 'Message is required'
+                          : null,
                     ),
                   ],
                 ),

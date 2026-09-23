@@ -1160,14 +1160,6 @@ class _ActivityLogsState extends State<ActivityLogs> {
                           Icons.access_time_rounded,
                         ),
                       ],
-                      if (data['ipAddress'] != null) ...[
-                        const SizedBox(height: 14),
-                        _detailItem(
-                          'IP Address',
-                          data['ipAddress'].toString(),
-                          Icons.router_outlined,
-                        ),
-                      ],
                     ],
                   ),
                 ),
@@ -1221,8 +1213,17 @@ class _ActivityLogsState extends State<ActivityLogs> {
       children: [
         Row(
           children: [
-            Icon(icon, size: 13, color: AdminColors.primaryDark.withAlpha(150)),
-            const SizedBox(width: 5),
+            Container(
+              width: 22,
+              height: 22,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AdminColors.primaryDark,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Icon(icon, size: 11, color: Colors.white),
+            ),
+            const SizedBox(width: 6),
             Text(
               label,
               style: GoogleFonts.beVietnamPro(
@@ -1361,7 +1362,6 @@ class _ExportLogsButton extends StatelessWidget {
             (d['module'] ?? '').toString(),
             (d['severity'] ?? '').toString(),
             tsStr,
-            (d['ipAddress'] ?? '').toString(),
             orgId,
           ];
         }).toList();
@@ -1373,7 +1373,6 @@ class _ExportLogsButton extends StatelessWidget {
             'Module',
             'Severity',
             'Timestamp',
-            'IP Address',
             'Org ID',
           ],
           rows: rows,
@@ -1401,7 +1400,6 @@ class _ExportLogsButton extends StatelessWidget {
             d['module'] ?? '',
             d['severity'] ?? '',
             tsStr,
-            d['ipAddress'] ?? '',
             orgId,
           ].map((value) => value.toString()).toList();
         }).toList();
@@ -1414,7 +1412,6 @@ class _ExportLogsButton extends StatelessWidget {
             'Module',
             'Severity',
             'Timestamp',
-            'IP Address',
             'Org ID',
           ],
           rows: rows,

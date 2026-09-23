@@ -1747,6 +1747,7 @@ class _ExternalAccountState extends State<ExternalAccount> {
                             req.purpose,
                             style: GoogleFonts.beVietnamPro(
                               fontSize: 13,
+                              fontWeight: FontWeight.w600,
                               color: const Color(0xFF374151),
                               height: 1.6,
                             ),
@@ -1894,20 +1895,11 @@ class _ExternalAccountState extends State<ExternalAccount> {
     IconData icon, {
     Color? valueColor,
   }) {
-    final accent =
-        valueColor ??
-        switch (label) {
-          'Full Name' => const Color(0xFF2563EB),
-          'Email' => const Color(0xFF0891B2),
-          'Guest Type' => const Color(0xFFF97316),
-          'College' => const Color(0xFF0F766E),
-          'Year Level' => const Color(0xFF4F46E5),
-          'Section' => const Color(0xFF7C3AED),
-          'Affiliation / Organization' => const Color(0xFFDB2777),
-          'User ID' => const Color(0xFF6366F1),
-          'Account Status' => const Color(0xFF059669),
-          _ => const Color(0xFF64748B),
-        };
+    // Fields with a real semantic color (valueColor passed in) keep a
+    // tinted badge in that color; purely descriptive fields get a solid
+    // badge in the modal header's own color instead.
+    final hasSemanticColor = valueColor != null;
+    final badgeColor = valueColor ?? AdminColors.primaryDark;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -1923,10 +1915,14 @@ class _ExternalAccountState extends State<ExternalAccount> {
             height: 30,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: accent.withAlpha(28),
+              color: hasSemanticColor ? badgeColor.withAlpha(28) : badgeColor,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, size: 14, color: accent),
+            child: Icon(
+              icon,
+              size: 14,
+              color: hasSemanticColor ? badgeColor : Colors.white,
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(

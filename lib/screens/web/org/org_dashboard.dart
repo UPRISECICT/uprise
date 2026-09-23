@@ -44,6 +44,7 @@ import 'export_excel.dart';
 import '../../../services/notification_service.dart';
 import '../../../services/firestore_collections.dart';
 import '../../../widgets/admin_export_button.dart';
+import '../../../widgets/dashboard_overview_label.dart';
 import '../../../services/app_sign_out.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2492,7 +2493,7 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildWelcomeHeader(isMobile),
-          const SizedBox(height: 20),
+          const SizedBox(height: 14),
           _buildStatCards(isMobile, isTablet),
           const SizedBox(height: 20),
           _selectedCard == null ? _buildChartCard() : _buildDynamicPanel(),
@@ -2506,188 +2507,9 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
   }
 
   // ── Welcome header ────────────────────────────────────────────────
-  Widget _buildLivePill() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: Colors.white.withAlpha(22),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withAlpha(45)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: const BoxDecoration(
-              color: Color(0xFF4ADE80),
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            'Live Dashboard',
-            style: GoogleFonts.beVietnamPro(
-              color: Colors.white.withAlpha(220),
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.5,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildWelcomeHeader(bool isMobile) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        decoration: BoxDecoration(
-          color: OrgColors.primaryDark,
-          boxShadow: [
-            BoxShadow(
-              color: Color(0x40BE4700),
-              blurRadius: 24,
-              offset: Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Stack(
-          children: [
-            Positioned(
-              right: -24,
-              top: -24,
-              child: Container(
-                width: 160,
-                height: 160,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withAlpha(12),
-                ),
-              ),
-            ),
-            Positioned(
-              right: 70,
-              bottom: -28,
-              child: Container(
-                width: 100,
-                height: 100,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withAlpha(8),
-                ),
-              ),
-            ),
-            Positioned(
-              left: -10,
-              bottom: -16,
-              child: Container(
-                width: 70,
-                height: 70,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withAlpha(7),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
-              child: isMobile
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildLivePill(),
-                        const SizedBox(height: 10),
-                        Text(
-                          widget.orgName,
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                            height: 1.1,
-                          ),
-                        ),
-                        const SizedBox(height: 5),
-                        Text(
-                          'Organization Dashboard  •  Welcome back.',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 12.5,
-                            color: Colors.white.withAlpha(180),
-                            height: 1.5,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withAlpha(20),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: Colors.white.withAlpha(35),
-                            ),
-                          ),
-                          child: const Icon(
-                            Icons.business_rounded,
-                            color: Colors.white,
-                            size: 36,
-                          ),
-                        ),
-                      ],
-                    )
-                  : Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildLivePill(),
-                              const SizedBox(height: 10),
-                              Text(
-                                widget.orgName,
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white,
-                                  height: 1.1,
-                                ),
-                              ),
-                              const SizedBox(height: 5),
-                              Text(
-                                'Organization Dashboard  •  Welcome back.',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 12.5,
-                                  color: Colors.white.withAlpha(180),
-                                  height: 1.5,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 20),
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withAlpha(20),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: Colors.white.withAlpha(35),
-                            ),
-                          ),
-                          child: const Icon(
-                            Icons.business_rounded,
-                            color: Colors.white,
-                            size: 34,
-                          ),
-                        ),
-                      ],
-                    ),
-            ),
-          ],
-        ),
-      ),
+    return const DashboardOverviewLabel(
+      subtitle: 'Organization activity at a glance',
     );
   }
 
@@ -2801,15 +2623,6 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
       ],
     );
   }
-
-  // ── Detail row with colored BADGE ──
-  // Thin alias over [_detailRow] — the two used to be byte-identical copies
-  // that drifted apart whenever only one of them got restyled.
-  Widget _detailRowWithBadge({
-    required String label,
-    required String value,
-    required Color color,
-  }) => _detailRow(label, value, badgeColor: color);
 
   // ── Chart card ────────────────────────────────────────────────────
   Widget _buildChartCard() {
@@ -3156,7 +2969,6 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                   isEven: i.isEven,
                   onTap: () => _showDetailDialog(
                     title: rows[i]['title'] as String,
-                    categoryColorOf: (c) => CategoryColors.getFg(c),
                     actionLabel: 'Open in Events & Schedules',
                     navigateToTabIndex: 2, // OrgEventsScheduleScreen
                     fields: [
@@ -3266,7 +3078,6 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                   isEven: i.isEven,
                   onTap: () => _showDetailDialog(
                     title: rows[i]['title'] as String,
-                    categoryColorOf: (c) => CategoryColors.getFg(c),
                     actionLabel: 'Open in Event Proposals',
                     navigateToTabIndex: 1, // OrgEventProposalsScreen
                     fields: [
@@ -3486,7 +3297,6 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                   isEven: i.isEven,
                   onTap: () => _showDetailDialog(
                     title: rows[i]['name'] as String,
-                    categoryColorOf: (c) => _merchCategoryBadgeColor(c),
                     actionLabel: 'Open in Merchandise Catalog',
                     navigateToTabIndex: 12, // OrgMerchandiseScreen
                     fields: [
@@ -3754,23 +3564,7 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
     'In Stock': Icons.inventory_2_rounded,
   };
 
-  static const Map<String, Color> _detailFieldColors = {
-    'Category': OrgColors.primaryDark,
-    'Date': Color(0xFF2563EB),
-    'Event Date': Color(0xFF2563EB),
-    'Time': Color(0xFFF59E0B),
-    'Location': Color(0xFF0D9488),
-    'Audience': Color(0xFF7C3AED),
-    'Description': OrgColors.darkGray,
-    'Submitted': Color(0xFF0D9488),
-    'Price': OrgColors.success,
-    'In Stock': Color(0xFF7C3AED),
-  };
-
-  Widget _detailRow(String label, String value, {Color? badgeColor}) {
-    // Category's chip is tinted per-category (badgeColor); every other
-    // field falls back to its fixed lookup color above.
-    final tint = badgeColor ?? _detailFieldColors[label] ?? OrgColors.darkGray;
+  Widget _detailRow(String label, String value) {
     final icon = _detailFieldIcons[label] ?? Icons.info_outline_rounded;
     return Container(
       width: double.infinity,
@@ -3788,10 +3582,10 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
             height: 30,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: tint.withAlpha(25),
+              color: OrgColors.primaryDark,
               borderRadius: BorderRadius.circular(9),
             ),
-            child: Icon(icon, size: 15, color: tint),
+            child: Icon(icon, size: 15, color: Colors.white),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -3808,17 +3602,17 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                   ),
                 ),
                 const SizedBox(height: 6),
-                if (badgeColor != null)
-                  _cellBadge(value, badgeColor)
-                else
-                  Text(
-                    value,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 13.5,
-                      color: OrgColors.charcoal,
-                      height: 1.45,
-                    ),
+                Text(
+                  value,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 13.5,
+                    fontWeight: _fullWidthDetailKeys.contains(label)
+                        ? FontWeight.w600
+                        : FontWeight.w400,
+                    color: OrgColors.charcoal,
+                    height: 1.45,
                   ),
+                ),
               ],
             ),
           ),
@@ -3865,7 +3659,6 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
   void _showDetailDialog({
     required String title,
     required List<MapEntry<String, String>> fields,
-    Color Function(String category)? categoryColorOf,
     String? actionLabel,
     int? navigateToTabIndex,
   }) {
@@ -3874,14 +3667,7 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
     // stacking them was spending a full row on values a few characters long.
     final rows = _pairDetailFields(fields);
 
-    Widget cellFor(MapEntry<String, String> f) =>
-        f.key == 'Category' && categoryColorOf != null
-        ? _detailRowWithBadge(
-            label: f.key,
-            value: f.value,
-            color: categoryColorOf(f.value),
-          )
-        : _detailRow(f.key, f.value);
+    Widget cellFor(MapEntry<String, String> f) => _detailRow(f.key, f.value);
 
     showDialog(
       context: context,

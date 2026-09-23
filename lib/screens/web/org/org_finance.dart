@@ -518,7 +518,7 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
                 label: 'Category',
                 value: transaction.category,
                 icon: Icons.sell_outlined,
-                iconColor: UpriseColors.primaryDark,
+                iconColor: accent,
               ),
               const SizedBox(height: 14),
               OrgDetailItem(
@@ -527,14 +527,14 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
                     ? transaction.segment
                     : 'No description added',
                 icon: Icons.notes_rounded,
-                iconColor: const Color(0xFF64748B),
+                iconColor: accent,
               ),
               const SizedBox(height: 14),
               OrgDetailItem(
                 label: 'Event',
                 value: transaction.eventName,
                 icon: Icons.event_outlined,
-                iconColor: const Color(0xFF3B82F6),
+                iconColor: accent,
               ),
               if (transaction.hasReceipt) ...[
                 const SizedBox(height: 14),

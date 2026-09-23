@@ -3460,6 +3460,7 @@ class _OrgAnnouncementsScreenState extends State<OrgAnnouncementsScreen> {
   Widget _buildContentWithLinks(String text) {
     final style = GoogleFonts.beVietnamPro(
       fontSize: 14,
+      fontWeight: FontWeight.w600,
       height: 1.65,
       color: _C.textMid,
     );

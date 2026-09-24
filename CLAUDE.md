@@ -43,6 +43,8 @@ Role routing is handled by **two separate routers**:
 - `lib/role_router.dart` — used by `main.dart`; guards students to mobile only, admins/orgs to web only
 - `lib/main_web.dart` `AuthGate` — same logic, used by the web entry
 
+Signed-out web visitors see `AdminLandingPage` (`?portal=admin`) or `OrgLandingPage` (`?portal=org`), which push to `AdminLogin` / `OrganizationLogin`. Both landing pages are composed from shared components in `lib/screens/web/landing/` (navbar, hero, reveals/parallax in `landing_motion.dart`, feature stories, CTA, footer, and illustrative UI previews under `previews/`) and differ only by `LandingPalette.admin` / `.org` and their copy — change shared behavior there, not in either page.
+
 Both routers read the `role` field from the `users` Firestore collection and cache it in `AuthService._roleCache`.
 
 ### Two AuthService files

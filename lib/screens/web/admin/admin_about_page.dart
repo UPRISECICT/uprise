@@ -1,3 +1,6 @@
+import '../landing/landing_motion.dart';
+import '../landing/landing_palette.dart';
+import '../landing/researchers_section.dart';
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -91,56 +94,59 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
     return Container(
       color: Colors.white,
       child: AbstractSectionBackdrop(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 48, 24, 48),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 760),
-              child: Column(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AdminSiteColors.primary.withAlpha(14),
-                      borderRadius: BorderRadius.circular(100),
-                      border: Border.all(color: AdminSiteColors.border),
-                    ),
-                    child: Text(
-                      'ABOUT UPRISE',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w700,
-                        color: AdminSiteColors.primary,
-                        letterSpacing: 0.8,
+        child: Reveal(
+          dy: 28,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 48, 24, 48),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 760),
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AdminSiteColors.primary.withAlpha(14),
+                        borderRadius: BorderRadius.circular(100),
+                        border: Border.all(color: AdminSiteColors.border),
+                      ),
+                      child: Text(
+                        'ABOUT UPRISE',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w700,
+                          color: AdminSiteColors.primary,
+                          letterSpacing: 0.8,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    'Built for CICT, from the ground up',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 34,
-                      fontWeight: FontWeight.w800,
-                      color: AdminSiteColors.ink,
-                      letterSpacing: -0.6,
+                    const SizedBox(height: 18),
+                    Text(
+                      'Built for CICT, from the ground up',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 34,
+                        fontWeight: FontWeight.w800,
+                        color: AdminSiteColors.ink,
+                        letterSpacing: -0.6,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 14),
-                  Text(
-                    'One system, explained: what it replaces, who built it, '
-                    'and who it serves.',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 15,
-                      color: AdminSiteColors.inkSoft,
-                      height: 1.6,
+                    const SizedBox(height: 14),
+                    Text(
+                      'One system, explained: what it replaces, who built it, '
+                      'and who it serves.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 15,
+                        color: AdminSiteColors.inkSoft,
+                        height: 1.6,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -173,88 +179,96 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
     return Container(
       color: AdminSiteColors.bg,
       child: AbstractSectionBackdrop(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 64),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1180),
-              child: LayoutBuilder(
-                builder: (_, c) {
-                  final wide = c.maxWidth >= 900;
-                  final copy = Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _eyebrow('01 · THE SYSTEM'),
-                      const SizedBox(height: 10),
-                      Text(
-                        'A system, not a spreadsheet',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w800,
-                          color: AdminSiteColors.ink,
-                          letterSpacing: -0.4,
-                        ),
-                      ),
-                      const SizedBox(height: 28),
-                      for (var i = 0; i < points.length; i++)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 22),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '0${i + 1}',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w800,
-                                  color: AdminSiteColors.blue,
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      points[i].$1,
-                                      style: GoogleFonts.beVietnamPro(
-                                        fontSize: 14.5,
-                                        fontWeight: FontWeight.w700,
-                                        color: AdminSiteColors.ink,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      points[i].$2,
-                                      style: GoogleFonts.beVietnamPro(
-                                        fontSize: 12.5,
-                                        color: AdminSiteColors.inkSoft,
-                                        height: 1.55,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+        child: Reveal(
+          dy: 28,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 64),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1180),
+                child: LayoutBuilder(
+                  builder: (_, c) {
+                    final wide = c.maxWidth >= 900;
+                    final copy = Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _eyebrow('01 · THE SYSTEM'),
+                        const SizedBox(height: 10),
+                        Text(
+                          'A system, not a spreadsheet',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 26,
+                            fontWeight: FontWeight.w800,
+                            color: AdminSiteColors.ink,
+                            letterSpacing: -0.4,
                           ),
                         ),
-                    ],
-                  );
-                  const diagram = _RoleDiagram();
-                  return wide
-                      ? Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(flex: 6, child: copy),
-                            const SizedBox(width: 48),
-                            Expanded(flex: 5, child: diagram),
-                          ],
-                        )
-                      : Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [copy, const SizedBox(height: 36), diagram],
-                        );
-                },
+                        const SizedBox(height: 28),
+                        for (var i = 0; i < points.length; i++)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 22),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '0${i + 1}',
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w800,
+                                    color: AdminSiteColors.blue,
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        points[i].$1,
+                                        style: GoogleFonts.beVietnamPro(
+                                          fontSize: 14.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: AdminSiteColors.ink,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        points[i].$2,
+                                        style: GoogleFonts.beVietnamPro(
+                                          fontSize: 12.5,
+                                          color: AdminSiteColors.inkSoft,
+                                          height: 1.55,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    );
+                    const diagram = _RoleDiagram();
+                    return wide
+                        ? Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(flex: 6, child: copy),
+                              const SizedBox(width: 48),
+                              Expanded(flex: 5, child: diagram),
+                            ],
+                          )
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              copy,
+                              const SizedBox(height: 36),
+                              diagram,
+                            ],
+                          );
+                  },
+                ),
               ),
             ),
           ),
@@ -290,82 +304,86 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
     return Container(
       color: Colors.white,
       child: AbstractSectionBackdrop(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 64),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 760),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _eyebrow('WHAT IT REPLACES'),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Before → After',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      color: AdminSiteColors.ink,
-                      letterSpacing: -0.4,
+        child: Reveal(
+          dy: 28,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 64),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 760),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _eyebrow('WHAT IT REPLACES'),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Before → After',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: AdminSiteColors.ink,
+                        letterSpacing: -0.4,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 28),
-                  for (var i = 0; i < rows.length; i++) ...[
-                    LayoutBuilder(
-                      builder: (_, c) {
-                        final wide = c.maxWidth >= 480;
-                        final before = Text(
-                          rows[i].$1,
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13.5,
-                            color: AdminSiteColors.inkFaint,
-                            decoration: TextDecoration.lineThrough,
-                            decorationColor: AdminSiteColors.inkFaint,
-                          ),
-                        );
-                        final after = Text(
-                          rows[i].$2,
-                          textAlign: wide ? TextAlign.right : TextAlign.left,
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w700,
-                            color: AdminSiteColors.ink,
-                          ),
-                        );
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          child: wide
-                              ? Row(
-                                  children: [
-                                    Expanded(child: before),
-                                    const Padding(
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: 16,
+                    const SizedBox(height: 28),
+                    for (var i = 0; i < rows.length; i++) ...[
+                      LayoutBuilder(
+                        builder: (_, c) {
+                          final wide = c.maxWidth >= 480;
+                          final before = Text(
+                            rows[i].$1,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13.5,
+                              color: AdminSiteColors.inkFaint,
+                              decoration: TextDecoration.lineThrough,
+                              decorationColor: AdminSiteColors.inkFaint,
+                            ),
+                          );
+                          final after = Text(
+                            rows[i].$2,
+                            textAlign: wide ? TextAlign.right : TextAlign.left,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w700,
+                              color: AdminSiteColors.ink,
+                            ),
+                          );
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            child: wide
+                                ? Row(
+                                    children: [
+                                      Expanded(child: before),
+                                      const Padding(
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: 16,
+                                        ),
+                                        child: Icon(
+                                          Icons.arrow_forward_rounded,
+                                          size: 16,
+                                          color: AdminSiteColors.blue,
+                                        ),
                                       ),
-                                      child: Icon(
-                                        Icons.arrow_forward_rounded,
-                                        size: 16,
-                                        color: AdminSiteColors.blue,
-                                      ),
-                                    ),
-                                    Expanded(child: after),
-                                  ],
-                                )
-                              : Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    before,
-                                    const SizedBox(height: 4),
-                                    after,
-                                  ],
-                                ),
-                        );
-                      },
-                    ),
-                    if (i != rows.length - 1)
-                      const Divider(height: 1, color: AdminSiteColors.border),
+                                      Expanded(child: after),
+                                    ],
+                                  )
+                                : Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      before,
+                                      const SizedBox(height: 4),
+                                      after,
+                                    ],
+                                  ),
+                          );
+                        },
+                      ),
+                      if (i != rows.length - 1)
+                        const Divider(height: 1, color: AdminSiteColors.border),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ),
@@ -376,86 +394,10 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
 
   // ── THE RESEARCHERS — dark full-bleed band, the one visual break ──
   Widget _buildResearchers() {
-    const team = [
-      (
-        'Claudine Joy San Jose',
-        'Leader · Web Developer · Documentation',
-        'assets/images/team/claudine.jpg',
-      ),
-      (
-        'Jayson Labor',
-        'Assistant Leader · Web Developer · Documentation',
-        'assets/images/team/jayson.jpg',
-      ),
-      (
-        'Paul Arvin Castro',
-        'UI/UX · Mobile Developer',
-        'assets/images/team/paul.jpg',
-      ),
-      (
-        'Arvin Joseph De Honor',
-        'UI/UX · Mobile Developer',
-        'assets/images/team/arvin.jpg',
-      ),
-      (
-        'Carl Adrian Rivera',
-        'UI/UX · Mobile Developer',
-        'assets/images/team/carl.jpg',
-      ),
-    ];
-
-    return Container(
-      width: double.infinity,
-      color: AdminSiteColors.navy,
-      child: AbstractSectionBackdrop(
-        dark: true,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 72),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1040),
-              child: Column(
-                children: [
-                  Text(
-                    '02 · THE RESEARCHERS',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
-                      color: AdminSiteColors.orange,
-                      letterSpacing: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Built by the team behind UPRISE',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 30,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      letterSpacing: -0.5,
-                    ),
-                  ),
-                  const SizedBox(height: 44),
-                  Wrap(
-                    spacing: 32,
-                    runSpacing: 32,
-                    alignment: WrapAlignment.center,
-                    children: [
-                      for (final t in team)
-                        _ResearcherPhotoCard(
-                          name: t.$1,
-                          role: t.$2,
-                          imagePath: t.$3,
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
+    return ResearchersSection(
+      palette: LandingPalette.admin,
+      background: AdminSiteColors.navy,
+      eyebrow: '02 · THE RESEARCHERS',
     );
   }
 
@@ -464,78 +406,81 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
     return Container(
       color: AdminSiteColors.bg,
       child: AbstractSectionBackdrop(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 72),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 760),
-              child: Column(
-                children: [
-                  // The client's own emblem, front and center — this section
-                  // was pure text with nothing to visually anchor "the
-                  // client" it's describing.
-                  Container(
-                    width: 92,
-                    height: 92,
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: AdminSiteColors.ink.withAlpha(20),
-                          blurRadius: 20,
-                          offset: const Offset(0, 8),
+        child: Reveal(
+          dy: 28,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 72),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 760),
+                child: Column(
+                  children: [
+                    // The client's own emblem, front and center — this section
+                    // was pure text with nothing to visually anchor "the
+                    // client" it's describing.
+                    Container(
+                      width: 92,
+                      height: 92,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: AdminSiteColors.ink.withAlpha(20),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Image.asset(
+                        'assets/images/cict_logo.png',
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => Icon(
+                          Icons.school_rounded,
+                          color: AdminSiteColors.blue,
+                          size: 36,
                         ),
-                      ],
-                    ),
-                    child: Image.asset(
-                      'assets/images/cict_logo.png',
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => Icon(
-                        Icons.school_rounded,
-                        color: AdminSiteColors.blue,
-                        size: 36,
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    '03 · THE CLIENT',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
-                      color: AdminSiteColors.blue,
-                      letterSpacing: 1.4,
+                    const SizedBox(height: 24),
+                    Text(
+                      '03 · THE CLIENT',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: AdminSiteColors.blue,
+                        letterSpacing: 1.4,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    'One office, every organization.',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
-                      color: AdminSiteColors.ink,
-                      height: 1.3,
-                      letterSpacing: -0.5,
+                    const SizedBox(height: 20),
+                    Text(
+                      'One office, every organization.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                        color: AdminSiteColors.ink,
+                        height: 1.3,
+                        letterSpacing: -0.5,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    'Bulacan State University\'s College of Information and '
-                    'Communications Technology is the client — a single '
-                    'central admin account coordinating every recognized '
-                    'student organization under one system, instead of each '
-                    'one running independently.',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 14.5,
-                      color: AdminSiteColors.inkSoft,
-                      height: 1.7,
+                    const SizedBox(height: 18),
+                    Text(
+                      'Bulacan State University\'s College of Information and '
+                      'Communications Technology is the client — a single '
+                      'central admin account coordinating every recognized '
+                      'student organization under one system, instead of each '
+                      'one running independently.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 14.5,
+                        color: AdminSiteColors.inkSoft,
+                        height: 1.7,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -549,64 +494,69 @@ class _AdminAboutContentState extends State<AdminAboutContent> {
     return Container(
       color: Colors.white,
       child: AbstractSectionBackdrop(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 64),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1040),
-              child: Column(
-                children: [
-                  Text(
-                    '04 · ON UPRISE TODAY',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
-                      color: AdminSiteColors.blue,
-                      letterSpacing: 1.4,
+        child: Reveal(
+          dy: 28,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 64),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1040),
+                child: Column(
+                  children: [
+                    Text(
+                      '04 · ON UPRISE TODAY',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: AdminSiteColors.blue,
+                        letterSpacing: 1.4,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Organizations already on the system',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      color: AdminSiteColors.ink,
-                      letterSpacing: -0.4,
+                    const SizedBox(height: 10),
+                    Text(
+                      'Organizations already on the system',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: AdminSiteColors.ink,
+                        letterSpacing: -0.4,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 36),
-                  FutureBuilder<List<_OrgSummary>>(
-                    future: _orgsFuture,
-                    builder: (context, snap) {
-                      if (snap.connectionState == ConnectionState.waiting) {
-                        return const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 24),
-                          child: CircularProgressIndicator(
-                            color: AdminSiteColors.blue,
-                          ),
+                    const SizedBox(height: 36),
+                    FutureBuilder<List<_OrgSummary>>(
+                      future: _orgsFuture,
+                      builder: (context, snap) {
+                        if (snap.connectionState == ConnectionState.waiting) {
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 24),
+                            child: CircularProgressIndicator(
+                              color: AdminSiteColors.blue,
+                            ),
+                          );
+                        }
+                        final orgs = snap.data ?? const [];
+                        if (orgs.isEmpty) {
+                          return Text(
+                            'No organizations are registered yet.',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13,
+                              color: AdminSiteColors.inkSoft,
+                            ),
+                          );
+                        }
+                        return Wrap(
+                          spacing: 40,
+                          runSpacing: 36,
+                          alignment: WrapAlignment.center,
+                          children: [
+                            for (final org in orgs) _OrgBadge(org: org),
+                          ],
                         );
-                      }
-                      final orgs = snap.data ?? const [];
-                      if (orgs.isEmpty) {
-                        return Text(
-                          'No organizations are registered yet.',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13,
-                            color: AdminSiteColors.inkSoft,
-                          ),
-                        );
-                      }
-                      return Wrap(
-                        spacing: 40,
-                        runSpacing: 36,
-                        alignment: WrapAlignment.center,
-                        children: [for (final org in orgs) _OrgBadge(org: org)],
-                      );
-                    },
-                  ),
-                ],
+                      },
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -710,74 +660,6 @@ class _OrgBadge extends StatelessWidget {
           fontWeight: FontWeight.w800,
           color: AdminSiteColors.primary,
         ),
-      ),
-    );
-  }
-}
-
-// Individual headshot placeholder + name/role — drop each person's photo in
-// at the given path and it replaces the placeholder automatically.
-class _ResearcherPhotoCard extends StatelessWidget {
-  final String name;
-  final String role;
-  final String imagePath;
-
-  const _ResearcherPhotoCard({
-    required this.name,
-    required this.role,
-    required this.imagePath,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 168,
-      child: Column(
-        children: [
-          ClipOval(
-            child: SizedBox(
-              width: 108,
-              height: 108,
-              child: Image.asset(
-                imagePath,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white.withAlpha(14),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white.withAlpha(40)),
-                  ),
-                  alignment: Alignment.center,
-                  child: Icon(
-                    Icons.person_outline_rounded,
-                    size: 38,
-                    color: Colors.white.withAlpha(110),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
-          Text(
-            name,
-            textAlign: TextAlign.center,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            role,
-            textAlign: TextAlign.center,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 10.5,
-              color: Colors.white.withAlpha(150),
-              height: 1.4,
-            ),
-          ),
-        ],
       ),
     );
   }

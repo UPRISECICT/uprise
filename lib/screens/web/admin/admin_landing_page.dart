@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../widgets/common/landing_3d.dart';
 import '../../../widgets/common/terms_and_conditions.dart';
 import 'admin_about_page.dart';
 import 'admin_help_page.dart';
@@ -29,6 +30,8 @@ class _AdminLandingPageState extends State<AdminLandingPage>
   late final Animation<double> _fade;
   late final Animation<Offset> _slide;
   final ValueNotifier<int> _scrollTick = ValueNotifier(0);
+  // Anchor for the hero's "See how it works" button to scroll to.
+  final GlobalKey _storyKey = GlobalKey();
 
   @override
   void initState() {
@@ -123,6 +126,7 @@ class _AdminLandingPageState extends State<AdminLandingPage>
           fade: _fade,
           slide: _slide,
           scrollTick: _scrollTick,
+          storyKey: _storyKey,
         );
       case AdminSiteSection.features:
         return _FeaturesContent(onSelect: _select, onTerms: _openTerms);
@@ -142,6 +146,7 @@ class _HomeContent extends StatelessWidget {
   final Animation<double> fade;
   final Animation<Offset> slide;
   final ValueNotifier<int> scrollTick;
+  final GlobalKey storyKey;
 
   const _HomeContent({
     required this.onSelect,
@@ -150,7 +155,18 @@ class _HomeContent extends StatelessWidget {
     required this.fade,
     required this.slide,
     required this.scrollTick,
+    required this.storyKey,
   });
+
+  void _scrollToStory() {
+    final ctx = storyKey.currentContext;
+    if (ctx == null) return;
+    Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 900),
+      curve: Curves.easeInOutCubic,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -172,20 +188,17 @@ class _HomeContent extends StatelessWidget {
                 _buildHero(context),
                 const SectionSeam(from: AdminSiteColors.bg, to: Colors.white),
                 _RevealOnVisible(tick: scrollTick, child: _buildStatStrip()),
+                const SectionSeam(from: Colors.white, to: AdminSiteColors.bg),
+                KeyedSubtree(key: storyKey, child: _buildStory()),
                 const SectionSeam(
-                  from: Colors.white,
+                  from: AdminSiteColors.bg,
                   to: AdminSiteColors.primary,
                 ),
                 _RevealOnVisible(tick: scrollTick, child: _buildPullQuote()),
                 const SectionSeam(
                   from: AdminSiteColors.primary,
-                  to: AdminSiteColors.bg,
+                  to: Colors.white,
                 ),
-                _RevealOnVisible(
-                  tick: scrollTick,
-                  child: _buildFeaturesPreview(context),
-                ),
-                const SectionSeam(from: AdminSiteColors.bg, to: Colors.white),
                 _RevealOnVisible(tick: scrollTick, child: _buildHowItWorks()),
                 const SectionSeam(from: Colors.white, to: AdminSiteColors.blue),
                 _RevealOnVisible(tick: scrollTick, child: _buildCtaBand()),
@@ -206,155 +219,170 @@ class _HomeContent extends StatelessWidget {
   // ── HERO ──────────────────────────────────────────────────────────
   Widget _buildHero(BuildContext context) {
     final viewportHeight = MediaQuery.of(context).size.height;
-    return Container(
-      constraints: BoxConstraints(minHeight: viewportHeight * 0.78),
-      // Container's clipBehavior assertion requires an explicit decoration,
-      // not just `color` (which only becomes a decoration internally at
-      // build time, after that assertion already runs) — this crashed the
-      // whole page with "decoration != null || clipBehavior == Clip.none"
-      // the moment clipBehavior was added below.
-      decoration: const BoxDecoration(color: AdminSiteColors.bg),
-      // The abstract diagonal streaks below are sized loosely (some run
-      // past the corners on purpose, the way a poster bleeds off its own
-      // edge) — clip them to the hero's own bounds so that never leaks
-      // into the section above/below on a short viewport.
-      clipBehavior: Clip.hardEdge,
-      child: _MouseSpotlight(
-        child: Stack(
-          children: [
-            // Abstract diagonal streaks, translated into the site's own
-            // light palette (low-alpha blue/orange fading to transparent)
-            // instead of copying a dark neon template wholesale — this is
-            // what actually turns the flat dotted field into a background
-            // with real motion and depth. The hero gets more of these than
-            // any other section (6 vs. the standard 4 in
-            // AbstractSectionBackdrop) since it's the one place meant to
-            // make the strongest first impression.
-            const Positioned(
-              top: -40,
-              right: 120,
-              child: DiagonalStreak(
-                width: 340,
-                height: 34,
-                angle: -0.55,
-                colors: [Color(0x332563EB), Color(0x002563EB)],
+    // The whole hero is scroll-aware: as it leaves the viewport the copy
+    // lifts away faster than the page (parallax) and the emblem card tips
+    // back into depth, instead of both just sliding off flat.
+    return ScrollDriven(
+      builder: (context, m) => Container(
+        constraints: BoxConstraints(minHeight: viewportHeight * 0.78),
+        // Container's clipBehavior assertion requires an explicit decoration,
+        // not just `color` (which only becomes a decoration internally at
+        // build time, after that assertion already runs) — this crashed the
+        // whole page with "decoration != null || clipBehavior == Clip.none"
+        // the moment clipBehavior was added below.
+        decoration: const BoxDecoration(color: AdminSiteColors.bg),
+        // The abstract diagonal streaks below are sized loosely (some run
+        // past the corners on purpose, the way a poster bleeds off its own
+        // edge) — clip them to the hero's own bounds so that never leaks
+        // into the section above/below on a short viewport.
+        clipBehavior: Clip.hardEdge,
+        child: _MouseSpotlight(
+          child: Stack(
+            children: [
+              // Abstract diagonal streaks, translated into the site's own
+              // light palette (low-alpha blue/orange fading to transparent)
+              // instead of copying a dark neon template wholesale — this is
+              // what actually turns the flat dotted field into a background
+              // with real motion and depth. The hero gets more of these than
+              // any other section (6 vs. the standard 4 in
+              // AbstractSectionBackdrop) since it's the one place meant to
+              // make the strongest first impression.
+              const Positioned(
+                top: -40,
+                right: 120,
+                child: DiagonalStreak(
+                  width: 340,
+                  height: 34,
+                  angle: -0.55,
+                  colors: [Color(0x332563EB), Color(0x002563EB)],
+                ),
               ),
-            ),
-            const Positioned(
-              top: 90,
-              right: -60,
-              child: DiagonalStreak(
-                width: 260,
-                height: 26,
-                angle: -0.55,
-                colors: [Color(0x26F97316), Color(0x00F97316)],
+              const Positioned(
+                top: 90,
+                right: -60,
+                child: DiagonalStreak(
+                  width: 260,
+                  height: 26,
+                  angle: -0.55,
+                  colors: [Color(0x26F97316), Color(0x00F97316)],
+                ),
               ),
-            ),
-            const Positioned(
-              top: -20,
-              right: 380,
-              child: DiagonalStreak(
-                width: 160,
-                height: 16,
-                angle: -0.55,
-                colors: [Color(0x1F2563EB), Color(0x002563EB)],
+              const Positioned(
+                top: -20,
+                right: 380,
+                child: DiagonalStreak(
+                  width: 160,
+                  height: 16,
+                  angle: -0.55,
+                  colors: [Color(0x1F2563EB), Color(0x002563EB)],
+                ),
               ),
-            ),
-            const Positioned(
-              bottom: 40,
-              left: -80,
-              child: DiagonalStreak(
-                width: 300,
-                height: 30,
-                angle: -0.5,
-                colors: [Color(0x2A2563EB), Color(0x002563EB)],
+              const Positioned(
+                bottom: 40,
+                left: -80,
+                child: DiagonalStreak(
+                  width: 300,
+                  height: 30,
+                  angle: -0.5,
+                  colors: [Color(0x2A2563EB), Color(0x002563EB)],
+                ),
               ),
-            ),
-            const Positioned(
-              bottom: -30,
-              left: 160,
-              child: DiagonalStreak(
-                width: 220,
-                height: 22,
-                angle: -0.5,
-                colors: [Color(0x1FF97316), Color(0x00F97316)],
+              const Positioned(
+                bottom: -30,
+                left: 160,
+                child: DiagonalStreak(
+                  width: 220,
+                  height: 22,
+                  angle: -0.5,
+                  colors: [Color(0x1FF97316), Color(0x00F97316)],
+                ),
               ),
-            ),
-            const Positioned(
-              bottom: 140,
-              left: 40,
-              child: DiagonalStreak(
-                width: 140,
-                height: 14,
-                angle: -0.5,
-                colors: [Color(0x182563EB), Color(0x002563EB)],
+              const Positioned(
+                bottom: 140,
+                left: 40,
+                child: DiagonalStreak(
+                  width: 140,
+                  height: 14,
+                  angle: -0.5,
+                  colors: [Color(0x182563EB), Color(0x002563EB)],
+                ),
               ),
-            ),
-            const Positioned.fill(child: DotGridBackground()),
-            // The right panel has its own warm glow behind the emblem —
-            // the left column had nothing to match it, which is what read
-            // as "empty" next to the much richer visual on the right.
-            Positioned(
-              top: -80,
-              left: -120,
-              child: IgnorePointer(
-                child: Container(
-                  width: 480,
-                  height: 480,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      colors: [
-                        AdminSiteColors.blue.withAlpha(20),
-                        Colors.transparent,
-                      ],
+              const Positioned.fill(child: DotGridBackground()),
+              // The right panel has its own warm glow behind the emblem —
+              // the left column had nothing to match it, which is what read
+              // as "empty" next to the much richer visual on the right.
+              Positioned(
+                top: -80,
+                left: -120,
+                child: IgnorePointer(
+                  child: Container(
+                    width: 480,
+                    height: 480,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          AdminSiteColors.blue.withAlpha(20),
+                          Colors.transparent,
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1180),
-                  child: LayoutBuilder(
-                    builder: (_, c) {
-                      final wide = c.maxWidth >= 900;
-                      final headline = FadeTransition(
-                        opacity: fade,
-                        child: SlideTransition(
-                          position: slide,
-                          child: _heroCopy(wide),
-                        ),
-                      );
-                      final visual = FadeTransition(
-                        opacity: fade,
-                        child: _heroVisual(),
-                      );
-                      return wide
-                          ? Row(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Expanded(flex: 6, child: headline),
-                                const SizedBox(width: 24),
-                                Expanded(flex: 5, child: visual),
-                              ],
-                            )
-                          : Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                headline,
-                                const SizedBox(height: 36),
-                                visual,
-                              ],
-                            );
-                    },
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 48,
+                ),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1180),
+                    child: LayoutBuilder(
+                      builder: (_, c) {
+                        final wide = c.maxWidth >= 900;
+                        final exit = m.exit;
+                        final headline = FadeTransition(
+                          opacity: fade,
+                          child: SlideTransition(
+                            position: slide,
+                            child: Opacity(
+                              opacity: (1 - exit * 1.3).clamp(0.0, 1.0),
+                              child: Transform.translate(
+                                offset: Offset(0, -exit * 90),
+                                child: _heroCopy(wide),
+                              ),
+                            ),
+                          ),
+                        );
+                        final visual = FadeTransition(
+                          opacity: fade,
+                          child: _heroVisual(exit),
+                        );
+                        return wide
+                            ? Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Expanded(flex: 6, child: headline),
+                                  const SizedBox(width: 24),
+                                  Expanded(flex: 5, child: visual),
+                                ],
+                              )
+                            : Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  headline,
+                                  const SizedBox(height: 36),
+                                  visual,
+                                ],
+                              );
+                      },
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -476,7 +504,7 @@ class _HomeContent extends StatelessWidget {
               ),
             ),
             OutlinedButton(
-              onPressed: () => onSelect(AdminSiteSection.features),
+              onPressed: _scrollToStory,
               style: OutlinedButton.styleFrom(
                 foregroundColor: AdminSiteColors.ink,
                 side: BorderSide(color: AdminSiteColors.ink.withAlpha(60)),
@@ -489,7 +517,7 @@ class _HomeContent extends StatelessWidget {
                 ),
               ),
               child: Text(
-                'See what\'s inside',
+                'See how it works',
                 style: GoogleFonts.beVietnamPro(
                   fontWeight: FontWeight.w600,
                   fontSize: 14,
@@ -498,55 +526,11 @@ class _HomeContent extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 40),
-        // Real chip cards instead of a thin row of plain text — that row
-        // read as an afterthought and left the space beneath it looking
-        // bare; these carry actual visual weight and fill the column the
-        // way the CTA buttons above them do.
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [
-            for (final c in const [
-              ('Bulacan State University · CICT', Icons.school_rounded),
-              ('Firebase-Secured Accounts', Icons.verified_user_rounded),
-              ('Full Audit Trail', Icons.fact_check_rounded),
-            ])
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AdminSiteColors.border),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AdminSiteColors.ink.withAlpha(8),
-                      blurRadius: 10,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(c.$2, size: 14, color: AdminSiteColors.primary),
-                    const SizedBox(width: 8),
-                    Text(
-                      c.$1,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: AdminSiteColors.inkSoft,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        ),
+        const SizedBox(height: 44),
+        // Replaces the old row of trust chips (which repeated "Firebase
+        // secured" a third time) with a single cue that there's a story
+        // below the fold worth scrolling into.
+        _ScrollCue(onTap: _scrollToStory),
       ],
     );
   }
@@ -556,81 +540,87 @@ class _HomeContent extends StatelessWidget {
   // hero image — the college is the system's origin (every admin, org,
   // and event on UPRISE traces back to it), so its emblem earns center
   // stage instead of a generic screenshot.
-  Widget _heroVisual() {
-    return AspectRatio(
-      // Was 4/5 — with the internal content now centered rather than
-      // stretched across spaceBetween, that ratio left a visibly taller
-      // panel than the (now more compact) content needed, and pushed the
-      // bottom floating badge past typical viewport height.
-      aspectRatio: 4 / 4.3,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(28),
-                gradient: const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [AdminSiteColors.blueDeep, AdminSiteColors.navy],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: AdminSiteColors.blue.withAlpha(60),
-                    blurRadius: 40,
-                    offset: const Offset(0, 20),
+  //
+  // The card is a real 3D object: it swings in from an angle on first load,
+  // leans toward the pointer on hover, and tips back into depth as the hero
+  // scrolls away. The one floating badge rides a little ahead of the card
+  // (counter-parallax) so the two read as separate layers.
+  Widget _heroVisual(double exit) {
+    return AnimatedBuilder(
+      animation: fade,
+      builder: (context, _) {
+        final intro = 1 - fade.value;
+        return Tilt3D(
+          builder: (context, tilt) {
+            final e = Curves.easeIn.transform(exit);
+            return Opacity(
+              opacity: (1 - e * 0.8).clamp(0.0, 1.0),
+              child: Transform(
+                alignment: Alignment.center,
+                transform: perspective3d()
+                  ..translateByDouble(0, e * 120, 0, 1)
+                  ..rotateX(tilt.dy * 0.12 - e * 0.7)
+                  ..rotateY(-tilt.dx * 0.16 - intro * 0.55)
+                  ..scaleByDouble(1 - e * 0.15, 1 - e * 0.15, 1, 1),
+                child: AspectRatio(
+                  aspectRatio: 1,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Positioned.fill(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(28),
+                            gradient: const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                AdminSiteColors.blueDeep,
+                                AdminSiteColors.navy,
+                              ],
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AdminSiteColors.blue.withAlpha(70),
+                                blurRadius: 50,
+                                offset: Offset(
+                                  -tilt.dx * 14,
+                                  24 - tilt.dy * 10,
+                                ),
+                              ),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(28),
+                            child: _CictEmblemPanel(tilt: tilt),
+                          ),
+                        ),
+                      ),
+                      // The one deliberate spark of orange on this page.
+                      Positioned(
+                        bottom: 48,
+                        right: -22,
+                        child: Transform.translate(
+                          offset: Offset(tilt.dx * 16, tilt.dy * 16),
+                          child: const _Bobbing(
+                            duration: Duration(milliseconds: 2600),
+                            amplitude: 8,
+                            child: _FloatingBadge(
+                              icon: Icons.fact_check_rounded,
+                              label: '24/7 Activity Logs',
+                              accent: true,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(28),
-                child: const _CictEmblemPanel(),
-              ),
-            ),
-          ),
-          Positioned(
-            top: 20,
-            left: -18,
-            child: _Bobbing(
-              duration: const Duration(milliseconds: 3200),
-              amplitude: 7,
-              child: _FloatingBadge(
-                icon: Icons.verified_user_rounded,
-                label: 'Firebase Secured',
-              ),
-            ),
-          ),
-          // The one deliberate spark of orange on this whole page.
-          Positioned(
-            bottom: 76,
-            right: -16,
-            child: _Bobbing(
-              duration: const Duration(milliseconds: 2600),
-              amplitude: 9,
-              child: _FloatingBadge(
-                icon: Icons.fact_check_rounded,
-                label: '24/7 Activity Logs',
-                accent: true,
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: -18,
-            left: 24,
-            right: 24,
-            child: _Bobbing(
-              duration: const Duration(milliseconds: 3800),
-              amplitude: 5,
-              child: _FloatingBadge(
-                icon: Icons.group_work_rounded,
-                label: 'Every CICT Organization, One System',
-                wide: true,
-              ),
-            ),
-          ),
-        ],
-      ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -738,97 +728,91 @@ class _HomeContent extends StatelessWidget {
     );
   }
 
-  // ── FEATURES PREVIEW ─────────────────────────────────────────────
-  Widget _buildFeaturesPreview(BuildContext context) {
-    const preview = [
-      (
-        Icons.group_work_rounded,
-        'Organization Management',
-        'Review, create, and manage every recognized CICT organization and its officer accounts.',
-      ),
-      (
-        Icons.event_available_rounded,
-        'Event Oversight',
-        'Approve, reject, or archive event proposals submitted by organizations across the college.',
-      ),
-      (
-        Icons.badge_rounded,
-        'Student & Account Provisioning',
-        'Create and manage student, guest, and officer accounts with temporary-password onboarding.',
-      ),
-    ];
-
-    return Container(
-      color: AdminSiteColors.bg,
-      child: AbstractSectionBackdrop(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 64),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1180),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Text(
-                    'FULL SYSTEM OVERSIGHT',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
-                      color: AdminSiteColors.blue,
-                      letterSpacing: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'One console, every administrative task',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
-                      color: AdminSiteColors.ink,
-                      letterSpacing: -0.4,
-                    ),
-                  ),
-                  const SizedBox(height: 40),
-                  Wrap(
-                    spacing: 20,
-                    runSpacing: 20,
-                    alignment: WrapAlignment.center,
-                    children: [
-                      for (var i = 0; i < preview.length; i++)
-                        _FeatureCard(
-                          index: i + 1,
-                          icon: preview[i].$1,
-                          title: preview[i].$2,
-                          subtitle: preview[i].$3,
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 28),
-                  TextButton(
-                    onPressed: () => onSelect(AdminSiteSection.features),
-                    style: TextButton.styleFrom(
-                      foregroundColor: AdminSiteColors.blue,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'See all 6 features',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        const Icon(Icons.arrow_forward_rounded, size: 16),
-                      ],
-                    ),
-                  ),
-                ],
+  // ── SCROLL STORY ──────────────────────────────────────────────────
+  // Replaces the old 3-card features preview (which overlapped the
+  // Features tab). The stage pins while the page scrolls, and a 3D ring of
+  // cards turns through the admin's job one stop at a time.
+  Widget _buildStory() {
+    return ScrollStory3D(
+      eyebrow: 'FULL SYSTEM OVERSIGHT',
+      heading: 'Everything the college runs,\nin one console.',
+      accent: AdminSiteColors.blue,
+      cardGradient: const [AdminSiteColors.blueDeep, AdminSiteColors.navy],
+      background: AdminSiteColors.bg,
+      ink: AdminSiteColors.ink,
+      inkSoft: AdminSiteColors.inkSoft,
+      border: AdminSiteColors.border,
+      items: const [
+        StoryItem(
+          icon: Icons.badge_rounded,
+          title: 'Provision accounts',
+          body:
+              'Create student, guest, and officer accounts with '
+              'temporary-password onboarding — everyone sets their own '
+              'password on first login.',
+          points: [
+            'Student, guest & officer accounts',
+            'Temporary-password onboarding',
+            'Role-based access per portal',
+          ],
+        ),
+        StoryItem(
+          icon: Icons.group_work_rounded,
+          title: 'Oversee organizations',
+          body:
+              'Review, create, and manage every recognized CICT '
+              'organization and its officer accounts from one directory.',
+          points: [
+            'Every recognized CICT org',
+            'Officer accounts per org',
+            'Guest & external access review',
+          ],
+        ),
+        StoryItem(
+          icon: Icons.event_available_rounded,
+          title: 'Approve events',
+          body:
+              'Organizations submit proposals; you approve, reject, or '
+              'archive them before anything reaches students.',
+          points: [
+            'Pending proposals in one queue',
+            'Approve, reject, or archive',
+            'Approved events go live to students',
+          ],
+        ),
+        StoryItem(
+          icon: Icons.fact_check_rounded,
+          title: 'Audit & report',
+          body:
+              'Track financial and accomplishment reports against '
+              'university deadlines, with every significant action on '
+              'the record.',
+          points: [
+            'Report submissions vs. deadlines',
+            'Full activity log',
+            'Exportable reports',
+          ],
+        ),
+      ],
+      footer: TextButton(
+        onPressed: () => onSelect(AdminSiteSection.features),
+        style: TextButton.styleFrom(
+          foregroundColor: AdminSiteColors.blue,
+          padding: EdgeInsets.zero,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'See all 6 features',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w700,
               ),
             ),
-          ),
+            const SizedBox(width: 4),
+            const Icon(Icons.arrow_forward_rounded, size: 16),
+          ],
         ),
       ),
     );
@@ -1315,13 +1299,11 @@ class _FloatingBadge extends StatelessWidget {
   final IconData icon;
   final String label;
   final bool accent;
-  final bool wide;
 
   const _FloatingBadge({
     required this.icon,
     required this.label,
     this.accent = false,
-    this.wide = false,
   });
 
   @override
@@ -1340,7 +1322,7 @@ class _FloatingBadge extends StatelessWidget {
         ],
       ),
       child: Row(
-        mainAxisSize: wide ? MainAxisSize.max : MainAxisSize.min,
+        mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
@@ -1366,121 +1348,6 @@ class _FloatingBadge extends StatelessWidget {
   }
 }
 
-class _FeatureCard extends StatefulWidget {
-  final int index;
-  final IconData icon;
-  final String title;
-  final String subtitle;
-
-  const _FeatureCard({
-    required this.index,
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-  });
-
-  @override
-  State<_FeatureCard> createState() => _FeatureCardState();
-}
-
-class _FeatureCardState extends State<_FeatureCard> {
-  bool _hovering = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovering = true),
-      onExit: (_) => setState(() => _hovering = false),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
-        width: 340,
-        padding: const EdgeInsets.all(22),
-        transform: Matrix4.translationValues(0, _hovering ? -6 : 0, 0),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: _hovering
-                ? AdminSiteColors.blue.withAlpha(120)
-                : AdminSiteColors.border,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: _hovering
-                  ? AdminSiteColors.blue.withAlpha(35)
-                  : Colors.black.withAlpha(8),
-              blurRadius: _hovering ? 26 : 14,
-              offset: Offset(0, _hovering ? 12 : 6),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeOut,
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    color: _hovering
-                        ? AdminSiteColors.primary
-                        : AdminSiteColors.bg,
-                    borderRadius: BorderRadius.circular(13),
-                    border: Border.all(
-                      color: _hovering
-                          ? Colors.transparent
-                          : AdminSiteColors.border,
-                    ),
-                  ),
-                  child: Icon(
-                    widget.icon,
-                    color: _hovering ? Colors.white : AdminSiteColors.primary,
-                    size: 22,
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  widget.index.toString().padLeft(2, '0'),
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    color: AdminSiteColors.border,
-                    letterSpacing: -0.5,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              widget.title,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 15.5,
-                fontWeight: FontWeight.w700,
-                color: AdminSiteColors.ink,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              widget.subtitle,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 12.5,
-                color: AdminSiteColors.inkSoft,
-                height: 1.55,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _StepCard extends StatelessWidget {
   final String number;
   final String title;
@@ -1494,44 +1361,46 @@ class _StepCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: AdminSiteColors.bg,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AdminSiteColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            number,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 28,
-              fontWeight: FontWeight.w900,
-              color: AdminSiteColors.border,
-              letterSpacing: -1,
+    return HoverTiltCard(
+      child: Container(
+        padding: const EdgeInsets.all(22),
+        decoration: BoxDecoration(
+          color: AdminSiteColors.bg,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AdminSiteColors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              number,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 28,
+                fontWeight: FontWeight.w900,
+                color: AdminSiteColors.border,
+                letterSpacing: -1,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            title,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: AdminSiteColors.ink,
+            const SizedBox(height: 8),
+            Text(
+              title,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AdminSiteColors.ink,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            body,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 12.5,
-              color: AdminSiteColors.inkSoft,
-              height: 1.6,
+            const SizedBox(height: 8),
+            Text(
+              body,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 12.5,
+                color: AdminSiteColors.inkSoft,
+                height: 1.6,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1639,7 +1508,6 @@ class _RevealOnVisibleState extends State<_RevealOnVisible>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<double> _fade;
-  late final Animation<Offset> _slide;
   bool _triggered = false;
 
   @override
@@ -1647,13 +1515,9 @@ class _RevealOnVisibleState extends State<_RevealOnVisible>
     super.initState();
     _ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 850),
     );
-    _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
-    _slide = Tween<Offset>(
-      begin: const Offset(0, 0.08),
-      end: Offset.zero,
-    ).animate(_fade);
+    _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic);
     widget.tick.addListener(_check);
     WidgetsBinding.instance.addPostFrameCallback((_) => _check());
   }
@@ -1680,9 +1544,24 @@ class _RevealOnVisibleState extends State<_RevealOnVisible>
 
   @override
   Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _fade,
-      child: SlideTransition(position: _slide, child: widget.child),
+    // Sections rise out of depth — tipped back and set lower — then
+    // settle flat, instead of a plain fade/slide.
+    return AnimatedBuilder(
+      animation: _fade,
+      child: widget.child,
+      builder: (context, child) {
+        final t = 1 - _fade.value;
+        return Opacity(
+          opacity: _fade.value,
+          child: Transform(
+            alignment: Alignment.topCenter,
+            transform: perspective3d()
+              ..translateByDouble(0, t * 60, 0, 1)
+              ..rotateX(-t * 0.35),
+            child: child,
+          ),
+        );
+      },
     );
   }
 }
@@ -1755,7 +1634,11 @@ class _SpotlightPainter extends CustomPainter {
 // (dot texture, radial glow, an expanding pulse ring behind the disc)
 // rather than a bare logo dropped on a gradient.
 class _CictEmblemPanel extends StatelessWidget {
-  const _CictEmblemPanel();
+  // Pointer tilt from the hero card — the glow and the emblem shift by
+  // different amounts so the inside of the card has depth of its own.
+  final Offset tilt;
+
+  const _CictEmblemPanel({this.tilt = Offset.zero});
 
   @override
   Widget build(BuildContext context) {
@@ -1764,180 +1647,114 @@ class _CictEmblemPanel extends StatelessWidget {
       children: [
         DotGridBackground(dotColor: Colors.white.withAlpha(18)),
         Center(
-          child: Container(
-            width: 300,
-            height: 300,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                colors: [Color(0x33F97316), Colors.transparent],
+          child: Transform.translate(
+            offset: Offset(-tilt.dx * 18, -tilt.dy * 18),
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [Color(0x33F97316), Colors.transparent],
+                ),
               ),
             ),
           ),
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 34),
-          child: Column(
-            // A naturally centered flow, not spaceBetween — that pattern
-            // stretched three unrelated islands across the panel's full
-            // height with dead gradient between them. There's also no
-            // internal top label anymore (it used to sit right on top of
-            // the "Firebase Secured" floating badge outside this panel,
-            // reading as two competing pills instead of one clean corner).
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    width: 170,
-                    height: 170,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        _PulseRing(
-                          size: 170,
-                          color: Colors.white.withAlpha(60),
-                        ),
-                        _PulseRing(
-                          size: 170,
-                          color: Colors.white.withAlpha(60),
-                          delay: const Duration(milliseconds: 1000),
-                        ),
-                        Container(
-                          width: 124,
-                          height: 124,
-                          padding: const EdgeInsets.all(17),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withAlpha(70),
-                                blurRadius: 24,
-                                offset: const Offset(0, 10),
-                              ),
-                            ],
+          child: Transform.translate(
+            offset: Offset(tilt.dx * 8, tilt.dy * 8),
+            child: Column(
+              // A naturally centered flow, not spaceBetween — that pattern
+              // stretched three unrelated islands across the panel's full
+              // height with dead gradient between them. There's also no
+              // internal top label anymore (it used to sit right on top of
+              // the "Firebase Secured" floating badge outside this panel,
+              // reading as two competing pills instead of one clean corner).
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 170,
+                      height: 170,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          _PulseRing(
+                            size: 170,
+                            color: Colors.white.withAlpha(60),
                           ),
-                          child: Image.asset(
-                            'assets/images/cict_logo.png',
-                            fit: BoxFit.contain,
-                            errorBuilder: (_, __, ___) => const Icon(
-                              Icons.school_rounded,
-                              color: AdminSiteColors.blueDeep,
-                              size: 46,
+                          _PulseRing(
+                            size: 170,
+                            color: Colors.white.withAlpha(60),
+                            delay: const Duration(milliseconds: 1000),
+                          ),
+                          Container(
+                            width: 124,
+                            height: 124,
+                            padding: const EdgeInsets.all(17),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withAlpha(70),
+                                  blurRadius: 24,
+                                  offset: const Offset(0, 10),
+                                ),
+                              ],
+                            ),
+                            child: Image.asset(
+                              'assets/images/cict_logo.png',
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, __, ___) => const Icon(
+                                Icons.school_rounded,
+                                color: AdminSiteColors.blueDeep,
+                                size: 46,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    'COLLEGE OF INFORMATION AND\nCOMMUNICATIONS TECHNOLOGY',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      height: 1.5,
-                      letterSpacing: 0.6,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    width: 36,
-                    height: 2,
-                    color: AdminSiteColors.orange,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Bulacan State University · Est. 2001',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white.withAlpha(160),
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 40),
-              // What CICT "hands down to" — makes the emblem the root of a
-              // small hierarchy instead of a logo floating with nothing
-              // connected to it.
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'ONE COLLEGE, THREE PORTALS',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white.withAlpha(130),
-                      letterSpacing: 1,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _PortalChip(
-                        icon: Icons.admin_panel_settings_rounded,
-                        label: 'Admin',
+                        ],
                       ),
-                      const SizedBox(width: 10),
-                      _PortalChip(
-                        icon: Icons.groups_rounded,
-                        label: 'Organizations',
+                    ),
+                    const SizedBox(height: 24),
+                    Text(
+                      'COLLEGE OF INFORMATION AND\nCOMMUNICATIONS TECHNOLOGY',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        height: 1.5,
+                        letterSpacing: 0.6,
                       ),
-                      const SizedBox(width: 10),
-                      _PortalChip(
-                        icon: Icons.school_rounded,
-                        label: 'Students',
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      width: 36,
+                      height: 2,
+                      color: AdminSiteColors.orange,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Bulacan State University · Est. 2001',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white.withAlpha(160),
+                        letterSpacing: 0.3,
                       ),
-                    ],
-                  ),
-                ],
-              ),
-            ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ],
-    );
-  }
-}
-
-// One node in the "hands down to" row under the CICT emblem.
-class _PortalChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  const _PortalChip({required this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withAlpha(14),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white.withAlpha(35)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: Colors.white.withAlpha(220)),
-          const SizedBox(height: 5),
-          Text(
-            label,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 9.5,
-              fontWeight: FontWeight.w600,
-              color: Colors.white.withAlpha(190),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -2044,6 +1861,56 @@ class _BobbingState extends State<_Bobbing>
         final dy = math.sin(_ctrl.value * 2 * math.pi) * widget.amplitude;
         return Transform.translate(offset: Offset(0, dy), child: child);
       },
+    );
+  }
+}
+
+// "Scroll to explore" hint under the hero CTAs — a gently bobbing arrow
+// that also works as a shortcut down to the scroll story.
+class _ScrollCue extends StatelessWidget {
+  final VoidCallback onTap;
+  const _ScrollCue({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white,
+                border: Border.all(color: AdminSiteColors.border),
+              ),
+              child: const _Bobbing(
+                duration: Duration(milliseconds: 1800),
+                amplitude: 3,
+                child: Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  size: 20,
+                  color: AdminSiteColors.primary,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              'Scroll to explore',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: AdminSiteColors.inkSoft,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

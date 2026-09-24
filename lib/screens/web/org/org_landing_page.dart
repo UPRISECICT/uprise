@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../widgets/common/landing_3d.dart';
 import '../../../widgets/common/terms_and_conditions.dart';
 import 'org_about_page.dart';
 import 'org_help_page.dart';
@@ -30,6 +31,8 @@ class _OrgLandingPageState extends State<OrgLandingPage>
   late final Animation<double> _fade;
   late final Animation<Offset> _slide;
   final ValueNotifier<int> _scrollTick = ValueNotifier(0);
+  // Anchor for the hero's "See how it works" button to scroll to.
+  final GlobalKey _storyKey = GlobalKey();
 
   @override
   void initState() {
@@ -127,6 +130,7 @@ class _OrgLandingPageState extends State<OrgLandingPage>
           fade: _fade,
           slide: _slide,
           scrollTick: _scrollTick,
+          storyKey: _storyKey,
         );
       case OrgSiteSection.features:
         return _FeaturesContent(onSelect: _select, onTerms: _openTerms);
@@ -146,6 +150,7 @@ class _HomeContent extends StatelessWidget {
   final Animation<double> fade;
   final Animation<Offset> slide;
   final ValueNotifier<int> scrollTick;
+  final GlobalKey storyKey;
 
   const _HomeContent({
     required this.onSelect,
@@ -154,7 +159,18 @@ class _HomeContent extends StatelessWidget {
     required this.fade,
     required this.slide,
     required this.scrollTick,
+    required this.storyKey,
   });
+
+  void _scrollToStory() {
+    final ctx = storyKey.currentContext;
+    if (ctx == null) return;
+    Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 900),
+      curve: Curves.easeInOutCubic,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -170,22 +186,19 @@ class _HomeContent extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _buildHero(context),
-                const OrgSectionSeam(
-                  from: Color(0xFFFDF0E4),
-                  to: OrgSiteColors.bg,
-                ),
+                const OrgSectionSeam(from: Color(0xFFFDF0E4), to: Colors.white),
                 _RevealOnVisible(tick: scrollTick, child: _buildStatStrip()),
-                const OrgSectionSeam(from: OrgSiteColors.bg, to: Colors.white),
+                const OrgSectionSeam(from: Colors.white, to: OrgSiteColors.bg),
+                KeyedSubtree(key: storyKey, child: _buildStory()),
+                const OrgSectionSeam(
+                  from: OrgSiteColors.bg,
+                  to: OrgSiteColors.slateDark,
+                ),
                 _RevealOnVisible(tick: scrollTick, child: _buildPullQuote()),
                 const OrgSectionSeam(
                   from: OrgSiteColors.slateDark,
-                  to: OrgSiteColors.bg,
+                  to: Colors.white,
                 ),
-                _RevealOnVisible(
-                  tick: scrollTick,
-                  child: _buildFeaturesPreview(context),
-                ),
-                const OrgSectionSeam(from: OrgSiteColors.bg, to: Colors.white),
                 _RevealOnVisible(tick: scrollTick, child: _buildHowItWorks()),
                 const OrgSectionSeam(
                   from: Colors.white,
@@ -209,113 +222,124 @@ class _HomeContent extends StatelessWidget {
   // ── HERO ──────────────────────────────────────────────────────────
   Widget _buildHero(BuildContext context) {
     final viewportHeight = MediaQuery.of(context).size.height;
-    return Container(
-      constraints: BoxConstraints(minHeight: viewportHeight * 0.78),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFFFFBF7), Color(0xFFFDF0E4)],
+    // The whole hero is scroll-aware: as it leaves the viewport the copy
+    // lifts away faster than the page (parallax) and the workspace card
+    // tips back into depth, instead of both just sliding off flat.
+    return ScrollDriven(
+      builder: (context, m) => Container(
+        constraints: BoxConstraints(minHeight: viewportHeight * 0.78),
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFFFFFBF7), Color(0xFFFDF0E4)],
+          ),
         ),
-      ),
-      clipBehavior: Clip.hardEdge,
-      child: Stack(
-        children: [
-          const Positioned(
-            top: -160,
-            right: -140,
-            child: _HeroGlow(size: 560, color: Color(0x46F97316)),
-          ),
-          const Positioned(
-            bottom: -200,
-            left: -180,
-            child: _HeroGlow(size: 520, color: Color(0x28EA580C)),
-          ),
-          const Positioned.fill(
-            child: OrgDotGridBackground(dotColor: Color(0x14EA580C)),
-          ),
-          const Positioned(
-            top: -40,
-            right: 120,
-            child: OrgDiagonalStreak(
-              width: 340,
-              height: 34,
-              angle: -0.55,
-              colors: [Color(0x33F97316), Color(0x00F97316)],
+        clipBehavior: Clip.hardEdge,
+        child: Stack(
+          children: [
+            const Positioned(
+              top: -160,
+              right: -140,
+              child: _HeroGlow(size: 560, color: Color(0x46F97316)),
             ),
-          ),
-          const Positioned(
-            top: 90,
-            right: -60,
-            child: OrgDiagonalStreak(
-              width: 260,
-              height: 26,
-              angle: -0.55,
-              colors: [Color(0x26EA580C), Color(0x00EA580C)],
+            const Positioned(
+              bottom: -200,
+              left: -180,
+              child: _HeroGlow(size: 520, color: Color(0x28EA580C)),
             ),
-          ),
-          const Positioned(
-            bottom: 40,
-            left: -80,
-            child: OrgDiagonalStreak(
-              width: 300,
-              height: 30,
-              angle: -0.5,
-              colors: [Color(0x2AF97316), Color(0x00F97316)],
+            const Positioned.fill(
+              child: OrgDotGridBackground(dotColor: Color(0x14EA580C)),
             ),
-          ),
-          const Positioned(
-            bottom: -30,
-            left: 160,
-            child: OrgDiagonalStreak(
-              width: 220,
-              height: 22,
-              angle: -0.5,
-              colors: [Color(0x1FEA580C), Color(0x00EA580C)],
+            const Positioned(
+              top: -40,
+              right: 120,
+              child: OrgDiagonalStreak(
+                width: 340,
+                height: 34,
+                angle: -0.55,
+                colors: [Color(0x33F97316), Color(0x00F97316)],
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1180),
-                child: LayoutBuilder(
-                  builder: (_, c) {
-                    final wide = c.maxWidth >= 900;
-                    final headline = FadeTransition(
-                      opacity: fade,
-                      child: SlideTransition(
-                        position: slide,
-                        child: _heroCopy(wide),
-                      ),
-                    );
-                    final visual = FadeTransition(
-                      opacity: fade,
-                      child: _heroVisual(),
-                    );
-                    return wide
-                        ? Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Expanded(flex: 6, child: headline),
-                              const SizedBox(width: 24),
-                              Expanded(flex: 5, child: visual),
-                            ],
-                          )
-                        : Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              headline,
-                              const SizedBox(height: 36),
-                              visual,
-                            ],
-                          );
-                  },
+            const Positioned(
+              top: 90,
+              right: -60,
+              child: OrgDiagonalStreak(
+                width: 260,
+                height: 26,
+                angle: -0.55,
+                colors: [Color(0x26EA580C), Color(0x00EA580C)],
+              ),
+            ),
+            const Positioned(
+              bottom: 40,
+              left: -80,
+              child: OrgDiagonalStreak(
+                width: 300,
+                height: 30,
+                angle: -0.5,
+                colors: [Color(0x2AF97316), Color(0x00F97316)],
+              ),
+            ),
+            const Positioned(
+              bottom: -30,
+              left: 160,
+              child: OrgDiagonalStreak(
+                width: 220,
+                height: 22,
+                angle: -0.5,
+                colors: [Color(0x1FEA580C), Color(0x00EA580C)],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1180),
+                  child: LayoutBuilder(
+                    builder: (_, c) {
+                      final wide = c.maxWidth >= 900;
+                      final headline = FadeTransition(
+                        opacity: fade,
+                        child: SlideTransition(
+                          position: slide,
+                          child: Opacity(
+                            opacity: (1 - m.exit * 1.3).clamp(0.0, 1.0),
+                            child: Transform.translate(
+                              offset: Offset(0, -m.exit * 90),
+                              child: _heroCopy(wide),
+                            ),
+                          ),
+                        ),
+                      );
+                      final visual = FadeTransition(
+                        opacity: fade,
+                        child: _heroVisual(m.exit),
+                      );
+                      return wide
+                          ? Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Expanded(flex: 6, child: headline),
+                                const SizedBox(width: 24),
+                                Expanded(flex: 5, child: visual),
+                              ],
+                            )
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                headline,
+                                const SizedBox(height: 36),
+                                visual,
+                              ],
+                            );
+                    },
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -362,7 +386,7 @@ class _HomeContent extends StatelessWidget {
         ),
         const SizedBox(height: 24),
         Text(
-          'One workspace for your\nwhole organization.',
+          'One workspace for your whole organization.',
           style: GoogleFonts.beVietnamPro(
             fontSize: wide ? 54 : 36,
             fontWeight: FontWeight.w800,
@@ -431,7 +455,7 @@ class _HomeContent extends StatelessWidget {
               ),
             ),
             OutlinedButton(
-              onPressed: () => onSelect(OrgSiteSection.features),
+              onPressed: _scrollToStory,
               style: OutlinedButton.styleFrom(
                 foregroundColor: OrgSiteColors.ink,
                 side: BorderSide(color: OrgSiteColors.ink.withAlpha(60)),
@@ -444,7 +468,7 @@ class _HomeContent extends StatelessWidget {
                 ),
               ),
               child: Text(
-                'See what\'s inside',
+                'See how it works',
                 style: GoogleFonts.beVietnamPro(
                   fontWeight: FontWeight.w600,
                   fontSize: 14,
@@ -453,51 +477,11 @@ class _HomeContent extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 40),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [
-            for (final c in const [
-              ('CICT-Recognized Organization', Icons.verified_rounded),
-              ('Firebase-Secured Accounts', Icons.verified_user_rounded),
-              ('Real-Time Everywhere', Icons.bolt_rounded),
-            ])
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: OrgSiteColors.border),
-                  boxShadow: [
-                    BoxShadow(
-                      color: OrgSiteColors.ink.withAlpha(8),
-                      blurRadius: 10,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(c.$2, size: 14, color: OrgSiteColors.accentDeep),
-                    const SizedBox(width: 8),
-                    Text(
-                      c.$1,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: OrgSiteColors.inkSoft,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        ),
+        const SizedBox(height: 44),
+        // Replaces the old row of trust chips (which repeated "Firebase
+        // secured" a third time) with a single cue that there's a story
+        // below the fold worth scrolling into.
+        _ScrollCue(onTap: _scrollToStory),
       ],
     );
   }
@@ -507,76 +491,86 @@ class _HomeContent extends StatelessWidget {
   // the app itself — UPRISE is the shared workspace every org's officers
   // actually log into, cascading down to the three things an org spends
   // most of its time on.
-  Widget _heroVisual() {
-    return AspectRatio(
-      aspectRatio: 4 / 4.3,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(28),
-                gradient: const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [OrgSiteColors.accentDeep, OrgSiteColors.navy],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: OrgSiteColors.accentDeep.withAlpha(60),
-                    blurRadius: 40,
-                    offset: const Offset(0, 20),
+  //
+  // The card is a real 3D object: it swings in from an angle on first load,
+  // leans toward the pointer on hover, and tips back into depth as the hero
+  // scrolls away. The one floating badge rides a little ahead of the card
+  // (counter-parallax) so the two read as separate layers.
+  Widget _heroVisual(double exit) {
+    return AnimatedBuilder(
+      animation: fade,
+      builder: (context, _) {
+        final intro = 1 - fade.value;
+        return Tilt3D(
+          builder: (context, tilt) {
+            final e = Curves.easeIn.transform(exit);
+            return Opacity(
+              opacity: (1 - e * 0.8).clamp(0.0, 1.0),
+              child: Transform(
+                alignment: Alignment.center,
+                transform: perspective3d()
+                  ..translateByDouble(0, e * 120, 0, 1)
+                  ..rotateX(tilt.dy * 0.12 - e * 0.7)
+                  ..rotateY(-tilt.dx * 0.16 - intro * 0.55)
+                  ..scaleByDouble(1 - e * 0.15, 1 - e * 0.15, 1, 1),
+                child: AspectRatio(
+                  aspectRatio: 1,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Positioned.fill(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(28),
+                            gradient: const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                OrgSiteColors.accentDeep,
+                                OrgSiteColors.navy,
+                              ],
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: OrgSiteColors.accentDeep.withAlpha(70),
+                                blurRadius: 50,
+                                offset: Offset(
+                                  -tilt.dx * 14,
+                                  24 - tilt.dy * 10,
+                                ),
+                              ),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(28),
+                            child: _OrgEmblemPanel(tilt: tilt),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        bottom: 48,
+                        right: -22,
+                        child: Transform.translate(
+                          offset: Offset(tilt.dx * 16, tilt.dy * 16),
+                          child: const _Bobbing(
+                            duration: Duration(milliseconds: 2600),
+                            amplitude: 8,
+                            child: _FloatingBadge(
+                              icon: Icons.qr_code_scanner_rounded,
+                              label: 'Live QR Attendance',
+                              accent: true,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(28),
-                child: const _OrgEmblemPanel(),
-              ),
-            ),
-          ),
-          Positioned(
-            top: 20,
-            left: -18,
-            child: _Bobbing(
-              duration: const Duration(milliseconds: 3200),
-              amplitude: 7,
-              child: _FloatingBadge(
-                icon: Icons.verified_user_rounded,
-                label: 'Firebase Secured',
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: 76,
-            right: -16,
-            child: _Bobbing(
-              duration: const Duration(milliseconds: 2600),
-              amplitude: 9,
-              child: _FloatingBadge(
-                icon: Icons.qr_code_scanner_rounded,
-                label: 'Live QR Attendance',
-                accent: true,
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: -18,
-            left: 24,
-            right: 24,
-            child: _Bobbing(
-              duration: const Duration(milliseconds: 3800),
-              amplitude: 5,
-              child: _FloatingBadge(
-                icon: Icons.workspace_premium_rounded,
-                label: 'Certificates, Verified Instantly',
-                wide: true,
-              ),
-            ),
-          ),
-        ],
-      ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -687,97 +681,89 @@ class _HomeContent extends StatelessWidget {
     );
   }
 
-  // ── FEATURES PREVIEW ─────────────────────────────────────────────
-  Widget _buildFeaturesPreview(BuildContext context) {
-    const preview = [
-      (
-        Icons.event_available_rounded,
-        'Event Proposals & Approval',
-        'Submit event proposals and track their status through admin review, all in one thread.',
-      ),
-      (
-        Icons.qr_code_scanner_rounded,
-        'QR & Webinar Attendance',
-        'Run check-in/check-out with live rotating codes for both on-site and online sessions.',
-      ),
-      (
-        Icons.workspace_premium_rounded,
-        'Certificates & Verification',
-        'Issue certificates after attendance and feedback are verified, each with a public code.',
-      ),
-    ];
-
-    return Container(
-      color: OrgSiteColors.bg,
-      child: OrgAbstractBackdrop(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 64),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1180),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Text(
-                    'EVERYTHING YOUR ORG NEEDS',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
-                      color: OrgSiteColors.accentDeep,
-                      letterSpacing: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'One dashboard, every organizational task',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
-                      color: OrgSiteColors.ink,
-                      letterSpacing: -0.4,
-                    ),
-                  ),
-                  const SizedBox(height: 40),
-                  Wrap(
-                    spacing: 20,
-                    runSpacing: 20,
-                    alignment: WrapAlignment.center,
-                    children: [
-                      for (var i = 0; i < preview.length; i++)
-                        _FeatureCard(
-                          index: i + 1,
-                          icon: preview[i].$1,
-                          title: preview[i].$2,
-                          subtitle: preview[i].$3,
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 28),
-                  TextButton(
-                    onPressed: () => onSelect(OrgSiteSection.features),
-                    style: TextButton.styleFrom(
-                      foregroundColor: OrgSiteColors.accentDeep,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'See all 6 features',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        const Icon(Icons.arrow_forward_rounded, size: 16),
-                      ],
-                    ),
-                  ),
-                ],
+  // ── SCROLL STORY ──────────────────────────────────────────────────
+  // Replaces the old 3-card features preview (which overlapped the
+  // Features tab). The stage pins while the page scrolls, and a 3D ring of
+  // cards walks through an event's life in UPRISE one stop at a time.
+  Widget _buildStory() {
+    return ScrollStory3D(
+      eyebrow: 'EVERYTHING YOUR ORG NEEDS',
+      heading: 'From proposal to report,\nall in one flow.',
+      accent: OrgSiteColors.accentDeep,
+      cardGradient: const [OrgSiteColors.accentDeep, OrgSiteColors.navy],
+      background: OrgSiteColors.bg,
+      ink: OrgSiteColors.ink,
+      inkSoft: OrgSiteColors.inkSoft,
+      border: OrgSiteColors.border,
+      items: const [
+        StoryItem(
+          icon: Icons.event_available_rounded,
+          title: 'Propose events',
+          body:
+              'Submit event proposals and track their status through admin '
+              'review, all in one thread.',
+          points: [
+            'Draft and submit proposals',
+            'Track pending, approved, or rejected',
+            'Approved events publish to students',
+          ],
+        ),
+        StoryItem(
+          icon: Icons.qr_code_scanner_rounded,
+          title: 'Run attendance',
+          body:
+              'Run check-in/check-out with live rotating codes for both '
+              'on-site and online sessions.',
+          points: [
+            'Live rotating QR codes',
+            'On-site and webinar sessions',
+            'Present and late tracked for you',
+          ],
+        ),
+        StoryItem(
+          icon: Icons.workspace_premium_rounded,
+          title: 'Issue certificates',
+          body:
+              'Issue certificates once attendance and feedback are in, each '
+              'with a public verification code.',
+          points: [
+            'Unlocked by attendee feedback',
+            'Unique verification code each',
+            'Anyone can verify online',
+          ],
+        ),
+        StoryItem(
+          icon: Icons.receipt_long_rounded,
+          title: 'Submit reports',
+          body:
+              'Submit and track financial and accomplishment reports '
+              'against university deadlines.',
+          points: [
+            'Financial & accomplishment reports',
+            'Deadlines always in view',
+            'Status tracked per event',
+          ],
+        ),
+      ],
+      footer: TextButton(
+        onPressed: () => onSelect(OrgSiteSection.features),
+        style: TextButton.styleFrom(
+          foregroundColor: OrgSiteColors.accentDeep,
+          padding: EdgeInsets.zero,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'See all 6 features',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w700,
               ),
             ),
-          ),
+            const SizedBox(width: 4),
+            const Icon(Icons.arrow_forward_rounded, size: 16),
+          ],
         ),
       ),
     );
@@ -1293,13 +1279,11 @@ class _FloatingBadge extends StatelessWidget {
   final IconData icon;
   final String label;
   final bool accent;
-  final bool wide;
 
   const _FloatingBadge({
     required this.icon,
     required this.label,
     this.accent = false,
-    this.wide = false,
   });
 
   @override
@@ -1318,7 +1302,7 @@ class _FloatingBadge extends StatelessWidget {
         ],
       ),
       child: Row(
-        mainAxisSize: wide ? MainAxisSize.max : MainAxisSize.min,
+        mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
@@ -1344,121 +1328,6 @@ class _FloatingBadge extends StatelessWidget {
   }
 }
 
-class _FeatureCard extends StatefulWidget {
-  final int index;
-  final IconData icon;
-  final String title;
-  final String subtitle;
-
-  const _FeatureCard({
-    required this.index,
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-  });
-
-  @override
-  State<_FeatureCard> createState() => _FeatureCardState();
-}
-
-class _FeatureCardState extends State<_FeatureCard> {
-  bool _hovering = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovering = true),
-      onExit: (_) => setState(() => _hovering = false),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
-        width: 340,
-        padding: const EdgeInsets.all(22),
-        transform: Matrix4.translationValues(0, _hovering ? -6 : 0, 0),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: _hovering
-                ? OrgSiteColors.accentDeep.withAlpha(120)
-                : OrgSiteColors.border,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: _hovering
-                  ? OrgSiteColors.accentDeep.withAlpha(35)
-                  : Colors.black.withAlpha(8),
-              blurRadius: _hovering ? 26 : 14,
-              offset: Offset(0, _hovering ? 12 : 6),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeOut,
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    color: _hovering
-                        ? OrgSiteColors.accentDeep
-                        : OrgSiteColors.bg,
-                    borderRadius: BorderRadius.circular(13),
-                    border: Border.all(
-                      color: _hovering
-                          ? Colors.transparent
-                          : OrgSiteColors.border,
-                    ),
-                  ),
-                  child: Icon(
-                    widget.icon,
-                    color: _hovering ? Colors.white : OrgSiteColors.accentDeep,
-                    size: 22,
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  widget.index.toString().padLeft(2, '0'),
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    color: OrgSiteColors.border,
-                    letterSpacing: -0.5,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              widget.title,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 15.5,
-                fontWeight: FontWeight.w700,
-                color: OrgSiteColors.ink,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              widget.subtitle,
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 12.5,
-                color: OrgSiteColors.inkSoft,
-                height: 1.55,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _StepCard extends StatelessWidget {
   final String number;
   final String title;
@@ -1472,44 +1341,46 @@ class _StepCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: OrgSiteColors.bg,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: OrgSiteColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            number,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 28,
-              fontWeight: FontWeight.w900,
-              color: OrgSiteColors.border,
-              letterSpacing: -1,
+    return HoverTiltCard(
+      child: Container(
+        padding: const EdgeInsets.all(22),
+        decoration: BoxDecoration(
+          color: OrgSiteColors.bg,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: OrgSiteColors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              number,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 28,
+                fontWeight: FontWeight.w900,
+                color: OrgSiteColors.border,
+                letterSpacing: -1,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            title,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: OrgSiteColors.ink,
+            const SizedBox(height: 8),
+            Text(
+              title,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: OrgSiteColors.ink,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            body,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 12.5,
-              color: OrgSiteColors.inkSoft,
-              height: 1.6,
+            const SizedBox(height: 8),
+            Text(
+              body,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 12.5,
+                color: OrgSiteColors.inkSoft,
+                height: 1.6,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1617,7 +1488,6 @@ class _RevealOnVisibleState extends State<_RevealOnVisible>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<double> _fade;
-  late final Animation<Offset> _slide;
   bool _triggered = false;
 
   @override
@@ -1625,13 +1495,9 @@ class _RevealOnVisibleState extends State<_RevealOnVisible>
     super.initState();
     _ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 850),
     );
-    _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
-    _slide = Tween<Offset>(
-      begin: const Offset(0, 0.08),
-      end: Offset.zero,
-    ).animate(_fade);
+    _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic);
     widget.tick.addListener(_check);
     WidgetsBinding.instance.addPostFrameCallback((_) => _check());
   }
@@ -1658,9 +1524,24 @@ class _RevealOnVisibleState extends State<_RevealOnVisible>
 
   @override
   Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _fade,
-      child: SlideTransition(position: _slide, child: widget.child),
+    // Sections rise out of depth — tipped back and set lower — then
+    // settle flat, instead of a plain fade/slide.
+    return AnimatedBuilder(
+      animation: _fade,
+      child: widget.child,
+      builder: (context, child) {
+        final t = 1 - _fade.value;
+        return Opacity(
+          opacity: _fade.value,
+          child: Transform(
+            alignment: Alignment.topCenter,
+            transform: perspective3d()
+              ..translateByDouble(0, t * 60, 0, 1)
+              ..rotateX(-t * 0.35),
+            child: child,
+          ),
+        );
+      },
     );
   }
 }
@@ -1718,7 +1599,11 @@ class _BobbingState extends State<_Bobbing>
 // the one shared system every org's officers actually use, cascading down
 // to the three things an org spends most of its time on.
 class _OrgEmblemPanel extends StatelessWidget {
-  const _OrgEmblemPanel();
+  // Pointer tilt from the hero card — the glow and the mark shift by
+  // different amounts so the inside of the card has depth of its own.
+  final Offset tilt;
+
+  const _OrgEmblemPanel({this.tilt = Offset.zero});
 
   @override
   Widget build(BuildContext context) {
@@ -1727,163 +1612,104 @@ class _OrgEmblemPanel extends StatelessWidget {
       children: [
         OrgDotGridBackground(dotColor: Colors.white.withAlpha(18)),
         Center(
-          child: Container(
-            width: 300,
-            height: 300,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                colors: [Color(0x33FFFFFF), Colors.transparent],
+          child: Transform.translate(
+            offset: Offset(-tilt.dx * 18, -tilt.dy * 18),
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [Color(0x33FFFFFF), Colors.transparent],
+                ),
               ),
             ),
           ),
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 34),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    width: 170,
-                    height: 170,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        _PulseRing(
-                          size: 170,
-                          color: Colors.white.withAlpha(60),
-                        ),
-                        _PulseRing(
-                          size: 170,
-                          color: Colors.white.withAlpha(60),
-                          delay: const Duration(milliseconds: 1000),
-                        ),
-                        Container(
-                          width: 124,
-                          height: 124,
-                          padding: const EdgeInsets.all(24),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withAlpha(70),
-                                blurRadius: 24,
-                                offset: const Offset(0, 10),
-                              ),
-                            ],
+          child: Transform.translate(
+            offset: Offset(tilt.dx * 8, tilt.dy * 8),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 170,
+                      height: 170,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          _PulseRing(
+                            size: 170,
+                            color: Colors.white.withAlpha(60),
                           ),
-                          child: Image.asset(
-                            'assets/images/logo.png',
-                            fit: BoxFit.contain,
-                            errorBuilder: (_, __, ___) => const Icon(
-                              Icons.domain_rounded,
-                              color: OrgSiteColors.accentDeep,
-                              size: 46,
+                          _PulseRing(
+                            size: 170,
+                            color: Colors.white.withAlpha(60),
+                            delay: const Duration(milliseconds: 1000),
+                          ),
+                          Container(
+                            width: 124,
+                            height: 124,
+                            padding: const EdgeInsets.all(24),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withAlpha(70),
+                                  blurRadius: 24,
+                                  offset: const Offset(0, 10),
+                                ),
+                              ],
+                            ),
+                            child: Image.asset(
+                              'assets/images/logo.png',
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, __, ___) => const Icon(
+                                Icons.domain_rounded,
+                                color: OrgSiteColors.accentDeep,
+                                size: 46,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    'YOUR ORGANIZATION\'S\nWORKSPACE',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      height: 1.5,
-                      letterSpacing: 0.6,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Container(width: 36, height: 2, color: Colors.white),
-                  const SizedBox(height: 12),
-                  Text(
-                    'One login, everything connected',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white.withAlpha(160),
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 40),
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'EVERYTHING YOUR TEAM RUNS',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white.withAlpha(130),
-                      letterSpacing: 1,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _PillarChip(
-                        icon: Icons.event_note_rounded,
-                        label: 'Events',
+                        ],
                       ),
-                      SizedBox(width: 10),
-                      _PillarChip(icon: Icons.groups_rounded, label: 'Members'),
-                      SizedBox(width: 10),
-                      _PillarChip(
-                        icon: Icons.receipt_long_rounded,
-                        label: 'Reports',
+                    ),
+                    const SizedBox(height: 24),
+                    Text(
+                      'YOUR ORGANIZATION\'S\nWORKSPACE',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        height: 1.5,
+                        letterSpacing: 0.6,
                       ),
-                    ],
-                  ),
-                ],
-              ),
-            ],
+                    ),
+                    const SizedBox(height: 12),
+                    Container(width: 36, height: 2, color: Colors.white),
+                    const SizedBox(height: 12),
+                    Text(
+                      'One login, everything connected',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white.withAlpha(160),
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ],
-    );
-  }
-}
-
-class _PillarChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  const _PillarChip({required this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withAlpha(14),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white.withAlpha(35)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: Colors.white.withAlpha(220)),
-          const SizedBox(height: 5),
-          Text(
-            label,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 9.5,
-              fontWeight: FontWeight.w600,
-              color: Colors.white.withAlpha(190),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -1943,6 +1769,56 @@ class _PulseRingState extends State<_PulseRing>
           ),
         );
       },
+    );
+  }
+}
+
+// "Scroll to explore" hint under the hero CTAs — a gently bobbing arrow
+// that also works as a shortcut down to the scroll story.
+class _ScrollCue extends StatelessWidget {
+  final VoidCallback onTap;
+  const _ScrollCue({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white,
+                border: Border.all(color: OrgSiteColors.border),
+              ),
+              child: const _Bobbing(
+                duration: Duration(milliseconds: 1800),
+                amplitude: 3,
+                child: Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  size: 20,
+                  color: OrgSiteColors.accentDeep,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              'Scroll to explore',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: OrgSiteColors.inkSoft,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

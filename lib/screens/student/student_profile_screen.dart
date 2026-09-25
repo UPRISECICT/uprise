@@ -752,6 +752,22 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 10),
+                // The permanent way into Event Feedback — the post-event popup
+                // stops reappearing once dismissed, and notifications scroll
+                // away. Beside Certificates since feedback gates them.
+                kActionTile(
+                  icon: Icons.rate_review_outlined,
+                  title: 'Event Feedback',
+                  subtitle: 'Rate events you\'ve attended',
+                  iconColor: Colors.purple,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const StudentFeedbackScreen(),
+                    ),
+                  ),
+                ),
 
                 // ── My Organizations — membership is a single orgId on
                 // students/{uid} today, not an array, so this renders it as
@@ -2457,26 +2473,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       MaterialPageRoute(
                         builder: (_) =>
                             const PrivacySecurityScreen(isGuest: false),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 8),
-
-                // Previously the only way in here was a one-time popup right
-                // after attending an event (which stops reappearing once
-                // dismissed) or tapping a notification — dismiss "Maybe
-                // Later" once and there was no way back in. This is the
-                // permanent way to reach it.
-                _buildSettingsTile(
-                  icon: Icons.rate_review_outlined,
-                  title: 'Event Feedback',
-                  subtitle: 'Rate events you\'ve attended',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const StudentFeedbackScreen(),
                       ),
                     );
                   },

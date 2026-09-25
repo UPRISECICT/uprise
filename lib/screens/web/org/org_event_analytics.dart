@@ -30,7 +30,6 @@ class _DS {
   static const double s3 = 12;
   static const double s4 = 16;
   static const double s5 = 20;
-  static const double s6 = 24;
   static const double s7 = 32;
 
   // Matches the single flat drop shadow every other org screen's cards
@@ -73,13 +72,6 @@ class _DS {
 
 // ── Color aliases ────────────────────────────────────────────────────────────
 class _C {
-  // The four loose KPI accents that used to live here - amber, green, red
-  // and blue - are gone. They tinted the four summary cards in four hues
-  // for four things that are not four categories of anything, which is
-  // decoration, not encoding. The cards now take chartBrand like the rest
-  // of the page, and the only non-brand hues left in this file are the
-  // three status steps below, which each carry a meaning.
-
   // Matches the 0xFFFBFCFE Scaffold background every other org screen uses.
   static const Color surface = Color(0xFFFBFCFE);
   // Matches StatCardTokens.border so the KPI cards and the chart cards
@@ -106,16 +98,21 @@ class _C {
   // Recessive hairline grid - one step off the card surface.
   static const Color grid = Color(0xFFF1F5F9);
 
-  // Star ratings are an ORDINAL scale, so they take a one-hue ramp with
-  // monotone lightness (5 = darkest) rather than the green->amber->red
-  // rainbow this used to draw. Validated as an ordinal ramp against the
-  // white card: monotone L, every adjacent gap >= 0.06, light end 2.18:1,
-  // hue spread 9 degrees.
-  static const Color rating5 = Color(0xFF7A2E00);
-  static const Color rating4 = Color(0xFFA83E00);
-  static const Color rating3 = Color(0xFFC85A1C);
-  static const Color rating2 = Color(0xFFDE7D45);
-  static const Color rating1 = Color(0xFFEA9E70);
+  // Star ratings read as sentiment: 5 = good (green) down to 1 = bad (red),
+  // so the share of happy vs unhappy attendees shows at a glance and the
+  // donut sits comfortably next to the green/amber/red attendance donut.
+  static const Color rating5 = Color(0xFF16A34A);
+  static const Color rating4 = Color(0xFF14B8A6);
+  static const Color rating3 = Color(0xFFF59E0B);
+  static const Color rating2 = Color(0xFFF97316);
+  static const Color rating1 = Color(0xFFEF4444);
+
+  // KPI card accents - the same four hues the Event Proposals stat cards
+  // use, so the summary strip looks like the one on the other tabs.
+  static const Color kpiEvents = UpriseColors.primaryDark;
+  static const Color kpiRegistrations = Color(0xFF2563EB);
+  static const Color kpiAttendance = Color(0xFF059669);
+  static const Color kpiRating = Color(0xFFFB923C);
 
   // Attendance IS a status scale (good / warning / critical), so it keeps
   // reserved status steps instead of the ordinal ramp. A darker amber was
@@ -744,22 +741,22 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
               // had nothing to fall on, so the groups stopped reading as
               // separate and the whole tab flattened into one slab.
               //
-              // The four KPI cards come first, before the heading. They are
-              // the answer the page exists to give - four numbers, readable
-              // without scrolling - and each one is a shortcut into the
-              // chart that explains it. The heading below them introduces
-              // those charts rather than the page, which the app bar
-              // already names.
+              // Page actions (Live sync, Export) sit on a slim row at the
+              // top, then the four KPI cards, then the charts - the cards
+              // and charts sit one normal gap apart instead of having an
+              // actions row wedged between them.
               return SingleChildScrollView(
                 padding: EdgeInsets.fromLTRB(
                   horizontalPadding,
-                  isMobile ? _DS.s5 : _DS.s6,
+                  isMobile ? _DS.s4 : _DS.s5,
                   horizontalPadding,
                   _DS.s7,
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    _buildHeader(isMobile: isMobile),
+                    const SizedBox(height: _DS.s3),
                     _KpiStatsRow(
                       data: data,
                       onTapEvents: () => _scrollToSection(_distributionKey),
@@ -769,9 +766,7 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
                           _scrollToSection(_regAttendanceKey),
                       onTapRating: () => _scrollToSection(_ratingKey),
                     ),
-                    SizedBox(height: isMobile ? _DS.s6 : _DS.s7),
-                    _buildHeader(isMobile: isMobile),
-                    SizedBox(height: isMobile ? _DS.s4 : _DS.s5),
+                    const SizedBox(height: _DS.s5),
                     _buildAnalyticsTab(data),
                   ],
                 ),
@@ -783,72 +778,22 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
     );
   }
 
-  // The heading that introduces the charts, sitting under the KPI cards.
-  // This screen used to switch between an Analytics tab and an Events tab;
-  // the Events tab (per-event registrants/attendance/feedback/finance) has
-  // moved to Events & Schedules' own Event Overview, so there's nothing
-  // left to switch between. What was left behind was a card title bar that
-  // still read as a tab strip.
+  // Actions row above the KPI cards. No page-level heading here: the app
+  // bar already says "Analytics".
   //
-  // It is sized as a section heading, not a page title: the app bar above
-  // already says "Analytics", and a second 22px "Analytics" under the cards
-  // would be the same word twice at the same weight.
+  // Export is the only action. The Refresh button that used to sit next to
+  // it is gone: every collection this page reads is watched (see
+  // _listenForUpdates), so a manual refresh would fetch nothing new.
+  // _refresh() itself stays for the Retry in the error state.
   Widget _buildHeader({required bool isMobile}) {
-    final heading = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Analytics Overview',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: isMobile ? 16 : 18,
-                fontWeight: FontWeight.w700,
-                color: _C.charcoal,
-                letterSpacing: -0.3,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: _DS.s1),
-        Text(
-          'Monitor event performance across your organization.',
-          style: GoogleFonts.beVietnamPro(fontSize: 12.5, color: _C.muted),
-        ),
-      ],
-    );
-
-    // Export is the only action left. The Refresh button next to it is
-    // gone: every collection this page reads is now watched (see
-    // _listenForUpdates), so there is nothing a manual refresh would fetch
-    // that has not already arrived. _refresh() itself stays for the Retry
-    // in the error state, where there is no live data yet to wait on.
-    final actions = Row(
-      mainAxisSize: MainAxisSize.min,
+    return Row(
+      mainAxisAlignment: isMobile
+          ? MainAxisAlignment.start
+          : MainAxisAlignment.end,
       children: [
         const _LiveSyncPill(),
         const SizedBox(width: _DS.s3),
         AdminExportButton(onSelected: _exportAnalytics),
-      ],
-    );
-
-    if (isMobile) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          heading,
-          const SizedBox(height: _DS.s3),
-          actions,
-        ],
-      );
-    }
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(child: heading),
-        actions,
       ],
     );
   }
@@ -1041,40 +986,35 @@ class _KpiStatsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // One hue across the row. These were blue / amber / green / a colour
-    // that changed with the rating - four hues for four cards that are not
-    // four categories, so the colour channel was spent on nothing the icon
-    // and the label did not already say, and the strip read as four widgets
-    // borrowed from four different screens. Brand orange makes them one
-    // group, and it leaves green and red free to keep meaning "good" and
-    // "bad" in the charts below.
-    //
-    // Not four steps of orange either: an ordinal ramp on nominal cards
-    // would imply the leftmost matters most.
+    // One accent per card, matching the stat strips on the other org tabs.
     final stats = [
       (
         'Total Events',
         '${data.events.length}',
         Icons.event_outlined,
         onTapEvents,
+        _C.kpiEvents,
       ),
       (
         'Registrations',
         '${data.totalRegistrations}',
         Icons.how_to_reg_outlined,
         onTapRegistrations,
+        _C.kpiRegistrations,
       ),
       (
         'Attendance Rate',
         '${data.attendanceRate.toStringAsFixed(0)}%',
         Icons.fact_check_outlined,
         onTapAttendance,
+        _C.kpiAttendance,
       ),
       (
         'Avg. Rating',
         data.totalFeedbacks == 0 ? '—' : data.avgRating.toStringAsFixed(1),
         Icons.star_outline_rounded,
         onTapRating,
+        _C.kpiRating,
       ),
     ];
 
@@ -1091,7 +1031,7 @@ class _KpiStatsRow extends StatelessWidget {
             for (final s in stats)
               SizedBox(
                 width: cardWidth,
-                child: _kpiCard(s.$1, s.$2, s.$3, s.$4),
+                child: _kpiCard(s.$1, s.$2, s.$3, s.$4, s.$5),
               ),
           ],
         );
@@ -1106,13 +1046,14 @@ class _KpiStatsRow extends StatelessWidget {
     String value,
     IconData icon,
     VoidCallback? onTap,
+    Color color,
   ) {
     return _HoverLift(
       child: StatCard(
         label: label,
         value: value,
         icon: icon,
-        color: _C.chartBrand,
+        color: color,
         onTap: onTap,
       ),
     );
@@ -1125,7 +1066,7 @@ class _KpiStatsRow extends StatelessWidget {
 // bar when the slot is wide enough to hold it, and event names wrap to two
 // lines under the bar instead of being cut after a few characters. Hover
 // tooltips are unchanged and still carry the full event name.
-class _EventBarChart extends StatelessWidget {
+class _EventBarChart extends StatefulWidget {
   final List<MapEntry<String, double>> entries;
   final Color color;
   final double? fixedMaxY;
@@ -1153,19 +1094,38 @@ class _EventBarChart extends StatelessWidget {
   static const double _bottomReserved = 42;
 
   @override
+  State<_EventBarChart> createState() => _EventBarChartState();
+}
+
+class _EventBarChartState extends State<_EventBarChart> {
+  static const double _height = _EventBarChart._height;
+  static const double _topPad = _EventBarChart._topPad;
+  static const double _bottomReserved = _EventBarChart._bottomReserved;
+
+  // Bar under the pointer; it takes the full colour while the rest stay
+  // soft, so the chart is easy on the eyes but still answers the hover.
+  int? _hovered;
+
+  @override
   Widget build(BuildContext context) {
-    final maxValue = entries.fold<double>(0, (m, e) => math.max(m, e.value));
-    final maxY = fixedMaxY ?? (maxValue <= 0 ? 1.0 : maxValue * 1.15);
-    final interval = fixedInterval ?? maxY / 4;
+    final maxValue = widget.entries.fold<double>(
+      0,
+      (m, e) => math.max(m, e.value),
+    );
+    final maxY = widget.fixedMaxY ?? (maxValue <= 0 ? 1.0 : maxValue * 1.15);
+    final interval = widget.fixedInterval ?? maxY / 4;
 
     return SizedBox(
       height: _height,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final n = entries.length;
-          final plotW = math.max(0.0, constraints.maxWidth - leftReserved);
+          final n = widget.entries.length;
+          final plotW = math.max(
+            0.0,
+            constraints.maxWidth - widget.leftReserved,
+          );
           final slot = plotW / n;
-          final barW = (slot * 0.5).clamp(12.0, 32.0).toDouble();
+          final barW = (slot * 0.4).clamp(12.0, 28.0).toDouble();
           final plotH = _height - _topPad - _bottomReserved;
           final labelWidth = math.max(24.0, math.min(slot - 8, 140.0));
 
@@ -1196,10 +1156,10 @@ class _EventBarChart extends StatelessWidget {
                       leftTitles: AxisTitles(
                         sideTitles: SideTitles(
                           showTitles: true,
-                          reservedSize: leftReserved,
+                          reservedSize: widget.leftReserved,
                           interval: interval,
                           getTitlesWidget: (v, _) => Text(
-                            axisLabel(v),
+                            widget.axisLabel(v),
                             style: GoogleFonts.beVietnamPro(
                               fontSize: 10,
                               color: _C.muted,
@@ -1221,7 +1181,7 @@ class _EventBarChart extends StatelessWidget {
                               child: SizedBox(
                                 width: labelWidth,
                                 child: Text(
-                                  entries[i].key,
+                                  widget.entries[i].key,
                                   textAlign: TextAlign.center,
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
@@ -1238,11 +1198,17 @@ class _EventBarChart extends StatelessWidget {
                       ),
                     ),
                     barTouchData: BarTouchData(
+                      touchCallback: (event, response) {
+                        final i = event.isInterestedForInteractions
+                            ? response?.spot?.touchedBarGroupIndex
+                            : null;
+                        if (i != _hovered) setState(() => _hovered = i);
+                      },
                       touchTooltipData: BarTouchTooltipData(
                         getTooltipColor: (_) => _C.charcoal,
                         getTooltipItem: (group, _, rod, __) {
                           return BarTooltipItem(
-                            '${entries[group.x].key}\n',
+                            '${widget.entries[group.x].key}\n',
                             GoogleFonts.beVietnamPro(
                               color: Colors.white,
                               fontWeight: FontWeight.w700,
@@ -1250,7 +1216,7 @@ class _EventBarChart extends StatelessWidget {
                             ),
                             children: [
                               TextSpan(
-                                text: tooltipValue(rod.toY),
+                                text: widget.tooltipValue(rod.toY),
                                 style: GoogleFonts.beVietnamPro(
                                   color: Colors.white70,
                                   fontSize: 11,
@@ -1266,8 +1232,10 @@ class _EventBarChart extends StatelessWidget {
                         x: i,
                         barRods: [
                           BarChartRodData(
-                            toY: entries[i].value,
-                            color: color,
+                            toY: widget.entries[i].value,
+                            color: _hovered == i
+                                ? widget.color
+                                : widget.color.withAlpha(150),
                             width: barW,
                             borderRadius: const BorderRadius.vertical(
                               top: Radius.circular(6),
@@ -1286,17 +1254,18 @@ class _EventBarChart extends StatelessWidget {
               if (slot >= 30)
                 for (var i = 0; i < n; i++)
                   Positioned(
-                    left: leftReserved + slot * i,
+                    left: widget.leftReserved + slot * i,
                     width: slot,
                     bottom:
                         _bottomReserved +
-                        (entries[i].value / maxY).clamp(0.0, 1.0) * plotH +
+                        (widget.entries[i].value / maxY).clamp(0.0, 1.0) *
+                            plotH +
                         3,
                     child: IgnorePointer(
                       child: FittedBox(
                         fit: BoxFit.scaleDown,
                         child: Text(
-                          valueLabel(entries[i].value),
+                          widget.valueLabel(widget.entries[i].value),
                           style: GoogleFonts.beVietnamPro(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
@@ -1606,8 +1575,8 @@ class _SingleSeriesBarChart extends StatelessWidget {
   }
 }
 
-// "Rating & Attendance" section: a heading, then two equal cards - one donut
-// each - side by side, stacking on narrow widths.
+// Rating & attendance: two equal cards - one donut each - side by side,
+// stacking on narrow widths.
 class _DistributionCard extends StatelessWidget {
   final _AnalyticsData data;
   const _DistributionCard({required this.data});
@@ -1659,47 +1628,30 @@ class _DistributionCard extends StatelessWidget {
       ),
     );
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Rating & Attendance',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-            color: _C.charcoal,
+    // The cards' own titles already say what they are, so no section
+    // heading sits above them.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 680) {
+          return Column(
+            children: [
+              ratingCard,
+              const SizedBox(height: _DS.s5),
+              attendanceCard,
+            ],
+          );
+        }
+        return IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: ratingCard),
+              const SizedBox(width: _DS.s4),
+              Expanded(child: attendanceCard),
+            ],
           ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          'Quick overview of feedback and event participation.',
-          style: GoogleFonts.beVietnamPro(fontSize: 12, color: _C.muted),
-        ),
-        const SizedBox(height: _DS.s3),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            if (constraints.maxWidth < 680) {
-              return Column(
-                children: [
-                  ratingCard,
-                  const SizedBox(height: _DS.s5),
-                  attendanceCard,
-                ],
-              );
-            }
-            return IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(child: ratingCard),
-                  const SizedBox(width: _DS.s4),
-                  Expanded(child: attendanceCard),
-                ],
-              ),
-            );
-          },
-        ),
-      ],
+        );
+      },
     );
   }
 }

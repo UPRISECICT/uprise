@@ -1443,7 +1443,8 @@ class _StudentAccountsState extends State<StudentAccounts> {
       );
 
       if (mounted) {
-        final message = 'Student account ${isArchived ? 'restored' : 'archived'}';
+        final message =
+            'Student account ${isArchived ? 'restored' : 'archived'}';
         if (isArchived) {
           AppToast.success(context, message);
         } else {
@@ -1455,6 +1456,75 @@ class _StudentAccountsState extends State<StudentAccounts> {
         AppToast.error(context, 'Error: $e');
       }
     }
+  }
+
+  // Called out on its own above the other import rules: a name written
+  // "First M. Surname" imports with the surname guessed wrong, which shows
+  // up on the student's mobile profile.
+  Widget _buildNameFormatNotice() {
+    TextStyle style({Color? color, FontWeight? weight}) =>
+        GoogleFonts.beVietnamPro(
+          fontSize: 12,
+          height: 1.5,
+          color: color ?? const Color(0xFF92400E),
+          fontWeight: weight,
+        );
+    Widget example(IconData icon, Color color, String text) => Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              text,
+              style: style(color: color, weight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7ED),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFFED7AA)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.badge_outlined, size: 15, color: Color(0xFFC2410C)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Full Name format', style: style(weight: FontWeight.w700)),
+                Text(
+                  'Surname, First Name Middle Initial. The comma '
+                  'tells the app where the surname ends, so it shows '
+                  'correctly on the student\'s profile. Rows without it '
+                  'are skipped.',
+                  style: style(),
+                ),
+                example(
+                  Icons.check_circle_rounded,
+                  const Color(0xFF047857),
+                  'Dela Cruz, Juan Carlos S.',
+                ),
+                example(
+                  Icons.cancel_rounded,
+                  const Color(0xFFB91C1C),
+                  'Juan Carlos S. Dela Cruz',
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   // Downloadable starter workbook — a real .xlsx (not .csv) so it can
@@ -1499,7 +1569,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
     // leading zeros or switching to scientific notation).
     const exampleRow = [
       '2023100467',
-      'Dela Cruz, Juan',
+      'Dela Cruz, Juan Carlos S.',
       'BSIT',
       '3',
       '4H-G1',
@@ -1517,7 +1587,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
       cell.cellStyle = exampleStyle;
     }
 
-    const columnWidths = [14.0, 24.0, 10.0, 12.0, 10.0, 30.0];
+    const columnWidths = [14.0, 28.0, 10.0, 12.0, 10.0, 30.0];
     for (var i = 0; i < columnWidths.length; i++) {
       sheet.setColumnWidth(i, columnWidths[i]);
     }
@@ -1783,6 +1853,8 @@ class _StudentAccountsState extends State<StudentAccounts> {
                           ),
                         ),
                         const SizedBox(height: 16),
+                        _buildNameFormatNotice(),
+                        const SizedBox(height: 12),
                         Container(
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
@@ -1801,7 +1873,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
-                                  'Required columns (in order):\nStudent ID · Full Name · Course · Year Level · Section · Email\n\nFull Name: use Last Name, First Name Middle Initial (e.g. San Jose, Claudine Joy S.). This preserves multi-word last names on mobile.\n\nStudent ID: 10 digits, no dash (e.g. 2023100467). Section: 4H-G1 format.\n\nEmail must be the school\'s Microsoft account (e.g. 2023100467@ms.bulsu.edu.ph — outlook.com, hotmail.com, live.com, and msn.com also accepted) — other domains will be skipped.',
+                                  'Required columns (in order):\nStudent ID · Full Name · Course · Year Level · Section · Email\n\nStudent ID: 10 digits, no dash (e.g. 2023100467). Section: 4H-G1 format.\n\nEmail must be the school\'s Microsoft account (e.g. 2023100467@ms.bulsu.edu.ph — outlook.com, hotmail.com, live.com, and msn.com also accepted) — other domains will be skipped.',
                                   style: GoogleFonts.beVietnamPro(
                                     fontSize: 12,
                                     color: const Color(0xFF1D4ED8),
@@ -2137,23 +2209,38 @@ class _StudentAccountsState extends State<StudentAccounts> {
     if (firstName.isEmpty && lastName.isEmpty && fullName.isNotEmpty) {
       final parts = fullName.split(RegExp(r'\s+'));
       lastName = parts.last;
-      if (parts.length > 2 && RegExp(r'^[A-Za-z]{1,3}\.?$').hasMatch(parts[parts.length - 2])) {
+      if (parts.length > 2 &&
+          RegExp(r'^[A-Za-z]{1,3}\.?$').hasMatch(parts[parts.length - 2])) {
         middleName = parts[parts.length - 2];
         firstName = parts.sublist(0, parts.length - 2).join(' ');
       } else {
-        firstName = parts.length > 1 ? parts.sublist(0, parts.length - 1).join(' ') : '';
+        firstName = parts.length > 1
+            ? parts.sublist(0, parts.length - 1).join(' ')
+            : '';
       }
     }
 
     final firstNameCtrl = TextEditingController(text: firstName);
     final middleNameCtrl = TextEditingController(text: middleName);
     final lastNameCtrl = TextEditingController(text: lastName);
-    final idCtrl = TextEditingController(text: (data['studentId'] ?? '').toString());
-    final sectionCtrl = TextEditingController(text: (data['section'] ?? '').toString());
+    final idCtrl = TextEditingController(
+      text: (data['studentId'] ?? '').toString(),
+    );
+    final sectionCtrl = TextEditingController(
+      text: (data['section'] ?? '').toString(),
+    );
     final email = (data['email'] ?? '').toString();
     const courses = ['BSIT', 'BSIS', 'BLIS'];
-    const yearLevels = ['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year'];
-    var course = courses.contains(data['course']) ? data['course'] as String : 'BSIT';
+    const yearLevels = [
+      '1st Year',
+      '2nd Year',
+      '3rd Year',
+      '4th Year',
+      '5th Year',
+    ];
+    var course = courses.contains(data['course'])
+        ? data['course'] as String
+        : 'BSIT';
     var yearLevel = yearLevels.contains(data['yearLevel'])
         ? data['yearLevel'] as String
         : '1st Year';
@@ -2166,8 +2253,13 @@ class _StudentAccountsState extends State<StudentAccounts> {
       barrierColor: Colors.black54,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => Dialog(
-          insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 32,
+            vertical: 24,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
           child: SizedBox(
             width: 580,
             child: Column(
@@ -2184,7 +2276,9 @@ class _StudentAccountsState extends State<StudentAccounts> {
                         AdminColors.primaryDark.withAlpha(225),
                       ],
                     ),
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(18),
+                    ),
                   ),
                   child: Row(
                     children: [
@@ -2195,7 +2289,11 @@ class _StudentAccountsState extends State<StudentAccounts> {
                           color: Colors.white.withAlpha(38),
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: const Icon(Icons.edit_outlined, color: Colors.white, size: 19),
+                        child: const Icon(
+                          Icons.edit_outlined,
+                          color: Colors.white,
+                          size: 19,
+                        ),
                       ),
                       const SizedBox(width: 14),
                       Expanded(
@@ -2211,7 +2309,10 @@ class _StudentAccountsState extends State<StudentAccounts> {
                       IconButton(
                         tooltip: 'Close',
                         onPressed: isSaving ? null : () => Navigator.pop(ctx),
-                        icon: const Icon(Icons.close_rounded, color: Colors.white),
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: Colors.white,
+                        ),
                       ),
                     ],
                   ),
@@ -2224,7 +2325,10 @@ class _StudentAccountsState extends State<StudentAccounts> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _sectionLabel('Personal Information', icon: Icons.person_outline),
+                          _sectionLabel(
+                            'Personal Information',
+                            icon: Icons.person_outline,
+                          ),
                           const SizedBox(height: 12),
                           Row(
                             children: [
@@ -2232,15 +2336,23 @@ class _StudentAccountsState extends State<StudentAccounts> {
                                 flex: 2,
                                 child: TextFormField(
                                   controller: firstNameCtrl,
-                                  decoration: _DS.inputDecoration('First Name', required: true),
-                                  validator: (value) => value == null || value.trim().isEmpty ? 'Required' : null,
+                                  decoration: _DS.inputDecoration(
+                                    'First Name',
+                                    required: true,
+                                  ),
+                                  validator: (value) =>
+                                      value == null || value.trim().isEmpty
+                                      ? 'Required'
+                                      : null,
                                 ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
                                 child: TextFormField(
                                   controller: middleNameCtrl,
-                                  decoration: _DS.inputDecoration('Middle Initial / Name'),
+                                  decoration: _DS.inputDecoration(
+                                    'Middle Initial / Name',
+                                  ),
                                 ),
                               ),
                             ],
@@ -2248,18 +2360,30 @@ class _StudentAccountsState extends State<StudentAccounts> {
                           const SizedBox(height: 12),
                           TextFormField(
                             controller: lastNameCtrl,
-                            decoration: _DS.inputDecoration('Last Name', required: true),
-                            validator: (value) => value == null || value.trim().isEmpty ? 'Required' : null,
+                            decoration: _DS.inputDecoration(
+                              'Last Name',
+                              required: true,
+                            ),
+                            validator: (value) =>
+                                value == null || value.trim().isEmpty
+                                ? 'Required'
+                                : null,
                           ),
                           const SizedBox(height: 20),
-                          _sectionLabel('Academic Information', icon: Icons.school_outlined),
+                          _sectionLabel(
+                            'Academic Information',
+                            icon: Icons.school_outlined,
+                          ),
                           const SizedBox(height: 12),
                           Row(
                             children: [
                               Expanded(
                                 child: TextFormField(
                                   controller: idCtrl,
-                                  decoration: _DS.inputDecoration('Student ID', required: true),
+                                  decoration: _DS.inputDecoration(
+                                    'Student ID',
+                                    required: true,
+                                  ),
                                   validator: _validateStudentId,
                                 ),
                               ),
@@ -2267,7 +2391,10 @@ class _StudentAccountsState extends State<StudentAccounts> {
                               Expanded(
                                 child: TextFormField(
                                   controller: sectionCtrl,
-                                  decoration: _DS.inputDecoration('Section', hint: 'e.g., 4H-G1'),
+                                  decoration: _DS.inputDecoration(
+                                    'Section',
+                                    hint: 'e.g., 4H-G1',
+                                  ),
                                   validator: _validateSection,
                                 ),
                               ),
@@ -2279,40 +2406,74 @@ class _StudentAccountsState extends State<StudentAccounts> {
                               Expanded(
                                 child: DropdownButtonFormField<String>(
                                   value: course,
-                                  decoration: _DS.inputDecoration('Course', required: true),
-                                  items: courses.map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(),
-                                  onChanged: (value) => setDialogState(() => course = value!),
+                                  decoration: _DS.inputDecoration(
+                                    'Course',
+                                    required: true,
+                                  ),
+                                  items: courses
+                                      .map(
+                                        (item) => DropdownMenuItem(
+                                          value: item,
+                                          child: Text(item),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (value) =>
+                                      setDialogState(() => course = value!),
                                 ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
                                 child: DropdownButtonFormField<String>(
                                   value: yearLevel,
-                                  decoration: _DS.inputDecoration('Year Level', required: true),
-                                  items: yearLevels.map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(),
-                                  onChanged: (value) => setDialogState(() => yearLevel = value!),
+                                  decoration: _DS.inputDecoration(
+                                    'Year Level',
+                                    required: true,
+                                  ),
+                                  items: yearLevels
+                                      .map(
+                                        (item) => DropdownMenuItem(
+                                          value: item,
+                                          child: Text(item),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (value) =>
+                                      setDialogState(() => yearLevel = value!),
                                 ),
                               ),
                             ],
                           ),
                           const SizedBox(height: 20),
-                          _sectionLabel('Account Email', icon: Icons.email_outlined),
+                          _sectionLabel(
+                            'Account Email',
+                            icon: Icons.email_outlined,
+                          ),
                           const SizedBox(height: 8),
                           TextFormField(
                             initialValue: email,
                             readOnly: true,
-                            decoration: _DS.inputDecoration('Login Email', icon: Icons.lock_outline),
+                            decoration: _DS.inputDecoration(
+                              'Login Email',
+                              icon: Icons.lock_outline,
+                            ),
                           ),
                           const SizedBox(height: 6),
                           Text(
                             'Login email is read-only here to keep Firebase Authentication secure.',
-                            style: GoogleFonts.beVietnamPro(fontSize: 11, color: const Color(0xFF64748B)),
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 11,
+                              color: const Color(0xFF64748B),
+                            ),
                           ),
                           if (errorMessage != null) ...[
                             const SizedBox(height: 16),
                             Text(
                               errorMessage!,
-                              style: GoogleFonts.beVietnamPro(fontSize: 12, color: AdminColors.error),
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 12,
+                                color: AdminColors.error,
+                              ),
                             ),
                           ],
                         ],
@@ -2325,7 +2486,9 @@ class _StudentAccountsState extends State<StudentAccounts> {
                   decoration: const BoxDecoration(
                     color: Color(0xFFF8F9FB),
                     border: Border(top: BorderSide(color: Color(0xFFE8ECF0))),
-                    borderRadius: BorderRadius.vertical(bottom: Radius.circular(18)),
+                    borderRadius: BorderRadius.vertical(
+                      bottom: Radius.circular(18),
+                    ),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.end,
@@ -2347,11 +2510,14 @@ class _StudentAccountsState extends State<StudentAccounts> {
                                 final first = firstNameCtrl.text.trim();
                                 final middle = middleNameCtrl.text.trim();
                                 final last = lastNameCtrl.text.trim();
-                                final updatedFullName = [first, middle, last]
-                                    .where((part) => part.isNotEmpty)
-                                    .join(' ');
+                                final updatedFullName = [
+                                  first,
+                                  middle,
+                                  last,
+                                ].where((part) => part.isNotEmpty).join(' ');
                                 try {
-                                  final batch = FirebaseFirestore.instance.batch();
+                                  final batch = FirebaseFirestore.instance
+                                      .batch();
                                   final updates = <String, dynamic>{
                                     'firstName': first,
                                     'middleName': middle,
@@ -2364,33 +2530,49 @@ class _StudentAccountsState extends State<StudentAccounts> {
                                     'updatedAt': FieldValue.serverTimestamp(),
                                   };
                                   batch.update(
-                                    FirebaseFirestore.instance.collection('students').doc(docId),
+                                    FirebaseFirestore.instance
+                                        .collection('students')
+                                        .doc(docId),
                                     updates,
                                   );
                                   batch.set(
-                                    FirebaseFirestore.instance.collection('users').doc(docId),
+                                    FirebaseFirestore.instance
+                                        .collection('users')
+                                        .doc(docId),
                                     updates,
                                     SetOptions(merge: true),
                                   );
                                   await batch.commit();
                                   await activity_log.ActivityLogger.log(
-                                    action: 'Updated student account: ${idCtrl.text.trim()} ($updatedFullName)',
+                                    action:
+                                        'Updated student account: ${idCtrl.text.trim()} ($updatedFullName)',
                                     module: 'User Directory',
                                     severity: 'info',
                                     details: {'studentDocId': docId},
                                   );
                                   if (!mounted) return;
                                   Navigator.pop(ctx);
-                                  AppToast.success(context, 'Student details updated.');
+                                  AppToast.success(
+                                    context,
+                                    'Student details updated.',
+                                  );
                                 } catch (error) {
                                   setDialogState(() {
                                     isSaving = false;
-                                    errorMessage = 'Could not save changes: $error';
+                                    errorMessage =
+                                        'Could not save changes: $error';
                                   });
                                 }
                               },
                         icon: isSaving
-                            ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            ? const SizedBox(
+                                width: 15,
+                                height: 15,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
                             : const Icon(Icons.save_outlined, size: 16),
                         label: Text(isSaving ? 'Saving...' : 'Save Changes'),
                         style: ElevatedButton.styleFrom(
@@ -2507,36 +2689,39 @@ class _StudentAccountsState extends State<StudentAccounts> {
                             'Student Information',
                             icon: Icons.badge_outlined,
                           ),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextFormField(
-                                  controller: idCtrl,
-                                  decoration: _DS.inputDecoration(
-                                    'Student ID',
-                                    hint: 'e.g., 2023100467',
-                                    icon: Icons.badge_outlined,
-                                    required: true,
+                          TextFormField(
+                            controller: idCtrl,
+                            decoration: _DS.inputDecoration(
+                              'Student ID',
+                              hint: 'e.g., 2023100467',
+                              icon: Icons.badge_outlined,
+                              required: true,
+                            ),
+                            style: GoogleFonts.beVietnamPro(fontSize: 13),
+                            validator: _validateStudentId,
+                          ),
+                          const SizedBox(height: 12),
+                          // Full width so the "Surname, First M.I." hint
+                          // and helper are never truncated.
+                          TextFormField(
+                            controller: nameCtrl,
+                            decoration: _DS
+                                .inputDecoration(
+                                  'Full Name',
+                                  hint: 'Dela Cruz, Juan Carlos S.',
+                                  icon: Icons.person_outline,
+                                  required: true,
+                                )
+                                .copyWith(
+                                  helperText: 'Surname, First Name M.I.',
+                                  helperStyle: GoogleFonts.beVietnamPro(
+                                    fontSize: 11,
+                                    color: const Color(0xFF64748B),
                                   ),
-                                  style: GoogleFonts.beVietnamPro(fontSize: 13),
-                                  validator: _validateStudentId,
+                                  errorMaxLines: 3,
                                 ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: TextFormField(
-                                  controller: nameCtrl,
-                                  decoration: _DS.inputDecoration(
-                                    'Full Name',
-                                    hint: 'e.g., Juan dela Cruz',
-                                    icon: Icons.person_outline,
-                                    required: true,
-                                  ),
-                                  style: GoogleFonts.beVietnamPro(fontSize: 13),
-                                  validator: _validateFullName,
-                                ),
-                              ),
-                            ],
+                            style: GoogleFonts.beVietnamPro(fontSize: 13),
+                            validator: _validateFullName,
                           ),
                           const SizedBox(height: 12),
                           Row(
@@ -2718,10 +2903,18 @@ class _StudentAccountsState extends State<StudentAccounts> {
                                   isCreating = true;
                                   errorMsg = null;
                                 });
+                                // The validator already required the
+                                // "Surname, First M." format, so this parses.
+                                final name = _parseRosterName(
+                                  nameCtrl.text.trim(),
+                                )!;
                                 try {
                                   await _createStudentAccount({
                                     'studentId': idCtrl.text.trim(),
-                                    'fullName': nameCtrl.text.trim(),
+                                    'fullName': name.fullName,
+                                    'firstName': name.firstName,
+                                    'middleName': name.middleName,
+                                    'lastName': name.lastName,
                                     'course': course,
                                     'yearLevel': yearLevel,
                                     'section': sectionCtrl.text.trim(), // NEW
@@ -2733,7 +2926,7 @@ class _StudentAccountsState extends State<StudentAccounts> {
                                     Navigator.pop(ctx);
                                     AppToast.success(
                                       context,
-                                      'Student account created for ${nameCtrl.text.trim()}. Credentials sent.',
+                                      'Student account created for ${name.fullName}. Credentials sent.',
                                     );
                                   }
                                 } catch (e) {
@@ -2952,61 +3145,16 @@ class _StudentAccountsState extends State<StudentAccounts> {
   Map<String, String> _rowToStudentMap(List<dynamic> values) {
     String cell(int i) =>
         (i < values.length ? values[i]?.toString().trim() : null) ?? '';
-    ({String firstName, String middleName, String lastName, String fullName})
-    parseRosterName(String value) {
-      final comma = value.indexOf(',');
-      // Registrar rosters use "Last, First Middle" while the app displays
-      // names as "First Middle Last". A comma is essential here: it is what
-      // lets us preserve multi-word surnames such as "San Jose" accurately.
-      if (comma > 0 &&
-          comma < value.length - 1 &&
-          value.indexOf(',', comma + 1) == -1) {
-        final lastName = value.substring(0, comma).trim();
-        final givenParts = value
-            .substring(comma + 1)
-            .trim()
-            .split(RegExp(r'\s+'))
-            .where((part) => part.isNotEmpty)
-            .toList();
-        if (lastName.isNotEmpty && givenParts.isNotEmpty) {
-          // A trailing short token is a middle initial: D., P, SJ., and DG.
-          // Everything before it remains part of the student's first name.
-          final hasMiddleInitial =
-              givenParts.length > 1 &&
-              RegExp(r'^[A-Za-z]{1,3}\.?$').hasMatch(givenParts.last);
-          final middleName = hasMiddleInitial ? givenParts.removeLast() : '';
-          final firstName = givenParts.join(' ');
-          return (
-            firstName: firstName,
-            middleName: middleName,
-            lastName: lastName,
-            fullName: [firstName, middleName, lastName]
-                .where((part) => part.isNotEmpty)
-                .join(' '),
-          );
-        }
-      }
-
-      // Keep previously supported non-comma names importable. Their name
-      // parts intentionally stay blank rather than guessing at a potentially
-      // multi-word surname; the roster convention above is the reliable way
-      // to populate mobile's separate First/Middle/Last fields.
-      return (
-        firstName: '',
-        middleName: '',
-        lastName: '',
-        fullName: value,
-      );
-    }
-
     final hasSection = values.length >= 6;
-    final name = parseRosterName(cell(1));
+    // A name without the "Surname, First M." comma keeps its raw text so
+    // _validateRows can reject it with the row number and the right format.
+    final name = _parseRosterName(cell(1));
     return {
       'studentId': cell(0),
-      'firstName': name.firstName,
-      'middleName': name.middleName,
-      'lastName': name.lastName,
-      'fullName': name.fullName,
+      'firstName': name?.firstName ?? '',
+      'middleName': name?.middleName ?? '',
+      'lastName': name?.lastName ?? '',
+      'fullName': name?.fullName ?? cell(1),
       'course': _normalizeCourse(cell(2)),
       'yearLevel': cell(3),
       'section': hasSection ? cell(4) : '',
@@ -3045,11 +3193,9 @@ class _StudentAccountsState extends State<StudentAccounts> {
 
       if (s['fullName']!.isEmpty) {
         reasons.add('missing Full Name');
-      } else if (!_fullNamePattern.hasMatch(s['fullName']!)) {
-        reasons.add(
-          'Full Name "${s['fullName']}" needs a first and last name '
-          '(for example, "First Last" or "Last, First M.")',
-        );
+      } else if (s['lastName']!.isEmpty ||
+          !_fullNamePattern.hasMatch(s['fullName']!)) {
+        reasons.add('Full Name "${s['fullName']}" must use $_nameFormatHelp');
       }
 
       final section = s['section']!;
@@ -3162,11 +3308,60 @@ class _StudentAccountsState extends State<StudentAccounts> {
     return null;
   }
 
+  // Registrar rosters use "Surname, First Second M." while the app displays
+  // names as "First Second M. Surname". The comma is required: it is the only
+  // reliable way to know where a multi-word surname such as "San Jose" ends,
+  // so the mobile profile's First/Middle/Last fields come out right. Returns
+  // null when the value is not in that format. Shared by Batch Import and
+  // Add Student Manually so both split names the same way.
+  static ({
+    String firstName,
+    String middleName,
+    String lastName,
+    String fullName,
+  })?
+  _parseRosterName(String value) {
+    final comma = value.indexOf(',');
+    if (comma <= 0 ||
+        comma >= value.length - 1 ||
+        value.indexOf(',', comma + 1) != -1) {
+      return null;
+    }
+    final lastName = value.substring(0, comma).trim();
+    final givenParts = value
+        .substring(comma + 1)
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .toList();
+    if (lastName.isEmpty || givenParts.isEmpty) return null;
+    // A trailing short token is a middle initial: D., P, SJ., and DG.
+    // Everything before it remains part of the student's first name.
+    final hasMiddleInitial =
+        givenParts.length > 1 &&
+        RegExp(r'^[A-Za-z]{1,3}\.?$').hasMatch(givenParts.last);
+    final middleName = hasMiddleInitial ? givenParts.removeLast() : '';
+    final firstName = givenParts.join(' ');
+    return (
+      firstName: firstName,
+      middleName: middleName,
+      lastName: lastName,
+      fullName: [
+        firstName,
+        middleName,
+        lastName,
+      ].where((part) => part.isNotEmpty).join(' '),
+    );
+  }
+
+  static const String _nameFormatHelp =
+      'Surname, First Name M.I. (e.g. Dela Cruz, Juan Carlos S.)';
+
   String? _validateFullName(String? v) {
     final value = v?.trim() ?? '';
     if (value.isEmpty) return 'Required';
-    if (!_fullNamePattern.hasMatch(value)) {
-      return 'Enter a full name (first and last)';
+    if (!_fullNamePattern.hasMatch(value) || _parseRosterName(value) == null) {
+      return 'Use $_nameFormatHelp';
     }
     return null;
   }

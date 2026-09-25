@@ -16,7 +16,8 @@ import '../../../widgets/admin_export_button.dart';
 import '../../../widgets/stat_cards.dart';
 import '../../../widgets/anchored_dropdown.dart';
 import '../../../widgets/app_toast.dart';
-import '../../../widgets/product_photo_gallery.dart';
+import '../../../widgets/org_modal_shell.dart';
+import '../../../widgets/student/app_image.dart';
 import '../admin/export_util.dart';
 import '../admin/export_pdf.dart';
 
@@ -28,6 +29,22 @@ class _DS {
   static const double radiusMd = 14;
   static const double radiusPill = 100;
   static const Color borderSoft = Color(0xFFE2E6EA);
+  // Card chrome shared with Event Proposals / OrgModalSection.
+  static const Color cardBorder = Color(0xFFE8ECF0);
+  static final cardShadow = [
+    BoxShadow(
+      color: Colors.black.withAlpha(15),
+      blurRadius: 12,
+      offset: const Offset(0, 4),
+    ),
+  ];
+  static final cardShadowHover = [
+    BoxShadow(
+      color: Colors.black.withAlpha(24),
+      blurRadius: 20,
+      offset: const Offset(0, 8),
+    ),
+  ];
 
   static InputDecoration inputDecoration(
     String label, {
@@ -340,6 +357,9 @@ class _ProductsTabState extends State<_ProductsTab> {
   _Visibility _visibility = _Visibility.live;
   // Set by the "Low / Out of Stock" card: active products at 5 or fewer.
   bool _lowStockOnly = false;
+  // No stat card is highlighted until the org actually taps one — the page
+  // opens on active products either way, same as Event Proposals.
+  bool _statTouched = false;
 
   final List<String> _statusFilters = const [
     'All',
@@ -689,50 +709,56 @@ class _ProductsTabState extends State<_ProductsTab> {
     final active = _allProducts.where((p) => !p.isArchived).toList();
     final archived = _allProducts.length - active.length;
     final lowStock = active.where((p) => p.totalStock <= 5).length;
-    final outOfStock = active.where((p) => p.totalStock <= 0).length;
-    final likes = active.fold<int>(0, (total, p) => total + p.likeCount);
     String n(int v) => _isLoading && _allProducts.isEmpty ? '—' : '$v';
 
+    bool isSelected(_Visibility v, {bool lowStock = false}) =>
+        _statTouched && _visibility == v && _lowStockOnly == lowStock;
+
+    // Tapping the highlighted card again drops back to the default view
+    // (active products, nothing highlighted).
     void select(_Visibility v, {bool lowStock = false}) => setState(() {
-      _visibility = v;
-      _lowStockOnly = lowStock;
+      if (isSelected(v, lowStock: lowStock)) {
+        _visibility = _Visibility.live;
+        _lowStockOnly = false;
+        _statTouched = false;
+      } else {
+        _visibility = v;
+        _lowStockOnly = lowStock;
+        _statTouched = true;
+      }
     });
 
     final statCards = [
       StatCard(
         label: 'Total Products',
         value: n(_allProducts.length),
-        subtitle: '$likes like${likes == 1 ? '' : 's'}',
         icon: Icons.inventory_2_outlined,
         color: UpriseColors.primaryDark,
-        selected: _visibility == _Visibility.all,
+        selected: isSelected(_Visibility.all),
         onTap: () => select(_Visibility.all),
       ),
       StatCard(
         label: 'Active',
         value: n(active.length),
-        subtitle: 'Listed in the catalog',
         icon: Icons.check_circle_outline_rounded,
         color: const Color(0xFF059669),
-        selected: _visibility == _Visibility.live && !_lowStockOnly,
+        selected: isSelected(_Visibility.live),
         onTap: () => select(_Visibility.live),
       ),
       StatCard(
         label: 'Low / Out of Stock',
         value: n(lowStock),
-        subtitle: '$outOfStock out of stock',
         icon: Icons.warning_amber_rounded,
         color: const Color(0xFFFB923C),
-        selected: _lowStockOnly,
-        onTap: () => select(_Visibility.live, lowStock: !_lowStockOnly),
+        selected: isSelected(_Visibility.live, lowStock: true),
+        onTap: () => select(_Visibility.live, lowStock: true),
       ),
       StatCard(
         label: 'Archived',
         value: n(archived),
-        subtitle: 'Removed from the catalog',
         icon: Icons.archive_outlined,
         color: const Color(0xFF64748B),
-        selected: _visibility == _Visibility.hidden,
+        selected: isSelected(_Visibility.hidden),
         onTap: () => select(_Visibility.hidden),
       ),
     ];
@@ -1093,7 +1119,13 @@ class _ProductsTabState extends State<_ProductsTab> {
       onRefresh: _loadProducts,
       color: UpriseColors.primaryDark,
       child: GridView.builder(
-        padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 28),
+        // A few px top/bottom so the cards' resting shadow isn't clipped.
+        padding: EdgeInsets.fromLTRB(
+          isMobile ? 16 : 28,
+          4,
+          isMobile ? 16 : 28,
+          12,
+        ),
         // MaxCrossAxisExtent sizes each card to a comfortable target width and
         // lets the column count adapt to what is actually there, like a real
         // product catalog rather than a sparse admin table.
@@ -1101,7 +1133,9 @@ class _ProductsTabState extends State<_ProductsTab> {
           maxCrossAxisExtent: isMobile ? 480 : 288,
           crossAxisSpacing: 20,
           mainAxisSpacing: 24,
-          childAspectRatio: 0.70,
+          // Photo is now edge-to-edge (square) with the details padded
+          // underneath, so the card needs a little more height than width.
+          childAspectRatio: 0.66,
         ),
         itemCount: products.length,
         itemBuilder: (context, index) {
@@ -1319,34 +1353,27 @@ class _ProductCardState extends State<_ProductCard> {
       onExit: (_) => setState(() => _hovering = false),
       child: GestureDetector(
         onTap: widget.onTap,
+        // Same card chrome as the other org pages (Event Proposals' table,
+        // the modal section cards): white, soft border, resting shadow.
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.all(12),
+          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(_DS.radiusMd),
             border: Border.all(
               color: _hovering
-                  ? UpriseColors.primaryDark.withAlpha(70)
-                  : _DS.borderSoft,
+                  ? UpriseColors.primaryDark.withAlpha(90)
+                  : _DS.cardBorder,
             ),
-            boxShadow: _hovering
-                ? [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(20),
-                      blurRadius: 18,
-                      offset: const Offset(0, 8),
-                    ),
-                  ]
-                : null,
+            boxShadow: _hovering ? _DS.cardShadowHover : _DS.cardShadow,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               AspectRatio(
                 aspectRatio: 1,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
+                child: ClipRect(
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
@@ -1363,8 +1390,8 @@ class _ProductCardState extends State<_ProductCard> {
                       ),
                       if (isArchived)
                         Positioned(
-                          left: 8,
-                          top: 8,
+                          left: 10,
+                          top: 10,
                           child: _statusBadge(product.status, isArchived: true),
                         ),
                       // Likes are the only engagement signal the mobile
@@ -1372,15 +1399,15 @@ class _ProductCardState extends State<_ProductCard> {
                       // storefront shows its wishlist count.
                       if (!isArchived && product.likeCount > 0)
                         Positioned(
-                          left: 8,
-                          top: 8,
+                          left: 10,
+                          top: 10,
                           child: _LikePill(count: product.likeCount),
                         ),
                       // Quick actions stay invisible until hover instead of
                       // being permanent chrome over the product photo.
                       Positioned(
-                        right: 8,
-                        top: 8,
+                        right: 10,
+                        top: 10,
                         child: AnimatedOpacity(
                           duration: const Duration(milliseconds: 150),
                           opacity: (_hovering || widget.alwaysShowActions)
@@ -1415,105 +1442,116 @@ class _ProductCardState extends State<_ProductCard> {
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
-              Text(
-                product.category.isEmpty ? 'Uncategorized' : product.category,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w600,
-                  color: UpriseColors.darkGray,
-                  letterSpacing: 0.3,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 5),
-              Text(
-                product.name,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF1A202C),
-                  height: 1.25,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const Spacer(),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                children: [
-                  // Was NumberFormat('#,###'), which rounded — a ₱149.50
-                  // product read as ₱150 here while the mobile app showed
-                  // ₱149.5. Same format as the student and guest catalogs.
-                  Text(
-                    '₱${NumberFormat('#,##0.##').format(product.price)}',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF1A202C),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      product.variants.isNotEmpty
-                          ? '$totalStock in ${product.variants.length} variant${product.variants.length == 1 ? '' : 's'}'
-                          : '$totalStock in stock',
-                      textAlign: TextAlign.right,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 11,
-                        color: const Color(0xFF94A3B8),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        product.category.isEmpty
+                            ? 'Uncategorized'
+                            : product.category,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w600,
+                          color: UpriseColors.darkGray,
+                          letterSpacing: 0.3,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              SizedBox(
-                height: 16,
-                child: isArchived
-                    ? Row(
+                      const SizedBox(height: 5),
+                      Text(
+                        product.name,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF1A202C),
+                          height: 1.25,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const Spacer(),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
                         children: [
-                          const Icon(
-                            Icons.archive_outlined,
-                            size: 12,
-                            color: Color(0xFF94A3B8),
-                          ),
-                          const SizedBox(width: 5),
+                          // Was NumberFormat('#,###'), which rounded — a ₱149.50
+                          // product read as ₱150 here while the mobile app showed
+                          // ₱149.5. Same format as the student and guest catalogs.
                           Text(
-                            'Archived',
+                            '₱${NumberFormat('#,##0.##').format(product.price)}',
                             style: GoogleFonts.beVietnamPro(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w600,
-                              color: const Color(0xFF94A3B8),
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: const Color(0xFF1A202C),
                             ),
                           ),
-                        ],
-                      )
-                    : alert == null
-                    ? const SizedBox.shrink()
-                    : Row(
-                        children: [
-                          Icon(alert.$2, size: 12, color: alert.$3),
-                          const SizedBox(width: 5),
+                          const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              alert.$1,
+                              product.variants.isNotEmpty
+                                  ? '$totalStock in ${product.variants.length} variant${product.variants.length == 1 ? '' : 's'}'
+                                  : '$totalStock in stock',
+                              textAlign: TextAlign.right,
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 11,
+                                color: const Color(0xFF94A3B8),
+                              ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.beVietnamPro(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w600,
-                                color: alert.$3,
-                              ),
                             ),
                           ),
                         ],
                       ),
+                      const SizedBox(height: 6),
+                      SizedBox(
+                        height: 16,
+                        child: isArchived
+                            ? Row(
+                                children: [
+                                  const Icon(
+                                    Icons.archive_outlined,
+                                    size: 12,
+                                    color: Color(0xFF94A3B8),
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    'Archived',
+                                    style: GoogleFonts.beVietnamPro(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: const Color(0xFF94A3B8),
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : alert == null
+                            ? const SizedBox.shrink()
+                            : Row(
+                                children: [
+                                  Icon(alert.$2, size: 12, color: alert.$3),
+                                  const SizedBox(width: 5),
+                                  Expanded(
+                                    child: Text(
+                                      alert.$1,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: GoogleFonts.beVietnamPro(
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: alert.$3,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
@@ -2006,566 +2044,470 @@ class _ProductModalState extends State<_ProductModal> {
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    // A fixed 520px width overflowed on phone-width screens (insetPadding
-    // alone doesn't shrink a Container with an explicit width) — cap it to
-    // whatever's actually available instead.
-    final modalWidth = screenWidth < 520 + 64 ? screenWidth - 64 : 520.0;
-    return Dialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      child: Container(
-        width: modalWidth,
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.85,
-        ),
-        // Only the header strip below had an explicit background — the
-        // scrollable body had none, so Flutter's default unseeded Material
-        // surface bled through there. Same root cause fixed on every other
-        // modal in this app.
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header
-            Container(
-              padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
-              decoration: const BoxDecoration(
-                color: Color(0xFFF8F9FB),
-                borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+    // Same shell as Submit Event Proposal: orange compact header, white
+    // body, footer action bar.
+    return OrgModalShell(
+      accentColor: UpriseColors.primaryDark,
+      headerColor: UpriseColors.primaryDark,
+      compactHeader: true,
+      icon: _isEdit ? Icons.edit_rounded : Icons.shopping_bag_outlined,
+      title: _isEdit ? 'Edit Product' : 'Add Product',
+      subtitle: _isEdit ? null : 'List a new item in your merch catalog.',
+      // Says up front whether the product being edited is actually in the
+      // students' catalog right now.
+      subtitleWidget: _isEdit && widget.existingProduct != null
+          ? Align(
+              alignment: Alignment.centerLeft,
+              child: _statusBadge(
+                widget.existingProduct!.status,
+                isArchived: widget.existingProduct!.isArchived,
               ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: UpriseColors.primaryDark.withAlpha(26),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.shopping_bag_outlined,
-                      color: UpriseColors.primaryDark,
-                      size: 18,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _isEdit ? 'Edit Product' : 'Add Product',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        if (_isEdit && widget.existingProduct != null) ...[
-                          const SizedBox(height: 4),
-                          // Says up front whether the product being edited is
-                          // actually in the students' catalog right now.
-                          _statusBadge(
-                            widget.existingProduct!.status,
-                            isArchived: widget.existingProduct!.isArchived,
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded, size: 20),
-                    tooltip: 'Close',
-                    onPressed: _submitting
-                        ? null
-                        : () => Navigator.pop(context),
-                  ),
-                ],
-              ),
+            )
+          : null,
+      width: 640,
+      maxHeightFraction: 0.88,
+      closeEnabled: !_submitting,
+      footerActions: [
+        OutlinedButton(
+          onPressed: _submitting ? null : () => Navigator.pop(context),
+          style: OutlinedButton.styleFrom(
+            side: const BorderSide(color: Color(0xFFE2E6EA)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
             ),
-            // Body
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+          ),
+          child: Text(
+            'Cancel',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 13,
+              color: const Color(0xFF374151),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        ElevatedButton.icon(
+          onPressed: (_submitting || _uploadingImage) ? null : _submit,
+          icon: (_submitting || _uploadingImage)
+              ? const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Icon(Icons.save_rounded, size: 16),
+          label: Text(
+            _uploadingImage
+                ? 'Encoding Image...'
+                : (_isEdit ? 'Save Changes' : 'Add Product'),
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: UpriseColors.primaryDark,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
+          ),
+        ),
+      ],
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Core identifying info first (name, category, price,
+              // stock) — these used to sit below the image + 360°
+              // photo uploaders, which pushed every essential field
+              // out of view on anything but a tall screen, forcing a
+              // long scroll before reaching Category or Price. Photos
+              // are the more optional part of listing a product, so
+              // they move to the end instead.
+              _sectionLabel(
+                'Product Information',
+                icon: Icons.info_outline_rounded,
+                hint: 'Basic details shown on the product listing.',
+              ),
+              // Name and Category share a row like Event Title / Category
+              // in Submit Event Proposal; they stack on narrow screens.
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final nameField = TextFormField(
+                    controller: _nameCtrl,
+                    decoration: _DS.inputDecoration(
+                      'Product Name',
+                      hint: 'e.g., Premium Shirt 2026',
+                      icon: Icons.label_outline_rounded,
+                      required: true,
+                    ),
+                    style: GoogleFonts.beVietnamPro(fontSize: 13),
+                    validator: (v) =>
+                        v?.trim().isEmpty ?? true ? 'Required' : null,
+                  );
+                  final categoryField = DropdownButtonFormField<String>(
+                    initialValue: _category,
+                    isExpanded: true,
+                    decoration: _DS.inputDecoration('Category', required: true),
+                    icon: const Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 18,
+                      color: Color(0xFF9AA5B4),
+                    ),
+                    dropdownColor: Colors.white,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 13,
+                      color: const Color(0xFF1A202C),
+                    ),
+                    items: _merchandiseCategories
+                        .map(
+                          (c) => DropdownMenuItem(
+                            value: c,
+                            child: Text(c, overflow: TextOverflow.ellipsis),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value != null) setState(() => _category = value);
+                    },
+                  );
+                  if (constraints.maxWidth < 480) {
+                    return Column(
+                      children: [
+                        nameField,
+                        const SizedBox(height: 12),
+                        categoryField,
+                      ],
+                    );
+                  }
+                  return Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Core identifying info first (name, category, price,
-                      // stock) — these used to sit below the image + 360°
-                      // photo uploaders, which pushed every essential field
-                      // out of view on anything but a tall screen, forcing a
-                      // long scroll before reaching Category or Price. Photos
-                      // are the more optional part of listing a product, so
-                      // they move to the end instead.
-                      _sectionLabel(
-                        'Product Information',
-                        icon: Icons.info_outline_rounded,
-                        hint: 'Basic details shown on the product listing.',
-                      ),
-                      TextFormField(
-                        controller: _nameCtrl,
-                        decoration: _DS.inputDecoration(
-                          'Product Name',
-                          hint: 'e.g., Premium Shirt 2026',
-                          icon: Icons.label_outline_rounded,
-                          required: true,
-                        ),
-                        style: GoogleFonts.beVietnamPro(fontSize: 13),
-                        validator: (v) =>
-                            v?.trim().isEmpty ?? true ? 'Required' : null,
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'Category',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFF374151),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Container(
-                        height: 44,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8F9FB),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0xFFE2E6EA)),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: _category,
-                            isExpanded: true,
-                            icon: const Icon(
-                              Icons.keyboard_arrow_down_rounded,
-                              size: 18,
-                              color: Color(0xFF9AA5B4),
-                            ),
-                            items: _merchandiseCategories
-                                .map(
-                                  (c) => DropdownMenuItem(
-                                    value: c,
-                                    child: Text(
-                                      c,
-                                      style: GoogleFonts.beVietnamPro(
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: (value) {
-                              if (value != null)
-                                setState(() => _category = value);
-                            },
-                          ),
-                        ),
-                      ),
-                      if (_category == 'Others') ...[
-                        const SizedBox(height: 8),
-                        TextFormField(
-                          controller: _customCategoryCtrl,
-                          decoration: _DS.inputDecoration(
-                            'Custom Category',
-                            hint: 'Type category name…',
-                            icon: Icons.edit_outlined,
-                            required: true,
-                          ),
-                          style: GoogleFonts.beVietnamPro(fontSize: 13),
-                          onChanged: (_) => setState(() {}),
-                          validator: (v) =>
-                              v?.trim().isEmpty ?? true ? 'Required' : null,
-                        ),
-                        // Whatever is typed here becomes a filter chip in the
-                        // student and guest catalogs, so "Tshirts" and
-                        // "T-shirts" would sit there as two separate
-                        // categories forever. Offering the org's existing ones
-                        // makes reuse the easy path.
-                        if (widget.knownCustomCategories.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            'Already used by this org — tap to reuse:',
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 11.5,
-                              color: const Color(0xFF94A3B8),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            children: widget.knownCustomCategories.map((c) {
-                              final selected =
-                                  _customCategoryCtrl.text
-                                      .trim()
-                                      .toLowerCase() ==
-                                  c.toLowerCase();
-                              return InkWell(
-                                onTap: () => setState(() {
-                                  _customCategoryCtrl.text = c;
-                                }),
-                                borderRadius: BorderRadius.circular(
-                                  _DS.radiusPill,
-                                ),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 11,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: selected
-                                        ? UpriseColors.primaryDark.withAlpha(22)
-                                        : const Color(0xFFF1F4F8),
-                                    borderRadius: BorderRadius.circular(
-                                      _DS.radiusPill,
-                                    ),
-                                    border: Border.all(
-                                      color: selected
-                                          ? UpriseColors.primaryDark.withAlpha(
-                                              90,
-                                            )
-                                          : Colors.transparent,
-                                    ),
-                                  ),
-                                  child: Text(
-                                    c,
-                                    style: GoogleFonts.beVietnamPro(
-                                      fontSize: 11.5,
-                                      fontWeight: selected
-                                          ? FontWeight.w700
-                                          : FontWeight.w500,
-                                      color: selected
-                                          ? UpriseColors.primaryDark
-                                          : const Color(0xFF475569),
-                                    ),
-                                  ),
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                        ],
-                      ],
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _descCtrl,
-                        maxLines: 3,
-                        decoration: _DS.inputDecoration(
-                          'Description',
-                          hint: 'Product details...',
-                          icon: Icons.description_outlined,
-                        ),
-                        style: GoogleFonts.beVietnamPro(fontSize: 13),
-                      ),
-                      const SizedBox(height: 16),
-                      _sectionLabel(
-                        'Pricing',
-                        icon: Icons.payments_outlined,
-                        hint: 'The price shown on the product listing.',
-                      ),
-                      TextFormField(
-                        controller: _priceCtrl,
-                        keyboardType: TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        decoration: _DS.inputDecoration(
-                          'Price',
-                          hint: '0.00',
-                          icon: Icons.payments_outlined,
-                          required: true,
-                        ),
-                        style: GoogleFonts.beVietnamPro(fontSize: 13),
-                        onChanged: (_) => setState(() {}),
-                        validator: (v) {
-                          final price = double.tryParse(v?.trim() ?? '');
-                          if (price == null || price <= 0) {
-                            return 'Enter a valid price';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      _sectionLabel(
-                        'Inventory',
-                        icon: Icons.inventory_2_outlined,
-                        hint: 'Shown as "Out of stock" once this reaches zero.',
-                      ),
-                      // Adding a variant used to make this field vanish and
-                      // throw away whatever was typed in it, with nothing to
-                      // say where the number had gone. The field is still
-                      // replaced — variant stocks are the source of truth —
-                      // but now it says so and shows the running total.
-                      if (_variants.isEmpty)
-                        TextFormField(
-                          controller: _stockCtrl,
-                          keyboardType: TextInputType.number,
-                          decoration: _DS.inputDecoration(
-                            'Stock Quantity',
-                            hint: '0',
-                            icon: Icons.inventory_2_outlined,
-                            required: true,
-                          ),
-                          style: GoogleFonts.beVietnamPro(fontSize: 13),
-                          validator: (v) {
-                            final stock = int.tryParse(v?.trim() ?? '');
-                            if (stock == null || stock < 0) {
-                              return 'Enter a valid quantity';
-                            }
-                            return null;
-                          },
-                        )
-                      else
-                        Container(
+                      Expanded(child: nameField),
+                      const SizedBox(width: 12),
+                      Expanded(child: categoryField),
+                    ],
+                  );
+                },
+              ),
+              if (_category == 'Others') ...[
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _customCategoryCtrl,
+                  decoration: _DS.inputDecoration(
+                    'Custom Category',
+                    hint: 'Type category name…',
+                    icon: Icons.edit_outlined,
+                    required: true,
+                  ),
+                  style: GoogleFonts.beVietnamPro(fontSize: 13),
+                  onChanged: (_) => setState(() {}),
+                  validator: (v) =>
+                      v?.trim().isEmpty ?? true ? 'Required' : null,
+                ),
+                // Whatever is typed here becomes a filter chip in the
+                // student and guest catalogs, so "Tshirts" and
+                // "T-shirts" would sit there as two separate
+                // categories forever. Offering the org's existing ones
+                // makes reuse the easy path.
+                if (widget.knownCustomCategories.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Already used by this org — tap to reuse:',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11.5,
+                      color: const Color(0xFF94A3B8),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: widget.knownCustomCategories.map((c) {
+                      final selected =
+                          _customCategoryCtrl.text.trim().toLowerCase() ==
+                          c.toLowerCase();
+                      return InkWell(
+                        onTap: () => setState(() {
+                          _customCategoryCtrl.text = c;
+                        }),
+                        borderRadius: BorderRadius.circular(_DS.radiusPill),
+                        child: Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
+                            horizontal: 11,
+                            vertical: 6,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF8F9FB),
-                            borderRadius: BorderRadius.circular(_DS.radiusSm),
-                            border: Border.all(color: _DS.borderSoft),
+                            color: selected
+                                ? UpriseColors.primaryDark.withAlpha(22)
+                                : const Color(0xFFF1F4F8),
+                            borderRadius: BorderRadius.circular(_DS.radiusPill),
+                            border: Border.all(
+                              color: selected
+                                  ? UpriseColors.primaryDark.withAlpha(90)
+                                  : Colors.transparent,
+                            ),
                           ),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.functions_rounded,
-                                size: 16,
-                                color: Color(0xFF64748B),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  'Stock is added up from your variants',
-                                  style: GoogleFonts.beVietnamPro(
-                                    fontSize: 12.5,
-                                    color: const Color(0xFF475569),
+                          child: Text(
+                            c,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 11.5,
+                              fontWeight: selected
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                              color: selected
+                                  ? UpriseColors.primaryDark
+                                  : const Color(0xFF475569),
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ],
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _descCtrl,
+                maxLines: 3,
+                decoration: _DS
+                    .inputDecoration(
+                      'Description',
+                      hint: 'Product details...',
+                      icon: Icons.description_outlined,
+                    )
+                    .copyWith(alignLabelWithHint: true),
+                style: GoogleFonts.beVietnamPro(fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              _sectionLabel(
+                'Pricing',
+                icon: Icons.payments_outlined,
+                hint: 'The price shown on the product listing.',
+              ),
+              TextFormField(
+                controller: _priceCtrl,
+                keyboardType: TextInputType.numberWithOptions(decimal: true),
+                decoration: _DS.inputDecoration(
+                  'Price',
+                  hint: '0.00',
+                  icon: Icons.payments_outlined,
+                  required: true,
+                ),
+                style: GoogleFonts.beVietnamPro(fontSize: 13),
+                onChanged: (_) => setState(() {}),
+                validator: (v) {
+                  final price = double.tryParse(v?.trim() ?? '');
+                  if (price == null || price <= 0) {
+                    return 'Enter a valid price';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              _sectionLabel(
+                'Inventory',
+                icon: Icons.inventory_2_outlined,
+                hint: 'Shown as "Out of stock" once this reaches zero.',
+              ),
+              // Adding a variant used to make this field vanish and
+              // throw away whatever was typed in it, with nothing to
+              // say where the number had gone. The field is still
+              // replaced — variant stocks are the source of truth —
+              // but now it says so and shows the running total.
+              if (_variants.isEmpty)
+                TextFormField(
+                  controller: _stockCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: _DS.inputDecoration(
+                    'Stock Quantity',
+                    hint: '0',
+                    icon: Icons.inventory_2_outlined,
+                    required: true,
+                  ),
+                  style: GoogleFonts.beVietnamPro(fontSize: 13),
+                  validator: (v) {
+                    final stock = int.tryParse(v?.trim() ?? '');
+                    if (stock == null || stock < 0) {
+                      return 'Enter a valid quantity';
+                    }
+                    return null;
+                  },
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8F9FB),
+                    borderRadius: BorderRadius.circular(_DS.radiusSm),
+                    border: Border.all(color: _DS.borderSoft),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.functions_rounded,
+                        size: 16,
+                        color: Color(0xFF64748B),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Stock is added up from your variants',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 12.5,
+                            color: const Color(0xFF475569),
+                          ),
+                        ),
+                      ),
+                      Text(
+                        '${_variants.fold<int>(0, (sum, v) => sum + v.stock)} total',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF1A202C),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              if (_isEdit) ...[
+                const SizedBox(height: 12),
+                InkWell(
+                  onTap: _submitting
+                      ? null
+                      : () =>
+                            setState(() => _isDiscontinued = !_isDiscontinued),
+                  borderRadius: BorderRadius.circular(_DS.radiusSm),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: _isDiscontinued
+                          ? const Color(0xFFF3F4F6)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(_DS.radiusSm),
+                      border: Border.all(
+                        color: _isDiscontinued
+                            ? const Color(0xFFD1D5DB)
+                            : _DS.borderSoft,
+                      ),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: Checkbox(
+                            value: _isDiscontinued,
+                            activeColor: const Color(0xFF6B7280),
+                            materialTapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
+                            onChanged: _submitting
+                                ? null
+                                : (v) => setState(
+                                    () => _isDiscontinued = v ?? false,
                                   ),
-                                ),
-                              ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
                               Text(
-                                '${_variants.fold<int>(0, (sum, v) => sum + v.stock)} total',
+                                'Mark as discontinued',
                                 style: GoogleFonts.beVietnamPro(
                                   fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  color: const Color(0xFF1A202C),
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF374151),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              // Says what actually happens: mobile
+                              // keeps showing discontinued products,
+                              // just greyed out and marked. Only
+                              // archiving removes them.
+                              Text(
+                                'Stays listed but is marked unavailable. '
+                                'To remove it from the catalog entirely, '
+                                'archive it instead.',
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 11.5,
+                                  height: 1.45,
+                                  color: const Color(0xFF94A3B8),
                                 ),
                               ),
                             ],
                           ),
                         ),
-                      if (_isEdit) ...[
-                        const SizedBox(height: 12),
-                        InkWell(
-                          onTap: _submitting
-                              ? null
-                              : () => setState(
-                                  () => _isDiscontinued = !_isDiscontinued,
-                                ),
-                          borderRadius: BorderRadius.circular(_DS.radiusSm),
-                          child: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: _isDiscontinued
-                                  ? const Color(0xFFF3F4F6)
-                                  : Colors.transparent,
-                              borderRadius: BorderRadius.circular(_DS.radiusSm),
-                              border: Border.all(
-                                color: _isDiscontinued
-                                    ? const Color(0xFFD1D5DB)
-                                    : _DS.borderSoft,
-                              ),
-                            ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: Checkbox(
-                                    value: _isDiscontinued,
-                                    activeColor: const Color(0xFF6B7280),
-                                    materialTapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                    onChanged: _submitting
-                                        ? null
-                                        : (v) => setState(
-                                            () => _isDiscontinued = v ?? false,
-                                          ),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Mark as discontinued',
-                                        style: GoogleFonts.beVietnamPro(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: const Color(0xFF374151),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      // Says what actually happens: mobile
-                                      // keeps showing discontinued products,
-                                      // just greyed out and marked. Only
-                                      // archiving removes them.
-                                      Text(
-                                        'Stays listed but is marked unavailable. '
-                                        'To remove it from the catalog entirely, '
-                                        'archive it instead.',
-                                        style: GoogleFonts.beVietnamPro(
-                                          fontSize: 11.5,
-                                          height: 1.45,
-                                          color: const Color(0xFF94A3B8),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
                       ],
-                      const SizedBox(height: 16),
-                      _sectionLabel(
-                        'Variants',
-                        icon: Icons.tune_rounded,
-                        hint:
-                            'Sizes or colors available for this product. '
-                            'Each one carries its own stock.',
-                      ),
-                      ..._variants.map((v) => _buildVariantChip(v)),
-                      if (_variants.isNotEmpty) const SizedBox(height: 8),
-                      OutlinedButton.icon(
-                        onPressed: _submitting ? null : _openAddVariantDialog,
-                        icon: const Icon(Icons.add, size: 14),
-                        label: Text(
-                          'Add Variant',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: UpriseColors.primaryDark,
-                          side: BorderSide(color: UpriseColors.primaryDark),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 8,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      _sectionLabel(
-                        'Main Photo',
-                        icon: Icons.image_outlined,
-                        hint:
-                            'The cover image for the listing. '
-                            'Square photos crop best.',
-                      ),
-                      _buildImagePicker(),
-                      const SizedBox(height: 16),
-                      _sectionLabel(
-                        'More Photos (optional)',
-                        icon: Icons.collections_outlined,
-                        hint:
-                            'Extra angles shown as a swipeable gallery on the '
-                            'product page.',
-                      ),
-                      _buildRotationPhotosPicker(),
-                    ],
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
+              _sectionLabel(
+                'Variants',
+                icon: Icons.tune_rounded,
+                hint:
+                    'Sizes or colors available for this product. '
+                    'Each one carries its own stock.',
+              ),
+              ..._variants.map((v) => _buildVariantChip(v)),
+              if (_variants.isNotEmpty) const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _submitting ? null : _openAddVariantDialog,
+                icon: const Icon(Icons.add, size: 14),
+                label: Text(
+                  'Add Variant',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: UpriseColors.primaryDark,
+                  side: BorderSide(color: UpriseColors.primaryDark),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
                   ),
                 ),
               ),
-            ),
-            // Footer
-            Container(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
-              decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: Color(0xFFE8ECF0))),
-                color: Color(0xFFF8F9FB),
-                borderRadius: BorderRadius.vertical(
-                  bottom: Radius.circular(18),
-                ),
+              const SizedBox(height: 16),
+              _sectionLabel(
+                'Main Photo',
+                icon: Icons.image_outlined,
+                hint:
+                    'The cover image for the listing. '
+                    'Square photos crop best.',
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  OutlinedButton(
-                    onPressed: _submitting
-                        ? null
-                        : () => Navigator.pop(context),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFFE2E6EA)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
-                    child: Text(
-                      'Cancel',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        color: const Color(0xFF374151),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  ElevatedButton.icon(
-                    onPressed: (_submitting || _uploadingImage)
-                        ? null
-                        : _submit,
-                    icon: (_submitting || _uploadingImage)
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.save_rounded, size: 16),
-                    label: Text(
-                      _uploadingImage
-                          ? 'Encoding Image...'
-                          : (_isEdit ? 'Save Changes' : 'Add Product'),
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: UpriseColors.primaryDark,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 11,
-                      ),
-                    ),
-                  ),
-                ],
+              _buildImagePicker(),
+              const SizedBox(height: 16),
+              _sectionLabel(
+                'More Photos (optional)',
+                icon: Icons.collections_outlined,
+                hint:
+                    'Extra angles shown as a swipeable gallery on the '
+                    'product page.',
               ),
-            ),
-          ],
+              _buildRotationPhotosPicker(),
+            ],
+          ),
         ),
       ),
     );
@@ -3302,478 +3244,297 @@ class _ProductDetailsModal extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final totalStock = product.totalStock;
-
     final productId = 'PRD-${product.id.substring(0, 4).toUpperCase()}';
+    // Photo-left / details-right like the event proposal view; narrow
+    // screens stack the photo above the details instead.
+    final isWide = MediaQuery.of(context).size.width >= 820;
 
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      child: Container(
-        width: 520,
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.85,
-        ),
-        // Neither the header nor body had an explicit background, so
-        // Flutter's default unseeded Material surface bled through the
-        // whole dialog — same root cause fixed elsewhere in this app.
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // A flat white header here used to be a deliberate choice to
-            // avoid a "loud" solid color block — but a soft flat tint gets
-            // the same restraint while actually matching every other
-            // modal's header treatment in this app (Registration Answers,
-            // the dashboard's detail modal, etc.), instead of being the one
-            // plain-white outlier next to them.
-            Container(
-              padding: const EdgeInsets.fromLTRB(24, 20, 20, 18),
-              decoration: BoxDecoration(
-                color: UpriseColors.primaryDark.withAlpha(16),
-                border: const Border(
-                  bottom: BorderSide(color: Color(0xFFEEF0F3)),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: UpriseColors.primaryDark.withAlpha(28),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(
-                      Icons.shopping_bag_outlined,
-                      color: UpriseColors.primaryDark,
-                      size: 18,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          product.name,
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: const Color(0xFF1A202C),
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          productId,
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 12,
-                            color: const Color(0xFF9AA5B4),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  _statusBadge(product.status, isArchived: product.isArchived),
-                  const SizedBox(width: 4),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.close_rounded,
-                      color: Color(0xFF9AA5B4),
-                      size: 20,
-                    ),
-                    tooltip: 'Close',
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-            ),
-            // Body
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // A portrait photo inside a full-width 220px-tall box
-                    // (ProductPhotoGallery's default) left huge empty gutters
-                    // on either side — capping the width and centering it
-                    // makes the frame match the photo instead of dwarfing
-                    // it.
-                    Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 320),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(14),
-                          child: _buildProductImage(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    _sectionTitle('Overview', Icons.info_outline_rounded),
-                    const SizedBox(height: 10),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: _detailCard(
-                            'Price',
-                            '₱${NumberFormat('#,##0.##').format(product.price)}',
-                            Icons.sell_outlined,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _detailCard(
-                            'Category',
-                            product.category.isEmpty
-                                ? 'Uncategorized'
-                                : product.category,
-                            Icons.category_outlined,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: _detailCard(
-                            'Availability',
-                            totalStock <= 0
-                                ? 'Out of stock'
-                                : product.status == 'discontinued'
-                                ? 'Discontinued'
-                                : '$totalStock in stock',
-                            Icons.inventory_2_outlined,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _detailCard(
-                            'Likes',
-                            '${product.likeCount}',
-                            Icons.favorite_rounded,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    if (product.description.isNotEmpty) ...[
-                      _sectionTitle('Description', Icons.notes_rounded),
-                      Text(
-                        product.description,
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFF475569),
-                          height: 1.55,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-                    // Variants Section
-                    if (product.variants.isNotEmpty) ...[
-                      _sectionTitle('Variants', Icons.tune_rounded),
-                      const SizedBox(height: 8),
-                      Container(
-                        decoration: BoxDecoration(
-                          border: Border.all(color: const Color(0xFFE8ECF0)),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Column(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
-                              decoration: const BoxDecoration(
-                                color: Color(0xFFF8F9FB),
-                                borderRadius: BorderRadius.vertical(
-                                  top: Radius.circular(10),
-                                ),
-                                border: Border(
-                                  bottom: BorderSide(color: Color(0xFFE8ECF0)),
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    flex: 2,
-                                    child: _variantHeader('SIZE'),
-                                  ),
-                                  Expanded(
-                                    flex: 2,
-                                    child: _variantHeader('COLOR'),
-                                  ),
-                                  Expanded(
-                                    flex: 1,
-                                    child: _variantHeader('STOCK'),
-                                  ),
-                                  Expanded(
-                                    flex: 2,
-                                    child: _variantHeader('PRICE'),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            ...product.variants.asMap().entries.map((entry) {
-                              final v = entry.value;
-                              final isLast =
-                                  entry.key == product.variants.length - 1;
-                              final effectivePrice =
-                                  product.price + (v.priceOffset ?? 0);
-                              return Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 10,
-                                ),
-                                decoration: BoxDecoration(
-                                  border: isLast
-                                      ? null
-                                      : const Border(
-                                          bottom: BorderSide(
-                                            color: Color(0xFFF1F5F9),
-                                          ),
-                                        ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      flex: 2,
-                                      child: _variantValue(
-                                        v.size.isEmpty ? '—' : v.size,
-                                      ),
-                                    ),
-                                    Expanded(
-                                      flex: 2,
-                                      child: _variantValue(
-                                        v.color.isEmpty ? '—' : v.color,
-                                      ),
-                                    ),
-                                    Expanded(
-                                      flex: 1,
-                                      child: _variantValue('${v.stock}'),
-                                    ),
-                                    Expanded(
-                                      flex: 2,
-                                      child: Row(
-                                        children: [
-                                          Text(
-                                            '₱${NumberFormat('#,###.##').format(effectivePrice)}',
-                                            style: GoogleFonts.beVietnamPro(
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w700,
-                                              color: UpriseColors.primaryDark,
-                                            ),
-                                          ),
-                                          if (v.priceOffset != null &&
-                                              v.priceOffset != 0) ...[
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              '(${v.priceOffset! >= 0 ? '+' : ''}${NumberFormat('#,###.##').format(v.priceOffset!)})',
-                                              style: GoogleFonts.beVietnamPro(
-                                                fontSize: 10,
-                                                color: const Color(0xFF64748B),
-                                              ),
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            // Footer
-            Container(
-              padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
-              decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: Color(0xFFE8ECF0))),
-                color: Color(0xFFF8F9FB),
-                borderRadius: BorderRadius.vertical(
-                  bottom: Radius.circular(18),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  OutlinedButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFFE2E6EA)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
-                    child: Text(
-                      'Close',
-                      style: GoogleFonts.beVietnamPro(fontSize: 13),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+    final (String, Color?) availability = product.isArchived
+        ? ('Archived', const Color(0xFF6B7280))
+        : product.status == 'discontinued'
+        ? ('Discontinued', const Color(0xFF6B7280))
+        : totalStock <= 0
+        ? ('Out of stock', UpriseColors.error)
+        : totalStock <= 5
+        ? ('Only $totalStock left', UpriseColors.warning)
+        : ('$totalStock in stock', null);
+
+    Widget pair(Widget left, Widget right) => Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: left),
+        const SizedBox(width: 12),
+        Expanded(child: right),
+      ],
     );
-  }
 
-  Widget _buildProductImage() {
-    // Prefer the drag-to-rotate viewer when there's at least one photo to
-    // show — it degrades to a plain static image when only one is set, and
-    // falls back to the legacy network image for very old products with
-    // neither.
-    final photos = product.displayPhotos;
-    if (photos.isNotEmpty) {
-      return ProductPhotoGallery(photosBase64: photos, height: 220);
-    }
-    return _buildNetworkImage();
-  }
-
-  Widget _buildNetworkImage() {
-    if (product.imageUrl.isNotEmpty) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Image.network(
-          product.imageUrl,
-          width: double.infinity,
-          height: 200,
-          fit: BoxFit.cover,
-          loadingBuilder: (context, child, progress) {
-            if (progress == null) return child;
-            return Container(
-              height: 200,
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8F9FB),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Center(
-                child: SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ),
-            );
-          },
-          errorBuilder: (_, __, ___) => Container(
-            height: 200,
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8F9FB),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(
-              Icons.image_not_supported_outlined,
-              size: 48,
-              color: Color(0xFF9AA5B4),
-            ),
-          ),
-        ),
-      );
-    }
-    return Container(
-      height: 200,
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8F9FB),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: const Icon(
-        Icons.image_not_supported_outlined,
-        size: 48,
-        color: Color(0xFF9AA5B4),
-      ),
-    );
-  }
-
-  Widget _detailCard(String label, String value, IconData icon) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8F9FB),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFEEF0F3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    final details = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        OrgModalSection(
+          title: 'Product Details',
+          icon: Icons.info_outline_rounded,
+          accentColor: UpriseColors.primaryDark,
+          child: Column(
             children: [
-              Container(
-                width: 20,
-                height: 20,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: UpriseColors.primaryDark,
-                  borderRadius: BorderRadius.circular(6),
+              pair(
+                OrgDetailItem(
+                  label: 'Price',
+                  value: '₱${NumberFormat('#,##0.##').format(product.price)}',
+                  icon: Icons.sell_outlined,
+                  iconColor: UpriseColors.primaryDark,
                 ),
-                child: Icon(icon, size: 11, color: Colors.white),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF64748B),
-                  letterSpacing: 0.4,
+                OrgDetailItem(
+                  label: 'Category',
+                  value: product.category.isEmpty
+                      ? 'Uncategorized'
+                      : product.category,
+                  icon: Icons.category_outlined,
+                  iconColor: UpriseColors.primaryDark,
                 ),
               ),
+              const SizedBox(height: 12),
+              pair(
+                OrgDetailItem(
+                  label: 'Availability',
+                  value: availability.$1,
+                  valueColor: availability.$2,
+                  icon: Icons.inventory_2_outlined,
+                  iconColor: UpriseColors.primaryDark,
+                ),
+                OrgDetailItem(
+                  label: 'Likes',
+                  value: '${product.likeCount}',
+                  icon: Icons.favorite_border_rounded,
+                  iconColor: UpriseColors.primaryDark,
+                ),
+              ),
+              const SizedBox(height: 12),
+              pair(
+                OrgDetailItem(
+                  label: 'Variants',
+                  value: product.variants.isEmpty
+                      ? 'None'
+                      : '${product.variants.length} '
+                            'variant${product.variants.length == 1 ? '' : 's'}',
+                  icon: Icons.tune_rounded,
+                  iconColor: UpriseColors.primaryDark,
+                ),
+                OrgDetailItem(
+                  label: 'Photos',
+                  value: '${product.displayPhotos.length}',
+                  icon: Icons.photo_library_outlined,
+                  iconColor: UpriseColors.primaryDark,
+                ),
+              ),
+              if (product.createdAt != null) ...[
+                const SizedBox(height: 12),
+                pair(
+                  OrgDetailItem(
+                    label: 'Listed On',
+                    value: DateFormat(
+                      'MMMM dd, yyyy',
+                    ).format(product.createdAt!),
+                    icon: Icons.calendar_today_outlined,
+                    iconColor: UpriseColors.primaryDark,
+                  ),
+                  const SizedBox.shrink(),
+                ),
+              ],
             ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFF1A202C),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _sectionTitle(String text, IconData icon) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          Icon(icon, size: 15, color: UpriseColors.darkGray),
-          const SizedBox(width: 6),
-          Text(
-            text,
+        ),
+        const SizedBox(height: 20),
+        OrgModalSection(
+          title: 'Description',
+          icon: Icons.description_outlined,
+          accentColor: UpriseColors.primaryDark,
+          child: Text(
+            product.description.isEmpty
+                ? 'No description provided.'
+                : product.description,
             style: GoogleFonts.beVietnamPro(
               fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: UpriseColors.charcoal,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF374151),
+              height: 1.6,
+            ),
+          ),
+        ),
+        if (product.variants.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          OrgModalSection(
+            title: 'Variants',
+            icon: Icons.tune_rounded,
+            accentColor: UpriseColors.primaryDark,
+            child: _buildVariantsTable(),
+          ),
+        ],
+      ],
+    );
+
+    return OrgModalShell(
+      accentColor: UpriseColors.primaryDark,
+      headerColor: UpriseColors.primaryDark,
+      compactHeader: true,
+      icon: Icons.shopping_bag_outlined,
+      title: product.name,
+      width: 960,
+      maxHeightFraction: 0.85,
+      subtitleWidget: Row(
+        children: [
+          Text(
+            productId,
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 12,
+              color: Colors.white.withAlpha(180),
             ),
           ),
           const SizedBox(width: 12),
-          Expanded(
-            child: Divider(color: const Color(0xFFE2E6EA), thickness: 1),
+          _statusBadge(product.status, isArchived: product.isArchived),
+        ],
+      ),
+      footerActions: [
+        ElevatedButton(
+          onPressed: () => Navigator.pop(context),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: UpriseColors.primaryDark,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
           ),
+          child: Text(
+            'Close',
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+      body: isWide
+          ? SizedBox(
+              height: 560,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    flex: 4,
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: _ProductGallery(product: product),
+                    ),
+                  ),
+                  Expanded(
+                    flex: 6,
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(4, 20, 24, 20),
+                      child: details,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(
+                    height: 380,
+                    child: _ProductGallery(product: product),
+                  ),
+                  const SizedBox(height: 20),
+                  details,
+                ],
+              ),
+            ),
+    );
+  }
+
+  Widget _buildVariantsTable() {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0xFFE8ECF0)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: const BoxDecoration(
+              color: Color(0xFFF8F9FB),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+              border: Border(bottom: BorderSide(color: Color(0xFFE8ECF0))),
+            ),
+            child: Row(
+              children: [
+                Expanded(flex: 2, child: _variantHeader('SIZE')),
+                Expanded(flex: 2, child: _variantHeader('COLOR')),
+                Expanded(flex: 1, child: _variantHeader('STOCK')),
+                Expanded(flex: 2, child: _variantHeader('PRICE')),
+              ],
+            ),
+          ),
+          ...product.variants.asMap().entries.map((entry) {
+            final v = entry.value;
+            final isLast = entry.key == product.variants.length - 1;
+            final effectivePrice = product.price + (v.priceOffset ?? 0);
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                border: isLast
+                    ? null
+                    : const Border(
+                        bottom: BorderSide(color: Color(0xFFF1F5F9)),
+                      ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: _variantValue(v.size.isEmpty ? '—' : v.size),
+                  ),
+                  Expanded(
+                    flex: 2,
+                    child: _variantValue(v.color.isEmpty ? '—' : v.color),
+                  ),
+                  Expanded(flex: 1, child: _variantValue('${v.stock}')),
+                  Expanded(
+                    flex: 2,
+                    child: Row(
+                      children: [
+                        Text(
+                          '₱${NumberFormat('#,###.##').format(effectivePrice)}',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: UpriseColors.primaryDark,
+                          ),
+                        ),
+                        if (v.priceOffset != null && v.priceOffset != 0) ...[
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              '(${v.priceOffset! >= 0 ? '+' : ''}${NumberFormat('#,###.##').format(v.priceOffset!)})',
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 10,
+                                color: const Color(0xFF64748B),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
         ],
       ),
     );
@@ -3798,6 +3559,200 @@ class _ProductDetailsModal extends StatelessWidget {
         fontSize: 12,
         fontWeight: FontWeight.w500,
         color: const Color(0xFF1A202C),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Product gallery (view modal)
+//
+// Big photo on top with a strip of small thumbnails underneath, the same way
+// the mobile Product Details screen shows the other angles of a product.
+// Tapping a thumbnail (or the arrows) swaps the main photo.
+// ─────────────────────────────────────────────────────────────────────────────
+class _ProductGallery extends StatefulWidget {
+  final ProductModel product;
+  const _ProductGallery({required this.product});
+
+  @override
+  State<_ProductGallery> createState() => _ProductGalleryState();
+}
+
+class _ProductGalleryState extends State<_ProductGallery> {
+  // Resolved once so switching photos doesn't re-decode base64 every build.
+  late final List<ImageProvider?> _photos = widget.product.displayPhotos
+      .map(AppImage.provider)
+      .toList();
+  int _index = 0;
+
+  void _go(int i) {
+    if (_photos.isEmpty) return;
+    setState(() => _index = i % _photos.length);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final multiple = _photos.length > 1;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8F9FB),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE2E6EA)),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                _buildMain(),
+                if (multiple) ...[
+                  Positioned(
+                    top: 10,
+                    right: 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withAlpha(140),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '${_index + 1}/${_photos.length}',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 8,
+                    top: 0,
+                    bottom: 0,
+                    child: Center(
+                      child: _arrow(
+                        Icons.chevron_left_rounded,
+                        () => _go(_index - 1 + _photos.length),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    right: 8,
+                    top: 0,
+                    bottom: 0,
+                    child: Center(
+                      child: _arrow(
+                        Icons.chevron_right_rounded,
+                        () => _go(_index + 1),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        if (multiple) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 64,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _photos.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (context, i) {
+                final selected = i == _index;
+                final image = _photos[i];
+                return MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: () => _go(i),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      width: 64,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8F9FB),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: selected
+                              ? UpriseColors.primaryDark
+                              : const Color(0xFFE2E6EA),
+                          width: selected ? 2 : 1,
+                        ),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: image == null
+                          ? const Icon(
+                              Icons.broken_image_outlined,
+                              size: 20,
+                              color: Color(0xFFB0BAC8),
+                            )
+                          : Image(
+                              image: ResizeImage(image, width: 160),
+                              fit: BoxFit.cover,
+                            ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildMain() {
+    if (_photos.isNotEmpty) {
+      final image = _photos[_index];
+      if (image != null) {
+        return Image(
+          image: image,
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => _placeholder(),
+        );
+      }
+      return _placeholder();
+    }
+    // Very old products only carry an imageUrl.
+    final url = widget.product.imageUrl;
+    if (url.isNotEmpty) {
+      return Image.network(
+        url,
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => _placeholder(),
+      );
+    }
+    return _placeholder();
+  }
+
+  Widget _placeholder() => const Center(
+    child: Icon(
+      Icons.image_not_supported_outlined,
+      size: 48,
+      color: Color(0xFF9AA5B4),
+    ),
+  );
+
+  Widget _arrow(IconData icon, VoidCallback onTap) {
+    return Material(
+      color: Colors.white.withAlpha(230),
+      shape: const CircleBorder(),
+      elevation: 1,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: Icon(icon, size: 22, color: const Color(0xFF1A202C)),
+        ),
       ),
     );
   }

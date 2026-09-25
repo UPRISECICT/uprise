@@ -13,6 +13,7 @@ import 'package:intl/intl.dart';
 
 import '../../../theme/org_theme.dart';
 import 'org_attendance_qr.dart' show EventModel, showRegistrationAnswers;
+import '../../../widgets/org_scroll_box.dart';
 
 class OrgRegistrationFormsScreen extends StatefulWidget {
   final String orgId;
@@ -445,28 +446,35 @@ class _OrgRegistrationFormsScreenState
               ),
               child: Column(
                 children: [
-                  for (var i = 0; i < filtered.length; i++)
-                    _FormRow(
-                      name: nameOf(filtered[i].data() as Map<String, dynamic>),
-                      studentId: idOf(
-                        filtered[i].data() as Map<String, dynamic>,
-                      ),
-                      hasAnswers: hasAnswers(
-                        filtered[i].data() as Map<String, dynamic>,
-                      ),
-                      isLast: i == filtered.length - 1,
-                      onView: () => showRegistrationAnswers(
-                        context,
-                        nameOf(
-                              filtered[i].data() as Map<String, dynamic>,
-                            ).isEmpty
-                            ? 'Student'
-                            : nameOf(
-                                filtered[i].data() as Map<String, dynamic>,
-                              ),
-                        filtered[i].data() as Map<String, dynamic>,
-                      ),
-                    ),
+                  OrgScrollBox(
+                    maxHeight: 520,
+                    children: [
+                      for (var i = 0; i < filtered.length; i++)
+                        _FormRow(
+                          name: nameOf(
+                            filtered[i].data() as Map<String, dynamic>,
+                          ),
+                          studentId: idOf(
+                            filtered[i].data() as Map<String, dynamic>,
+                          ),
+                          hasAnswers: hasAnswers(
+                            filtered[i].data() as Map<String, dynamic>,
+                          ),
+                          isLast: i == filtered.length - 1,
+                          onView: () => showRegistrationAnswers(
+                            context,
+                            nameOf(
+                                  filtered[i].data() as Map<String, dynamic>,
+                                ).isEmpty
+                                ? 'Student'
+                                : nameOf(
+                                    filtered[i].data() as Map<String, dynamic>,
+                                  ),
+                            filtered[i].data() as Map<String, dynamic>,
+                          ),
+                        ),
+                    ],
+                  ),
                 ],
               ),
             ),

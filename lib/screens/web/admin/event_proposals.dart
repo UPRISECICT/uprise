@@ -1,4 +1,4 @@
-﻿import 'dart:typed_data';
+import 'dart:typed_data';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../../../utils/platform_file_utils.dart' as platform_file_utils;
@@ -1077,7 +1077,10 @@ class _EventProposalsState extends State<EventProposals> {
           .collection('event_proposals')
           .doc(docId)
           .get();
-      final currentStatus = proposal.data()?['status']?.toString().toLowerCase();
+      final currentStatus = proposal
+          .data()?['status']
+          ?.toString()
+          .toLowerCase();
       if (currentStatus != 'approved' && currentStatus != 'rejected') {
         if (_isMounted) {
           AppToast.warning(
@@ -1152,10 +1155,201 @@ class _EventProposalsState extends State<EventProposals> {
     );
   }
 
+  // ── Shared shell for the proposal action dialogs (approve / reject /
+  // revision). Mirrors AppConfirmationDialog — the one Archive uses — so all
+  // four read as one family: big tinted icon, centered title and message,
+  // then equal-width Cancel / action buttons. [body] slots extra inputs
+  // between the message and the buttons and scrolls if it runs tall. ──────
+  Widget _actionDialog({
+    required BuildContext ctx,
+    required IconData icon,
+    required Color accent,
+    required String title,
+    required String message,
+    required String confirmLabel,
+    required VoidCallback onConfirm,
+    IconData? confirmIcon,
+    List<Widget> body = const [],
+    bool busy = false,
+  }) {
+    final confirmText = Text(
+      confirmLabel,
+      style: GoogleFonts.beVietnamPro(fontWeight: FontWeight.w700),
+    );
+    final confirmStyle = ElevatedButton.styleFrom(
+      backgroundColor: accent,
+      foregroundColor: Colors.white,
+      disabledBackgroundColor: accent.withAlpha(140),
+      disabledForegroundColor: Colors.white,
+      elevation: 0,
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    );
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+      child: Container(
+        width: 460,
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(ctx).size.height * 0.88,
+        ),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x330F172A),
+              blurRadius: 32,
+              offset: Offset(0, 14),
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(32, 40, 32, 28),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      color: accent.withAlpha(22),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(icon, color: accent, size: 34),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF1A202C),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    message,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 13.5,
+                      height: 1.5,
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                  if (body.isNotEmpty)
+                    Flexible(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.only(top: 20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: body,
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 26),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: busy ? null : () => Navigator.pop(ctx),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF475569),
+                            side: const BorderSide(color: Color(0xFFE2E6EA)),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Text(
+                            'Cancel',
+                            style: GoogleFonts.beVietnamPro(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: confirmIcon == null
+                            ? ElevatedButton(
+                                onPressed: busy ? null : onConfirm,
+                                style: confirmStyle,
+                                child: confirmText,
+                              )
+                            : ElevatedButton.icon(
+                                onPressed: busy ? null : onConfirm,
+                                style: confirmStyle,
+                                icon: Icon(confirmIcon, size: 15),
+                                label: confirmText,
+                              ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Positioned(
+              top: 12,
+              right: 12,
+              child: IconButton(
+                tooltip: 'Close',
+                onPressed: busy ? null : () => Navigator.pop(ctx),
+                icon: const Icon(Icons.close_rounded),
+                color: const Color(0xFF94A3B8),
+                iconSize: 20,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Multi-line input used inside the action dialogs, focus-ringed in the
+  // dialog's own accent color.
+  Widget _dialogTextField({
+    required TextEditingController controller,
+    required String hint,
+    required Color accent,
+    int maxLines = 3,
+    int? maxLength,
+  }) {
+    OutlineInputBorder border(Color c, [double w = 1]) => OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(color: c, width: w),
+    );
+    return TextField(
+      controller: controller,
+      maxLines: maxLines,
+      maxLength: maxLength,
+      style: GoogleFonts.beVietnamPro(fontSize: 13),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: GoogleFonts.beVietnamPro(
+          fontSize: 13,
+          color: const Color(0xFF9AA5B4),
+        ),
+        filled: true,
+        fillColor: const Color(0xFFF8F9FB),
+        border: border(const Color(0xFFE2E6EA)),
+        enabledBorder: border(const Color(0xFFE2E6EA)),
+        focusedBorder: border(accent, 1.5),
+        contentPadding: const EdgeInsets.all(14),
+      ),
+    );
+  }
+
   // ── Certificate-issuing approval: authorize which signatory(ies) the org
   // may use on this event's certificates, plus a private remark that never
   // reaches the certificate itself. ──────────────────────────────────────
   void _showCertificateApprovalDialog(String docId, String title) {
+    const green = Color(0xFF059669);
     bool needsSignature = false;
     final Set<String> selectedSignatoryIds = {};
     final remarksCtrl = TextEditingController();
@@ -1166,575 +1360,234 @@ class _EventProposalsState extends State<EventProposals> {
       barrierColor: Colors.black54,
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDlg) {
-          return Dialog(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            insetPadding: const EdgeInsets.symmetric(
-              horizontal: 24,
-              vertical: 28,
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Container(
-              width: 460,
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.of(context).size.height * 0.85,
+        builder: (ctx, setDlg) => _actionDialog(
+          ctx: ctx,
+          icon: Icons.check_circle_outline_rounded,
+          accent: green,
+          title: 'Approve Proposal',
+          message:
+              '"$title" issues certificates. Decide whether the org needs an admin e-signature on them before it can be used.',
+          confirmLabel: submitting ? 'Approving…' : 'Approve',
+          busy: submitting,
+          onConfirm: () async {
+            if (needsSignature && selectedSignatoryIds.isEmpty) {
+              AppToast.error(
+                ctx,
+                'Select at least one signatory, or uncheck the signature requirement.',
+              );
+              return;
+            }
+            setDlg(() => submitting = true);
+            await _setStatus(
+              docId,
+              title,
+              'approved',
+              extraFields: {
+                'signatoryAuthorization': {
+                  'required': needsSignature,
+                  'signatoryIds': needsSignature
+                      ? selectedSignatoryIds.toList()
+                      : <String>[],
+                  'remarks': remarksCtrl.text.trim(),
+                  'authorizedBy': FirebaseAuth.instance.currentUser?.uid ?? '',
+                  'authorizedAt': FieldValue.serverTimestamp(),
+                },
+              },
+            );
+            if (ctx.mounted) Navigator.pop(ctx);
+          },
+          body: [
+            // The signature toggle as one tappable tile, tinted once on so
+            // the choice reads at a glance.
+            Material(
+              color: needsSignature
+                  ? green.withAlpha(14)
+                  : const Color(0xFFF8F9FB),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(
+                  color: needsSignature
+                      ? green.withAlpha(90)
+                      : const Color(0xFFE2E6EA),
+                ),
               ),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x330F172A),
-                    blurRadius: 32,
-                    offset: Offset(0, 14),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(28, 24, 28, 18),
-                    child: Stack(
-                      children: [
-                        // SizedBox(width: double.infinity) stretches this to
-                        // the header's full width so the Stack itself sizes
-                        // to that width — otherwise the Stack shrink-wraps to
-                        // this Column's intrinsic (narrower) width and the
-                        // Positioned close button below ends up pinned to
-                        // that narrower edge, next to the title, instead of
-                        // the dialog's true top-right corner.
-                        SizedBox(
-                          width: double.infinity,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: 56,
-                                height: 56,
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFFECFDF5),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.check_circle_outline_rounded,
-                                  color: Color(0xFF059669),
-                                  size: 26,
-                                ),
-                              ),
-                              const SizedBox(height: 14),
-                              Text(
-                                'Approve Proposal',
-                                textAlign: TextAlign.center,
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w700,
-                                  color: const Color(0xFF1A202C),
-                                ),
-                              ),
-                            ],
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => setDlg(() => needsSignature = !needsSignature),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(6, 8, 14, 8),
+                  child: Row(
+                    children: [
+                      Checkbox(
+                        value: needsSignature,
+                        activeColor: green,
+                        onChanged: (v) =>
+                            setDlg(() => needsSignature = v ?? false),
+                      ),
+                      Expanded(
+                        child: Text(
+                          'This event needs an admin e-signature on its certificates',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFF1A202C),
                           ),
                         ),
-                        Positioned(
-                          top: -8,
-                          right: -8,
-                          child: IconButton(
-                            tooltip: 'Close',
-                            onPressed: submitting
-                                ? null
-                                : () => Navigator.pop(ctx),
-                            icon: const Icon(Icons.close_rounded),
-                            color: const Color(0xFF94A3B8),
-                            iconSize: 20,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Flexible(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(28, 0, 28, 24),
-                      child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '"$title" issues certificates. Decide whether the org needs an admin e-signature on them before it can be used.',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13.5,
-                        color: const Color(0xFF64748B),
-                        height: 1.5,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    InkWell(
-                      borderRadius: BorderRadius.circular(8),
-                      onTap: () =>
-                          setDlg(() => needsSignature = !needsSignature),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
-                          children: [
-                            Checkbox(
-                              value: needsSignature,
-                              activeColor: const Color(0xFF059669),
-                              onChanged: (v) =>
-                                  setDlg(() => needsSignature = v ?? false),
-                            ),
-                            Expanded(
-                              child: Text(
-                                'This event needs an admin e-signature on its certificates',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 13.5,
-                                  fontWeight: FontWeight.w600,
-                                  color: const Color(0xFF1A202C),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    if (needsSignature) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        'Select which signatory(ies) the org is authorized to use for this event only:',
-                        style: GoogleFonts.beVietnamPro(
-                          fontSize: 12.5,
-                          color: const Color(0xFF64748B),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      StreamBuilder<QuerySnapshot>(
-                        stream: FirebaseFirestore.instance
-                            .collection('signatories')
-                            .snapshots(),
-                        builder: (context, snap) {
-                          final docs = snap.data?.docs ?? [];
-                          if (snap.connectionState == ConnectionState.waiting &&
-                              docs.isEmpty) {
-                            return const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 12),
-                              child: Center(
-                                child: SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                ),
-                              ),
-                            );
-                          }
-                          if (docs.isEmpty) {
-                            return Container(
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFFFBEB),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: const Color(0xFFFDE68A),
-                                ),
-                              ),
-                              child: Text(
-                                'No signatories on file yet — add one in Admin Settings → Signatories first.',
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 12.5,
-                                  color: const Color(0xFF92400E),
-                                ),
-                              ),
-                            );
-                          }
-                          return Container(
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: const Color(0xFFE2E6EA),
-                              ),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                for (var i = 0; i < docs.length; i++)
-                                  CheckboxListTile(
-                                    dense: true,
-                                    controlAffinity:
-                                        ListTileControlAffinity.leading,
-                                    value: selectedSignatoryIds.contains(
-                                      docs[i].id,
-                                    ),
-                                    activeColor: const Color(0xFF059669),
-                                    onChanged: (v) => setDlg(() {
-                                      if (v == true) {
-                                        selectedSignatoryIds.add(docs[i].id);
-                                      } else {
-                                        selectedSignatoryIds.remove(docs[i].id);
-                                      }
-                                    }),
-                                    title: Text(
-                                      (docs[i].data()
-                                                  as Map<
-                                                    String,
-                                                    dynamic
-                                                  >)['fullName']
-                                              ?.toString() ??
-                                          '',
-                                      style: GoogleFonts.beVietnamPro(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    subtitle: Text(
-                                      (docs[i].data()
-                                                  as Map<
-                                                    String,
-                                                    dynamic
-                                                  >)['title']
-                                              ?.toString() ??
-                                          '',
-                                      style: GoogleFonts.beVietnamPro(
-                                        fontSize: 11.5,
-                                        color: const Color(0xFF9AA5B4),
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          );
-                        },
                       ),
                     ],
-                    const SizedBox(height: 18),
-                    Text(
-                      'Remarks (internal — never shown on the certificate)',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFF64748B),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: remarksCtrl,
-                      maxLines: 3,
-                      style: GoogleFonts.beVietnamPro(fontSize: 13),
-                      decoration: InputDecoration(
-                        hintText:
-                            'e.g. reason for authorizing/declining a signature, conditions, notes for other admins…',
-                        hintStyle: GoogleFonts.beVietnamPro(
-                          fontSize: 12.5,
-                          color: const Color(0xFFB0BAC8),
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: const BorderSide(
-                            color: Color(0xFFE2E6EA),
-                          ),
-                        ),
-                        contentPadding: const EdgeInsets.all(12),
-                      ),
-                    ),
-                  ],
-                      ),
-                    ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
-                    decoration: const BoxDecoration(
-                      border: Border(
-                        top: BorderSide(color: Color(0xFFE8ECF0)),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        OutlinedButton(
-                          onPressed: submitting
-                              ? null
-                              : () => Navigator.pop(ctx),
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: Color(0xFFE2E6EA)),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 18,
-                              vertical: 11,
-                            ),
-                          ),
-                          child: Text(
-                            'Cancel',
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 13,
-                              color: const Color(0xFF374151),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        ElevatedButton(
-                          onPressed: submitting
-                              ? null
-                              : () async {
-                                  if (needsSignature &&
-                                      selectedSignatoryIds.isEmpty) {
-                                    AppToast.error(
-                                      ctx,
-                                      'Select at least one signatory, or uncheck the signature requirement.',
-                                    );
-                                    return;
-                                  }
-                                  setDlg(() => submitting = true);
-                                  await _setStatus(
-                                    docId,
-                                    title,
-                                    'approved',
-                                    extraFields: {
-                                      'signatoryAuthorization': {
-                                        'required': needsSignature,
-                                        'signatoryIds': needsSignature
-                                            ? selectedSignatoryIds.toList()
-                                            : <String>[],
-                                        'remarks': remarksCtrl.text.trim(),
-                                        'authorizedBy':
-                                            FirebaseAuth
-                                                .instance
-                                                .currentUser
-                                                ?.uid ??
-                                            '',
-                                        'authorizedAt':
-                                            FieldValue.serverTimestamp(),
-                                      },
-                                    },
-                                  );
-                                  if (ctx.mounted) Navigator.pop(ctx);
-                                },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF059669),
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 18,
-                              vertical: 11,
-                            ),
-                          ),
-                          child: Text(
-                            submitting ? 'Approving…' : 'Approve',
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
-          );
-        },
+            if (needsSignature) ...[
+              const SizedBox(height: 14),
+              Text(
+                'Select which signatory(ies) the org is authorized to use for this event only:',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 12.5,
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+              const SizedBox(height: 8),
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('signatories')
+                    .snapshots(),
+                builder: (context, snap) {
+                  final docs = snap.data?.docs ?? [];
+                  if (snap.connectionState == ConnectionState.waiting &&
+                      docs.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Center(
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    );
+                  }
+                  if (docs.isEmpty) {
+                    return Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFFBEB),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFFDE68A)),
+                      ),
+                      child: Text(
+                        'No signatories on file yet — add one in Admin Settings → Signatories first.',
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 12.5,
+                          color: const Color(0xFF92400E),
+                        ),
+                      ),
+                    );
+                  }
+                  return Container(
+                    clipBehavior: Clip.antiAlias,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: const Color(0xFFE2E6EA)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (var i = 0; i < docs.length; i++)
+                          CheckboxListTile(
+                            dense: true,
+                            controlAffinity: ListTileControlAffinity.leading,
+                            value: selectedSignatoryIds.contains(docs[i].id),
+                            activeColor: green,
+                            onChanged: (v) => setDlg(() {
+                              if (v == true) {
+                                selectedSignatoryIds.add(docs[i].id);
+                              } else {
+                                selectedSignatoryIds.remove(docs[i].id);
+                              }
+                            }),
+                            title: Text(
+                              (docs[i].data()
+                                          as Map<String, dynamic>)['fullName']
+                                      ?.toString() ??
+                                  '',
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            subtitle: Text(
+                              (docs[i].data() as Map<String, dynamic>)['title']
+                                      ?.toString() ??
+                                  '',
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 11.5,
+                                color: const Color(0xFF9AA5B4),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ],
+            const SizedBox(height: 18),
+            Text(
+              'Remarks (internal — never shown on the certificate)',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF64748B),
+              ),
+            ),
+            const SizedBox(height: 8),
+            _dialogTextField(
+              controller: remarksCtrl,
+              accent: green,
+              hint:
+                  'e.g. reason for authorizing/declining a signature, conditions, notes for other admins…',
+            ),
+          ],
+        ),
       ),
     );
   }
 
   // ── NEW: Show rejection reason dialog ───────────────────────────
   void _showRejectReasonDialog(String docId, String title) {
+    const red = Color(0xFFDC2626);
     final TextEditingController reasonController = TextEditingController();
 
     showDialog(
       context: context,
       barrierColor: Colors.black54,
-      builder: (ctx) => Dialog(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Container(
-          width: 460,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x330F172A),
-                blurRadius: 32,
-                offset: Offset(0, 14),
-              ),
-            ],
+      builder: (ctx) => _actionDialog(
+        ctx: ctx,
+        icon: Icons.cancel_outlined,
+        accent: red,
+        title: 'Reject Proposal',
+        message:
+            'Provide a reason for rejecting "$title". This will be visible to the organization.',
+        confirmLabel: 'Reject',
+        onConfirm: () async {
+          final reason = reasonController.text.trim();
+          if (reason.isEmpty) {
+            AppToast.warning(ctx, 'Please provide a reason for rejection.');
+            return;
+          }
+          Navigator.pop(ctx);
+          await _rejectProposalWithReason(docId, title, reason);
+        },
+        body: [
+          _dialogTextField(
+            controller: reasonController,
+            accent: red,
+            hint: 'Reason for rejection…',
+            maxLength: 1000,
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(28, 24, 28, 18),
-                child: Stack(
-                  children: [
-                    SizedBox(
-                      width: double.infinity,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 56,
-                            height: 56,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFFEF2F2),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.cancel_outlined,
-                              color: Color(0xFFDC2626),
-                              size: 26,
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          Text(
-                            'Reject Proposal',
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                              color: const Color(0xFF1A202C),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Positioned(
-                      top: -8,
-                      right: -8,
-                      child: IconButton(
-                        tooltip: 'Close',
-                        onPressed: () => Navigator.pop(ctx),
-                        icon: const Icon(Icons.close_rounded),
-                        color: const Color(0xFF94A3B8),
-                        iconSize: 20,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(28, 0, 28, 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Provide a reason for rejecting "$title". This will be visible to the organization.',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13.5,
-                        color: const Color(0xFF64748B),
-                        height: 1.5,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    TextField(
-                      controller: reasonController,
-                      maxLines: 3,
-                      maxLength: 1000,
-                      style: GoogleFonts.beVietnamPro(fontSize: 13),
-                      decoration: InputDecoration(
-                        hintText: 'Reason for rejection…',
-                        hintStyle: GoogleFonts.beVietnamPro(
-                          fontSize: 13,
-                          color: const Color(0xFF9AA5B4),
-                        ),
-                        filled: true,
-                        fillColor: const Color(0xFFF8F9FB),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: const BorderSide(
-                            color: Color(0xFFDC2626),
-                            width: 1.5,
-                          ),
-                        ),
-                        contentPadding: const EdgeInsets.all(12),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
-                decoration: const BoxDecoration(
-                  border: Border(top: BorderSide(color: Color(0xFFE8ECF0))),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF475569),
-                          side: const BorderSide(color: Color(0xFFE2E6EA)),
-                          padding: const EdgeInsets.symmetric(vertical: 13),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        child: Text(
-                          'Cancel',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () async {
-                          final reason = reasonController.text.trim();
-                          if (reason.isEmpty) {
-                            AppToast.warning(
-                              ctx,
-                              'Please provide a reason for rejection.',
-                            );
-                            return;
-                          }
-                          Navigator.pop(ctx);
-                          await _rejectProposalWithReason(docId, title, reason);
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFDC2626),
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          padding: const EdgeInsets.symmetric(vertical: 13),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        child: Text(
-                          'Reject',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+        ],
       ),
     );
   }
@@ -1804,7 +1657,12 @@ class _EventProposalsState extends State<EventProposals> {
       final savedStatus = proposalData['statusBeforeArchive']
           ?.toString()
           .toLowerCase();
-      const restorableStatuses = {'pending', 'approved', 'rejected', 'for_review'};
+      const restorableStatuses = {
+        'pending',
+        'approved',
+        'rejected',
+        'for_review',
+      };
       final inferredLegacyStatus =
           (proposalData['publishedEventId'] ?? '').toString().isNotEmpty
           ? 'approved'
@@ -1829,7 +1687,8 @@ class _EventProposalsState extends State<EventProposals> {
         if (extraFields != null) ...extraFields,
       });
       await activity_log.ActivityLogger.log(
-        action: '${newStatus == 'restore' ? 'RESTORED TO $effectiveStatus' : newStatus.toUpperCase()} proposal: $title',
+        action:
+            '${newStatus == 'restore' ? 'RESTORED TO $effectiveStatus' : newStatus.toUpperCase()} proposal: $title',
         module: 'Event Management',
         severity: (effectiveStatus == 'rejected' || newStatus == 'archived')
             ? 'warning'
@@ -1917,194 +1776,35 @@ class _EventProposalsState extends State<EventProposals> {
     final ctrl = TextEditingController();
     showDialog(
       context: parentCtx,
-      builder: (ctx) => Dialog(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Container(
-          width: 460,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x330F172A),
-                blurRadius: 32,
-                offset: Offset(0, 14),
-              ),
-            ],
+      barrierColor: Colors.black54,
+      builder: (ctx) => _actionDialog(
+        ctx: ctx,
+        icon: Icons.rate_review_outlined,
+        accent: AdminColors.primaryDark,
+        title: 'Request Revision',
+        message:
+            'Tell the organization what to change in "$title". Your feedback will be visible to them.',
+        confirmLabel: 'Send Feedback',
+        confirmIcon: Icons.send_rounded,
+        onConfirm: () async {
+          final feedback = ctrl.text.trim();
+          if (feedback.isEmpty) {
+            AppToast.warning(ctx, 'Please describe what needs to be revised.');
+            return;
+          }
+          Navigator.pop(ctx);
+          Navigator.pop(parentCtx);
+          await _requestRevision(docId, title, feedback);
+        },
+        body: [
+          _dialogTextField(
+            controller: ctrl,
+            accent: AdminColors.primaryDark,
+            hint: 'e.g. Please update the venue details and resubmit…',
+            maxLines: 4,
+            maxLength: 1000,
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(28, 24, 28, 18),
-                child: Stack(
-                  children: [
-                    SizedBox(
-                      width: double.infinity,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 56,
-                            height: 56,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFFFF7ED),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.rate_review_rounded,
-                              color: AdminColors.primaryDark,
-                              size: 26,
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          Text(
-                            'Request Revision',
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                              color: const Color(0xFF1A202C),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Positioned(
-                      top: -8,
-                      right: -8,
-                      child: IconButton(
-                        tooltip: 'Close',
-                        onPressed: () => Navigator.pop(ctx),
-                        icon: const Icon(Icons.close_rounded),
-                        color: const Color(0xFF94A3B8),
-                        iconSize: 20,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(28, 0, 28, 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Your feedback will be visible to the organization.',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13.5,
-                        color: const Color(0xFF64748B),
-                        height: 1.5,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    TextField(
-                      controller: ctrl,
-                      maxLines: 4,
-                      maxLength: 1000,
-                      style: GoogleFonts.beVietnamPro(fontSize: 13),
-                      decoration: InputDecoration(
-                        hintText:
-                            'e.g. Please update the venue details and resubmit...',
-                        hintStyle: GoogleFonts.beVietnamPro(
-                          fontSize: 13,
-                          color: const Color(0xFF9AA5B4),
-                        ),
-                        filled: true,
-                        fillColor: const Color(0xFFF8F9FB),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: const BorderSide(
-                            color: Color(0xFF7C3AED),
-                            width: 1.5,
-                          ),
-                        ),
-                        contentPadding: const EdgeInsets.all(12),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
-                decoration: const BoxDecoration(
-                  border: Border(top: BorderSide(color: Color(0xFFE8ECF0))),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF475569),
-                          side: const BorderSide(color: Color(0xFFE2E6EA)),
-                          padding: const EdgeInsets.symmetric(vertical: 13),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        child: Text(
-                          'Cancel',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () async {
-                          final feedback = ctrl.text.trim();
-                          if (feedback.isEmpty) {
-                            AppToast.warning(
-                              ctx,
-                              'Please describe what needs to be revised.',
-                            );
-                            return;
-                          }
-                          Navigator.pop(ctx);
-                          Navigator.pop(parentCtx);
-                          await _requestRevision(docId, title, feedback);
-                        },
-                        icon: const Icon(Icons.send_rounded, size: 14),
-                        label: Text(
-                          'Send Feedback',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AdminColors.primaryDark,
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          padding: const EdgeInsets.symmetric(vertical: 13),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+        ],
       ),
     );
   }
@@ -2182,7 +1882,9 @@ class _EventProposalsState extends State<EventProposals> {
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(18),
                   ),
-                  border: Border(bottom: BorderSide(color: statusAccent, width: 3)),
+                  border: Border(
+                    bottom: BorderSide(color: statusAccent, width: 3),
+                  ),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,

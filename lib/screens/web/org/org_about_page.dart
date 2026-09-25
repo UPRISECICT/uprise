@@ -91,16 +91,17 @@ class _OrgAboutContentState extends State<OrgAboutContent> {
     return Container(
       color: Colors.white,
       child: OrgAbstractBackdrop(
-        child: Reveal(
-          dy: 28,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 48, 24, 48),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 760),
-                child: Column(
-                  children: [
-                    Container(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 48, 24, 48),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 760),
+              child: Column(
+                children: [
+                  Reveal(
+                    dy: 10,
+                    scaleFrom: 0.8,
+                    child: Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 12,
                         vertical: 5,
@@ -120,8 +121,13 @@ class _OrgAboutContentState extends State<OrgAboutContent> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 18),
-                    Text(
+                  ),
+                  const SizedBox(height: 18),
+                  Reveal(
+                    delay: Duration(milliseconds: 120),
+                    dy: 34,
+                    tiltFrom: 0.35,
+                    child: Text(
                       'Built for your organization, from the ground up',
                       textAlign: TextAlign.center,
                       style: GoogleFonts.beVietnamPro(
@@ -131,8 +137,12 @@ class _OrgAboutContentState extends State<OrgAboutContent> {
                         letterSpacing: -0.6,
                       ),
                     ),
-                    const SizedBox(height: 14),
-                    Text(
+                  ),
+                  const SizedBox(height: 14),
+                  Reveal(
+                    delay: Duration(milliseconds: 260),
+                    dy: 20,
+                    child: Text(
                       'One system, explained: what it replaces, who built it, '
                       'and who it serves.',
                       textAlign: TextAlign.center,
@@ -142,8 +152,8 @@ class _OrgAboutContentState extends State<OrgAboutContent> {
                         height: 1.6,
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -176,22 +186,27 @@ class _OrgAboutContentState extends State<OrgAboutContent> {
     return Container(
       color: OrgSiteColors.bg,
       child: OrgAbstractBackdrop(
-        child: Reveal(
-          dy: 28,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 64),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1180),
-                child: LayoutBuilder(
-                  builder: (_, c) {
-                    final wide = c.maxWidth >= 900;
-                    final copy = Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _eyebrow('01 · THE SYSTEM'),
-                        const SizedBox(height: 10),
-                        Text(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 64),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1180),
+              child: LayoutBuilder(
+                builder: (_, c) {
+                  final wide = c.maxWidth >= 900;
+                  final copy = Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Reveal(
+                        dx: -24,
+                        dy: 0,
+                        child: _eyebrow('01 · THE SYSTEM'),
+                      ),
+                      const SizedBox(height: 10),
+                      Reveal(
+                        delay: Duration(milliseconds: 100),
+                        dy: 24,
+                        child: Text(
                           'A system, not a spreadsheet',
                           style: GoogleFonts.beVietnamPro(
                             fontSize: 26,
@@ -200,9 +215,14 @@ class _OrgAboutContentState extends State<OrgAboutContent> {
                             letterSpacing: -0.4,
                           ),
                         ),
-                        const SizedBox(height: 28),
-                        for (var i = 0; i < points.length; i++)
-                          Padding(
+                      ),
+                      const SizedBox(height: 28),
+                      for (var i = 0; i < points.length; i++)
+                        Reveal(
+                          delay: Duration(milliseconds: 200 + 130 * i),
+                          dx: -40,
+                          dy: 0,
+                          child: Padding(
                             padding: const EdgeInsets.only(bottom: 22),
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -244,28 +264,38 @@ class _OrgAboutContentState extends State<OrgAboutContent> {
                               ],
                             ),
                           ),
-                      ],
-                    );
-                    const diagram = _RoleDiagram();
-                    return wide
-                        ? Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(flex: 6, child: copy),
-                              const SizedBox(width: 48),
-                              Expanded(flex: 5, child: diagram),
-                            ],
-                          )
-                        : Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              copy,
-                              const SizedBox(height: 36),
-                              diagram,
-                            ],
-                          );
-                  },
-                ),
+                        ),
+                    ],
+                  );
+                  final diagram = Reveal(
+                    delay: Duration(milliseconds: 180),
+                    dy: 44,
+                    scaleFrom: 0.94,
+                    tiltFrom: 0.25,
+                    child: PointerTilt(
+                      builder: (context, t) => Transform(
+                        alignment: Alignment.center,
+                        transform: perspective3d()
+                          ..rotateX(-t.dy * 0.07)
+                          ..rotateY(t.dx * 0.07),
+                        child: const _RoleDiagram(),
+                      ),
+                    ),
+                  );
+                  return wide
+                      ? Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(flex: 6, child: copy),
+                            const SizedBox(width: 48),
+                            Expanded(flex: 5, child: diagram),
+                          ],
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [copy, const SizedBox(height: 36), diagram],
+                        );
+                },
               ),
             ),
           ),
@@ -304,19 +334,20 @@ class _OrgAboutContentState extends State<OrgAboutContent> {
     return Container(
       color: Colors.white,
       child: OrgAbstractBackdrop(
-        child: Reveal(
-          dy: 28,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 64),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 760),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _eyebrow('WHAT IT REPLACES'),
-                    const SizedBox(height: 10),
-                    Text(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 64),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 760),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Reveal(dx: -24, dy: 0, child: _eyebrow('WHAT IT REPLACES')),
+                  const SizedBox(height: 10),
+                  Reveal(
+                    delay: Duration(milliseconds: 100),
+                    dy: 24,
+                    child: Text(
                       'Before → After',
                       style: GoogleFonts.beVietnamPro(
                         fontSize: 22,
@@ -325,12 +356,17 @@ class _OrgAboutContentState extends State<OrgAboutContent> {
                         letterSpacing: -0.4,
                       ),
                     ),
-                    const SizedBox(height: 28),
-                    for (var i = 0; i < rows.length; i++) ...[
-                      LayoutBuilder(
-                        builder: (_, c) {
-                          final wide = c.maxWidth >= 480;
-                          final before = Text(
+                  ),
+                  const SizedBox(height: 28),
+                  for (var i = 0; i < rows.length; i++) ...[
+                    LayoutBuilder(
+                      builder: (_, c) {
+                        final wide = c.maxWidth >= 480;
+                        final before = Reveal(
+                          delay: Duration(milliseconds: 160 + 120 * i),
+                          dx: -48,
+                          dy: 0,
+                          child: Text(
                             rows[i].$1,
                             style: GoogleFonts.beVietnamPro(
                               fontSize: 13.5,
@@ -338,8 +374,13 @@ class _OrgAboutContentState extends State<OrgAboutContent> {
                               decoration: TextDecoration.lineThrough,
                               decorationColor: OrgSiteColors.inkFaint,
                             ),
-                          );
-                          final after = Text(
+                          ),
+                        );
+                        final after = Reveal(
+                          delay: Duration(milliseconds: 300 + 120 * i),
+                          dx: 48,
+                          dy: 0,
+                          child: Text(
                             rows[i].$2,
                             textAlign: wide ? TextAlign.right : TextAlign.left,
                             style: GoogleFonts.beVietnamPro(
@@ -347,14 +388,21 @@ class _OrgAboutContentState extends State<OrgAboutContent> {
                               fontWeight: FontWeight.w700,
                               color: OrgSiteColors.ink,
                             ),
-                          );
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            child: wide
-                                ? Row(
-                                    children: [
-                                      Expanded(child: before),
-                                      const Padding(
+                          ),
+                        );
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          child: wide
+                              ? Row(
+                                  children: [
+                                    Expanded(child: before),
+                                    Reveal(
+                                      delay: Duration(
+                                        milliseconds: 240 + 120 * i,
+                                      ),
+                                      dy: 0,
+                                      scaleFrom: 0.3,
+                                      child: const Padding(
                                         padding: EdgeInsets.symmetric(
                                           horizontal: 16,
                                         ),
@@ -364,26 +412,25 @@ class _OrgAboutContentState extends State<OrgAboutContent> {
                                           color: OrgSiteColors.accentDeep,
                                         ),
                                       ),
-                                      Expanded(child: after),
-                                    ],
-                                  )
-                                : Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      before,
-                                      const SizedBox(height: 4),
-                                      after,
-                                    ],
-                                  ),
-                          );
-                        },
-                      ),
-                      if (i != rows.length - 1)
-                        const Divider(height: 1, color: OrgSiteColors.border),
-                    ],
+                                    ),
+                                    Expanded(child: after),
+                                  ],
+                                )
+                              : Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    before,
+                                    const SizedBox(height: 4),
+                                    after,
+                                  ],
+                                ),
+                        );
+                      },
+                    ),
+                    if (i != rows.length - 1)
+                      const Divider(height: 1, color: OrgSiteColors.border),
                   ],
-                ),
+                ],
               ),
             ),
           ),
@@ -406,42 +453,49 @@ class _OrgAboutContentState extends State<OrgAboutContent> {
     return Container(
       color: OrgSiteColors.bg,
       child: OrgAbstractBackdrop(
-        child: Reveal(
-          dy: 28,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 72),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 760),
-                child: Column(
-                  children: [
-                    Container(
-                      width: 92,
-                      height: 92,
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: OrgSiteColors.ink.withAlpha(20),
-                            blurRadius: 20,
-                            offset: const Offset(0, 8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 72),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 760),
+              child: Column(
+                children: [
+                  Reveal(
+                    dy: 0,
+                    scaleFrom: 0.6,
+                    child: Floating(
+                      child: Container(
+                        width: 92,
+                        height: 92,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: OrgSiteColors.ink.withAlpha(20),
+                              blurRadius: 20,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: Image.asset(
+                          'assets/images/cict_logo.png',
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => const Icon(
+                            Icons.school_rounded,
+                            color: OrgSiteColors.accentDeep,
+                            size: 36,
                           ),
-                        ],
-                      ),
-                      child: Image.asset(
-                        'assets/images/cict_logo.png',
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => const Icon(
-                          Icons.school_rounded,
-                          color: OrgSiteColors.accentDeep,
-                          size: 36,
                         ),
                       ),
                     ),
-                    const SizedBox(height: 24),
-                    Text(
+                  ),
+                  const SizedBox(height: 24),
+                  Reveal(
+                    delay: Duration(milliseconds: 120),
+                    dy: 16,
+                    child: Text(
                       '03 · THE INSTITUTION',
                       style: GoogleFonts.beVietnamPro(
                         fontSize: 11.5,
@@ -450,8 +504,13 @@ class _OrgAboutContentState extends State<OrgAboutContent> {
                         letterSpacing: 1.4,
                       ),
                     ),
-                    const SizedBox(height: 20),
-                    Text(
+                  ),
+                  const SizedBox(height: 20),
+                  Reveal(
+                    delay: Duration(milliseconds: 220),
+                    dy: 30,
+                    tiltFrom: 0.3,
+                    child: Text(
                       'One recognized organization among many.',
                       textAlign: TextAlign.center,
                       style: GoogleFonts.beVietnamPro(
@@ -462,8 +521,12 @@ class _OrgAboutContentState extends State<OrgAboutContent> {
                         letterSpacing: -0.5,
                       ),
                     ),
-                    const SizedBox(height: 18),
-                    Text(
+                  ),
+                  const SizedBox(height: 18),
+                  Reveal(
+                    delay: Duration(milliseconds: 340),
+                    dy: 22,
+                    child: Text(
                       'Your organization operates under Bulacan State '
                       'University\'s College of Information and '
                       'Communications Technology — coordinated through a '
@@ -476,8 +539,8 @@ class _OrgAboutContentState extends State<OrgAboutContent> {
                         height: 1.7,
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -491,16 +554,16 @@ class _OrgAboutContentState extends State<OrgAboutContent> {
     return Container(
       color: Colors.white,
       child: OrgAbstractBackdrop(
-        child: Reveal(
-          dy: 28,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 64),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1040),
-                child: Column(
-                  children: [
-                    Text(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 64),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1040),
+              child: Column(
+                children: [
+                  Reveal(
+                    dy: 16,
+                    child: Text(
                       '04 · ON UPRISE TODAY',
                       style: GoogleFonts.beVietnamPro(
                         fontSize: 11.5,
@@ -509,8 +572,12 @@ class _OrgAboutContentState extends State<OrgAboutContent> {
                         letterSpacing: 1.4,
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    Text(
+                  ),
+                  const SizedBox(height: 10),
+                  Reveal(
+                    delay: Duration(milliseconds: 100),
+                    dy: 24,
+                    child: Text(
                       'Organizations already on the system',
                       textAlign: TextAlign.center,
                       style: GoogleFonts.beVietnamPro(
@@ -520,40 +587,48 @@ class _OrgAboutContentState extends State<OrgAboutContent> {
                         letterSpacing: -0.4,
                       ),
                     ),
-                    const SizedBox(height: 36),
-                    FutureBuilder<List<_OrgSummary>>(
-                      future: _orgsFuture,
-                      builder: (context, snap) {
-                        if (snap.connectionState == ConnectionState.waiting) {
-                          return const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 24),
-                            child: CircularProgressIndicator(
-                              color: OrgSiteColors.accentDeep,
-                            ),
-                          );
-                        }
-                        final orgs = snap.data ?? const [];
-                        if (orgs.isEmpty) {
-                          return Text(
-                            'No organizations are registered yet.',
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 13,
-                              color: OrgSiteColors.inkSoft,
-                            ),
-                          );
-                        }
-                        return Wrap(
-                          spacing: 40,
-                          runSpacing: 36,
-                          alignment: WrapAlignment.center,
-                          children: [
-                            for (final org in orgs) _OrgBadge(org: org),
-                          ],
+                  ),
+                  const SizedBox(height: 36),
+                  FutureBuilder<List<_OrgSummary>>(
+                    future: _orgsFuture,
+                    builder: (context, snap) {
+                      if (snap.connectionState == ConnectionState.waiting) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 24),
+                          child: CircularProgressIndicator(
+                            color: OrgSiteColors.accentDeep,
+                          ),
                         );
-                      },
-                    ),
-                  ],
-                ),
+                      }
+                      final orgs = snap.data ?? const [];
+                      if (orgs.isEmpty) {
+                        return Text(
+                          'No organizations are registered yet.',
+                          style: GoogleFonts.beVietnamPro(
+                            fontSize: 13,
+                            color: OrgSiteColors.inkSoft,
+                          ),
+                        );
+                      }
+                      return Wrap(
+                        spacing: 40,
+                        runSpacing: 36,
+                        alignment: WrapAlignment.center,
+                        children: [
+                          for (var i = 0; i < orgs.length; i++)
+                            Reveal(
+                              delay: Duration(
+                                milliseconds: 70 * (i < 10 ? i : 10),
+                              ),
+                              dy: 30,
+                              scaleFrom: 0.85,
+                              child: _OrgBadge(org: orgs[i]),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
               ),
             ),
           ),
@@ -676,63 +751,99 @@ class _RoleDiagram extends StatelessWidget {
       ),
       child: Column(
         children: [
-          const Wrap(
+          Wrap(
             spacing: 12,
             runSpacing: 16,
             alignment: WrapAlignment.center,
             children: [
-              _RoleNode(
-                icon: Icons.domain_rounded,
-                label: 'Your Org',
-                sub: 'Web console',
+              Reveal(
+                delay: Duration(milliseconds: 360),
+                dy: 26,
+                scaleFrom: 0.88,
+                child: Floating(
+                  phase: 0.00,
+                  amplitude: 5,
+                  child: const _RoleNode(
+                    icon: Icons.domain_rounded,
+                    label: 'Your Org',
+                    sub: 'Web console',
+                  ),
+                ),
               ),
-              _RoleNode(
-                icon: Icons.admin_panel_settings_rounded,
-                label: 'CICT Admin',
-                sub: 'Web console',
+              Reveal(
+                delay: Duration(milliseconds: 490),
+                dy: 26,
+                scaleFrom: 0.88,
+                child: Floating(
+                  phase: 0.33,
+                  amplitude: 5,
+                  child: const _RoleNode(
+                    icon: Icons.admin_panel_settings_rounded,
+                    label: 'CICT Admin',
+                    sub: 'Web console',
+                  ),
+                ),
               ),
-              _RoleNode(
-                icon: Icons.school_rounded,
-                label: 'Members & Guests',
-                sub: 'Mobile app',
+              Reveal(
+                delay: Duration(milliseconds: 620),
+                dy: 26,
+                scaleFrom: 0.88,
+                child: Floating(
+                  phase: 0.67,
+                  amplitude: 5,
+                  child: const _RoleNode(
+                    icon: Icons.school_rounded,
+                    label: 'Members & Guests',
+                    sub: 'Mobile app',
+                  ),
+                ),
               ),
             ],
           ),
           const SizedBox(height: 10),
-          const Icon(
-            Icons.arrow_downward_rounded,
-            size: 20,
-            color: OrgSiteColors.inkFaint,
+          Floating(
+            amplitude: 4,
+            period: Duration(milliseconds: 1600),
+            child: const Icon(
+              Icons.arrow_downward_rounded,
+              size: 20,
+              color: OrgSiteColors.inkFaint,
+            ),
           ),
           const SizedBox(height: 10),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
-            decoration: BoxDecoration(
-              color: OrgSiteColors.slateDark,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(
-                  Icons.storage_rounded,
-                  size: 18,
-                  color: Colors.white,
-                ),
-                const SizedBox(width: 10),
-                Flexible(
-                  child: Text(
-                    'One Firebase Backend — Auth · Firestore · Cloud Functions',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
+          Reveal(
+            delay: Duration(milliseconds: 760),
+            dy: 20,
+            scaleFrom: 0.92,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+              decoration: BoxDecoration(
+                color: OrgSiteColors.slateDark,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.storage_rounded,
+                    size: 18,
+                    color: Colors.white,
+                  ),
+                  const SizedBox(width: 10),
+                  Flexible(
+                    child: Text(
+                      'One Firebase Backend — Auth · Firestore · Cloud Functions',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],

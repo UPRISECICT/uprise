@@ -37,6 +37,7 @@ import '../../../utils/social_link_util.dart';
 import 'export_util.dart';
 import 'export_pdf.dart';
 import 'export_excel.dart';
+import '../../../widgets/org_scroll_box.dart';
 
 final RegExp _emailPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
 
@@ -3299,7 +3300,11 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
       cell.cellStyle = headerStyle;
     }
 
-    const exampleRow = ['2023100467', 'Dela Cruz, Juan', 'juan.delacruz@example.com'];
+    const exampleRow = [
+      '2023100467',
+      'Dela Cruz, Juan',
+      'juan.delacruz@example.com',
+    ];
     final exampleStyle = CellStyle(
       fontColorHex: ExcelColor.fromHexString('FF64748B'),
       backgroundColorHex: ExcelColor.fromHexString('FFF8F9FB'),
@@ -6256,7 +6261,9 @@ class _PositionDropdownState extends State<_PositionDropdown> {
               border: Border.all(color: _C.borderSoft),
               boxShadow: _DS.cardShadow,
             ),
-            child: Column(
+            clipBehavior: Clip.antiAlias,
+            child: OrgScrollBox(
+              maxHeight: 280,
               children: widget.positions.map((pos) {
                 final isSelected = widget.selected == pos;
                 return InkWell(

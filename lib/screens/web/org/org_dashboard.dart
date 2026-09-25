@@ -46,6 +46,7 @@ import '../../../services/firestore_collections.dart';
 import '../../../widgets/admin_export_button.dart';
 import '../../../widgets/dashboard_overview_label.dart';
 import '../../../services/app_sign_out.dart';
+import '../../../widgets/org_scroll_box.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens (copied from report.dart for the countdown)
@@ -2962,38 +2963,50 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                 MapEntry('Date', 2),
                 MapEntry('Location', 2),
               ]),
-              for (var i = 0; i < rows.length; i++)
-                _customTableRow(
-                  flexes: const [3, 2, 2, 2],
-                  isLast: i == rows.length - 1,
-                  isEven: i.isEven,
-                  onTap: () => _showDetailDialog(
-                    title: rows[i]['title'] as String,
-                    actionLabel: 'Open in Events & Schedules',
-                    navigateToTabIndex: 2, // OrgEventsScheduleScreen
-                    fields: [
-                      MapEntry('Category', rows[i]['category'] as String),
-                      MapEntry('Date', _fmtDate(rows[i]['date'] as DateTime?)),
-                      MapEntry(
-                        'Time',
-                        _fmtTimeRange(rows[i]['time'], rows[i]['endTime']),
+              OrgScrollBox(
+                children: [
+                  for (var i = 0; i < rows.length; i++)
+                    _customTableRow(
+                      flexes: const [3, 2, 2, 2],
+                      isLast: i == rows.length - 1,
+                      isEven: i.isEven,
+                      onTap: () => _showDetailDialog(
+                        title: rows[i]['title'] as String,
+                        actionLabel: 'Open in Events & Schedules',
+                        navigateToTabIndex: 2, // OrgEventsScheduleScreen
+                        fields: [
+                          MapEntry('Category', rows[i]['category'] as String),
+                          MapEntry(
+                            'Date',
+                            _fmtDate(rows[i]['date'] as DateTime?),
+                          ),
+                          MapEntry(
+                            'Time',
+                            _fmtTimeRange(rows[i]['time'], rows[i]['endTime']),
+                          ),
+                          MapEntry('Location', rows[i]['location'] as String),
+                          MapEntry('Audience', rows[i]['audience'] as String),
+                          MapEntry(
+                            'Description',
+                            rows[i]['description'] as String,
+                          ),
+                        ],
                       ),
-                      MapEntry('Location', rows[i]['location'] as String),
-                      MapEntry('Audience', rows[i]['audience'] as String),
-                      MapEntry('Description', rows[i]['description'] as String),
-                    ],
-                  ),
-                  cells: [
-                    _cellText(rows[i]['title'] as String, bold: true),
-                    _cellBadge(
-                      rows[i]['category'] as String,
-                      CategoryColors.getFg(rows[i]['category'] as String),
-                      bg: CategoryColors.getBg(rows[i]['category'] as String),
+                      cells: [
+                        _cellText(rows[i]['title'] as String, bold: true),
+                        _cellBadge(
+                          rows[i]['category'] as String,
+                          CategoryColors.getFg(rows[i]['category'] as String),
+                          bg: CategoryColors.getBg(
+                            rows[i]['category'] as String,
+                          ),
+                        ),
+                        _cellText(_fmtDate(rows[i]['date'] as DateTime?)),
+                        _cellText(rows[i]['location'] as String),
+                      ],
                     ),
-                    _cellText(_fmtDate(rows[i]['date'] as DateTime?)),
-                    _cellText(rows[i]['location'] as String),
-                  ],
-                ),
+                ],
+              ),
             ],
           ),
         );
@@ -3071,39 +3084,50 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                 MapEntry('Event Date', 2),
                 MapEntry('Submitted', 2),
               ]),
-              for (var i = 0; i < rows.length; i++)
-                _customTableRow(
-                  flexes: const [3, 2, 2, 2],
-                  isLast: i == rows.length - 1,
-                  isEven: i.isEven,
-                  onTap: () => _showDetailDialog(
-                    title: rows[i]['title'] as String,
-                    actionLabel: 'Open in Event Proposals',
-                    navigateToTabIndex: 1, // OrgEventProposalsScreen
-                    fields: [
-                      MapEntry('Category', rows[i]['category'] as String),
-                      MapEntry(
-                        'Event Date',
-                        _fmtDate(rows[i]['eventDate'] as DateTime?),
+              OrgScrollBox(
+                children: [
+                  for (var i = 0; i < rows.length; i++)
+                    _customTableRow(
+                      flexes: const [3, 2, 2, 2],
+                      isLast: i == rows.length - 1,
+                      isEven: i.isEven,
+                      onTap: () => _showDetailDialog(
+                        title: rows[i]['title'] as String,
+                        actionLabel: 'Open in Event Proposals',
+                        navigateToTabIndex: 1, // OrgEventProposalsScreen
+                        fields: [
+                          MapEntry('Category', rows[i]['category'] as String),
+                          MapEntry(
+                            'Event Date',
+                            _fmtDate(rows[i]['eventDate'] as DateTime?),
+                          ),
+                          MapEntry(
+                            'Submitted',
+                            _fmtDate(rows[i]['submittedAt'] as DateTime?),
+                          ),
+                          MapEntry(
+                            'Description',
+                            rows[i]['description'] as String,
+                          ),
+                        ],
                       ),
-                      MapEntry(
-                        'Submitted',
-                        _fmtDate(rows[i]['submittedAt'] as DateTime?),
-                      ),
-                      MapEntry('Description', rows[i]['description'] as String),
-                    ],
-                  ),
-                  cells: [
-                    _cellText(rows[i]['title'] as String, bold: true),
-                    _cellBadge(
-                      rows[i]['category'] as String,
-                      CategoryColors.getFg(rows[i]['category'] as String),
-                      bg: CategoryColors.getBg(rows[i]['category'] as String),
+                      cells: [
+                        _cellText(rows[i]['title'] as String, bold: true),
+                        _cellBadge(
+                          rows[i]['category'] as String,
+                          CategoryColors.getFg(rows[i]['category'] as String),
+                          bg: CategoryColors.getBg(
+                            rows[i]['category'] as String,
+                          ),
+                        ),
+                        _cellText(_fmtDate(rows[i]['eventDate'] as DateTime?)),
+                        _cellText(
+                          _fmtDate(rows[i]['submittedAt'] as DateTime?),
+                        ),
+                      ],
                     ),
-                    _cellText(_fmtDate(rows[i]['eventDate'] as DateTime?)),
-                    _cellText(_fmtDate(rows[i]['submittedAt'] as DateTime?)),
-                  ],
-                ),
+                ],
+              ),
             ],
           ),
         );
@@ -3188,32 +3212,39 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                 MapEntry('Time', 2),
                 MapEntry('Location', 2),
               ]),
-              for (var i = 0; i < rows.length; i++)
-                _customTableRow(
-                  flexes: const [3, 2, 2, 2],
-                  isLast: i == rows.length - 1,
-                  isEven: i.isEven,
-                  onTap: () => _showDetailDialog(
-                    title: rows[i]['title'] as String,
-                    fields: [
-                      MapEntry('Date', _fmtDate(rows[i]['date'] as DateTime?)),
-                      MapEntry(
-                        'Time',
-                        _fmtTimeRange(rows[i]['time'], rows[i]['endTime']),
+              OrgScrollBox(
+                children: [
+                  for (var i = 0; i < rows.length; i++)
+                    _customTableRow(
+                      flexes: const [3, 2, 2, 2],
+                      isLast: i == rows.length - 1,
+                      isEven: i.isEven,
+                      onTap: () => _showDetailDialog(
+                        title: rows[i]['title'] as String,
+                        fields: [
+                          MapEntry(
+                            'Date',
+                            _fmtDate(rows[i]['date'] as DateTime?),
+                          ),
+                          MapEntry(
+                            'Time',
+                            _fmtTimeRange(rows[i]['time'], rows[i]['endTime']),
+                          ),
+                          MapEntry('Location', rows[i]['location'] as String),
+                          MapEntry('Audience', rows[i]['audience'] as String),
+                        ],
                       ),
-                      MapEntry('Location', rows[i]['location'] as String),
-                      MapEntry('Audience', rows[i]['audience'] as String),
-                    ],
-                  ),
-                  cells: [
-                    _cellText(rows[i]['title'] as String, bold: true),
-                    _cellText(_fmtDate(rows[i]['date'] as DateTime?)),
-                    _cellText(
-                      _fmtTimeRange(rows[i]['time'], rows[i]['endTime']),
+                      cells: [
+                        _cellText(rows[i]['title'] as String, bold: true),
+                        _cellText(_fmtDate(rows[i]['date'] as DateTime?)),
+                        _cellText(
+                          _fmtTimeRange(rows[i]['time'], rows[i]['endTime']),
+                        ),
+                        _cellText(rows[i]['location'] as String),
+                      ],
                     ),
-                    _cellText(rows[i]['location'] as String),
-                  ],
-                ),
+                ],
+              ),
             ],
           ),
         );
@@ -3290,31 +3321,37 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
                 MapEntry('Price', 2),
                 MapEntry('Stock', 2),
               ]),
-              for (var i = 0; i < rows.length; i++)
-                _customTableRow(
-                  flexes: const [3, 2, 2, 2],
-                  isLast: i == rows.length - 1,
-                  isEven: i.isEven,
-                  onTap: () => _showDetailDialog(
-                    title: rows[i]['name'] as String,
-                    actionLabel: 'Open in Merchandise Catalog',
-                    navigateToTabIndex: 12, // OrgMerchandiseScreen
-                    fields: [
-                      MapEntry('Category', rows[i]['category'] as String),
-                      MapEntry('Price', money(rows[i]['price'] as double)),
-                      MapEntry('In Stock', '${rows[i]['stock']}'),
-                    ],
-                  ),
-                  cells: [
-                    _cellText(rows[i]['name'] as String, bold: true),
-                    _cellBadge(
-                      rows[i]['category'] as String,
-                      _merchCategoryBadgeColor(rows[i]['category'] as String),
+              OrgScrollBox(
+                children: [
+                  for (var i = 0; i < rows.length; i++)
+                    _customTableRow(
+                      flexes: const [3, 2, 2, 2],
+                      isLast: i == rows.length - 1,
+                      isEven: i.isEven,
+                      onTap: () => _showDetailDialog(
+                        title: rows[i]['name'] as String,
+                        actionLabel: 'Open in Merchandise Catalog',
+                        navigateToTabIndex: 12, // OrgMerchandiseScreen
+                        fields: [
+                          MapEntry('Category', rows[i]['category'] as String),
+                          MapEntry('Price', money(rows[i]['price'] as double)),
+                          MapEntry('In Stock', '${rows[i]['stock']}'),
+                        ],
+                      ),
+                      cells: [
+                        _cellText(rows[i]['name'] as String, bold: true),
+                        _cellBadge(
+                          rows[i]['category'] as String,
+                          _merchCategoryBadgeColor(
+                            rows[i]['category'] as String,
+                          ),
+                        ),
+                        _cellText(money(rows[i]['price'] as double)),
+                        _cellText('${rows[i]['stock']}'),
+                      ],
                     ),
-                    _cellText(money(rows[i]['price'] as double)),
-                    _cellText('${rows[i]['stock']}'),
-                  ],
-                ),
+                ],
+              ),
             ],
           ),
         );

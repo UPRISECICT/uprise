@@ -1108,45 +1108,51 @@ class _SecurityTabState extends State<_SecurityTab> {
                             ),
                           );
                         }
-                        return ListView.separated(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: docs.length,
-                          separatorBuilder: (_, __) => const Divider(height: 1),
-                          itemBuilder: (context, i) {
-                            final data = docs[i].data() as Map<String, dynamic>;
-                            final action = data['action'] ?? 'Unknown action';
-                            final timestamp =
-                                (data['timestamp'] as Timestamp?)?.toDate() ??
-                                DateTime.now();
-                            final details =
-                                data['details'] as Map<String, dynamic>?;
-                            final location =
-                                details?['location'] ?? 'Unknown location';
-                            return ListTile(
-                              leading: const Icon(
-                                Icons.security,
-                                color: UpriseColors.info,
-                                size: 20,
-                              ),
-                              title: Text(
-                                action,
-                                style: GoogleFonts.beVietnamPro(
-                                  fontWeight: FontWeight.w500,
-                                  fontSize: 13,
+                        // Up to 50 entries — scroll inside a fixed-height
+                        // box instead of stretching the settings page.
+                        return ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 420),
+                          child: ListView.separated(
+                            shrinkWrap: true,
+                            itemCount: docs.length,
+                            separatorBuilder: (_, __) =>
+                                const Divider(height: 1),
+                            itemBuilder: (context, i) {
+                              final data =
+                                  docs[i].data() as Map<String, dynamic>;
+                              final action = data['action'] ?? 'Unknown action';
+                              final timestamp =
+                                  (data['timestamp'] as Timestamp?)?.toDate() ??
+                                  DateTime.now();
+                              final details =
+                                  data['details'] as Map<String, dynamic>?;
+                              final location =
+                                  details?['location'] ?? 'Unknown location';
+                              return ListTile(
+                                leading: const Icon(
+                                  Icons.security,
+                                  color: UpriseColors.info,
+                                  size: 20,
                                 ),
-                              ),
-                              subtitle: Text(
-                                '$location • ${DateFormat('MMM dd, yyyy h:mm a').format(timestamp)}',
-                                style: GoogleFonts.beVietnamPro(fontSize: 11),
-                              ),
-                              trailing: const Icon(
-                                Icons.devices,
-                                size: 16,
-                                color: Color(0xFF64748B),
-                              ),
-                            );
-                          },
+                                title: Text(
+                                  action,
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontWeight: FontWeight.w500,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  '$location • ${DateFormat('MMM dd, yyyy h:mm a').format(timestamp)}',
+                                  style: GoogleFonts.beVietnamPro(fontSize: 11),
+                                ),
+                                trailing: const Icon(
+                                  Icons.devices,
+                                  size: 16,
+                                  color: Color(0xFF64748B),
+                                ),
+                              );
+                            },
+                          ),
                         );
                       },
                     ),

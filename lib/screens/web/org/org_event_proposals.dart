@@ -504,7 +504,11 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
     );
   }
 
-  Future<void> _archiveProposal(String docId, String title, String status) async {
+  Future<void> _archiveProposal(
+    String docId,
+    String title,
+    String status,
+  ) async {
     try {
       await FirebaseFirestore.instance
           .collection('event_proposals')
@@ -1561,7 +1565,10 @@ class _OrgEventProposalsScreenState extends State<OrgEventProposalsScreen> {
                           )
                         : null;
                     final onRestore = status == 'archived'
-                        ? () => _confirmRestore(docId, data['title'] ?? 'Proposal')
+                        ? () => _confirmRestore(
+                            docId,
+                            data['title'] ?? 'Proposal',
+                          )
                         : null;
 
                     // Full desktop table (sidebar + generous content width)
@@ -2115,6 +2122,46 @@ class _LiveTrackerModalState extends State<_LiveTrackerModal> {
     if (mounted) setState(() {});
   }
 
+  // Guests aren't in `students`, so the lookup above never finds them. Their
+  // registration carries 'studentName' plus a 'guestDocId' pointing at their
+  // `external_requests` record — resolve a name from there when the
+  // registration's own copy is blank, the same source org_attendance_qr.dart
+  // reads guests from.
+  final Map<String, Map<String, dynamic>> _guestCache = {};
+
+  Future<void> _ensureGuestsLoaded(Iterable<String> docIds) async {
+    final missing = docIds
+        .where((id) => id.isNotEmpty && !_guestCache.containsKey(id))
+        .toSet()
+        .toList();
+    if (missing.isEmpty) return;
+    for (var i = 0; i < missing.length; i += 30) {
+      final chunk = missing.sublist(i, (i + 30).clamp(0, missing.length));
+      try {
+        final snap = await FirebaseFirestore.instance
+            .collection('external_requests')
+            .where(FieldPath.documentId, whereIn: chunk)
+            .get();
+        for (final d in snap.docs) {
+          _guestCache[d.id] = d.data();
+        }
+      } catch (_) {}
+      for (final id in chunk) {
+        _guestCache.putIfAbsent(id, () => const {});
+      }
+    }
+    if (mounted) setState(() {});
+  }
+
+  String _guestName(Map<String, dynamic>? g) {
+    if (g == null) return '';
+    final userName = (g['userName'] as String?)?.trim() ?? '';
+    if (userName.isNotEmpty) return userName;
+    return '${(g['firstName'] ?? '').toString().trim()} '
+            '${(g['lastName'] ?? '').toString().trim()}'
+        .trim();
+  }
+
   Future<void> _exportParticipants(
     String choice,
     List<Map<String, dynamic>> rows,
@@ -2299,6 +2346,12 @@ class _LiveTrackerModalState extends State<_LiveTrackerModal> {
                           (d) => ((d.data() as Map)['userId'] ?? '').toString(),
                         ),
                       );
+                      _ensureGuestsLoaded(
+                        regDocs
+                            .map((d) => d.data() as Map)
+                            .where((m) => m['isGuest'] == true)
+                            .map((m) => (m['guestDocId'] ?? '').toString()),
+                      );
                     }
                     return StreamBuilder<QuerySnapshot>(
                       stream: FirebaseFirestore.instance
@@ -2330,11 +2383,21 @@ class _LiveTrackerModalState extends State<_LiveTrackerModal> {
                               final cachedFullName =
                                   (_studentCache[uid]?['fullName'] as String?)
                                       ?.trim();
-                              final name = regFullName?.isNotEmpty == true
-                                  ? regFullName!
-                                  : (cachedFullName?.isNotEmpty == true
-                                        ? cachedFullName!
-                                        : 'Unknown');
+                              final isGuest = d['isGuest'] == true;
+                              final guest = isGuest
+                                  ? _guestCache[(d['guestDocId'] ?? '')
+                                        .toString()]
+                                  : null;
+                              final name =
+                                  [
+                                    regFullName,
+                                    (d['studentName'] as String?)?.trim(),
+                                    cachedFullName,
+                                    _guestName(guest),
+                                  ].firstWhere(
+                                    (n) => n != null && n.isNotEmpty,
+                                    orElse: () => isGuest ? 'Guest' : 'Unknown',
+                                  )!;
                               // Registration docs don't always carry their
                               // own 'email' field — same reason 'name' falls
                               // back to the students collection above, this

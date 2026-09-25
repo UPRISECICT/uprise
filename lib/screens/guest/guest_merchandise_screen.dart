@@ -8,8 +8,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
-import '../../utils/social_link_util.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../widgets/student/app_image.dart';
 import '../../widgets/student/student_app_bar.dart';
@@ -256,21 +254,11 @@ class _OrgBrief {
   final String shortName;
   final String logoUrl;
 
-  // How a guest reaches the seller. Ordering happens by message —
-  // there is no checkout in this app — so the details page needs a real
-  // destination rather than a Buy button that leads nowhere.
-  final String facebook;
-  final String instagram;
-  final String gmail;
-
   const _OrgBrief({
     required this.id,
     required this.name,
     this.shortName = '',
     this.logoUrl = '',
-    this.facebook = '',
-    this.instagram = '',
-    this.gmail = '',
   });
 
   factory _OrgBrief.fromDoc(String id, Map<String, dynamic> data) {
@@ -281,63 +269,12 @@ class _OrgBrief {
       name: name,
       shortName: read('shortName'),
       logoUrl: read('logoUrl'),
-      facebook: read('facebook'),
-      instagram: read('instagram'),
-      gmail: read('gmail'),
     );
   }
 
   /// What fits on a product tile: the acronym when the org has one, since the
   /// full name rarely fits a chip at grid width.
   String get displayName => shortName.isNotEmpty ? shortName : name;
-
-  /// The first channel this organization actually published, in the order
-  /// a reader is most likely to get an answer. Null when the officers
-  /// have not filled in any social links on their profile.
-  _OrgContact? get contact {
-    if (facebook.isNotEmpty) {
-      return _OrgContact(
-        platform: 'facebook',
-        icon: Icons.facebook_rounded,
-        url: normalizeSocialUrl('facebook', facebook),
-      );
-    }
-    if (instagram.isNotEmpty) {
-      return _OrgContact(
-        platform: 'instagram',
-        icon: Icons.camera_alt_outlined,
-        url: normalizeSocialUrl('instagram', instagram),
-      );
-    }
-    if (gmail.isNotEmpty) {
-      return _OrgContact(
-        platform: 'gmail',
-        icon: Icons.mail_outline_rounded,
-        url: normalizeSocialUrl('gmail', gmail),
-      );
-    }
-    return null;
-  }
-}
-
-/// A published way to reach an organization.
-class _OrgContact {
-  final String platform;
-  final IconData icon;
-  final String url;
-
-  const _OrgContact({
-    required this.platform,
-    required this.icon,
-    required this.url,
-  });
-
-  /// Named in the failure message when the link cannot be opened.
-  String get label => switch (platform) {
-    'facebook' => 'Facebook',
-    'instagram' => 'Instagram',
-    _ => 'email',
-  };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1251,11 +1188,7 @@ class _ProductDetailsPageState extends State<_ProductDetailsPage> {
       ),
       // Price, availability and the one thing a guest can actually do stay on
       // screen while the variants scroll past.
-      bottomNavigationBar: _ProductActionBar(
-        product: _product,
-        org: _org,
-        onViewOrg: widget.onViewOrg == null ? null : _viewOrg,
-      ),
+      bottomNavigationBar: _ProductActionBar(product: _product),
     );
   }
 }
@@ -1414,19 +1347,12 @@ class _SellerLine extends StatelessWidget {
 /// is actually arranged.
 class _ProductActionBar extends StatelessWidget {
   final _Product product;
-  final _OrgBrief? org;
-  final VoidCallback? onViewOrg;
 
-  const _ProductActionBar({
-    required this.product,
-    required this.org,
-    this.onViewOrg,
-  });
+  const _ProductActionBar({required this.product});
 
   @override
   Widget build(BuildContext context) {
     final available = product.available;
-    final seller = org;
 
     return Container(
       decoration: const BoxDecoration(
@@ -1516,87 +1442,7 @@ class _ProductActionBar extends StatelessWidget {
                 const SizedBox(width: 10),
                 _LikeCount(count: product.likeCount),
               ],
-              if (seller != null &&
-                  (seller.contact != null || onViewOrg != null)) ...[
-                const SizedBox(width: 8),
-                _ContactButton(org: seller, onViewOrg: onViewOrg),
-              ],
             ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Opens the organization's messaging channel, or falls back to the rest of
-/// what they sell when they have not published one.
-class _ContactButton extends StatelessWidget {
-  final _OrgBrief org;
-  final VoidCallback? onViewOrg;
-
-  const _ContactButton({required this.org, this.onViewOrg});
-
-  Future<void> _open(BuildContext context) async {
-    final contact = org.contact;
-
-    if (contact == null) {
-      onViewOrg?.call();
-      return;
-    }
-
-    final messenger = ScaffoldMessenger.of(context);
-    final uri = Uri.tryParse(contact.url);
-    final opened =
-        uri != null &&
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-
-    if (!opened) {
-      messenger.showSnackBar(
-        SnackBar(content: Text('Could not open ${contact.label}.')),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final contact = org.contact;
-
-    return SizedBox(
-      height: _DS.controlHeight,
-      child: ElevatedButton.icon(
-        onPressed: () => _open(context),
-        icon: Icon(
-          contact?.icon ?? Icons.storefront_rounded,
-          size: 18,
-          color: Colors.white,
-        ),
-        label: Text(
-          contact == null ? 'See all' : 'Message',
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
-          ),
-        ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: _DS.brand,
-          elevation: 0,
-          // The app theme gives every ElevatedButton
-          // minimumSize: Size(double.infinity, 48) so full-width buttons
-          // come for free. That is fine wherever the parent bounds the
-          // width, and fatal here: this button is a non-flex child of the
-          // action bar Row, and a Row lays those out with an unbounded
-          // maxWidth. An infinite *minimum* enforced against an unbounded
-          // maximum collapses to a tight infinite width, which throws
-          // "BoxConstraints forces an infinite width". The button then had
-          // no size, and the failure climbed to the Scaffold's
-          // bottomNavigationBar slot - a slot that paints nothing instead
-          // of an error box, which is why the whole page went white.
-          minimumSize: const Size(0, _DS.controlHeight),
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(_DS.radiusSm),
           ),
         ),
       ),

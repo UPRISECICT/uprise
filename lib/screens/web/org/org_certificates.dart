@@ -19,12 +19,10 @@ import '../../../widgets/org_action_icon_button.dart';
 import '../../../widgets/app_toast.dart';
 
 // ─── STATUS SUMMARY ITEM ──────────────────────────────────────
-// One inline "Label 12" pair, not a card. Four stacked label-over-number
-// tiles in four different accent colors turned a four-number summary into
-// the loudest thing in the modal; a single quiet text row lets the
-// recipient list be what you actually look at. [color] no longer tints the
-// number — it only draws the underline marking the active filter, so the
-// color still means "this filter is on" and nothing else.
+// One small tile per count, doubling as the recipient list's filter. The
+// number stays neutral ink and [color] shows only as the dot beside the
+// label and the tint/border of the active filter — four loud accent-colored
+// numbers made the summary shout over the list it summarises.
 class _StatusSummaryItem extends StatelessWidget {
   final String label;
   final int count;
@@ -46,40 +44,55 @@ class _StatusSummaryItem extends StatelessWidget {
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.only(bottom: 5),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 11),
           decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(
-                color: isSelected ? color : Colors.transparent,
-                width: 2,
-              ),
+            color: isSelected ? color.withAlpha(18) : Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isSelected
+                  ? color.withAlpha(150)
+                  : const Color(0xFFE8ECF0),
             ),
           ),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
             children: [
-              Flexible(
-                child: Text(
-                  label,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w500,
-                    color: UpriseColors.darkGray,
+              Row(
+                children: [
+                  Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      color: color,
+                      shape: BoxShape.circle,
+                    ),
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      label,
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w500,
+                        color: const Color(0xFF64748B),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 6),
+              const SizedBox(height: 4),
               Text(
                 '$count',
                 style: GoogleFonts.beVietnamPro(
-                  fontSize: 15,
+                  fontSize: 20,
                   fontWeight: FontWeight.w700,
                   color: const Color(0xFF1A202C),
+                  height: 1.2,
                 ),
               ),
             ],
@@ -766,7 +779,10 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
                 _buildStatsRow(isMobile, isTablet),
                 _buildToolbar(isMobile, isTablet),
                 SizedBox(height: isMobile ? 12 : 16),
-                Expanded(child: _buildTable(isMobile, isTablet)),
+                // Flexible, not Expanded: the table card ends at its last row
+                // instead of stretching an empty white slab down to the
+                // bottom of the window, and still scrolls when rows overflow.
+                Flexible(child: _buildTable(isMobile, isTablet)),
                 SizedBox(height: isMobile ? 16 : 24),
               ],
             ),
@@ -1164,14 +1180,16 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
             boxShadow: _DS.cardShadow,
           ),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
               _buildTableHeader(),
-              Expanded(
+              Flexible(
                 child: loading
                     ? _buildSkeletonRows()
                     : batches.isEmpty
                     ? _buildEmptyState()
                     : ListView.builder(
+                        shrinkWrap: true,
                         itemCount: pageItems.length,
                         itemBuilder: (_, i) =>
                             _buildRow(pageItems[i], i == pageItems.length - 1),
@@ -1205,19 +1223,23 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
   Widget _buildTableHeader() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+      // Same warm header band as the Event Proposals and Reports tables.
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: const Color(0xFFFFF7ED),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-        border: const Border(bottom: BorderSide(color: Color(0xFFE8ECF0))),
+        border: Border(
+          bottom: BorderSide(color: UpriseColors.primaryDark.withAlpha(60)),
+        ),
       ),
       child: Row(
         children: [
-          Expanded(flex: 3, child: _headerCell('EVENT NAME')),
+          // Flex values must match _buildRow's Row (5, 2, 2, 2, 2).
+          Expanded(flex: 5, child: _headerCell('EVENT NAME')),
           Expanded(flex: 2, child: _headerCell('DATE ISSUED')),
           Expanded(flex: 2, child: _headerCell('RECIPIENTS')),
           Expanded(flex: 2, child: _headerCell('STATUS')),
           Expanded(
-            flex: 3,
+            flex: 2,
             child: Align(
               alignment: Alignment.centerRight,
               child: _headerCell('ACTIONS'),
@@ -1257,18 +1279,42 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Expanded(
-              flex: 3,
+              flex: 5,
               child: Padding(
                 padding: const EdgeInsets.only(right: 12),
-                child: Text(
-                  b.eventName,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF1A202C),
-                  ),
+                child: Row(
+                  children: [
+                    _batchIcon(b),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            b.eventName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFF1A202C),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${r.certificateId}  ·  ${b.templateType}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 11.5,
+                              color: const Color(0xFF94A3B8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -1291,7 +1337,7 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
               ),
             ),
             Expanded(
-              flex: 3,
+              flex: 2,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
@@ -1352,17 +1398,18 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
       ),
     );
     return ListView.builder(
+      shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: 6,
       itemBuilder: (_, i) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
         decoration: const BoxDecoration(
           border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
         ),
         child: Row(
           children: [
             Expanded(
-              flex: 3,
+              flex: 5,
               child: Align(alignment: Alignment.centerLeft, child: bar(180)),
             ),
             Expanded(
@@ -1378,12 +1425,32 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
               child: Align(alignment: Alignment.centerLeft, child: bar(70)),
             ),
             Expanded(
-              flex: 3,
+              flex: 2,
               child: Align(alignment: Alignment.centerRight, child: bar(90)),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  // Tinted tile in the batch's status color, so a draft or half-sent batch
+  // stands out in the column before you read its badge.
+  Widget _batchIcon(CertificateBatch b) {
+    final color = switch (b.batchStatus) {
+      'sent' => UpriseColors.success,
+      'partially_sent' => UpriseColors.warning,
+      'archived' => const Color(0xFF94A3B8),
+      _ => UpriseColors.primaryDark,
+    };
+    return Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(
+        color: color.withAlpha(24),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Icon(Icons.workspace_premium_outlined, size: 18, color: color),
     );
   }
 
@@ -1781,62 +1848,71 @@ class _OrgCertificatesScreenState extends State<OrgCertificatesScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              color: const Color(0xFFF1F5F9),
-              borderRadius: BorderRadius.circular(20),
+    // The table card now sizes to its content, so the empty state carries
+    // its own breathing room instead of centering in a stretched box.
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(vertical: 56, horizontal: 20),
+      child: SizedBox(
+        width: double.infinity,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Icon(
+                Icons.card_membership_outlined,
+                size: 40,
+                color: Color(0xFF9AA5B4),
+              ),
             ),
-            child: const Icon(
-              Icons.card_membership_outlined,
-              size: 40,
-              color: Color(0xFF9AA5B4),
+            const SizedBox(height: 16),
+            Text(
+              'No certificates issued yet',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF374151),
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No certificates issued yet',
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: const Color(0xFF374151),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Click "Generate Certificate" to create your first one.',
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 13,
-              color: const Color(0xFF64748B),
-            ),
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            onPressed: _openGenerateFlow,
-            icon: const Icon(Icons.add_rounded, size: 15),
-            label: Text(
-              'Generate Certificate',
+            const SizedBox(height: 6),
+            Text(
+              'Click "Generate Certificate" to create your first one.',
               style: GoogleFonts.beVietnamPro(
                 fontSize: 13,
-                fontWeight: FontWeight.w600,
+                color: const Color(0xFF64748B),
               ),
             ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: UpriseColors.primaryDark,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _openGenerateFlow,
+              icon: const Icon(Icons.add_rounded, size: 15),
+              label: Text(
+                'Generate Certificate',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: UpriseColors.primaryDark,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 11,
+                ),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -2140,6 +2216,20 @@ class _BatchDetailPageState extends State<_BatchDetailPage> {
   // 'All' | 'evaluated' | 'waiting' | 'ready' — set by tapping a summary
   // card, filters the recipient list below to just that status.
   String _statusFilter = 'All';
+
+  // Name search over the recipient list, shown once a batch is long enough
+  // to need it; the list itself scrolls inside a fixed-height box.
+  final TextEditingController _recipientSearch = TextEditingController();
+  final ScrollController _recipientScroll = ScrollController();
+  String _recipientQuery = '';
+
+  @override
+  void dispose() {
+    _recipientSearch.dispose();
+    _recipientScroll.dispose();
+    super.dispose();
+  }
+
   // 'All' is also the untouched default, so without this the Total card
   // would render pre-highlighted on open even though nothing was clicked.
   bool _filterTouched = false;
@@ -2202,9 +2292,16 @@ class _BatchDetailPageState extends State<_BatchDetailPage> {
       .collection('signatories')
       .snapshots();
 
-  Widget _cardShell({required String label, required Widget child}) {
+  // White card with a warm title band — the same FFF7ED header tint the
+  // tables use, so the detail page reads as part of the same tab.
+  Widget _cardShell({
+    required String label,
+    required IconData icon,
+    required Widget child,
+    Widget? trailing,
+  }) {
     return Container(
-      padding: const EdgeInsets.all(18),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
@@ -2212,19 +2309,38 @@ class _BatchDetailPageState extends State<_BatchDetailPage> {
         boxShadow: _DS.cardShadow,
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            label,
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 10.5,
-              fontWeight: FontWeight.w700,
-              color: UpriseColors.darkGray,
-              letterSpacing: 0.7,
+          Container(
+            padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF7ED),
+              border: Border(
+                bottom: BorderSide(
+                  color: UpriseColors.primaryDark.withAlpha(40),
+                ),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(icon, size: 16, color: UpriseColors.primaryDark),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: UpriseColors.primaryDark,
+                      letterSpacing: 0.7,
+                    ),
+                  ),
+                ),
+                if (trailing != null) trailing,
+              ],
             ),
           ),
-          const SizedBox(height: 12),
-          child,
+          Padding(padding: const EdgeInsets.all(18), child: child),
         ],
       ),
     );
@@ -2242,53 +2358,111 @@ class _BatchDetailPageState extends State<_BatchDetailPage> {
       _filterTouched = true;
       _statusFilter = _statusFilter == value ? 'All' : value;
     });
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE8ECF0)),
+    final tiles = <Widget>[
+      _StatusSummaryItem(
+        label: 'Total',
+        count: total,
+        color: UpriseColors.charcoal,
+        isSelected: _statusFilter == 'All' && _filterTouched,
+        onTap: () => setState(() {
+          _statusFilter = 'All';
+          _filterTouched = true;
+        }),
       ),
-      // Wrap, not Row: at a narrow column four label+number pairs would
-      // otherwise overflow rather than move to a second line.
-      child: Wrap(
-        spacing: 22,
-        runSpacing: 8,
-        children: [
-          _StatusSummaryItem(
-            label: 'Total',
-            count: total,
-            color: UpriseColors.charcoal,
-            isSelected: _statusFilter == 'All' && _filterTouched,
-            onTap: () => setState(() {
-              _statusFilter = 'All';
-              _filterTouched = true;
-            }),
-          ),
-          _StatusSummaryItem(
-            label: 'Evaluated',
-            count: evaluated,
-            color: UpriseColors.success,
-            isSelected: _statusFilter == 'evaluated',
-            onTap: () => toggle('evaluated'),
-          ),
-          _StatusSummaryItem(
-            label: 'Waiting',
-            count: awaitingEval,
-            color: UpriseColors.warning,
-            isSelected: _statusFilter == 'waiting',
-            onTap: () => toggle('waiting'),
-          ),
-          _StatusSummaryItem(
-            label: 'Ready',
-            count: readyToSend,
-            color: UpriseColors.primaryDark,
-            isSelected: _statusFilter == 'ready',
-            onTap: () => toggle('ready'),
-          ),
-        ],
+      _StatusSummaryItem(
+        label: 'Evaluated',
+        count: evaluated,
+        color: UpriseColors.success,
+        isSelected: _statusFilter == 'evaluated',
+        onTap: () => toggle('evaluated'),
       ),
+      _StatusSummaryItem(
+        label: 'Waiting',
+        count: awaitingEval,
+        color: UpriseColors.warning,
+        isSelected: _statusFilter == 'waiting',
+        onTap: () => toggle('waiting'),
+      ),
+      _StatusSummaryItem(
+        label: 'Ready',
+        count: readyToSend,
+        color: UpriseColors.primaryDark,
+        isSelected: _statusFilter == 'ready',
+        onTap: () => toggle('ready'),
+      ),
+    ];
+    // Four across when there is room, two by two in a narrow column.
+    return LayoutBuilder(
+      builder: (context, c) {
+        const gap = 10.0;
+        final perRow = c.maxWidth < 420 ? 2 : 4;
+        final w = (c.maxWidth - gap * (perRow - 1)) / perRow;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [for (final t in tiles) SizedBox(width: w, child: t)],
+        );
+      },
+    );
+  }
+
+  // How far along the batch is, as one big number and one bar — the first
+  // thing you want to know when you open a batch.
+  Widget _buildProgressBlock(int total, int sent) {
+    final pct = total == 0 ? 0.0 : (sent / total).clamp(0.0, 1.0);
+    final done = total > 0 && sent >= total;
+    final color = done ? UpriseColors.success : UpriseColors.primaryDark;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              '${(pct * 100).round()}%',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 30,
+                fontWeight: FontWeight.w800,
+                color: color,
+                height: 1,
+                letterSpacing: -0.5,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 3),
+                child: Text(
+                  done
+                      ? 'All certificates delivered'
+                      : '$sent of $total certificate'
+                            '${total == 1 ? '' : 's'} sent',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: pct),
+            duration: const Duration(milliseconds: 700),
+            curve: Curves.easeOutCubic,
+            builder: (context, v, _) => LinearProgressIndicator(
+              value: v,
+              minHeight: 7,
+              backgroundColor: const Color(0xFFEEF1F5),
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -2296,36 +2470,89 @@ class _BatchDetailPageState extends State<_BatchDetailPage> {
     final bool canSend = row.evaluated && !row.certSent;
     final bool awaitingEval = !row.evaluated;
 
+    // One compact button shape for both actions — Send is the filled
+    // primary, Resend the quiet tinted secondary — so a column of fifty rows
+    // lines up instead of mixing button styles and widths.
+    Widget pillButton({
+      required IconData icon,
+      required String label,
+      required bool primary,
+      required VoidCallback onTap,
+      String? tooltip,
+    }) {
+      final fg = primary ? Colors.white : UpriseColors.primaryDark;
+      final button = Material(
+        color: primary
+            ? UpriseColors.primaryDark
+            : UpriseColors.primaryDark.withAlpha(16),
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          hoverColor: primary
+              ? Colors.white.withAlpha(24)
+              : UpriseColors.primaryDark.withAlpha(20),
+          child: Container(
+            height: 30,
+            width: 92,
+            alignment: Alignment.center,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 14, color: fg),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: fg,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      return tooltip == null
+          ? button
+          : Tooltip(message: tooltip, child: button);
+    }
+
     Widget action;
     if (awaitingEval) {
-      action = Text(
-        'Waiting',
-        style: GoogleFonts.beVietnamPro(
-          fontSize: 11,
-          color: const Color(0xFF9AA5B4),
-          fontWeight: FontWeight.w500,
+      action = SizedBox(
+        width: 92,
+        child: Text(
+          'Awaiting eval',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.beVietnamPro(
+            fontSize: 11,
+            color: const Color(0xFF9AA5B4),
+            fontWeight: FontWeight.w500,
+          ),
         ),
       );
     } else if (canSend) {
-      action = ElevatedButton.icon(
-        onPressed: () async {
-          await _runSend(
-            () => widget.onSendSingle(row.key, row.name, row.isGuest),
-          );
-        },
-        icon: const Icon(Icons.send_rounded, size: 14),
-        label: const Text('Send'),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: UpriseColors.primaryDark,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-          elevation: 0,
-        ),
+      action = pillButton(
+        icon: Icons.send_rounded,
+        label: 'Send',
+        primary: true,
+        onTap: () =>
+            _runSend(() => widget.onSendSingle(row.key, row.name, row.isGuest)),
       );
     } else if (row.certSent) {
-      action = OutlinedButton.icon(
-        onPressed: () {
+      action = pillButton(
+        icon: Icons.refresh_rounded,
+        label: 'Resend',
+        primary: false,
+        // The count lives in the tooltip; printing "×2" on the button made
+        // it wider than every other one in the column.
+        tooltip: row.resendCount > 0
+            ? 'Resent ${row.resendCount} time'
+                  '${row.resendCount == 1 ? '' : 's'}'
+            : 'Send this certificate again',
+        onTap: () {
           // Find the existing record for this recipient
           final record = b.records.firstWhere(
             (r) => r.recipientName == row.name,
@@ -2333,26 +2560,43 @@ class _BatchDetailPageState extends State<_BatchDetailPage> {
           );
           widget.onResend(record);
         },
-        icon: const Icon(Icons.refresh_rounded, size: 14),
-        label: Text(
-          row.resendCount > 0 ? 'Resend ×${row.resendCount + 1}' : 'Resend',
-          style: GoogleFonts.beVietnamPro(fontSize: 11),
-        ),
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-          side: BorderSide(color: UpriseColors.primaryDark.withAlpha(100)),
-        ),
       );
     } else {
       action = const SizedBox.shrink();
     }
 
-    // Name over status, action on the right — every row reads the same way.
+    final initials = row.name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty && RegExp(r'[A-Za-z]').hasMatch(p[0]))
+        .take(2)
+        .map((p) => p[0].toUpperCase())
+        .join();
+
+    // Avatar, name over status, action on the right — every row reads the
+    // same way.
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
       child: Row(
         children: [
+          Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: UpriseColors.primaryDark.withAlpha(22),
+              shape: BoxShape.circle,
+            ),
+            child: Text(
+              initials.isEmpty ? '?' : initials,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: UpriseColors.primaryDark,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2366,8 +2610,20 @@ class _BatchDetailPageState extends State<_BatchDetailPage> {
                     color: const Color(0xFF1A202C),
                   ),
                 ),
-                const SizedBox(height: 3),
-                _buildStatusBadge(row),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    _buildStatusBadge(row),
+                    const SizedBox(width: 8),
+                    Text(
+                      row.isGuest ? 'Guest' : 'Student',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 11,
+                        color: const Color(0xFF94A3B8),
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -2382,19 +2638,26 @@ class _BatchDetailPageState extends State<_BatchDetailPage> {
     CertificateBatch b,
     List<_RecipientStatusRow> rows,
   ) {
+    final q = _recipientQuery.trim().toLowerCase();
     final filteredRows = switch (_statusFilter) {
       'evaluated' => rows.where((r) => r.evaluated),
       'waiting' => rows.where((r) => !r.evaluated),
       'ready' => rows.where((r) => r.evaluated && !r.certSent),
       _ => rows,
-    }.toList();
+    }.where((r) => q.isEmpty || r.name.toLowerCase().contains(q)).toList();
 
+    // Search only earns its space once the list is long enough to hunt in.
+    final showSearch = rows.length > 6;
+
+    final Widget list;
     if (filteredRows.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 20),
+      list = Padding(
+        padding: const EdgeInsets.symmetric(vertical: 28),
         child: Center(
           child: Text(
-            'No recipients match this filter.',
+            q.isNotEmpty
+                ? 'No recipients match "${_recipientQuery.trim()}".'
+                : 'No recipients match this filter.',
             style: GoogleFonts.beVietnamPro(
               fontSize: 13,
               color: const Color(0xFF64748B),
@@ -2402,19 +2665,117 @@ class _BatchDetailPageState extends State<_BatchDetailPage> {
           ),
         ),
       );
+    } else {
+      // A fixed-height window onto the list: a batch of fifty shows about
+      // six rows and scrolls inside its own box, so the page and the Batch
+      // Details card below don't get pushed far down. A short batch still
+      // shrinks to its rows.
+      list = ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 360),
+        child: Scrollbar(
+          controller: _recipientScroll,
+          thumbVisibility: filteredRows.length > 6,
+          child: ListView.separated(
+            controller: _recipientScroll,
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(12, 2, 16, 2),
+            itemCount: filteredRows.length,
+            separatorBuilder: (_, __) => const Divider(
+              height: 1,
+              thickness: 1,
+              color: Color(0xFFF1F5F9),
+            ),
+            itemBuilder: (_, i) => _buildRecipientRow(b, filteredRows[i]),
+          ),
+        ),
+      );
     }
-    // Sized to its rows, so a batch with two recipients is a short card
-    // rather than a tall one with a void under the list; a long list stops
-    // growing at the cap and scrolls inside it.
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxHeight: 520),
-      child: ListView.separated(
-        shrinkWrap: true,
-        padding: EdgeInsets.zero,
-        itemCount: filteredRows.length,
-        separatorBuilder: (_, __) =>
-            const Divider(height: 1, thickness: 1, color: Color(0xFFF1F5F9)),
-        itemBuilder: (_, i) => _buildRecipientRow(b, filteredRows[i]),
+
+    const fieldBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.all(Radius.circular(8)),
+      borderSide: BorderSide(color: Color(0xFFE2E6EA)),
+    );
+
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFE8ECF0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (showSearch)
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: const BoxDecoration(
+                color: Color(0xFFF8FAFC),
+                border: Border(bottom: BorderSide(color: Color(0xFFE8ECF0))),
+              ),
+              child: SizedBox(
+                height: 36,
+                child: TextField(
+                  controller: _recipientSearch,
+                  onChanged: (v) => setState(() => _recipientQuery = v),
+                  style: GoogleFonts.beVietnamPro(fontSize: 12.5),
+                  decoration: InputDecoration(
+                    hintText: 'Search recipients…',
+                    hintStyle: GoogleFonts.beVietnamPro(
+                      fontSize: 12.5,
+                      color: const Color(0xFF94A3B8),
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.search_rounded,
+                      size: 16,
+                      color: Color(0xFF94A3B8),
+                    ),
+                    suffixIcon: _recipientQuery.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.close_rounded, size: 15),
+                            color: const Color(0xFF94A3B8),
+                            tooltip: 'Clear',
+                            onPressed: () => setState(() {
+                              _recipientSearch.clear();
+                              _recipientQuery = '';
+                            }),
+                          ),
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: EdgeInsets.zero,
+                    border: fieldBorder,
+                    enabledBorder: fieldBorder,
+                    focusedBorder: const OutlineInputBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(8)),
+                      borderSide: BorderSide(
+                        color: UpriseColors.primaryDark,
+                        width: 1.3,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          list,
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: const BoxDecoration(
+              color: Color(0xFFF8FAFC),
+              border: Border(top: BorderSide(color: Color(0xFFE8ECF0))),
+            ),
+            child: Text(
+              filteredRows.length == rows.length
+                  ? '${rows.length} recipient${rows.length == 1 ? '' : 's'}'
+                  : 'Showing ${filteredRows.length} of ${rows.length} '
+                        'recipients',
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 11,
+                color: const Color(0xFF64748B),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2423,6 +2784,32 @@ class _BatchDetailPageState extends State<_BatchDetailPage> {
   // org_dashboard.dart's own top bar and a second heavy banner would just be
   // page chrome twice. "Send All Eligible" rides up here where it stays put
   // while the page scrolls.
+  Widget _metaChip(IconData icon, String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0xFFE8ECF0)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: const Color(0xFF64748B)),
+          const SizedBox(width: 5),
+          Text(
+            text,
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: const Color(0xFF475569),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildPageHeader(CertificateBatch b) {
     return Container(
       width: double.infinity,
@@ -2443,16 +2830,27 @@ class _BatchDetailPageState extends State<_BatchDetailPage> {
             onPressed: widget.onBack,
           ),
           Container(
-            width: 40,
-            height: 40,
+            width: 44,
+            height: 44,
             decoration: BoxDecoration(
-              color: UpriseColors.primaryDark.withAlpha(20),
-              borderRadius: BorderRadius.circular(11),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [UpriseColors.primaryLight, UpriseColors.primaryDark],
+              ),
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: UpriseColors.primaryDark.withAlpha(60),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
             child: const Icon(
-              Icons.card_membership_outlined,
-              color: UpriseColors.primaryDark,
-              size: 20,
+              Icons.workspace_premium_rounded,
+              color: Colors.white,
+              size: 22,
             ),
           ),
           const SizedBox(width: 14),
@@ -2464,22 +2862,30 @@ class _BatchDetailPageState extends State<_BatchDetailPage> {
                 Text(
                   b.eventName,
                   style: GoogleFonts.beVietnamPro(
-                    fontSize: 17,
+                    fontSize: 18,
                     fontWeight: FontWeight.w700,
                     color: const Color(0xFF1A202C),
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  'Certificate distribution • ${b.sentCount} of '
-                  '${b.totalRecipients} recipient'
-                  '${b.totalRecipients == 1 ? '' : 's'} sent',
-                  style: GoogleFonts.beVietnamPro(
-                    fontSize: 12.5,
-                    color: const Color(0xFF64748B),
-                  ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    _metaChip(
+                      Icons.event_outlined,
+                      DateFormat('MMM d, yyyy').format(b.date),
+                    ),
+                    _metaChip(
+                      Icons.group_outlined,
+                      '${b.totalRecipients} recipient'
+                      '${b.totalRecipients == 1 ? '' : 's'}',
+                    ),
+                    _metaChip(Icons.style_outlined, b.templateType),
+                    _metaChip(Icons.tag_rounded, b.primary.certificateId),
+                  ],
                 ),
               ],
             ),
@@ -2568,6 +2974,7 @@ class _BatchDetailPageState extends State<_BatchDetailPage> {
                 builder: (context, snapshot) =>
                     _buildDistributionCard(b, snapshot),
               );
+              final details = _buildDetailsCard(b);
               return SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(28, 20, 28, 28),
                 child: stacked
@@ -2577,6 +2984,8 @@ class _BatchDetailPageState extends State<_BatchDetailPage> {
                           preview,
                           const SizedBox(height: 16),
                           distribution,
+                          const SizedBox(height: 16),
+                          details,
                         ],
                       )
                     : Row(
@@ -2584,7 +2993,17 @@ class _BatchDetailPageState extends State<_BatchDetailPage> {
                         children: [
                           Expanded(flex: 6, child: preview),
                           const SizedBox(width: 20),
-                          Expanded(flex: 5, child: distribution),
+                          Expanded(
+                            flex: 5,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                distribution,
+                                const SizedBox(height: 20),
+                                details,
+                              ],
+                            ),
+                          ),
                         ],
                       ),
               );
@@ -2639,6 +3058,8 @@ class _BatchDetailPageState extends State<_BatchDetailPage> {
         body = Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            _buildProgressBlock(total, sent),
+            const SizedBox(height: 18),
             _buildSummaryStrip(
               total,
               evaluated,
@@ -2668,35 +3089,100 @@ class _BatchDetailPageState extends State<_BatchDetailPage> {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            Text(
-              'RECIPIENTS',
-              style: GoogleFonts.beVietnamPro(
-                fontSize: 10.5,
-                fontWeight: FontWeight.w700,
-                color: UpriseColors.darkGray,
-                letterSpacing: 0.7,
-              ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Text(
+                  'RECIPIENTS',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF64748B),
+                    letterSpacing: 0.7,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Divider(color: Color(0xFFE8ECF0), thickness: 1),
+                ),
+              ],
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 4),
             _buildRecipientsList(b, rows),
           ],
         );
       }
     }
-    return _cardShell(label: 'DISTRIBUTION', child: body);
+    return _cardShell(
+      label: 'DISTRIBUTION',
+      icon: Icons.send_outlined,
+      trailing: _batchBadge(b.batchStatus),
+      child: body,
+    );
   }
 
   Widget _buildTemplatePreview(CertificateBatch b) {
     final r = b.primary;
     return _cardShell(
       label: 'CERTIFICATE PREVIEW',
+      icon: Icons.image_outlined,
+      // The certificate sits on a soft warm mat so its white paper doesn't
+      // melt into the white card around it.
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF6F1EC),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _previewFrame(r),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Icon(
+                  Icons.auto_awesome_outlined,
+                  size: 13,
+                  color: Color(0xFF94A3B8),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Each recipient\'s name is filled in automatically when '
+                    'their certificate is sent.',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11,
+                      color: const Color(0xFF94A3B8),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _previewFrame(CertificateRecord r) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(30),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            border: Border.all(color: const Color(0xFFE8ECF0)),
-            borderRadius: BorderRadius.circular(10),
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
           ),
           // The certificate keeps its own 600:424 ratio at whatever width the
           // card has, instead of a fixed-height box that letterboxed it.
@@ -2819,24 +3305,90 @@ class _BatchDetailPageState extends State<_BatchDetailPage> {
       fg = UpriseColors.success;
     }
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 6,
-          height: 6,
-          decoration: BoxDecoration(color: fg, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 6),
-        Text(
-          label,
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: fg,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: fg.withAlpha(24),
+        borderRadius: BorderRadius.circular(_DS.radiusPill),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(color: fg, shape: BoxShape.circle),
           ),
-        ),
-      ],
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: GoogleFonts.beVietnamPro(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w600,
+              color: fg,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Label/value pairs for the batch's facts, one per line.
+  Widget _buildDetailsCard(CertificateBatch b) {
+    final r = b.primary;
+    Widget line(String label, String value, {bool mono = false}) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 130,
+            child: Text(
+              label,
+              style: GoogleFonts.beVietnamPro(
+                fontSize: 12.5,
+                color: const Color(0xFF64748B),
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: mono
+                  ? GoogleFonts.robotoMono(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF1A202C),
+                    )
+                  : GoogleFonts.beVietnamPro(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF1A202C),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+    return _cardShell(
+      label: 'BATCH DETAILS',
+      icon: Icons.info_outline_rounded,
+      child: Column(
+        children: [
+          line('Event', b.eventName),
+          line('Organization', b.organization),
+          line('Certificate type', r.type),
+          line(
+            'Template',
+            r.templateFileUrl != null ? 'Custom upload' : b.templateType,
+          ),
+          line(
+            'Last issued',
+            DateFormat('MMMM d, yyyy • h:mm a').format(b.date),
+          ),
+          line('Batch ID', r.certificateId, mono: true),
+        ],
+      ),
     );
   }
 }

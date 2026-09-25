@@ -100,28 +100,43 @@ class PortalCta extends StatelessWidget {
       child: LandingContainer(
         child: Column(
           children: [
-            Reveal(
-              scaleFrom: 0.8,
-              child: Container(
-                width: 74,
-                height: 74,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: palette.accent.withAlpha(80),
-                      blurRadius: 40,
-                    ),
-                  ],
+            // BulSU · UPRISE · CICT — the university and college flank
+            // the product seal and slide in from their own sides.
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Reveal(
+                  delay: const Duration(milliseconds: 120),
+                  dx: -28,
+                  dy: 0,
+                  child: _Seal(
+                    palette: palette,
+                    asset: 'assets/images/bsu_logo.png',
+                    size: w < 600 ? 50 : 58,
+                  ),
                 ),
-                child: Image.asset(
-                  'assets/images/logo.png',
-                  errorBuilder: (_, __, ___) =>
-                      Icon(Icons.shield_rounded, color: palette.primary),
+                SizedBox(width: w < 600 ? 14 : 22),
+                Reveal(
+                  scaleFrom: 0.8,
+                  child: _Seal(
+                    palette: palette,
+                    asset: 'assets/images/logo.png',
+                    size: w < 600 ? 64 : 74,
+                    glow: true,
+                  ),
                 ),
-              ),
+                SizedBox(width: w < 600 ? 14 : 22),
+                Reveal(
+                  delay: const Duration(milliseconds: 120),
+                  dx: 28,
+                  dy: 0,
+                  child: _Seal(
+                    palette: palette,
+                    asset: 'assets/images/cict_logo.png',
+                    size: w < 600 ? 50 : 58,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 28),
             Reveal(
@@ -176,6 +191,48 @@ class PortalCta extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// White circular badge holding one logo.
+class _Seal extends StatelessWidget {
+  final LandingPalette palette;
+  final String asset;
+  final double size;
+  final bool glow;
+
+  const _Seal({
+    required this.palette,
+    required this.asset,
+    required this.size,
+    this.glow = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      padding: EdgeInsets.all(size * 0.16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: glow
+                ? palette.accent.withAlpha(80)
+                : Colors.black.withAlpha(60),
+            blurRadius: glow ? 40 : 18,
+          ),
+        ],
+      ),
+      child: Image.asset(
+        asset,
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) =>
+            Icon(Icons.shield_rounded, color: palette.primary),
       ),
     );
   }

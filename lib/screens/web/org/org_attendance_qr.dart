@@ -26,6 +26,7 @@ import '../../../services/activity_logger.dart' as activity_log;
 import '../../../services/notification_service.dart';
 import '../../../services/webinar_attendance_service.dart';
 import '../../../utils/helpers.dart';
+import '../../../widgets/org_scroll_box.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DESIGN TOKENS
@@ -2516,66 +2517,69 @@ class _AttendanceTabState extends State<AttendanceTab>
                   ),
                 )
               else
-                ...regs.map((reg) {
-                  final d = reg.data() as Map<String, dynamic>;
-                  final uid = (d['userId'] ?? '').toString();
-                  final student = _studentCache[uid] ?? const {};
-                  final name =
-                      (student['fullName'] ??
-                              d['studentName'] ??
-                              d['fullName'] ??
-                              '')
-                          .toString();
-                  final sid = (student['studentId'] ?? d['studentId'] ?? '')
-                      .toString();
-                  final isMarked = marked.contains(uid);
-                  return Container(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    decoration: const BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(color: Color(0xFFF3F4F8)),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        _StudentAvatar(name: name, size: 36),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                name.isEmpty ? '—' : name,
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 13.5,
-                                  fontWeight: FontWeight.w600,
-                                  color: const Color(0xFF1A202C),
-                                ),
-                              ),
-                              Text(
-                                sid,
-                                style: GoogleFonts.beVietnamPro(
-                                  fontSize: 12,
-                                  color: const Color(0xFF94A3B8),
-                                ),
-                              ),
-                            ],
-                          ),
+                OrgScrollBox(
+                  padding: const EdgeInsets.only(right: 12),
+                  children: regs.map((reg) {
+                    final d = reg.data() as Map<String, dynamic>;
+                    final uid = (d['userId'] ?? '').toString();
+                    final student = _studentCache[uid] ?? const {};
+                    final name =
+                        (student['fullName'] ??
+                                d['studentName'] ??
+                                d['fullName'] ??
+                                '')
+                            .toString();
+                    final sid = (student['studentId'] ?? d['studentId'] ?? '')
+                        .toString();
+                    final isMarked = marked.contains(uid);
+                    return Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: const BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(color: Color(0xFFF3F4F8)),
                         ),
-                        isMarked
-                            ? _attBadge('present')
-                            : _PrimaryButton(
-                                label: 'Mark',
-                                icon: Icons.check_rounded,
-                                color: UpriseColors.primaryDark,
-                                onPressed: () =>
-                                    _markAttendance(uid, isManual: true),
-                                compact: true,
-                              ),
-                      ],
-                    ),
-                  );
-                }),
+                      ),
+                      child: Row(
+                        children: [
+                          _StudentAvatar(name: name, size: 36),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  name.isEmpty ? '—' : name,
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: const Color(0xFF1A202C),
+                                  ),
+                                ),
+                                Text(
+                                  sid,
+                                  style: GoogleFonts.beVietnamPro(
+                                    fontSize: 12,
+                                    color: const Color(0xFF94A3B8),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          isMarked
+                              ? _attBadge('present')
+                              : _PrimaryButton(
+                                  label: 'Mark',
+                                  icon: Icons.check_rounded,
+                                  color: UpriseColors.primaryDark,
+                                  onPressed: () =>
+                                      _markAttendance(uid, isManual: true),
+                                  compact: true,
+                                ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
             ],
           ),
         );
@@ -3343,9 +3347,7 @@ class _VideoPlayerBoxState extends State<_VideoPlayerBox> {
       return const SizedBox(
         width: 320,
         height: 200,
-        child: Center(
-          child: CircularProgressIndicator(color: Colors.white),
-        ),
+        child: Center(child: CircularProgressIndicator(color: Colors.white)),
       );
     }
     return ClipRRect(
@@ -3452,7 +3454,10 @@ class _DataTable extends StatelessWidget {
             ),
           ),
           // Rows or empty state
-          if (isEmpty) _EmptyState(emptyMessage) else ...rows,
+          if (isEmpty)
+            _EmptyState(emptyMessage)
+          else
+            OrgScrollBox(maxHeight: 520, children: rows),
           // Footer
           customFooter ??
               (footer != null

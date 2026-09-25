@@ -14,6 +14,7 @@ import '../../../widgets/org_modal_shell.dart';
 import '../../../widgets/app_toast.dart';
 import 'org_certificates.dart' show fetchRecipientStatus;
 import 'org_attendance_qr.dart' show showRegistrationAnswers;
+import '../../../widgets/org_scroll_box.dart';
 
 // ==================== CATEGORY COLORS ====================
 Map<String, Color> _categoryColors = {
@@ -376,68 +377,70 @@ class _RegistrationTab extends StatelessWidget {
               if (docs.isEmpty)
                 _overviewEmptyState('No one has registered yet.')
               else
-                ...docs.map((data) {
-                  final name = (data['resolvedName'] ?? 'Unknown Student')
-                      .toString();
-                  final hasAnswers =
-                      data['formResponses'] != null ||
-                      data['formAnswers'] != null;
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFFEDF0F3)),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            color: UpriseColors.primaryDark.withAlpha(20),
-                            shape: BoxShape.circle,
-                          ),
-                          alignment: Alignment.center,
-                          child: Icon(
-                            Icons.person_outline,
-                            size: 16,
-                            color: UpriseColors.primaryDark,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            name,
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: const Color(0xFF1A202C),
+                OrgScrollBox(
+                  children: docs.map((data) {
+                    final name = (data['resolvedName'] ?? 'Unknown Student')
+                        .toString();
+                    final hasAnswers =
+                        data['formResponses'] != null ||
+                        data['formAnswers'] != null;
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFEDF0F3)),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: UpriseColors.primaryDark.withAlpha(20),
+                              shape: BoxShape.circle,
                             ),
-                            overflow: TextOverflow.ellipsis,
+                            alignment: Alignment.center,
+                            child: Icon(
+                              Icons.person_outline,
+                              size: 16,
+                              color: UpriseColors.primaryDark,
+                            ),
                           ),
-                        ),
-                        if (hasAnswers)
-                          TextButton(
-                            onPressed: () =>
-                                showRegistrationAnswers(context, name, data),
-                            style: TextButton.styleFrom(
-                              foregroundColor: UpriseColors.primaryDark,
-                              textStyle: GoogleFonts.beVietnamPro(
-                                fontSize: 12.5,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              name,
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 13,
                                 fontWeight: FontWeight.w600,
+                                color: const Color(0xFF1A202C),
                               ),
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            child: const Text('View Answers'),
                           ),
-                      ],
-                    ),
-                  );
-                }),
+                          if (hasAnswers)
+                            TextButton(
+                              onPressed: () =>
+                                  showRegistrationAnswers(context, name, data),
+                              style: TextButton.styleFrom(
+                                foregroundColor: UpriseColors.primaryDark,
+                                textStyle: GoogleFonts.beVietnamPro(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              child: const Text('View Answers'),
+                            ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
             ],
           ),
         );
@@ -692,8 +695,10 @@ class _AttendanceTabState extends State<_AttendanceTab> {
                           : 'No one matches this status.',
                     )
                   else
-                    ...filteredRows.map(
-                      (r) => _attendanceRow(r.name, r.status),
+                    OrgScrollBox(
+                      children: filteredRows
+                          .map((r) => _attendanceRow(r.name, r.status))
+                          .toList(),
                     ),
                 ],
               ),
@@ -868,74 +873,76 @@ class _CertificatesTab extends StatelessWidget {
               if (rows.isEmpty)
                 _overviewEmptyState('No attendees to show yet.')
               else
-                ...rows.map((r) {
-                  final rowEligible = r.attended && r.evaluated;
-                  final (Color color, String label) = r.certSent
-                      ? (UpriseColors.success, 'Issued')
-                      : (rowEligible
-                            ? (UpriseColors.info, 'Eligible')
-                            : (UpriseColors.darkGray, 'Not Eligible'));
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFFEDF0F3)),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            color: UpriseColors.primaryDark.withAlpha(20),
-                            shape: BoxShape.circle,
-                          ),
-                          alignment: Alignment.center,
-                          child: Icon(
-                            Icons.person_outline,
-                            size: 16,
-                            color: UpriseColors.primaryDark,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            r.name,
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: const Color(0xFF1A202C),
+                OrgScrollBox(
+                  children: rows.map((r) {
+                    final rowEligible = r.attended && r.evaluated;
+                    final (Color color, String label) = r.certSent
+                        ? (UpriseColors.success, 'Issued')
+                        : (rowEligible
+                              ? (UpriseColors.info, 'Eligible')
+                              : (UpriseColors.darkGray, 'Not Eligible'));
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFEDF0F3)),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: UpriseColors.primaryDark.withAlpha(20),
+                              shape: BoxShape.circle,
                             ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: color.withAlpha(24),
-                            borderRadius: BorderRadius.circular(100),
-                          ),
-                          child: Text(
-                            label,
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: color,
+                            alignment: Alignment.center,
+                            child: Icon(
+                              Icons.person_outline,
+                              size: 16,
+                              color: UpriseColors.primaryDark,
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  );
-                }),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              r.name,
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: const Color(0xFF1A202C),
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: color.withAlpha(24),
+                              borderRadius: BorderRadius.circular(100),
+                            ),
+                            child: Text(
+                              label,
+                              style: GoogleFonts.beVietnamPro(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: color,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
             ],
           ),
         );

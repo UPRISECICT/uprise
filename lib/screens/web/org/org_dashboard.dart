@@ -1035,6 +1035,8 @@ class _OrgDashboardState extends State<OrgDashboard> {
         orgName: _orgName,
         orgShortName: _orgShortName,
         orgEmail: _orgEmail,
+        orgLogoUrl: _orgLogoUrl,
+        onSignOut: _confirmLogout,
       ), // index 14 — settings
     ];
     _screensBuilt = true;

@@ -335,27 +335,36 @@ class _CountdownWidgetState extends State<CountdownWidget> {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.white.withAlpha(51)),
         ),
-        child: Column(
-          children: [
-            Text(
-              value,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-                fontFeatures: [FontFeature.tabularFigures()],
-              ),
+        // FittedBox scales the digits and label down together on narrow
+        // cards (small phones, large text scale) instead of clipping them —
+        // "SECONDS" is the widest label and was the first to get cut.
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Column(
+              children: [
+                Text(
+                  value,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 26,
+                    fontWeight: FontWeight.bold,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
+                ),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: Colors.white.withAlpha(179),
+                    fontSize: 9,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+              ],
             ),
-            Text(
-              label,
-              style: TextStyle(
-                color: Colors.white.withAlpha(179),
-                fontSize: 9,
-                fontWeight: FontWeight.w500,
-                letterSpacing: 0.8,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

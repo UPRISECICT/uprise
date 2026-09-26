@@ -196,18 +196,31 @@ class _StudentWebinarCodeScreenState extends State<StudentWebinarCodeScreen> {
                       ),
                       child: Row(
                         children: [
-                          Icon(
+                          const Icon(
                             Icons.info_outline_rounded,
                             color: AppColors.primaryDark,
                           ),
                           const SizedBox(width: 12),
                           Expanded(
-                            child: Text(
-                              'Enter the 6-digit webinar code shown on your organization\'s screen.',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: AppColors.primaryDark,
-                                height: 1.4,
+                            child: Text.rich(
+                              TextSpan(
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: AppColors.primaryDark,
+                                  height: 1.4,
+                                ),
+                                children: const [
+                                  TextSpan(
+                                    text: 'This code records your attendance. ',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  TextSpan(
+                                    text:
+                                        'Your organization will show it on screen during the webinar.',
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -215,22 +228,24 @@ class _StudentWebinarCodeScreenState extends State<StudentWebinarCodeScreen> {
                       ),
                     ),
 
-                    const SizedBox(height: 40),
+                    const SizedBox(height: 28),
 
+                    // Attendance icon, not a QR scanner — there's nothing to
+                    // scan on this screen.
                     Container(
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
                         color: AppColors.primaryDark.withAlpha(26),
                         shape: BoxShape.circle,
                       ),
-                      child: Icon(
-                        Icons.qr_code_scanner_rounded,
-                        size: 64,
+                      child: const Icon(
+                        Icons.event_available_rounded,
+                        size: 40,
                         color: AppColors.primaryDark,
                       ),
                     ),
 
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 18),
 
                     const Text(
                       'Enter Webinar Code',
@@ -244,16 +259,16 @@ class _StudentWebinarCodeScreenState extends State<StudentWebinarCodeScreen> {
                     const SizedBox(height: 8),
 
                     const Text(
-                      'Input the 6-digit code displayed on your screen',
+                      'Type the 6-character code to check in or check out of the webinar you registered for.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 14,
-                        color: Colors.grey,
+                        color: AppColors.textSecondary,
                         height: 1.5,
                       ),
                     ),
 
-                    const SizedBox(height: 40),
+                    const SizedBox(height: 28),
 
                     Container(
                       decoration: BoxDecoration(
@@ -397,6 +412,7 @@ class _StudentWebinarCodeScreenState extends State<StudentWebinarCodeScreen> {
                       ),
                     ],
 
+                    const SizedBox(height: 20),
                     const Spacer(),
 
                     SizedBox(
@@ -431,6 +447,10 @@ class _StudentWebinarCodeScreenState extends State<StudentWebinarCodeScreen> {
                       ),
                     ),
 
+                    const SizedBox(height: 24),
+
+                    const _HowItWorksCard(),
+
                     const SizedBox(height: 16),
 
                     Row(
@@ -458,6 +478,128 @@ class _StudentWebinarCodeScreenState extends State<StudentWebinarCodeScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Step-by-step explainer for the webinar attendance flow, matching what
+/// WebinarAttendanceService actually enforces: registration, a check-in
+/// phase, a later check-out phase, and codes that rotate on a timer.
+class _HowItWorksCard extends StatelessWidget {
+  const _HowItWorksCard();
+
+  static const _steps = [
+    (
+      icon: Icons.how_to_reg_rounded,
+      title: 'Register first',
+      body: 'Codes only work for webinars you\'re registered in.',
+    ),
+    (
+      icon: Icons.login_rounded,
+      title: 'Check in at the start',
+      body:
+          'Enter the code the host shows when the webinar begins. Arriving late may mark you as Late.',
+    ),
+    (
+      icon: Icons.logout_rounded,
+      title: 'Check out, if your organization asks',
+      body:
+          'Some organizations also require a check-out. If yours does, enter the check-out code they give before the webinar ends.',
+    ),
+    (
+      icon: Icons.autorenew_rounded,
+      title: 'Codes change every few minutes',
+      body: 'Always use the one currently on screen.',
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'How webinar attendance works',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 14),
+          for (var i = 0; i < _steps.length; i++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 26,
+                    height: 26,
+                    alignment: Alignment.center,
+                    decoration: const BoxDecoration(
+                      color: AppColors.primaryDark,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      '${i + 1}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              _steps[i].icon,
+                              size: 15,
+                              color: AppColors.primaryDark,
+                            ),
+                            const SizedBox(width: 5),
+                            Flexible(
+                              child: Text(
+                                _steps[i].title,
+                                style: const TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _steps[i].body,
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            color: AppColors.textSecondary,
+                            height: 1.45,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }

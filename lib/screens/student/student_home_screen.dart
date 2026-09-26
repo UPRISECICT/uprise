@@ -157,10 +157,15 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
           final data = doc.data()!;
           final firstName = (data['firstName'] ?? '').toString().trim();
           final middleName = (data['middleName'] ?? '').toString().trim();
+          final lastName = (data['lastName'] ?? '').toString().trim();
+          final middleInitial = middleName.isNotEmpty
+              ? '${middleName[0].toUpperCase()}.'
+              : '';
 
           final greetingName = [
             firstName,
-            middleName,
+            middleInitial,
+            lastName,
           ].where((p) => p.isNotEmpty).join(' ');
 
           setState(() {
@@ -375,7 +380,7 @@ class _HomeContentState extends State<_HomeContent> {
       // `date` holds only the calendar day (local midnight), so comparing it
       // against `Timestamp.now()` would drop everything happening later
       // today. Query from the start of today and let the client-side
-      // `timeStatus` check below do the real start/end filtering — the
+      // `timeStatus` check below do the real start-time filtering — the
       // time-of-day lives in the `startTime`/`endTime` strings, which
       // Firestore can't compare against.
       final now = DateTime.now();
@@ -406,9 +411,9 @@ class _HomeContentState extends State<_HomeContent> {
                   course: course,
                 ),
               )
-              // Upcoming and ongoing both belong here; only drop it once the
-              // event has actually ended.
-              .where((e) => e.timeStatus != EventTimeStatus.completed)
+              // Only events that haven't started yet — once an event is
+              // underway it's no longer "upcoming", even if it's today.
+              .where((e) => e.timeStatus == EventTimeStatus.upcoming)
               .toList()
             // `orderBy('date')` only orders by day, so sort on the real start
             // time before capping — otherwise the cap can spend itself on
@@ -799,86 +804,96 @@ class _HomeContentState extends State<_HomeContent> {
               ),
             ),
 
-            // Upcoming Events Section Header
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
-                child: SectionHeader(
-                  title: 'Upcoming Events',
-                  actionLabel: 'View all',
-                  // Discover tab is index 0 within Events.
-                  onAction: () => widget.onNavigateToTab(1, eventsSubTab: 0),
-                ),
-              ),
-            ),
-
-            // Upcoming Events — swipeable one-card carousel with arrow nav.
+            // Upcoming Events — header plus a swipeable one-card carousel with
+            // arrow nav. The header lives inside the FutureBuilder so the
+            // whole section disappears when there's nothing upcoming.
             SliverToBoxAdapter(
               child: FutureBuilder<List<EventModel>>(
                 future: _upcomingEventsFuture,
                 builder: (context, snapshot) {
+                  final header = Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
+                    child: SectionHeader(
+                      title: 'Upcoming Events',
+                      actionLabel: 'View all',
+                      // Discover tab is index 0 within Events.
+                      onAction: () =>
+                          widget.onNavigateToTab(1, eventsSubTab: 0),
+                    ),
+                  );
+
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 4,
-                      ),
-                      child: SkeletonLoader(count: 2, height: 120),
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        header,
+                        const Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 4,
+                          ),
+                          child: SkeletonLoader(count: 2, height: 120),
+                        ),
+                      ],
                     );
                   }
 
                   // Re-filter on every rebuild, not just on fetch: the future is
                   // built once in initState and this State is kept alive by the
-                  // IndexedStack, so without this an event that ends while the
-                  // app is open would linger on the carousel.
+                  // IndexedStack, so without this an event that starts while
+                  // the app is open would linger on the carousel.
                   final events =
                       snapshot.data
                           ?.where(
-                            (e) => e.timeStatus != EventTimeStatus.completed,
+                            (e) => e.timeStatus == EventTimeStatus.upcoming,
                           )
                           .toList() ??
                       const <EventModel>[];
 
                   if (snapshot.hasError || events.isEmpty) {
-                    // Collapses to nothing rather than an empty-state card —
-                    // matches the Merchandise preview below.
+                    // Collapses the whole section, header included, rather
+                    // than an empty-state card — matches the Merchandise
+                    // preview below.
                     return const SizedBox.shrink();
                   }
 
-                  return Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
-                    child: UpcomingEventsCarousel(
-                      events: events.map(homeCarouselData).toList(),
-                      onTap: (i) => _navigateToEventDetail(events[i]),
-                    ),
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      header,
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
+                        child: UpcomingEventsCarousel(
+                          events: events.map(homeCarouselData).toList(),
+                          onTap: (i) => _navigateToEventDetail(events[i]),
+                        ),
+                      ),
+                    ],
                   );
                 },
               ),
             ),
 
-            // Announcements Section
+            // Announcements — header is passed into the feed so the whole
+            // section hides when there's nothing from the last two months.
             SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 26, 20, 10),
-                child: SectionHeader(
-                  title: 'Announcements',
-                  actionLabel: 'See all',
-                  // Announcements is no longer a bottom-nav tab — this is
-                  // Home's preview of it, so "See all" pushes the full
-                  // announcements screen instead of jumping tabs.
-                  onAction: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const StudentAnnouncementsScreen(),
+              child: AnnouncementsFeed(
+                header: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 26, 20, 10),
+                  child: SectionHeader(
+                    title: 'Announcements',
+                    actionLabel: 'See all',
+                    // Announcements is no longer a bottom-nav tab — this is
+                    // Home's preview of it, so "See all" pushes the full
+                    // announcements screen instead of jumping tabs.
+                    onAction: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const StudentAnnouncementsScreen(),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ),
-
-            // Announcements Feed
-            SliverToBoxAdapter(
-              child: AnnouncementsFeed(
                 onTap: (announcementData) {
                   _navigateToAnnouncementDetail(announcementData);
                 },

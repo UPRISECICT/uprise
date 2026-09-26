@@ -682,22 +682,20 @@ class _GuestHomeContentState extends State<_GuestHomeContent> {
           ),
 
           // ── Announcements ─────────────────────────────────
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 26, 20, 10),
-              child: SectionHeader(
-                title: 'Announcements',
-                actionLabel: 'See all',
-                onAction: _openAnnouncements,
-              ),
-            ),
-          ),
-
           // Public-only. AnnouncementsFeed applies no audience filter of its
           // own, so without this a guest would see Members-Only posts. Same
-          // rule OrgBrowsingConfig.publicAnnouncementsOnly enforces.
+          // rule OrgBrowsingConfig.publicAnnouncementsOnly enforces. The
+          // header is passed in so the section hides when the feed is empty.
           SliverToBoxAdapter(
             child: AnnouncementsFeed(
+              header: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 26, 20, 10),
+                child: SectionHeader(
+                  title: 'Announcements',
+                  actionLabel: 'See all',
+                  onAction: _openAnnouncements,
+                ),
+              ),
               allowedAudiences: const {'Public'},
               onTap: (_) => _openAnnouncements(),
             ),

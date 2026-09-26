@@ -2413,6 +2413,34 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     } else {
       _checkingFeedback = false;
     }
+    _schedulePhaseRebuild();
+  }
+
+  // Rebuilds the screen the moment the event starts or ends, so time-gated
+  // UI (the Enter Code button, registration, feedback) flips on its own
+  // while the student has this screen open instead of waiting for a reopen.
+  Timer? _phaseTimer;
+
+  void _schedulePhaseRebuild() {
+    _phaseTimer?.cancel();
+    final next = switch (widget.event.timeStatus) {
+      EventTimeStatus.upcoming => widget.event.fullDateTime,
+      EventTimeStatus.ongoing => widget.event.endDateTime,
+      EventTimeStatus.completed => null,
+    };
+    if (next == null) return;
+    // +1s so timeStatus has definitely crossed the boundary when we rebuild.
+    final delay =
+        next.difference(DateTime.now()) + const Duration(seconds: 1);
+    _phaseTimer = Timer(delay, () {
+      if (!mounted) return;
+      final nowOver = _isEventReallyOver;
+      setState(() {
+        if (nowOver) _checkingFeedback = true;
+      });
+      if (nowOver) _checkFeedbackStatus();
+      _schedulePhaseRebuild();
+    });
   }
 
   Future<void> _loadUserData() async {
@@ -2457,6 +2485,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
   @override
   void dispose() {
+    _phaseTimer?.cancel();
     for (final c in _fieldControllers.values) {
       c.dispose();
     }
@@ -2680,28 +2709,62 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.primaryDark.withOpacity(0.04),
+        color: AppColors.primaryDark.withAlpha(10),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.primaryDark.withOpacity(0.15)),
+        border: Border.all(color: AppColors.primaryDark.withAlpha(38)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(
+              const Icon(
                 Icons.event_available_rounded,
                 size: 16,
                 color: AppColors.primaryDark,
               ),
               const SizedBox(width: 8),
-              Text(
-                'MY EVENT',
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.6,
-                  color: AppColors.primaryDark,
+              const Expanded(
+                child: Text(
+                  'MY EVENT',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.6,
+                    color: AppColors.primaryDark,
+                  ),
+                ),
+              ),
+              // Registration status as a small pill in the header — it used
+              // to be a separate full-width green box above this card that
+              // read like a tappable button.
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.successBg,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.check_circle_rounded,
+                      size: 13,
+                      color: AppColors.success,
+                    ),
+                    SizedBox(width: 4),
+                    Text(
+                      'Registered',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.success,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -2720,6 +2783,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     required Color iconColor,
     required String label,
     required String value,
+    String? note,
     Widget? trailing,
   }) {
     return Row(
@@ -2748,6 +2812,17 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   color: Colors.black87,
                 ),
               ),
+              if (note != null) ...[
+                const SizedBox(height: 3),
+                Text(
+                  note,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: Colors.grey.shade600,
+                    height: 1.35,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -2781,6 +2856,18 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         iconColor: Colors.grey,
         label: 'Attendance',
         value: 'Not recorded',
+      );
+    }
+    // Codes are only shown by the org while the event is running, so the
+    // button only appears then — before that it'd just lead to an
+    // "invalid/expired code" error.
+    if (widget.event.timeStatus == EventTimeStatus.upcoming) {
+      return _myEventStatusRow(
+        icon: Icons.schedule_rounded,
+        iconColor: Colors.orange.shade700,
+        label: 'Attendance',
+        value: 'Not yet recorded',
+        note: 'You can enter the attendance code once the event starts.',
       );
     }
     return _myEventStatusRow(
@@ -3649,11 +3736,19 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
-              title: Row(
+              // Default inset is 40 per side, which leaves a ~280dp dialog on
+              // a 360dp phone; 16 gives the form room to breathe.
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 24,
+              ),
+              // Flexible so the title wraps instead of overflowing the Row
+              // on narrow screens or with a larger system font size.
+              title: const Row(
                 children: [
-                  const Icon(Icons.edit_note, color: AppColors.primaryDark),
-                  const SizedBox(width: 10),
-                  const Text('Register for Event'),
+                  Icon(Icons.edit_note, color: AppColors.primaryDark),
+                  SizedBox(width: 10),
+                  Flexible(child: Text('Register for Event')),
                 ],
               ),
               content: SingleChildScrollView(
@@ -3940,28 +4035,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                       ),
                     ),
 
-                  if (_isRegistered && !_isEventReallyOver)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade50,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.green.shade200),
-                      ),
-                      child: const Center(
-                        child: Text(
-                          '✓ You are registered',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.green,
-                          ),
-                        ),
-                      ),
-                    ),
-
-                  // MY EVENT — attendance + certificate status, grouped
+                  // MY EVENT — registration pill + attendance + certificate
+                  // status (the pill replaces a separate "You are
+                  // registered" box that sat here), grouped
                   // together the way the redesign calls for, both read
                   // from data this screen already fetches/queries
                   // (events/{id}/attendances and certificates), no new

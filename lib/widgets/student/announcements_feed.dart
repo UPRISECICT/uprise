@@ -1,6 +1,7 @@
 // lib/widgets/student/announcements_feed.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../../screens/student/student_announcements_screen.dart';
 import '../../services/org_directory.dart';
 import '../common/feed_cards.dart';
@@ -23,7 +24,16 @@ class AnnouncementsFeed extends StatefulWidget {
   /// than in the query, for the composite-index reason described below.
   final Set<String>? allowedAudiences;
 
-  const AnnouncementsFeed({super.key, this.onTap, this.allowedAudiences});
+  /// Section header rendered above the list. Lives inside the feed so it
+  /// disappears together with the list when there's nothing to show.
+  final Widget? header;
+
+  const AnnouncementsFeed({
+    super.key,
+    this.onTap,
+    this.allowedAudiences,
+    this.header,
+  });
 
   @override
   State<AnnouncementsFeed> createState() => _AnnouncementsFeedState();
@@ -39,12 +49,21 @@ class _AnnouncementsFeedState extends State<AnnouncementsFeed> {
   // without it deployed the query fails outright. Scheduled/draft
   // announcements (isPublished: false) are filtered out client-side below
   // instead; fetches a few extra so there's still room for 4 after that.
+  //
+  // Home only previews the last two months. The range filter is on the same
+  // field as the orderBy, so it needs no composite index.
   late final Stream<QuerySnapshot> _announcementsStream = FirebaseFirestore
       .instance
       .collection('announcements')
+      .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(_cutoff()))
       .orderBy('timestamp', descending: true)
       .limit(10)
       .snapshots();
+
+  static DateTime _cutoff() {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month - 2, now.day);
+  }
 
   @override
   void initState() {
@@ -65,13 +84,8 @@ class _AnnouncementsFeedState extends State<AnnouncementsFeed> {
     if (mounted) setState(() {});
   }
 
-  String _formatTime(DateTime timestamp) {
-    final diff = DateTime.now().difference(timestamp);
-    if (diff.inMinutes < 1) return 'just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    return '${diff.inDays}d ago';
-  }
+  String _formatTime(DateTime timestamp) =>
+      DateFormat('MMM d, yyyy').format(timestamp);
 
   bool _isNew(AnnouncementData a) =>
       DateTime.now().difference(a.timestamp).inHours < 24;
@@ -98,9 +112,11 @@ class _AnnouncementsFeedState extends State<AnnouncementsFeed> {
         if (snapshot.connectionState == ConnectionState.waiting) {
           // Sized to the new card (160 banner + ~90 of text), not the 76 of
           // the compact row this used to render.
-          return const Padding(
-            padding: EdgeInsets.fromLTRB(20, 0, 20, 4),
-            child: SkeletonLoader(count: 2, height: 240, borderRadius: 14),
+          return _withHeader(
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 0, 20, 4),
+              child: SkeletonLoader(count: 2, height: 240, borderRadius: 14),
+            ),
           );
         }
         if (snapshot.hasError) {
@@ -125,37 +141,50 @@ class _AnnouncementsFeedState extends State<AnnouncementsFeed> {
             .take(4)
             .toList();
         if (docs.isEmpty) {
+          // Header included — nothing in the last two months hides the
+          // whole section.
           return const SizedBox();
         }
 
         // Horizontal padding matches Home's section headers (20), since the
         // card this replaced was full-bleed and needed none.
-        return ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
-          itemCount: docs.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 14),
-          itemBuilder: (context, index) {
-            final doc = docs[index];
+        return _withHeader(
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+            itemCount: docs.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 14),
+            itemBuilder: (context, index) {
+              final doc = docs[index];
 
-            // Convert to AnnouncementData
-            final announcement = AnnouncementData.fromFirestore(doc);
+              // Convert to AnnouncementData
+              final announcement = AnnouncementData.fromFirestore(doc);
 
-            return CompactFeedCard(
-              imageSource: announcement.imageUrl,
-              orgName: announcement.org,
-              orgLogoUrl: announcement.logoUrl,
-              badgeLabel: _badgeLabel(announcement),
-              badgeColor: _badgeColor(announcement),
-              title: announcement.title,
-              snippet: announcement.body,
-              timeAgo: _formatTime(announcement.timestamp),
-              onTap: () => widget.onTap?.call(announcement),
-            );
-          },
+              return CompactFeedCard(
+                imageSource: announcement.imageUrl,
+                orgName: announcement.org,
+                orgLogoUrl: announcement.logoUrl,
+                badgeLabel: _badgeLabel(announcement),
+                badgeColor: _badgeColor(announcement),
+                title: announcement.title,
+                snippet: announcement.body,
+                timeAgo: _formatTime(announcement.timestamp),
+                onTap: () => widget.onTap?.call(announcement),
+              );
+            },
+          ),
         );
       },
+    );
+  }
+
+  Widget _withHeader(Widget child) {
+    final header = widget.header;
+    if (header == null) return child;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [header, child],
     );
   }
 }

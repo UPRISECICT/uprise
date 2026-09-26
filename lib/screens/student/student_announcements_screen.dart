@@ -535,10 +535,13 @@ _CategoryTheme _categoryTheme(String category) =>
       Icons.label_outline_rounded,
     );
 
+/// The card's one colored label — sits above the title so the category reads
+/// as "what kind of post this is" instead of competing with the date and
+/// audience in the header row.
 Widget _categoryBadge(String category) {
   final t = _categoryTheme(category);
   return Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
     decoration: BoxDecoration(
       color: t.bg,
       borderRadius: BorderRadius.circular(20),
@@ -546,20 +549,51 @@ Widget _categoryBadge(String category) {
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(t.icon, size: 10, color: t.fg),
-        const SizedBox(width: 4),
+        Icon(t.icon, size: 13, color: t.fg),
+        const SizedBox(width: 5),
         Text(
-          category,
+          category.toUpperCase(),
           style: TextStyle(
-            fontSize: 9.5,
-            fontWeight: FontWeight.w700,
+            fontSize: 10.5,
+            fontWeight: FontWeight.w800,
             color: t.fg,
-            letterSpacing: 0.3,
+            letterSpacing: 0.6,
           ),
         ),
       ],
     ),
   );
+}
+
+/// Who the post is for, as plain header text rather than a second chip.
+/// `tag` falls back to the category when a post has no targetAudience, so
+/// that case (and the generic default) is skipped instead of repeating the
+/// category badge.
+({String label, IconData icon})? _audienceInfo(AnnouncementData ann) {
+  final raw = ann.tag.trim();
+  if (raw.isEmpty ||
+      raw == 'ANNOUNCEMENT' ||
+      raw == ann.category.toUpperCase()) {
+    return null;
+  }
+  final label = raw
+      .toLowerCase()
+      .split(' ')
+      .map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}')
+      .join(' ')
+      .replaceAll('Cict', 'CICT')
+      .replaceAll('Bulsuan', 'BulSUan');
+  final IconData icon;
+  if (raw == 'PUBLIC') {
+    icon = Icons.public_rounded;
+  } else if (raw.contains('MEMBERS')) {
+    icon = Icons.groups_outlined;
+  } else if (raw.contains('BULSUAN')) {
+    icon = Icons.school_outlined;
+  } else {
+    icon = Icons.lock_outline_rounded;
+  }
+  return (label: label, icon: icon);
 }
 
 class _AnnouncementCard extends StatefulWidget {
@@ -594,17 +628,22 @@ class _AnnouncementCardState extends State<_AnnouncementCard> {
     final isLong =
         ann.body.length > 220 || '\n'.allMatches(ann.body).length > 4;
     final truncated = isLong && !_expanded;
+    final audience = _audienceInfo(ann);
+    const metaStyle = TextStyle(fontSize: 12, color: AppColors.textMuted);
 
     return GestureDetector(
       onTap: () => _navigateToDetail(context),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        // The shared borderless card token — white, soft shadow, no outline.
-        // The category is already carried by _categoryBadge() in the header;
-        // the 4px category-colored accent bar that used to sit on the left
-        // edge read as a near-black rule for every unmapped category (they
-        // all fall back to #475569) and was reported as a border bug.
-        decoration: kCardDecoration(),
+        margin: const EdgeInsets.only(bottom: 20),
+        // The shared card token plus a hairline outline, so long posts still
+        // read as separate cards against the grey background. The category
+        // is carried by _categoryBadge() above the title; the 4px
+        // category-colored accent bar that used to sit on the left edge read
+        // as a near-black rule for every unmapped category (they all fall
+        // back to #475569) and was reported as a border bug.
+        decoration: kCardDecoration().copyWith(
+          border: Border.all(color: AppColors.divider),
+        ),
         clipBehavior: Clip.antiAlias,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -620,7 +659,7 @@ class _AnnouncementCardState extends State<_AnnouncementCard> {
                     height: 42,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: AppColors.primaryDark.withOpacity(0.1),
+                      color: AppColors.primaryDark.withAlpha(26),
                     ),
                     child: ClipOval(
                       child:
@@ -671,50 +710,30 @@ class _AnnouncementCardState extends State<_AnnouncementCard> {
                           ),
                         ),
                         const SizedBox(height: 3),
+                        // Date · audience as plain muted text — metadata,
+                        // not badges, so nothing here competes with the
+                        // category label below.
                         Wrap(
                           crossAxisAlignment: WrapCrossAlignment.center,
-                          spacing: 8,
-                          runSpacing: 4,
+                          spacing: 6,
+                          runSpacing: 2,
                           children: [
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.access_time_rounded,
-                                  size: 11,
-                                  color: Colors.grey.shade500,
-                                ),
-                                const SizedBox(width: 3),
-                                Text(
-                                  _timeAgo(ann.timestamp),
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.grey.shade500,
+                            Text(_timeAgo(ann.timestamp), style: metaStyle),
+                            if (audience != null) ...[
+                              Text('·', style: metaStyle),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    audience.icon,
+                                    size: 13,
+                                    color: AppColors.textMuted,
                                   ),
-                                ),
-                              ],
-                            ),
-                            if (ann.category.isNotEmpty)
-                              _categoryBadge(ann.category),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 7,
-                                vertical: 2,
+                                  const SizedBox(width: 3),
+                                  Text(audience.label, style: metaStyle),
+                                ],
                               ),
-                              decoration: BoxDecoration(
-                                color: AppColors.primaryDark.withOpacity(0.08),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                ann.tag,
-                                style: TextStyle(
-                                  fontSize: 9.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.primaryDark,
-                                  letterSpacing: 0.3,
-                                ),
-                              ),
-                            ),
+                            ],
                           ],
                         ),
                       ],
@@ -724,17 +743,26 @@ class _AnnouncementCardState extends State<_AnnouncementCard> {
               ),
             ),
 
-            // ── Title ──
+            // ── Category label + title ──
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-              child: Text(
-                ann.title,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black87,
-                  height: 1.3,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (ann.category.isNotEmpty) ...[
+                    _categoryBadge(ann.category),
+                    const SizedBox(height: 8),
+                  ],
+                  Text(
+                    ann.title,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                      height: 1.3,
+                    ),
+                  ),
+                ],
               ),
             ),
 
@@ -772,80 +800,93 @@ class _AnnouncementCardState extends State<_AnnouncementCard> {
               ),
             ),
 
-            // ── Go to linked event ──
-            if (ann.linkedEventId.isNotEmpty)
+            // ── Photo — shown in full, never cropped or covered ──
+            // Inset and rounded so it reads as part of this post's content
+            // rather than a separate full-bleed block. Tappable: the card
+            // caps the photo at 420px, so a tall image still needs the
+            // fullscreen viewer to be read.
+            if (ann.imageUrl.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () => _goToLinkedEvent(context, ann),
-                    icon: Icon(
-                      Icons.event_available_rounded,
-                      size: 16,
-                      color: AppColors.primaryDark,
-                    ),
-                    label: Text(
-                      'View Event: ${ann.linkedEventTitle}',
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.primaryDark,
-                      side: BorderSide(
-                        color: AppColors.primaryDark.withOpacity(0.3),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 10,
-                        horizontal: 12,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: expandableImage(
+                    context: context,
+                    source: ann.imageUrl,
+                    child: Container(
+                      width: double.infinity,
+                      constraints: const BoxConstraints(maxHeight: 420),
+                      color: const Color(0xFFF8F9FB),
+                      child: AppImage.provider(ann.imageUrl) != null
+                          ? Image(
+                              image: AppImage.provider(ann.imageUrl)!,
+                              width: double.infinity,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, __, ___) => Container(
+                                height: 200,
+                                color: const Color(0xFFF8F9FB),
+                                child: Icon(
+                                  Icons.broken_image_outlined,
+                                  color: Colors.grey.shade400,
+                                ),
+                              ),
+                            )
+                          : Container(
+                              height: 200,
+                              color: const Color(0xFFF8F9FB),
+                              child: Icon(
+                                Icons.broken_image_outlined,
+                                color: Colors.grey.shade400,
+                              ),
+                            ),
                     ),
                   ),
                 ),
               ),
 
-            // ── Photo — shown in full, never cropped or covered ──
-            // Tappable: the card caps the photo at 420px, so a tall
-            // image still needs the fullscreen viewer to be read.
-            if (ann.imageUrl.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              expandableImage(
-                context: context,
-                source: ann.imageUrl,
-                child: Container(
-                  width: double.infinity,
-                  constraints: const BoxConstraints(maxHeight: 420),
-                  color: const Color(0xFFF8F9FB),
-                  child: AppImage.provider(ann.imageUrl) != null
-                      ? Image(
-                          image: AppImage.provider(ann.imageUrl)!,
-                          width: double.infinity,
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, __, ___) => Container(
-                            height: 200,
-                            color: const Color(0xFFF8F9FB),
-                            child: Icon(
-                              Icons.broken_image_outlined,
-                              color: Colors.grey.shade400,
-                            ),
-                          ),
-                        )
-                      : Container(
-                          height: 200,
-                          color: const Color(0xFFF8F9FB),
-                          child: Icon(
-                            Icons.broken_image_outlined,
-                            color: Colors.grey.shade400,
+            // ── Go to linked event — the card's one action, kept as a
+            // divided footer so it isn't wedged between text and photo ──
+            if (ann.linkedEventId.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              const Divider(height: 1, thickness: 1, color: AppColors.divider),
+              InkWell(
+                onTap: () => _goToLinkedEvent(context, ann),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 13,
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.event_available_rounded,
+                        size: 18,
+                        color: AppColors.primaryDark,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'View Event: ${ann.linkedEventTitle}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.primaryDark,
                           ),
                         ),
+                      ),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        size: 20,
+                        color: AppColors.primaryDark,
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ],
-
-            const SizedBox(height: 12),
+            ] else
+              const SizedBox(height: 16),
           ],
         ),
       ),
@@ -912,489 +953,284 @@ class AnnouncementDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final ann = announcement;
     final logoUrl = _logoUrl;
+    final audience = _audienceInfo(ann);
+    const metaStyle = TextStyle(fontSize: 12.5, color: AppColors.textMuted);
+    final hasImage =
+        ann.imageUrl.isNotEmpty && AppImage.provider(ann.imageUrl) != null;
 
     return Scaffold(
       backgroundColor: Colors.white,
-      body: CustomScrollView(
-        slivers: [
-          // ── App Bar with Hero Image ──
-          SliverAppBar(
-            expandedHeight: 300,
-            pinned: true,
-            backgroundColor: Colors.white,
-            foregroundColor: Colors.black,
-            elevation: 0,
-            leading: IconButton(
-              icon: Container(
-                padding: const EdgeInsets.all(8),
+      // Same bar as the list screen. The old 300px hero cropped posters with
+      // BoxFit.cover and stacked the audience/date chips over them; the photo
+      // now sits in the content, uncropped.
+      appBar: const StudentAppBar(title: 'Announcement'),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
+        children: [
+          // ── Org + date · time · audience — same header as the list card ──
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 48,
+                height: 48,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.9),
                   shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
+                  color: AppColors.primaryDark.withAlpha(26),
                 ),
-                child: const Icon(
-                  Icons.arrow_back,
-                  size: 20,
-                  color: Colors.black,
+                child: ClipOval(
+                  child: (logoUrl != null && AppImage.provider(logoUrl) != null)
+                      ? Image(
+                          image: AppImage.provider(logoUrl)!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const Icon(
+                            Icons.business_center_outlined,
+                            size: 24,
+                            color: AppColors.primaryDark,
+                          ),
+                        )
+                      : const Icon(
+                          Icons.business_center_outlined,
+                          size: 24,
+                          color: AppColors.primaryDark,
+                        ),
                 ),
               ),
-              onPressed: () => Navigator.pop(context),
-            ),
-            flexibleSpace: FlexibleSpaceBar(
-              // Tappable: the hero crops with BoxFit.cover, so the whole
-              // picture is only visible in the fullscreen viewer.
-              //
-              // The handler wraps the entire Stack rather than just the image.
-              // The scrim and badges layered over it are Containers with a
-              // BoxDecoration, and BoxDecoration.hitTest returns true for a
-              // plain rectangle — so as siblings painted above the image they
-              // swallowed every tap. An ancestor still receives what a child
-              // absorbs, so hanging the gesture above the Stack makes the
-              // whole hero tappable instead of fighting each overlay.
-              background: expandableImage(
-                context: context,
-                source: ann.imageUrl,
-                child: Stack(
-                  fit: StackFit.expand,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    (ann.imageUrl.isNotEmpty &&
-                            AppImage.provider(ann.imageUrl) != null)
-                        ? Image(
-                            image: AppImage.provider(ann.imageUrl)!,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => Container(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [
-                                    AppColors.primaryDark,
-                                    AppColors.primaryDark.withOpacity(0.7),
-                                  ],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ),
+                    Text(
+                      ann.org,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 6,
+                      runSpacing: 2,
+                      children: [
+                        Text('${ann.date} · ${ann.time}', style: metaStyle),
+                        if (audience != null) ...[
+                          const Text('·', style: metaStyle),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                audience.icon,
+                                size: 14,
+                                color: AppColors.textMuted,
                               ),
-                              child: const Icon(
-                                Icons.image_outlined,
-                                size: 80,
-                                color: Colors.white,
-                              ),
-                            ),
-                          )
-                        : Container(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  AppColors.primaryDark,
-                                  AppColors.primaryDark.withOpacity(0.7),
-                                ],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
-                            ),
-                            child: const Icon(
-                              Icons.image_outlined,
-                              size: 80,
-                              color: Colors.white,
-                            ),
-                          ),
-
-                    // IgnorePointer: this scrim and the badge below it are
-                    // decoration, but a Container with a decoration is opaque to
-                    // hit-testing, so they were swallowing every tap meant for
-                    // the image underneath and the hero never opened.
-                    IgnorePointer(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              Colors.black.withOpacity(0.4),
+                              const SizedBox(width: 3),
+                              Text(audience.label, style: metaStyle),
                             ],
                           ),
-                        ),
-                      ),
-                    ),
-
-                    // ── Tag Badge ──
-                    Positioned(
-                      bottom: 20,
-                      left: 20,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.95),
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.2),
-                              blurRadius: 10,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 6,
-                              height: 6,
-                              decoration: BoxDecoration(
-                                color: AppColors.primaryDark,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              ann.tag,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.primaryDark,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    // ── Date on Image ──
-                    Positioned(
-                      bottom: 20,
-                      right: 20,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.5),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.calendar_today_rounded,
-                              size: 12,
-                              color: Colors.white,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              ann.date,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: Colors.white,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            const Icon(
-                              Icons.access_time_rounded,
-                              size: 12,
-                              color: Colors.white,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              ann.time,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: Colors.white,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                        ],
+                      ],
                     ),
                   ],
                 ),
               ),
+            ],
+          ),
+
+          const SizedBox(height: 22),
+
+          // ── Category + title ──
+          if (ann.category.isNotEmpty) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _categoryBadge(ann.category),
+            ),
+            const SizedBox(height: 10),
+          ],
+          Text(
+            ann.title,
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textPrimary,
+              height: 1.3,
             ),
           ),
 
+          // ── Photo — whole poster, never cropped or covered. Tap for
+          // fullscreen, since it's capped at 460px here ──
+          if (hasImage) ...[
+            const SizedBox(height: 18),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: expandableImage(
+                context: context,
+                source: ann.imageUrl,
+                child: Container(
+                  width: double.infinity,
+                  constraints: const BoxConstraints(maxHeight: 460),
+                  color: const Color(0xFFF8F9FB),
+                  child: Image(
+                    image: AppImage.provider(ann.imageUrl)!,
+                    width: double.infinity,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const SizedBox(
+                      height: 200,
+                      child: Icon(
+                        Icons.broken_image_outlined,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+
+          const SizedBox(height: 18),
+
           // ── Body ──
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ── Organization Row with Logo ──
-                  Row(
+          _buildRichContent(
+            ann.body,
+            const TextStyle(
+              fontSize: 15,
+              color: AppColors.textSecondary,
+              height: 1.65,
+            ),
+          ),
+
+          // ── Linked event — one tappable card instead of a box + button ──
+          if (ann.linkedEventId.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            Material(
+              color: AppColors.primaryDark.withAlpha(13),
+              borderRadius: BorderRadius.circular(14),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () => _goToLinkedEvent(context, ann),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: AppColors.primaryDark.withAlpha(38),
+                    ),
+                  ),
+                  child: Row(
                     children: [
                       Container(
-                        width: 48,
-                        height: 48,
+                        width: 40,
+                        height: 40,
                         decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppColors.primaryDark.withOpacity(0.1),
+                          color: AppColors.primaryDark.withAlpha(26),
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                        child: ClipOval(
-                          child:
-                              (logoUrl != null &&
-                                  logoUrl.isNotEmpty &&
-                                  AppImage.provider(logoUrl) != null)
-                              ? Image(
-                                  image: AppImage.provider(logoUrl)!,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => Icon(
-                                    Icons.business_center_outlined,
-                                    size: 24,
-                                    color: AppColors.primaryDark,
-                                  ),
-                                )
-                              : Icon(
-                                  Icons.business_center_outlined,
-                                  size: 24,
-                                  color: AppColors.primaryDark,
-                                ),
+                        child: const Icon(
+                          Icons.event_available_rounded,
+                          size: 20,
+                          color: AppColors.primaryDark,
                         ),
                       ),
-                      const SizedBox(width: 14),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              ann.org,
-                              style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.black87,
+                            const Text(
+                              'LINKED EVENT',
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.primaryDark,
+                                letterSpacing: 0.6,
                               ),
                             ),
+                            const SizedBox(height: 2),
                             Text(
-                              ann.orgSub,
+                              ann.linkedEventTitle.isNotEmpty
+                                  ? ann.linkedEventTitle
+                                  : 'View event',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textPrimary,
                               ),
                             ),
                           ],
                         ),
                       ),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        color: AppColors.primaryDark,
+                      ),
                     ],
                   ),
-
-                  const SizedBox(height: 20),
-                  const Divider(color: Color(0xFFF0F0F0), thickness: 1),
-                  const SizedBox(height: 20),
-
-                  // ── Title ──
-                  Text(
-                    ann.title,
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.black87,
-                      height: 1.3,
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // ── Body ──
-                  _buildRichContent(
-                    ann.body,
-                    TextStyle(
-                      fontSize: 15,
-                      color: Colors.grey.shade800,
-                      height: 1.8,
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // ── Go to Linked Event ──
-                  if (ann.linkedEventId.isNotEmpty) ...[
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryDark.withOpacity(0.05),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: AppColors.primaryDark.withOpacity(0.15),
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.event_available_rounded,
-                                color: AppColors.primaryDark,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 8),
-                              const Text(
-                                'Event Registration',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.black87,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'This announcement is linked to ${ann.linkedEventTitle}',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton.icon(
-                              onPressed: () => _goToLinkedEvent(context, ann),
-                              icon: const Icon(
-                                Icons.event_available_rounded,
-                                size: 18,
-                              ),
-                              label: const Text(
-                                'View Event',
-                                style: TextStyle(fontWeight: FontWeight.w600),
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.primaryDark,
-                                foregroundColor: Colors.white,
-                                elevation: 0,
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 12,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                  ],
-
-                  // ── Hashtags ──
-                  if (ann.hashtags.isNotEmpty) ...[
-                    const Text(
-                      'Tags',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 6,
-                      children: ann.hashtags
-                          .map(
-                            (tag) => Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.primaryDark.withOpacity(0.08),
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Text(
-                                tag,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: AppColors.primaryDark,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          )
-                          .toList(),
-                    ),
-                    const SizedBox(height: 20),
-                  ],
-
-                  // ── Attachments ──
-                  if (ann.attachments.isNotEmpty) ...[
-                    Row(
-                      children: [
-                        const Text(
-                          'Attachments',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.primaryDark.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            '${ann.attachments.length}',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.primaryDark,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFD),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFEEEEEE)),
-                      ),
-                      child: Column(
-                        children: ann.attachments.asMap().entries.map((entry) {
-                          final index = entry.key;
-                          final att = entry.value;
-                          return Column(
-                            children: [
-                              _AttachmentTile(attachment: att, index: index),
-                              if (index < ann.attachments.length - 1)
-                                const Divider(
-                                  height: 1,
-                                  color: Color(0xFFEEEEEE),
-                                ),
-                            ],
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                  ],
-
-                  const SizedBox(height: 40),
-                ],
+                ),
               ),
             ),
-          ),
+          ],
+
+          // ── Hashtags ──
+          if (ann.hashtags.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            const Text(
+              'Tags',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: ann.hashtags
+                  .map(
+                    (tag) => Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryDark.withAlpha(20),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Text(
+                        tag,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.primaryDark,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
+
+          // ── Attachments — one layer of tiles, no outer box ──
+          if (ann.attachments.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            Text(
+              'Attachments (${ann.attachments.length})',
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 10),
+            for (var i = 0; i < ann.attachments.length; i++) ...[
+              if (i > 0) const SizedBox(height: 8),
+              _AttachmentTile(attachment: ann.attachments[i], index: i),
+            ],
+          ],
         ],
       ),
     );
@@ -1574,7 +1410,7 @@ class _AttachmentTileState extends State<_AttachmentTile> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: _iconColor.withOpacity(0.1),
+              color: _iconColor.withAlpha(26),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(_icon, size: 20, color: _iconColor),
@@ -1615,7 +1451,7 @@ class _AttachmentTileState extends State<_AttachmentTile> {
                   child: Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: AppColors.primaryDark.withOpacity(0.1),
+                      color: AppColors.primaryDark.withAlpha(26),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Icon(

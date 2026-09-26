@@ -128,6 +128,16 @@ class _PersonalOrNextEventCountdownState
           // the carousel still reads as one band. The parent is a
           // SliverToBoxAdapter, so the vertical space is unbounded and this is
           // free to be as tall as it needs.
+          //
+          // Width follows the screen rather than a fixed 400, which ran past
+          // the right edge on ~360dp phones. A lone card fills the row; with
+          // several, each leaves a sliver of the next one peeking in so the
+          // row reads as swipeable.
+          final screenWidth = MediaQuery.sizeOf(context).width;
+          final fullWidth = screenWidth - 40;
+          final cardWidth = events.length == 1
+              ? fullWidth
+              : (screenWidth * 0.86).clamp(0.0, 400.0);
           return SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -141,7 +151,7 @@ class _PersonalOrNextEventCountdownState
                         right: i == events.length - 1 ? 0 : 12,
                       ),
                       child: SizedBox(
-                        width: 400,
+                        width: cardWidth,
                         child: CountdownWidget(event: events[i]),
                       ),
                     ),

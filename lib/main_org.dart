@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'auth_service.dart';
 import 'firebase_options.dart';
+import 'screens/public/certificate_verify_screen.dart';
 import 'screens/web/org/org_dashboard.dart';
 import 'screens/web/org/org_landing_page.dart';
 import 'services/app_sign_out.dart';
@@ -11,6 +12,15 @@ import 'services/app_sign_out.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Certificate QR codes open this site with ?verify=CODE — show the public
+  // verification page instead of the landing page. Nothing else changes when
+  // the parameter is absent.
+  final verifyCode = certificateVerifyCodeFromUrl();
+  if (verifyCode != null) {
+    runApp(CertificateVerifyApp(verificationCode: verifyCode));
+    return;
+  }
 
   runApp(
     const MaterialApp(

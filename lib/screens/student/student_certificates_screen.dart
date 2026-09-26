@@ -49,6 +49,15 @@ class SignatoryData {
   }
 }
 
+// The verification code to print on a certificate, or null when there is
+// nothing to verify: certificates the student uploaded themselves are stored
+// with an empty code and must never carry a UPRISE verification QR.
+String? _certVerifyCode(Map<String, dynamic> cert) {
+  if (cert['isUploaded'] == true) return null;
+  final code = (cert['verificationCode'] ?? '').toString().trim();
+  return code.isEmpty ? null : code;
+}
+
 class _ImageSourceTile extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -1008,7 +1017,7 @@ class _CertificatesContentState extends State<CertificatesContent> {
                   ? cert['recipientName'] as String
                   : 'Recipient',
               signatories: signatories,
-              verificationCode: null,
+              verificationCode: _certVerifyCode(cert),
             ),
           ),
         ),
@@ -1365,6 +1374,36 @@ class _CertificateTemplateWithSignatoriesState
 
   @override
   Widget build(BuildContext context) {
+    final template = _buildTemplate();
+    final code = _certVerifyCode(widget.cert);
+    if (code == null) return template;
+
+    // Custom templates are a flat image, so the verification QR is overlaid
+    // in the bottom-right corner, scaled off the same 500-wide reference as
+    // the signatures so it lands identically in the card, the full viewer,
+    // and the captured PDF.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (!constraints.maxWidth.isFinite || !constraints.maxHeight.isFinite) {
+          return template;
+        }
+        final scale = constraints.maxWidth / 500.0;
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            template,
+            Positioned(
+              right: 10 * scale,
+              bottom: 10 * scale,
+              child: CertificateVerifyQr(code: code, size: 40 * scale),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildTemplate() {
     final cert = widget.cert;
     final templateImageUrl = cert['imageUrl'] as String? ?? '';
 
@@ -1604,7 +1643,7 @@ class CertificateDetailScreen extends StatelessWidget {
                 ? cert['recipientName'] as String
                 : 'Recipient',
             signatories: signatories,
-            verificationCode: null,
+            verificationCode: _certVerifyCode(cert),
           ),
         ),
       ),
@@ -1619,6 +1658,7 @@ class CertificateDetailScreen extends StatelessWidget {
     final organization = certificate['organization'] as String;
     final date = certificate['date'] as String;
     final recipientName = certificate['recipientName'] as String;
+    final verifyCode = _certVerifyCode(certificate);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
@@ -1727,6 +1767,39 @@ class CertificateDetailScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   _DetailRow(label: 'Issued Date', value: date),
+                  if (verifyCode != null) ...[
+                    const SizedBox(height: 12),
+                    _DetailRow(label: 'Verification Code', value: verifyCode),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Anyone can confirm this certificate is authentic by '
+                      'scanning its QR code or opening the verification link.',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: Colors.grey.shade600,
+                        height: 1.4,
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: () async {
+                        await Clipboard.setData(
+                          ClipboardData(text: certificateVerifyUrl(verifyCode)),
+                        );
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Verification link copied'),
+                          ),
+                        );
+                      },
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.primaryDark,
+                        padding: EdgeInsets.zero,
+                      ),
+                      icon: const Icon(Icons.link_rounded, size: 18),
+                      label: const Text('Copy verification link'),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   Container(
                     padding: const EdgeInsets.symmetric(
@@ -2028,7 +2101,7 @@ class _CertificateDownloadPreviewSheetState
           ? cert['recipientName'] as String
           : 'Recipient',
       signatories: signatories,
-      verificationCode: null,
+      verificationCode: _certVerifyCode(cert),
     );
   }
 }

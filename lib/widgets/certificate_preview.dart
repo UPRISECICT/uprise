@@ -14,6 +14,66 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+// Public verification page — main_web.dart intercepts `?verify=CODE` before
+// auth and renders CertificateVerifyScreen, so the QR on a certificate opens
+// it straight from any phone camera with no login.
+const String kCertificateVerifyBaseUrl = 'https://org.uprisecict.site/';
+
+String certificateVerifyUrl(String code) =>
+    '$kCertificateVerifyBaseUrl?verify=${Uri.encodeQueryComponent(code)}';
+
+/// Small white QR tile with the code printed under it. Used on the built-in
+/// designs below and overlaid on custom-uploaded templates by the student
+/// and guest viewers. [size] is the QR edge in the caller's coordinate space.
+class CertificateVerifyQr extends StatelessWidget {
+  final String code;
+  final double size;
+  final Color labelColor;
+  const CertificateVerifyQr({
+    super.key,
+    required this.code,
+    this.size = 44,
+    this.labelColor = const Color(0xFF64748B),
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // The code sits inside the white tile, so it stays legible on any
+    // template background (custom uploads are often dark photos).
+    return Container(
+      padding: EdgeInsets.all(size * 0.09),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(size * 0.09),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          QrImageView(
+            data: certificateVerifyUrl(code),
+            version: QrVersions.auto,
+            size: size,
+            padding: EdgeInsets.zero,
+            backgroundColor: Colors.white,
+          ),
+          SizedBox(height: size * 0.04),
+          Text(
+            code,
+            maxLines: 1,
+            style: GoogleFonts.beVietnamPro(
+              fontSize: size * 0.13,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.3,
+              height: 1.1,
+              color: labelColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // Where the recipient's name goes on an imported/custom template image —
 // the org info, event info, and signatories are already baked into that
 // image, so this is the only thing that varies per recipient. Position is
@@ -615,33 +675,10 @@ class CertificatePreview extends StatelessWidget {
                                   .toList(),
                             ),
                     ),
-                    if (verificationCode != null) ...[
+                    if (verificationCode != null &&
+                        verificationCode!.isNotEmpty) ...[
                       const SizedBox(width: 10),
-                      Column(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: QrImageView(
-                              data: verificationCode!,
-                              version: QrVersions.auto,
-                              size: 44,
-                              backgroundColor: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Verify',
-                            style: GoogleFonts.beVietnamPro(
-                              fontSize: 7.5,
-                              color: textColor.withAlpha(128),
-                            ),
-                          ),
-                        ],
-                      ),
+                      CertificateVerifyQr(code: verificationCode!),
                     ],
                   ],
                 ),

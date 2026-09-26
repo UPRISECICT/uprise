@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'auth_service.dart';
 import 'firebase_options.dart';
+import 'screens/public/certificate_verify_screen.dart';
 import 'screens/web/admin/admin_dashboard.dart';
 import 'screens/web/admin/admin_landing_page.dart';
 import 'services/app_sign_out.dart';
@@ -11,6 +12,14 @@ import 'services/app_sign_out.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Same public ?verify=CODE handling as main_org.dart, so a verification
+  // link works on either portal's domain.
+  final verifyCode = certificateVerifyCodeFromUrl();
+  if (verifyCode != null) {
+    runApp(CertificateVerifyApp(verificationCode: verifyCode));
+    return;
+  }
 
   runApp(
     const MaterialApp(

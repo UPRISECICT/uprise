@@ -3,6 +3,39 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
+/// The `?verify=CODE` query parameter, or null when the page was opened
+/// normally. Certificate QR codes link to `https://org.uprisecict.site/?verify=`,
+/// so every web entry point checks this before showing its landing page.
+String? certificateVerifyCodeFromUrl() {
+  final code = Uri.base.queryParameters['verify']?.trim();
+  return (code == null || code.isEmpty) ? null : code;
+}
+
+/// Standalone app for the public verification page — no auth required.
+/// Same setup main_web.dart uses, shared by main_org.dart and main_admin.dart
+/// (the entry points actually deployed to org./admin.uprisecict.site).
+class CertificateVerifyApp extends StatelessWidget {
+  final String verificationCode;
+  const CertificateVerifyApp({super.key, required this.verificationCode});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'UPRISE - Certificate Verification',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        primaryColor: const Color(0xFFB45309),
+        fontFamily: 'BeVietnamPro',
+        useMaterial3: true,
+        progressIndicatorTheme: const ProgressIndicatorThemeData(
+          color: Color(0xFFB45309),
+        ),
+      ),
+      home: CertificateVerifyScreen(verificationCode: verificationCode),
+    );
+  }
+}
+
 class CertificateVerifyScreen extends StatefulWidget {
   final String verificationCode;
   const CertificateVerifyScreen({super.key, required this.verificationCode});

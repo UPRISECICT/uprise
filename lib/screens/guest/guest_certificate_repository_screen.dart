@@ -8,14 +8,12 @@
 // org_certificates.dart's distribution flow — never the student
 // "recipientUid == null" broadcast-fallback branch.
 
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:http/http.dart' as http;
 
-import '../../utils/platform_file_utils.dart' as platform_file_utils;
 import 'guest_auth_service.dart';
+import '../student/student_certificates_screen.dart' show CertificateDetailScreen;
 import '../../widgets/student/app_colors.dart';
 import '../../widgets/student/app_image.dart';
 import '../../widgets/student/student_app_bar.dart';
@@ -64,17 +62,40 @@ class _GuestCertificateRepositoryScreenState
           .where('isGuest', isEqualTo: true)
           .where('recipientEmail', isEqualTo: _email)
           .get();
-      final docs = snap.docs.map((d) {
+      // Same field shape as the student viewer's _docToMap, because opening a
+      // certificate hands this map to the shared CertificateDetailScreen. The
+      // org writes the template as `templateFileUrl` (never `imageUrl`), and
+      // the recipient name and signatures are overlaid at render time — so
+      // reading only `imageUrl` and downloading the raw template file, as
+      // this screen used to, produced a blank certificate with no name.
+      final docs = snap.docs
+          .where((d) => (d.data()['status'] ?? '') != 'draft')
+          .map((d) {
         final data = d.data();
-        return {
+        return <String, dynamic>{
           'id': d.id,
-          'title': data['eventName'] ?? 'Untitled Certificate',
-          'organization': data['organization'] ?? '',
+          'title': (data['eventName'] ?? 'Untitled Certificate').toString(),
+          'date': _formatDate(data['issuedAt']),
           'category': data['type'] ?? data['templateType'] ?? 'General',
+          'organization': (data['organization'] ?? '').toString(),
+          'recipientName': (data['recipientName'] ?? '').toString(),
+          'signatories':
+              data['signatories'] is List ? data['signatories'] : const [],
+          'templateType': data['templateType'] ?? data['type'] ?? 'modern',
+          'imageUrl':
+              (data['templateFileUrl'] ?? data['imageUrl'] ?? '').toString(),
+          'namePlacement':
+              data['namePlacement'] is Map ? data['namePlacement'] : null,
+          'signatoryPlacements': data['signatoryPlacements'] is Map
+              ? data['signatoryPlacements']
+              : null,
+          'isUploaded': false,
+          'verificationCode': (data['verificationCode'] ?? '').toString(),
+          'eventId': data['eventId'] ?? '',
+          'templateData': data['templateData'] is Map
+              ? data['templateData']
+              : <String, dynamic>{},
           'issuedAt': data['issuedAt'],
-          'verificationCode': data['verificationCode'] ?? '',
-          'imageUrl': data['imageUrl'] ?? '',
-          'templateFileUrl': data['templateFileUrl'] ?? '',
         };
       }).toList();
 
@@ -130,92 +151,15 @@ class _GuestCertificateRepositoryScreenState
     );
   }
 
-  Future<void> _download(Map<String, dynamic> cert) async {
-    final imageUrl = (cert['imageUrl'] ?? '').toString();
-    final fileUrl = (cert['templateFileUrl'] ?? '').toString();
-    final fileName = '${cert['title']}.${imageUrl.isNotEmpty ? 'png' : 'pdf'}';
-    try {
-      Uint8List? bytes;
-      // decodeAppImageBytes returns null for network URLs and for anything it
-      // can't decode, so null here is exactly the "fetch it instead" case. It
-      // accepts more shapes than the old check did: raw base64 with no prefix,
-      // and the malformed `dataimage...` variant.
-      final inlineBytes = decodeAppImageBytes(imageUrl);
-      if (inlineBytes != null) {
-        bytes = inlineBytes;
-      } else {
-        final url = imageUrl.isNotEmpty ? imageUrl : fileUrl;
-        if (url.isEmpty) throw Exception('No downloadable file for this certificate.');
-        final res = await http.get(Uri.parse(url));
-        if (res.statusCode != 200) throw Exception('Download failed');
-        bytes = res.bodyBytes;
-      }
-      await platform_file_utils.saveBytesToTempAndOpen(bytes, fileName);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Download failed: $e', style: GoogleFonts.beVietnamPro(fontSize: 13)),
-          backgroundColor: Colors.redAccent,
-        ));
-      }
-    }
-  }
-
-  void _openPreview(Map<String, dynamic> cert) {
-    showDialog(
-      context: context,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
-              child: _buildImage(cert['imageUrl'], height: 220),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(cert['title'], style: GoogleFonts.beVietnamPro(
-                      fontSize: 16, fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 4),
-                  Text(cert['organization'], style: GoogleFonts.beVietnamPro(
-                      fontSize: 12, color: Colors.grey)),
-                  const SizedBox(height: 8),
-                  Text('Issued ${_formatDate(cert['issuedAt'])}', style: GoogleFonts.beVietnamPro(
-                      fontSize: 12, color: Colors.grey)),
-                  if ((cert['verificationCode'] ?? '').toString().isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text('Verification: ${cert['verificationCode']}', style: GoogleFonts.beVietnamPro(
-                        fontSize: 11, color: Colors.grey)),
-                  ],
-                  const SizedBox(height: 18),
-                  Row(children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        child: const Text('Close'),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () => _download(cert),
-                        icon: const Icon(Icons.download_rounded, size: 16),
-                        label: const Text('Download'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _kOrange, foregroundColor: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ]),
-                ],
-              ),
-            ),
-          ],
-        ),
+  // Opens the same detail screen and download sheet CICT students use, so a
+  // guest's certificate renders with their name, the signatures, and the
+  // verification QR — and downloads as that rendered certificate, not the
+  // blank template file.
+  void _openCertificate(Map<String, dynamic> cert) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CertificateDetailScreen(certificate: cert),
       ),
     );
   }
@@ -269,7 +213,7 @@ class _GuestCertificateRepositoryScreenState
                         ..._filtered.map((cert) => Padding(
                           padding: const EdgeInsets.only(bottom: 12),
                           child: InkWell(
-                            onTap: () => _openPreview(cert),
+                            onTap: () => _openCertificate(cert),
                             borderRadius: BorderRadius.circular(16),
                             child: Container(
                               decoration: BoxDecoration(

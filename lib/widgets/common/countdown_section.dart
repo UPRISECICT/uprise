@@ -1,8 +1,8 @@
 // lib/widgets/common/countdown_section.dart
 //
-// Shared countdown section for Home screens: shows a carousel of the
-// signed-in user's own registered-event countdowns when a fetch callback
-// is supplied, or falls back to a single countdown for the soonest public
+// Shared countdown section for Home screens: shows a single countdown for the
+// signed-in user's most pressing registered event (ongoing first, else the
+// soonest) when a fetch callback is supplied, or falls back to the soonest public
 // approved event when there's no session to fetch registrations for
 // (e.g. a visitor guest). Deliberately takes a fetch *callback* rather
 // than a bare uid — student's registrations are keyed by uid, but guest's
@@ -112,58 +112,23 @@ class _PersonalOrNextEventCountdownState
             .toList();
         if (events.isEmpty) return const SizedBox.shrink();
 
-        final isPersonal = widget.fetchMyRegisteredEvents != null;
-
-        if (isPersonal) {
-          // No fixed height. CountdownWidget's content is all text — org name,
-          // title, the DAYS/HOURS/MINUTES/SECONDS blocks, then three metadata
-          // rows — so its real height depends on the font's line metrics, the
-          // device text scale and the locale. Every attempt to name that
-          // number ahead of time (240, then 248 * textScale) has eventually
-          // overflowed on some device, because the card is taller in
-          // Be Vietnam Pro than the arithmetic assumed.
-          //
-          // IntrinsicHeight asks the tallest card what it actually needs and
-          // sizes the row to that; stretch makes the shorter cards match it so
-          // the carousel still reads as one band. The parent is a
-          // SliverToBoxAdapter, so the vertical space is unbounded and this is
-          // free to be as tall as it needs.
-          //
-          // Width follows the screen rather than a fixed 400, which ran past
-          // the right edge on ~360dp phones. A lone card fills the row; with
-          // several, each leaves a sliver of the next one peeking in so the
-          // row reads as swipeable.
-          final screenWidth = MediaQuery.sizeOf(context).width;
-          final fullWidth = screenWidth - 40;
-          final cardWidth = events.length == 1
-              ? fullWidth
-              : (screenWidth * 0.86).clamp(0.0, 400.0);
-          return SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (var i = 0; i < events.length; i++)
-                    Padding(
-                      padding: EdgeInsets.only(
-                        right: i == events.length - 1 ? 0 : 12,
-                      ),
-                      child: SizedBox(
-                        width: cardWidth,
-                        child: CountdownWidget(event: events[i]),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          );
-        }
+        // One countdown only, never a carousel. Several ticking cards side by
+        // side competed for attention and hid everything past the first one
+        // off-screen; the rest of a user's events are one tap away in Events ›
+        // My Events. An event already underway wins, since it is the one that
+        // matters right now; otherwise the soonest to start.
+        final ongoing = events.where(
+          (e) => e.timeStatus == EventTimeStatus.ongoing,
+        );
+        final featured = ongoing.isNotEmpty
+            ? ongoing.first
+            : events.reduce(
+                (a, b) => a.fullDateTime.isBefore(b.fullDateTime) ? a : b,
+              );
 
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-          child: CountdownWidget(event: events.first),
+          child: CountdownWidget(event: featured),
         );
       },
     );

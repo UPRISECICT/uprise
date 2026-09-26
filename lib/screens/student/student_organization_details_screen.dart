@@ -1,4 +1,5 @@
 // lib/screens/student/student_organization_details_screen.dart
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
@@ -284,26 +285,6 @@ class _StudentOrganizationsDetailsScreenState
     return AppImage.provider(logoUrl ?? '');
   }
 
-  DecorationImage? _buildCoverImage(String? coverUrl) {
-    if (coverUrl == null || coverUrl.isEmpty) return null;
-    final provider = AppImage.provider(coverUrl);
-    if (provider == null) return null;
-
-    if (provider is NetworkImage) {
-      return DecorationImage(
-        image: provider,
-        fit: BoxFit.cover,
-        onError: (_, __) {
-          if (mounted) {
-            setState(() => _coverImageFailed = true);
-          }
-        },
-      );
-    }
-
-    return DecorationImage(image: provider, fit: BoxFit.cover);
-  }
-
   Widget _buildCoverPlaceholder() {
     return Container(
       height: 180,
@@ -544,25 +525,17 @@ class _StudentOrganizationsDetailsScreenState
                 bottomLeft: Radius.circular(20),
                 bottomRight: Radius.circular(20),
               ),
-              child: Container(
-                height: 180,
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  image:
-                      (org['coverPhotoUrl'] != null &&
-                          (org['coverPhotoUrl'] as String).isNotEmpty &&
-                          !_coverImageFailed)
-                      ? _buildCoverImage(org['coverPhotoUrl'])
-                      : null,
-                  color: AppColors.primaryDark.withAlpha(20),
-                ),
-                child:
-                    (org['coverPhotoUrl'] == null ||
-                        (org['coverPhotoUrl'] as String).isEmpty ||
-                        _coverImageFailed)
-                    ? _buildCoverPlaceholder()
-                    : null,
-              ),
+              child:
+                  (org['coverPhotoUrl'] == null ||
+                      (org['coverPhotoUrl'] as String).isEmpty ||
+                      _coverImageFailed)
+                  ? _buildCoverPlaceholder()
+                  : _OrgCoverImage(
+                      source: org['coverPhotoUrl'] as String,
+                      onError: () {
+                        if (mounted) setState(() => _coverImageFailed = true);
+                      },
+                    ),
             ),
 
             Positioned.fill(
@@ -907,13 +880,38 @@ class _AboutTab extends StatelessWidget {
               ],
 
               // ── Executive Officers ──
-              const Text(
-                'Executive Officers',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: _UiTokens.headingText,
-                ),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Executive Officers',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: _UiTokens.headingText,
+                      ),
+                    ),
+                  ),
+                  if (officers.isNotEmpty)
+                    TextButton.icon(
+                      onPressed: () => _showOrgChartSheet(
+                        context,
+                        orgName: orgName,
+                        officers: officers,
+                      ),
+                      icon: const Icon(Icons.account_tree_outlined, size: 16),
+                      label: const Text('Org Chart'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.primaryDark,
+                        textStyle: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(height: 12),
               if (officers.isEmpty)
@@ -1785,11 +1783,20 @@ class _SocialChip extends StatelessWidget {
     required this.url,
   });
 
+  // No canLaunchUrl() gate: on Android 11+ it answers false for any scheme
+  // not declared in the manifest's <queries>, which is what left these chips
+  // dead. launchUrl itself reports failure (false or a PlatformException), so
+  // it alone decides whether to show the snackbar.
   Future<void> _open(BuildContext context) async {
     final uri = Uri.tryParse(url);
-    final opened = uri != null && await canLaunchUrl(uri)
-        ? await launchUrl(uri, mode: LaunchMode.externalApplication)
-        : false;
+    var opened = false;
+    if (uri != null && uri.hasScheme) {
+      try {
+        opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (_) {
+        opened = false;
+      }
+    }
     if (!opened && context.mounted) {
       ScaffoldMessenger.of(
         context,
@@ -1799,31 +1806,713 @@ class _SocialChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () => _open(context),
+    final shape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: AppColors.primaryDark.withAlpha(20),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.primaryDark.withAlpha(51)),
+      side: BorderSide(color: AppColors.primaryDark.withAlpha(51)),
+    );
+    // Material + Ink so the tap ripple draws on top of the tinted fill rather
+    // than hidden underneath an opaque Container.
+    return Material(
+      color: AppColors.primaryDark.withAlpha(20),
+      shape: shape,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => _open(context),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 15, color: AppColors.primaryDark),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: _UiTokens.headingText,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 15, color: AppColors.primaryDark),
-            const SizedBox(width: 6),
-            Text(
-              label,
+      ),
+    );
+  }
+}
+
+/// Org cover photo, shown whole — never cropped.
+///
+/// Orgs upload covers at any aspect ratio (the web upload has no crop step),
+/// so a fixed 180-high `BoxFit.cover` box cut the sides off wide banners. This
+/// reads the image's real size and makes the box match it at full width.
+///
+/// The height is kept between [_minHeight] and [_maxHeight] so an extreme
+/// ratio can't turn the header into a sliver or swallow the screen. When a
+/// clamp kicks in, the image is still drawn whole (`contain`) and the leftover
+/// space is filled with a blurred copy of itself instead of blank bars.
+class _OrgCoverImage extends StatefulWidget {
+  final String source;
+  final VoidCallback onError;
+
+  const _OrgCoverImage({required this.source, required this.onError});
+
+  @override
+  State<_OrgCoverImage> createState() => _OrgCoverImageState();
+}
+
+class _OrgCoverImageState extends State<_OrgCoverImage> {
+  static const double _minHeight = 140;
+  static const double _maxHeight = 260;
+  static const double _loadingHeight = 180;
+
+  // Cached per source: AppImage.provider decodes base64 into a fresh
+  // MemoryImage on every call, which would miss the image cache and flash
+  // the cover on each rebuild of the screen.
+  ImageProvider? _provider;
+  String? _resolvedSource;
+  ImageStream? _stream;
+  late final ImageStreamListener _listener = ImageStreamListener(
+    (info, _) {
+      final w = info.image.width, h = info.image.height;
+      if (!mounted || w == 0 || h == 0) return;
+      setState(() => _aspectRatio = w / h);
+    },
+    onError: (_, __) => widget.onError(),
+  );
+
+  /// width / height of the loaded image; null until it has decoded.
+  double? _aspectRatio;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _resolve();
+  }
+
+  @override
+  void didUpdateWidget(covariant _OrgCoverImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.source != widget.source) _resolve();
+  }
+
+  void _resolve() {
+    if (_resolvedSource == widget.source && _stream != null) return;
+    _resolvedSource = widget.source;
+    _stream?.removeListener(_listener);
+    _aspectRatio = null;
+    _provider = AppImage.provider(widget.source);
+    if (_provider == null) {
+      _stream = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) => widget.onError());
+      return;
+    }
+    _stream = _provider!.resolve(createLocalImageConfiguration(context))
+      ..addListener(_listener);
+  }
+
+  @override
+  void dispose() {
+    _stream?.removeListener(_listener);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = _provider;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final aspect = _aspectRatio;
+        final naturalHeight = aspect == null ? _loadingHeight : width / aspect;
+        final height = naturalHeight.clamp(_minHeight, _maxHeight);
+        // Only a clamped box leaves space around a `contain`ed image.
+        final needsBackdrop = aspect != null && height != naturalHeight;
+
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          height: height,
+          width: double.infinity,
+          color: AppColors.primaryDark.withAlpha(20),
+          child: provider == null || aspect == null
+              ? null
+              : Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (needsBackdrop)
+                      ImageFiltered(
+                        imageFilter: ui.ImageFilter.blur(
+                          sigmaX: 20,
+                          sigmaY: 20,
+                        ),
+                        child: Image(image: provider, fit: BoxFit.cover),
+                      ),
+                    Image(image: provider, fit: BoxFit.contain),
+                  ],
+                ),
+        );
+      },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  ORG CHART (About › Executive Officers › "Org Chart")
+// ─────────────────────────────────────────────────────────────
+// Mobile rendering of the chart the org builds on its web profile
+// (org_profile.dart's _HierarchyTree). Same structure, same data: it reads the
+// denormalized `officers` array already on the org doc — positionRank, order
+// and parentId are all synced there — so opening it costs no extra read.
+//
+//   • Officers with a valid "Reports To" parent sit nested under that officer.
+//   • Everyone else is grouped by exact positionRank, one row per rank, top to
+//     bottom (President, then VP, then Secretary, ...), each row by `order`.
+//   • An officer whose parent no longer exists falls back to the rank rows
+//     rather than disappearing.
+
+void _showOrgChartSheet(
+  BuildContext context, {
+  required String orgName,
+  required List<Map<String, dynamic>> officers,
+}) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    // Off so a vertical pan moves the chart instead of dragging the sheet
+    // shut; the close button and a tap on the dimmed area still dismiss it.
+    enableDrag: false,
+    backgroundColor: Colors.white,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (_) => FractionallySizedBox(
+      heightFactor: 0.92,
+      child: _OrgChartSheet(orgName: orgName, officers: officers),
+    ),
+  );
+}
+
+/// Same "A.Y. 2026 - 2027" label the web chart prints — the academic year
+/// starts in August (see the Semester Logic table in CLAUDE.md).
+String _academicYearLabel() {
+  final now = DateTime.now();
+  final startYear = now.month >= 8 ? now.year : now.year - 1;
+  return '$startYear - ${startYear + 1}';
+}
+
+class _ChartOfficer {
+  final String id;
+  final String name;
+  final String position;
+  final String photoUrl;
+  final int rank;
+  final int order;
+  final String? parentId;
+
+  const _ChartOfficer({
+    required this.id,
+    required this.name,
+    required this.position,
+    required this.photoUrl,
+    required this.rank,
+    required this.order,
+    required this.parentId,
+  });
+
+  factory _ChartOfficer.fromMap(Map<String, dynamic> m, int index) {
+    final parent = (m['parentId'] ?? '').toString().trim();
+    final id = (m['id'] ?? '').toString();
+    return _ChartOfficer(
+      // An entry with no id can't be anyone's parent; the index keeps it
+      // unique so it still renders.
+      id: id.isEmpty ? '__officer_$index' : id,
+      name: (m['name'] ?? '').toString(),
+      position: (m['position'] ?? '').toString(),
+      photoUrl: (m['photoUrl'] ?? '').toString(),
+      rank: (m['positionRank'] as num?)?.toInt() ?? 0,
+      order: (m['order'] as num?)?.toInt() ?? 0,
+      parentId: parent.isEmpty ? null : parent,
+    );
+  }
+}
+
+class _OrgChartSheet extends StatefulWidget {
+  final String orgName;
+  final List<Map<String, dynamic>> officers;
+
+  const _OrgChartSheet({required this.orgName, required this.officers});
+
+  @override
+  State<_OrgChartSheet> createState() => _OrgChartSheetState();
+}
+
+class _OrgChartSheetState extends State<_OrgChartSheet> {
+  final TransformationController _transform = TransformationController();
+  final GlobalKey _chartKey = GlobalKey();
+  late final List<_ChartOfficer> _officers = [
+    for (var i = 0; i < widget.officers.length; i++)
+      _ChartOfficer.fromMap(widget.officers[i], i),
+  ];
+  Size? _viewport;
+  bool _fitted = false;
+
+  @override
+  void dispose() {
+    _transform.dispose();
+    super.dispose();
+  }
+
+  /// Scales the chart down (never up) so its full width fits the screen and
+  /// centers it horizontally. Runs once after the first layout, and again from
+  /// the "fit" button after the user has zoomed around.
+  void _fitToWidth() {
+    final chartSize = _chartKey.currentContext?.size;
+    final viewport = _viewport;
+    if (chartSize == null || viewport == null || chartSize.width == 0) return;
+    const margin = 16.0;
+    final scale = ((viewport.width - margin * 2) / chartSize.width).clamp(
+      0.2,
+      1.0,
+    );
+    final dx = (viewport.width - chartSize.width * scale) / 2;
+    _transform.value = Matrix4.diagonal3Values(scale, scale, 1)
+      ..setTranslationRaw(dx, margin, 0);
+    if (!_fitted) setState(() => _fitted = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 14, 8, 0),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.account_tree_outlined,
+                color: AppColors.primaryDark,
+                size: 22,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Org Chart',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: _UiTokens.headingText,
+                      ),
+                    ),
+                    Text(
+                      widget.orgName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        color: _UiTokens.mutedText,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Fit to screen',
+                onPressed: _fitToWidth,
+                icon: const Icon(
+                  Icons.fit_screen_outlined,
+                  color: _UiTokens.mutedText,
+                ),
+              ),
+              IconButton(
+                tooltip: 'Close',
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(
+                  Icons.close_rounded,
+                  color: _UiTokens.headingText,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        const Divider(height: 1, color: _UiTokens.cardBorder),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              _viewport = constraints.biggest;
+              if (!_fitted) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) _fitToWidth();
+                });
+              }
+              return ClipRect(
+                child: InteractiveViewer(
+                  transformationController: _transform,
+                  constrained: false,
+                  boundaryMargin: const EdgeInsets.all(double.infinity),
+                  minScale: 0.2,
+                  maxScale: 3,
+                  // Hidden until fitted so it doesn't flash at full size in
+                  // the corner for a frame first.
+                  child: Opacity(
+                    opacity: _fitted ? 1 : 0,
+                    child: KeyedSubtree(
+                      key: _chartKey,
+                      child: _OrgChart(
+                        orgName: widget.orgName,
+                        officers: _officers,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+const double _chartCardWidth = 104;
+const double _chartSpacing = 16;
+const double _chartLinkHeight = 16;
+final Color _chartLineColor = AppColors.primaryDark.withAlpha(76);
+
+class _OrgChart extends StatelessWidget {
+  final String orgName;
+  final List<_ChartOfficer> officers;
+
+  const _OrgChart({required this.orgName, required this.officers});
+
+  @override
+  Widget build(BuildContext context) {
+    final validIds = officers.map((o) => o.id).toSet();
+    final childrenByParent = <String, List<_ChartOfficer>>{};
+    for (final o in officers) {
+      final parent = o.parentId;
+      if (parent != null && parent != o.id && validIds.contains(parent)) {
+        childrenByParent.putIfAbsent(parent, () => []).add(o);
+      }
+    }
+    final roots = officers.where((o) {
+      final parent = o.parentId;
+      return parent == null || parent == o.id || !validIds.contains(parent);
+    });
+
+    final byRank = <int, List<_ChartOfficer>>{};
+    for (final o in roots) {
+      byRank.putIfAbsent(o.rank, () => []).add(o);
+    }
+    final ranks = byRank.keys.toList()..sort();
+    final tiers = [
+      for (final rank in ranks)
+        byRank[rank]!..sort((a, b) => a.order.compareTo(b.order)),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        gradient: LinearGradient(
+          colors: [
+            AppColors.primaryDark.withAlpha(15),
+            AppColors.accent.withAlpha(10),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 300,
+            child: Text(
+              '${orgName.toUpperCase()} OFFICERS',
+              textAlign: TextAlign.center,
               style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
                 color: _UiTokens.headingText,
+                letterSpacing: 0.4,
               ),
             ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'A.Y. ${_academicYearLabel()}',
+            style: const TextStyle(fontSize: 12.5, color: _UiTokens.mutedText),
+          ),
+          const SizedBox(height: 24),
+          for (var i = 0; i < tiers.length; i++) ...[
+            if (i > 0) const _ChartTrunk(),
+            _ChartRow(
+              officers: tiers[i],
+              childrenByParent: childrenByParent,
+              isTop: i == 0,
+              linked: i > 0,
+              visited: const {},
+            ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// One row of siblings. When [linked], each sibling gets its own stub up to a
+/// shared bus line — drawn per sibling rather than from a fixed box width, so
+/// the lines still meet each box when a sibling carries a wide sub-tree.
+class _ChartRow extends StatelessWidget {
+  final List<_ChartOfficer> officers;
+  final Map<String, List<_ChartOfficer>> childrenByParent;
+  final bool isTop;
+  final bool linked;
+
+  /// Ancestors already on this branch — guards against a parentId cycle
+  /// (A reports to B reports to A) recursing forever.
+  final Set<String> visited;
+
+  const _ChartRow({
+    required this.officers,
+    required this.childrenByParent,
+    required this.isTop,
+    required this.linked,
+    required this.visited,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < officers.length; i++)
+          IntrinsicWidth(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (linked)
+                  SizedBox(
+                    height: _chartLinkHeight,
+                    child: CustomPaint(
+                      painter: _SiblingLinkPainter(
+                        isFirst: i == 0,
+                        isLast: i == officers.length - 1,
+                        color: _chartLineColor,
+                      ),
+                    ),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: _chartSpacing / 2,
+                  ),
+                  child: _ChartNode(
+                    officer: officers[i],
+                    childrenByParent: childrenByParent,
+                    isTop: isTop,
+                    visited: visited,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// An officer's card plus, recursively, their direct reports underneath.
+class _ChartNode extends StatelessWidget {
+  final _ChartOfficer officer;
+  final Map<String, List<_ChartOfficer>> childrenByParent;
+  final bool isTop;
+  final Set<String> visited;
+
+  const _ChartNode({
+    required this.officer,
+    required this.childrenByParent,
+    required this.isTop,
+    required this.visited,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final card = _OrgChartCard(officer: officer, isTop: isTop);
+    final path = {...visited, officer.id};
+    final children =
+        (childrenByParent[officer.id] ?? const <_ChartOfficer>[])
+            .where((c) => !path.contains(c.id))
+            .toList()
+          ..sort((a, b) => a.order.compareTo(b.order));
+    if (children.isEmpty) return Center(child: card);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        card,
+        const _ChartTrunk(),
+        _ChartRow(
+          officers: children,
+          childrenByParent: childrenByParent,
+          isTop: false,
+          linked: true,
+          visited: path,
         ),
+      ],
+    );
+  }
+}
+
+/// Vertical line from a parent (or a whole tier) down to the bus below it.
+class _ChartTrunk extends StatelessWidget {
+  const _ChartTrunk();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        width: 2,
+        height: _chartLinkHeight,
+        color: _chartLineColor,
+      ),
+    );
+  }
+}
+
+/// A sibling's slice of the bus: the horizontal line across its own width
+/// (only from its center inward when it is the first or last sibling), plus
+/// the stub down into its card. Adjacent slices touch, so together they read
+/// as one continuous bus between the outermost siblings.
+class _SiblingLinkPainter extends CustomPainter {
+  final bool isFirst;
+  final bool isLast;
+  final Color color;
+
+  const _SiblingLinkPainter({
+    required this.isFirst,
+    required this.isLast,
+    required this.color,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 2;
+    final cx = size.width / 2;
+    const y = 1.0;
+    if (!(isFirst && isLast)) {
+      final left = isFirst ? cx : 0.0;
+      final right = isLast ? cx : size.width;
+      canvas.drawLine(Offset(left, y), Offset(right, y), paint);
+    }
+    canvas.drawLine(Offset(cx, 0), Offset(cx, size.height), paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _SiblingLinkPainter old) =>
+      old.isFirst != isFirst || old.isLast != isLast || old.color != color;
+}
+
+/// Portrait photo card with name and position, matching the web chart's box.
+class _OrgChartCard extends StatelessWidget {
+  final _ChartOfficer officer;
+  final bool isTop;
+
+  const _OrgChartCard({required this.officer, required this.isTop});
+
+  @override
+  Widget build(BuildContext context) {
+    final initials = Center(
+      child: Text(
+        officer.name.isNotEmpty ? officer.name[0].toUpperCase() : '?',
+        style: const TextStyle(
+          fontSize: 22,
+          fontWeight: FontWeight.w700,
+          color: AppColors.primaryDark,
+        ),
+      ),
+    );
+
+    return SizedBox(
+      width: _chartCardWidth,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: _chartCardWidth,
+            height: _chartCardWidth * 1.15,
+            decoration: BoxDecoration(
+              color: AppColors.primaryDark.withAlpha(18),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: isTop ? AppColors.primaryDark : _UiTokens.cardBorder,
+                width: isTop ? 1.6 : 1.2,
+              ),
+              boxShadow: _UiTokens.subtleShadow,
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: officer.photoUrl.isEmpty
+                ? initials
+                : AppImage(
+                    source: officer.photoUrl,
+                    width: _chartCardWidth,
+                    height: _chartCardWidth * 1.15,
+                    fit: BoxFit.cover,
+                    showLoadingIndicator: false,
+                    placeholder: initials,
+                  ),
+          ),
+          const SizedBox(height: 6),
+          Container(
+            width: _chartCardWidth,
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: _UiTokens.cardBorder),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  officer.name.isEmpty ? 'Unnamed' : officer.name,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.primaryDark,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  officer.position,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: _UiTokens.mutedText,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

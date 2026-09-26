@@ -12,6 +12,7 @@ import '../../utils/helpers.dart' show combineDateAndTime;
 import '../../widgets/common/error_state.dart';
 import '../../widgets/common/event_badges.dart';
 import '../../widgets/common/event_browsing.dart';
+import '../../widgets/common/event_date_filter.dart';
 import '../../widgets/common/event_card.dart';
 import '../../widgets/common/info_tile.dart';
 import '../../widgets/common/loading_widget.dart' show SkeletonLoader;
@@ -249,6 +250,7 @@ class _GuestEventsScreenState extends State<GuestEventsScreen>
   EventTimeStatus? _activeStatus;
   String? _selectedOrgId; // null = All Organizations
   String? _selectedCategory; // null = show the category tiles
+  EventDateFilter? _dateFilter; // null = any date
   bool _compactView = false;
 
   // Skeleton shown for a beat after each filter change so rapid typing doesn't
@@ -455,7 +457,24 @@ class _GuestEventsScreenState extends State<GuestEventsScreen>
       _search.trim().isNotEmpty ||
       _activeStatus != null ||
       _selectedOrgId != null ||
-      _selectedCategory != null;
+      _selectedCategory != null ||
+      _dateFilter != null;
+
+  Future<void> _openDateFilter() async {
+    final result = await showEventDateFilterSheet(context, _dateFilter);
+    if (result == null || !mounted) return;
+    setState(() {
+      _dateFilter = result.date;
+      _beginResultsTransition();
+    });
+  }
+
+  void _clearDateFilter() {
+    setState(() {
+      _dateFilter = null;
+      _beginResultsTransition();
+    });
+  }
 
   /// Call inside setState after changing any filter.
   void _beginResultsTransition() {
@@ -500,6 +519,7 @@ class _GuestEventsScreenState extends State<GuestEventsScreen>
         return false;
       }
       if (_selectedOrgId != null && e.orgId != _selectedOrgId) return false;
+      if (_dateFilter != null && !_dateFilter!.matches(e.date)) return false;
       if (category != null && e.category.toLowerCase() != category) {
         return false;
       }
@@ -633,6 +653,13 @@ class _GuestEventsScreenState extends State<GuestEventsScreen>
               ViewToggleRow(
                 compact: _compactView,
                 onChanged: (v) => setState(() => _compactView = v),
+                leading: _dateFilter == null
+                    ? null
+                    : EventDateFilterChip(
+                        filter: _dateFilter!,
+                        onTap: _openDateFilter,
+                        onCleared: _clearDateFilter,
+                      ),
               ),
               Expanded(
                 child: EventResultsList(
@@ -662,19 +689,30 @@ class _GuestEventsScreenState extends State<GuestEventsScreen>
             const _GuestVisibilityNotice(),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-              child: EventSearchField(
-                controller: _searchCtrl,
-                query: _search,
-                hintText: 'Search events, org, location…',
-                onChanged: (v) => setState(() {
-                  _search = v;
-                  _beginResultsTransition();
-                }),
-                onClear: () => setState(() {
-                  _searchCtrl.clear();
-                  _search = '';
-                  _beginResultsTransition();
-                }),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: EventSearchField(
+                      controller: _searchCtrl,
+                      query: _search,
+                      hintText: 'Search events, org, location…',
+                      onChanged: (v) => setState(() {
+                        _search = v;
+                        _beginResultsTransition();
+                      }),
+                      onClear: () => setState(() {
+                        _searchCtrl.clear();
+                        _search = '';
+                        _beginResultsTransition();
+                      }),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  EventFilterButton(
+                    activeCount: _dateFilter != null ? 1 : 0,
+                    onTap: _openDateFilter,
+                  ),
+                ],
               ),
             ),
             Padding(
@@ -746,18 +784,22 @@ class _GuestEventsScreenState extends State<GuestEventsScreen>
   String get _emptyStateTitle {
     final q = _search.trim();
     if (q.isNotEmpty) return 'No events match "$q"';
-    if (_selectedCategory != null) return 'No events in $_selectedCategory';
+    final when = _dateFilter == null ? '' : ' ${_dateFilter!.phrase}';
+    if (_selectedCategory != null) {
+      return 'No events in $_selectedCategory$when';
+    }
     switch (_activeStatus) {
       case EventTimeStatus.upcoming:
-        return 'No upcoming events';
+        return 'No upcoming events$when';
       case EventTimeStatus.ongoing:
-        return 'No ongoing events';
+        return 'No ongoing events$when';
       case EventTimeStatus.completed:
-        return 'No past events';
+        return 'No past events$when';
       case null:
-        return _selectedOrgId != null
-            ? 'No events from this organization'
-            : 'No public events right now';
+        if (_selectedOrgId != null) {
+          return 'No events from this organization$when';
+        }
+        return when.isEmpty ? 'No public events right now' : 'No events$when';
     }
   }
 

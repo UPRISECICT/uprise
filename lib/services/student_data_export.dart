@@ -8,7 +8,9 @@
 // because guest records are email-keyed rather than uid-keyed.
 //
 // Every query below is a single-field equality already used elsewhere in the
-// app, so none of them needs a composite Firestore index.
+// app, so none of them needs a composite Firestore index. The attendance
+// collection-group query does need a collection-group field index, which has
+// a fallback — see _loadAttendances.
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -46,6 +48,49 @@ Future<void> exportMyData(BuildContext context) async {
   );
 }
 
+/// This student's attendance records.
+///
+/// Tries the one collection-group query first. That query needs a
+/// collection-group index on `attendances.studentId`; without it Firestore
+/// rejects it with failed-precondition, which used to abort the whole export.
+/// The fallback reads `events/{id}/attendances/{uid}` for each registered
+/// event instead — every check-in writer keys that doc by the student's UID —
+/// so the export completes either way.
+Future<List<Map<String, dynamic>>> _loadAttendances(
+  FirebaseFirestore db,
+  String uid,
+  List<QueryDocumentSnapshot> registrations,
+) async {
+  try {
+    final snap = await db
+        .collectionGroup('attendances')
+        .where('studentId', isEqualTo: uid)
+        .get();
+    return snap.docs.map((doc) => doc.data()).toList();
+  } catch (_) {
+    final eventIds = {
+      for (final reg in registrations)
+        if (((reg.data() as Map<String, dynamic>)['eventId'] ?? '')
+            .toString()
+            .isNotEmpty)
+          (reg.data() as Map<String, dynamic>)['eventId'].toString(),
+    };
+    final docs = await Future.wait(
+      eventIds.map(
+        (id) => db
+            .collection('events')
+            .doc(id)
+            .collection('attendances')
+            .doc(uid)
+            .get()
+            .then<Map<String, dynamic>?>((doc) => doc.data())
+            .catchError((_) => null),
+      ),
+    );
+    return docs.whereType<Map<String, dynamic>>().toList();
+  }
+}
+
 Future<List<ExportSection>> _collect(
   User user,
   Map<String, dynamic> profile,
@@ -53,20 +98,20 @@ Future<List<ExportSection>> _collect(
   final db = FirebaseFirestore.instance;
   final uid = user.uid;
 
-  // Four reads in parallel. Field names match the queries already used by
+  // Three reads in parallel. Field names match the queries already used by
   // student_home_screen, student_feedback_screen and
   // student_certificates_screen.
   final results = await Future.wait([
     db.collection('registrations').where('userId', isEqualTo: uid).get(),
-    db.collectionGroup('attendances').where('studentId', isEqualTo: uid).get(),
     db.collection('certificates').where('recipientUid', isEqualTo: uid).get(),
     db.collection('event_feedback').where('userId', isEqualTo: uid).get(),
   ]);
 
   final registrations = results[0].docs;
-  final attendances = results[1].docs;
-  final certificates = results[2].docs;
-  final feedback = results[3].docs;
+  final certificates = results[1].docs;
+  final feedback = results[2].docs;
+
+  final attendances = await _loadAttendances(db, uid, registrations);
 
   Map<String, dynamic> d(QueryDocumentSnapshot doc) =>
       doc.data() as Map<String, dynamic>;
@@ -103,8 +148,7 @@ Future<List<ExportSection>> _collect(
     ExportSection(
       'Attendance',
       const ['Event', 'Status', 'Recorded'],
-      attendances.map((doc) {
-        final a = d(doc);
+      attendances.map((a) {
         return [
           exportStr(a['eventName'] ?? a['eventTitle']),
           exportStr(a['status']),

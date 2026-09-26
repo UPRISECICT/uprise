@@ -99,18 +99,32 @@ class AnonymityToggle extends StatelessWidget {
               ],
             ),
           ),
-          Text(
-            value ? 'ON' : 'OFF',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: value ? AppColors.primaryDark : Colors.grey.shade500,
-            ),
-          ),
+          // Colours set per state: only `activeColor` was given before, so the
+          // off state fell back to the theme's black thumb and outline. The
+          // "ON"/"OFF" text beside it only repeated what the switch shows.
           Switch(
             value: value,
-            activeColor: AppColors.primaryDark,
             onChanged: onChanged,
+            thumbColor: WidgetStateProperty.resolveWith(
+              (states) => states.contains(WidgetState.selected)
+                  ? Colors.white
+                  : Colors.grey.shade500,
+            ),
+            trackColor: WidgetStateProperty.resolveWith((states) {
+              final on = states.contains(WidgetState.selected);
+              final disabled = states.contains(WidgetState.disabled);
+              if (on) {
+                return disabled
+                    ? AppColors.primaryDark.withAlpha(110)
+                    : AppColors.primaryDark;
+              }
+              return Colors.grey.shade200;
+            }),
+            trackOutlineColor: WidgetStateProperty.resolveWith(
+              (states) => states.contains(WidgetState.selected)
+                  ? Colors.transparent
+                  : Colors.grey.shade300,
+            ),
           ),
         ],
       ),

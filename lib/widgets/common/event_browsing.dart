@@ -236,14 +236,19 @@ class OrgFilterDropdown extends StatelessWidget {
 }
 
 /// Grid/list switch, right-aligned above a results list.
+///
+/// [leading] fills the otherwise empty left side — the active date filter chip
+/// goes here, so it sits right above the results it is narrowing.
 class ViewToggleRow extends StatelessWidget {
   final bool compact;
   final ValueChanged<bool> onChanged;
+  final Widget? leading;
 
   const ViewToggleRow({
     super.key,
     required this.compact,
     required this.onChanged,
+    this.leading,
   });
 
   @override
@@ -251,8 +256,13 @@ class ViewToggleRow extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 6, 16, 4),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
         children: [
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: leading ?? const SizedBox.shrink(),
+            ),
+          ),
           IconButton(
             icon: Icon(
               compact ? Icons.view_list_rounded : Icons.grid_view_rounded,

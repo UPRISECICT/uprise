@@ -8,12 +8,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:file_saver/file_saver.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
 import '../../widgets/common/image_viewer.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../services/notification_service.dart';
+import '../../utils/download_saver.dart';
 import '../../utils/profanity_filter.dart';
 
 // MemoryImage's cache key is the decoded bytes object itself, not the
@@ -61,29 +61,31 @@ IconData _iconForFileName(String name) {
   }
 }
 
-// Saves straight to the device (Downloads on Android, Files on iOS) via
-// FileSaver — no OS share sheet in between. Previously this wrote the bytes
-// to a temp file and handed it to Share.shareXFiles, which popped the
-// "Share via…" sheet instead of just downloading the attachment.
+// Attachments being saved right now, so a double tap doesn't write the same
+// file twice ("name.pdf" and "name (1).pdf").
+final Set<String> _downloadsInFlight = {};
+
+// Saves straight to the phone's Downloads folder — no share sheet. This used
+// FileSaver.saveFile, which on Android writes into the app's private folder
+// (Android/data/...): the snackbar said "Downloaded" but the file never showed
+// up in Downloads or the Files app.
 Future<void> _openFileAttachment(
   BuildContext context,
   String fileBase64,
   String fileName,
 ) async {
+  if (!_downloadsInFlight.add(fileBase64)) return;
+  final messenger = ScaffoldMessenger.of(context);
   try {
     final bytes = _bytesFromBase64(fileBase64);
-    await FileSaver.instance.saveFile(name: fileName, bytes: bytes);
-    if (context.mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Downloaded $fileName')));
-    }
+    final saved = await saveToDownloads(bytes, fileName);
+    await announceDownload(messenger, saved);
   } catch (e) {
-    if (context.mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Could not download file: $e')));
-    }
+    messenger.showSnackBar(
+      SnackBar(content: Text('Could not download file: $e')),
+    );
+  } finally {
+    _downloadsInFlight.remove(fileBase64);
   }
 }
 
@@ -1158,7 +1160,11 @@ class _MessageBubble extends StatelessWidget {
                       ),
                     if (hasImage)
                       GestureDetector(
-                        onTap: () => showFullscreenImage(context, imageBase64!),
+                        onTap: () => showFullscreenImage(
+                          context,
+                          imageBase64!,
+                          downloadName: timestampedPhotoName(),
+                        ),
                         child: Image(
                           image: _imageProviderFromBase64(imageBase64!),
                           width: 220,

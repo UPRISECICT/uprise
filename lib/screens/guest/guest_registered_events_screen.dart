@@ -12,6 +12,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import 'guest_auth_service.dart';
+import '../../widgets/common/event_date_filter.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../widgets/student/student_app_bar.dart';
 
@@ -53,6 +54,21 @@ class _GuestRegisteredEventsScreenState extends State<GuestRegisteredEventsScree
   bool _loading = true;
   String? _error;
   final List<_RegisteredEvent> _events = [];
+  EventDateFilter? _dateFilter; // null = any date
+
+  Future<void> _openDateFilter() async {
+    final result = await showEventDateFilterSheet(context, _dateFilter);
+    if (result == null || !mounted) return;
+    setState(() => _dateFilter = result.date);
+  }
+
+  bool _matchesDate(_RegisteredEvent e) =>
+      _dateFilter == null || _dateFilter!.matches(e.date);
+
+  /// Empty-state line, naming the date filter when one is narrowing the list.
+  String _emptyText(String base) => _dateFilter == null
+      ? 'No $base registrations.'
+      : 'No $base registrations ${_dateFilter!.phrase}.';
 
   String get _email => (GuestAuthService().email ?? '').toLowerCase();
 
@@ -112,10 +128,10 @@ class _GuestRegisteredEventsScreenState extends State<GuestRegisteredEventsScree
   }
 
   List<_RegisteredEvent> get _upcoming =>
-      _events.where((e) => !e.date.isBefore(DateTime.now())).toList()
+      _events.where((e) => !e.date.isBefore(DateTime.now()) && _matchesDate(e)).toList()
         ..sort((a, b) => a.date.compareTo(b.date));
   List<_RegisteredEvent> get _past =>
-      _events.where((e) => e.date.isBefore(DateTime.now())).toList();
+      _events.where((e) => e.date.isBefore(DateTime.now()) && _matchesDate(e)).toList();
 
   @override
   Widget build(BuildContext context) {
@@ -143,13 +159,56 @@ class _GuestRegisteredEventsScreenState extends State<GuestRegisteredEventsScree
           ? const Center(child: CircularProgressIndicator(color: _kOrange))
           : _error != null
               ? Center(child: Text(_error!, style: GoogleFonts.beVietnamPro(fontSize: 13, color: Colors.grey)))
-              : TabBarView(
-                  controller: _tabController,
+              : Column(
                   children: [
-                    _buildList(_upcoming, 'No upcoming registrations.'),
-                    _buildList(_past, 'No past registrations.'),
+                    _buildDateFilterRow(),
+                    Expanded(
+                      child: TabBarView(
+                        controller: _tabController,
+                        children: [
+                          _buildList(_upcoming, _emptyText('upcoming')),
+                          _buildList(_past, _emptyText('past')),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
+    );
+  }
+
+  /// Active date filter (or "All dates") on the left, the filter button on
+  /// the right — the same button the Discover tab has beside its search box.
+  Widget _buildDateFilterRow() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: _dateFilter == null
+                  ? Text(
+                      'All dates',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textMuted,
+                      ),
+                    )
+                  : EventDateFilterChip(
+                      filter: _dateFilter!,
+                      onTap: _openDateFilter,
+                      onCleared: () => setState(() => _dateFilter = null),
+                    ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          EventFilterButton(
+            activeCount: _dateFilter != null ? 1 : 0,
+            onTap: _openDateFilter,
+          ),
+        ],
+      ),
     );
   }
 

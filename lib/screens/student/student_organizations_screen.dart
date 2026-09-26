@@ -14,7 +14,6 @@ import '../../widgets/common/org_browsing_config.dart';
 import '../../services/membership_store.dart';
 import 'student_organization_details_screen.dart';
 import 'student_merchandise_screen.dart';
-import 'student_broadcast_screen.dart';
 
 // Who the viewer is, org-wise, now lives in services/membership_store.dart as
 // the public `MyOrgInfo` — the guest shell shares these screens and needs the
@@ -217,21 +216,16 @@ class _StudentOrganizationsScreenState extends State<StudentOrganizationsScreen>
     return [myOrgId, ...ids];
   }
 
-  /// Where the avatar rail goes. A member lands straight in *their own* org's
-  /// message thread; every other org opens its profile. Broadcast is a
-  /// member-only channel, so it can't be the destination for an org the
-  /// viewer merely browses — and the rail now lists all of them.
-  void _openOrgFromRail(String id, String name, String? myOrgId) {
-    final isOwn = id == myOrgId;
+  /// Every avatar in the rail opens that org's profile — the viewer's own org
+  /// included. It used to jump straight into the member's broadcast thread,
+  /// which made the first avatar behave differently from the identical ones
+  /// beside it; the thread is still one tap away via the profile's chat icon.
+  void _openOrgFromRail(String id) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => widget.config.enableBroadcast && isOwn
-            ? StudentBroadcastScreen(orgId: id, orgName: name)
-            : StudentOrganizationsDetailsScreen(
-                orgId: id,
-                config: widget.config,
-              ),
+        builder: (_) =>
+            StudentOrganizationsDetailsScreen(orgId: id, config: widget.config),
       ),
     );
   }
@@ -507,7 +501,7 @@ class _StudentOrganizationsScreenState extends State<StudentOrganizationsScreen>
                 orgIds: _railOrgIds(myOrgId),
                 briefs: briefs,
                 recentOrgIds: recentOrgIds,
-                onTapOrg: (id, name) => _openOrgFromRail(id, name, myOrgId),
+                onTapOrg: (id, _) => _openOrgFromRail(id),
               ),
             ),
             SliverToBoxAdapter(

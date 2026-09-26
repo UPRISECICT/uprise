@@ -25,6 +25,7 @@ class _DS {
   static const Color line = AppColors.divider; // hairline borders
   static const Color well = AppColors.surfaceTint; // image backgrounds
   static const Color success = AppColors.success;
+  static const Color warning = AppColors.warning; // low stock
   static const Color danger = AppColors.error;
   static const Color dangerBg = AppColors.errorBg;
 
@@ -43,10 +44,6 @@ class _DS {
   static const double gridTileHeight = 310;
   static const double gridGapX = 12;
   static const double gridGapY = 16;
-  static const double tileInset = 6; // photo inset inside a card
-  // Name, price and availability. Sized for the whole block at 1.3x text
-  // scale, since the price and availability lines are stacked now.
-  static const double cardInfoHeight = 110;
 
   /// ~60% desaturation for photos of unavailable items.
   static const ColorFilter unavailablePhoto = ColorFilter.matrix(<double>[
@@ -239,6 +236,22 @@ class _Product {
     final left = totalStock;
     if (left > 0 && left <= 5) return 'Only $left left';
     return 'In stock';
+  }
+
+  /// Few enough left that it's worth saying so — the same 1–5 range that
+  /// makes [availabilityLabel] read "Only N left".
+  bool get isLowStock {
+    if (!available) return false;
+    final left = totalStock;
+    return left > 0 && left <= 5;
+  }
+
+  /// Dot colour for [availabilityLabel]. Low stock used to share the green
+  /// "In stock" dot, so "Only 4 left" carried no urgency at all.
+  Color get availabilityColor {
+    if (!available) return _DS.danger;
+    if (isLowStock) return _DS.warning;
+    return _DS.success;
   }
 }
 
@@ -576,88 +589,103 @@ class _ProductsTabState extends State<_ProductsTab> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                _TrendingToggle(
-                  active: _sortTrending,
-                  onTap: () {
-                    setState(() => _sortTrending = !_sortTrending);
-                  },
-                ),
-                const SizedBox(width: 8),
-                // Capped so the search field keeps usable width on a 320dp
-                // phone with both controls showing.
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 120),
-                  child: _FilterButton(
-                    icon: Icons.filter_list_rounded,
-                    active: _hasOrgFilter,
-                    label: _selectedOrg,
-                    onTap: () => _showOrgFilterDialog(organizations),
-                    onClear: () {
-                      setState(() => _selectedOrg = 'All');
-                    },
-                  ),
-                ),
               ],
             ),
           ),
           const SizedBox(height: 8),
-          // Height is held while the categories load, so the grid doesn't
-          // jump down a row when they arrive.
+          // Height is held while the filters load, so the grid doesn't jump
+          // down a row when they arrive.
           SizedBox(
             height: _DS.pillHeight,
-            child: _loadingFilters || categories.length <= 1
+            child: _loadingFilters
                 ? null
-                : ListView.separated(
+                : ListView(
                     scrollDirection: Axis.horizontal,
                     // Pills start on the gutter but scroll off the true edge.
                     padding: const EdgeInsets.symmetric(horizontal: _DS.gutter),
-                    itemCount: categories.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 7),
-                    itemBuilder: (_, i) {
-                      final cat = categories[i];
-                      final sel = cat == _selectedCategory;
-
-                      return Semantics(
-                        selected: sel,
-                        button: true,
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            customBorder: const StadiumBorder(),
-                            onTap: () =>
-                                setState(() => _selectedCategory = cat),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 150),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                              ),
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: sel ? _DS.brand : Colors.white,
-                                borderRadius: BorderRadius.circular(
-                                  _DS.radiusPill,
-                                ),
-                                border: Border.all(
-                                  color: sel ? _DS.brand : _DS.line,
-                                ),
-                              ),
-                              child: Text(
-                                cat,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: sel ? Colors.white : _DS.body,
-                                ),
-                              ),
-                            ),
+                    children: [
+                      _ControlPill(
+                        icon: Icons.local_fire_department_rounded,
+                        label: 'Trending',
+                        semanticsLabel: 'Trending: sort by most liked',
+                        active: _sortTrending,
+                        onTap: () {
+                          setState(() => _sortTrending = !_sortTrending);
+                        },
+                      ),
+                      const SizedBox(width: 7),
+                      _ControlPill(
+                        icon: Icons.groups_outlined,
+                        label: _selectedOrg == 'All'
+                            ? 'All orgs'
+                            : (_orgsById[_orgIdMap[_selectedOrg]]
+                                      ?.displayName ??
+                                  _selectedOrg),
+                        semanticsLabel: _selectedOrg == 'All'
+                            ? 'Filter by organization'
+                            : 'Organization filter: $_selectedOrg',
+                        active: _selectedOrg != 'All',
+                        opensPicker: true,
+                        onTap: () => _showOrgFilterDialog(organizations),
+                        onClear: () {
+                          setState(() => _selectedOrg = 'All');
+                        },
+                      ),
+                      if (categories.length > 1) ...[
+                        // Sets the two controls apart from the categories.
+                        Container(
+                          width: 1,
+                          margin: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 7,
                           ),
+                          color: _DS.line,
                         ),
-                      );
-                    },
+                        for (final category in categories) ...[
+                          if (category != categories.first)
+                            const SizedBox(width: 7),
+                          _buildCategoryPill(category),
+                        ],
+                      ],
+                    ],
                   ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildCategoryPill(String category) {
+    final selected = category == _selectedCategory;
+    return Semantics(
+      selected: selected,
+      button: true,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          customBorder: const StadiumBorder(),
+          onTap: () {
+            setState(() => _selectedCategory = category);
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: selected ? _DS.brand : Colors.white,
+              borderRadius: BorderRadius.circular(_DS.radiusPill),
+              border: Border.all(color: selected ? _DS.brand : _DS.line),
+            ),
+            child: Text(
+              category,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: selected ? Colors.white : _DS.body,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -683,8 +711,7 @@ class _ProductsTabState extends State<_ProductsTab> {
             padding: const EdgeInsets.fromLTRB(_DS.gutter, 12, _DS.gutter, 2),
             sliver: SliverToBoxAdapter(
               child: Text(
-                // Says the order out loud when Trending changed it, since
-                // the flame toggle up top is icon-only.
+                // Says the order out loud when Trending changed it.
                 _sortTrending ? '$countLabel, most liked first' : countLabel,
                 style: const TextStyle(
                   fontSize: 12,
@@ -844,163 +871,164 @@ class _ProductCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final available = product.available;
+    final photo = _buildProductImage();
+    final nameHeight =
+        MediaQuery.textScalerOf(context).scale(13) * 1.25 * 2 + 1;
 
     return GestureDetector(
       onTap: () => _showDetails(context),
       child: Container(
+        // Clipped so the photo runs edge to edge under the card's own corners
+        // instead of sitting inset with a second set of corners inside it.
+        // The hairline is a foreground layer so the photo can't paint over it.
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: Colors.white,
+          borderRadius: BorderRadius.circular(_DS.radiusLg),
+        ),
+        foregroundDecoration: BoxDecoration(
           borderRadius: BorderRadius.circular(_DS.radiusLg),
           border: Border.all(color: _DS.line),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Photo inset on the warm well with its own corners, taking
-            // whatever height the fixed info block leaves.
+            // The photo takes whatever height the info block leaves. Every
+            // tile is the same size and the info block is the same shape on
+            // every card, so photos still line up across a row.
             Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  _DS.tileInset,
-                  _DS.tileInset,
-                  _DS.tileInset,
-                  0,
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(_DS.radiusMd),
-                  child: ColoredBox(
-                    color: _DS.well,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        // Unavailable items fade toward grey instead of being
-                        // covered by a dark overlay.
-                        available
-                            ? _buildProductImage()
-                            : ColorFiltered(
-                                colorFilter: _DS.unavailablePhoto,
-                                child: _buildProductImage(),
-                              ),
-                        // Who is selling it — the one fact the catalog never
-                        // showed. The category used to sit here, repeating
-                        // the filter pill already selected above the grid.
-                        //
-                        // `right` keeps it clear of the photo gallery's own
-                        // n/N counter in that corner.
-                        if (org != null)
-                          Positioned(
-                            top: 8,
-                            left: 8,
-                            right: 44,
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: _OrgChip(org: org!),
-                            ),
+              child: ColoredBox(
+                color: _DS.well,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // Unavailable items fade toward grey, so a sold-out item
+                    // reads at a glance without covering the photo.
+                    available
+                        ? photo
+                        : ColorFiltered(
+                            colorFilter: _DS.unavailablePhoto,
+                            child: photo,
                           ),
-                        // Moved out of the top-right corner, where it used to
-                        // sit directly on top of the gallery's photo counter.
-                        if (!available)
-                          Positioned(
-                            left: 8,
-                            bottom: 8,
-                            child: _StatusChip(
-                              label: product.isDiscontinued
-                                  ? 'No longer available'
-                                  : 'Out of stock',
-                            ),
-                          ),
-                        if (product.likeCount > 0)
-                          Positioned(
-                            right: 8,
-                            bottom: 8,
-                            child: _LikeCount(count: product.likeCount),
-                          ),
-                      ],
+                    // Who is selling it — the thing that actually differs
+                    // between two tiles side by side.
+                    if (org != null)
+                      Positioned(
+                        top: 8,
+                        left: 8,
+                        right: 44,
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: _OrgChip(org: org!),
+                        ),
+                      ),
+                    // Sold out and discontinued are stated, not just implied
+                    // by a greyed photo.
+                    if (!available)
+                      Positioned(
+                        left: 8,
+                        bottom: 8,
+                        child: _StatusChip(
+                          label: product.isDiscontinued
+                              ? 'No longer available'
+                              : 'Out of stock',
+                        ),
+                      ),
+                    // Shown even at zero: it used to hide until something had
+                    // a like, so nothing on an unliked card said likes existed.
+                    Positioned(
+                      right: 8,
+                      bottom: 8,
+                      child: _LikeCount(count: product.likeCount),
                     ),
-                  ),
+                  ],
                 ),
               ),
             ),
-            SizedBox(
-              height: _DS.cardInfoHeight,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 9, 12, 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Two lines reserved whether or not the name needs them,
-                    // so the price sits at the same height on every card.
-                    SizedBox(
-                      height: 34,
-                      child: Text(
-                        product.name,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: _DS.ink,
-                          height: 1.25,
-                        ),
-                      ),
-                    ),
-                    const Spacer(),
-                    // One paragraph, for the same reason the action bar uses one: a
-                    // baseline-aligned Row with a lone Flexible child cannot be laid out
-                    // wherever its height has to be measured rather than given.
-                    Text.rich(
-                      TextSpan(
-                        children: [
-                          if (product.hasPriceRange)
-                            const TextSpan(
-                              text: 'From ',
-                              style: TextStyle(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w600,
-                                color: _DS.body,
-                              ),
-                            ),
-                          TextSpan(
-                            text: _formatPeso(product.minPrice),
-                            style: TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w800,
-                              color: available ? _DS.brand : _DS.muted,
-                            ),
-                          ),
-                        ],
-                      ),
-                      maxLines: 1,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Two lines reserved whether or not the name needs them, so
+                  // the price sits at the same height on every card. Measured
+                  // at the current text scale rather than as a fixed number,
+                  // which is what let a fixed info block (and the Spacer that
+                  // padded it out) leave a gap under the name.
+                  SizedBox(
+                    height: nameHeight,
+                    child: Text(
+                      product.name,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: _DS.ink,
+                        height: 1.25,
+                      ),
                     ),
-                    const SizedBox(height: 3),
-                    Row(
+                  ),
+                  const SizedBox(height: 4),
+                  // "From" when variants price differently, so a tile can
+                  // never advertise less than the item actually costs. One
+                  // paragraph: a baseline-aligned Row with a lone Flexible
+                  // child cannot be laid out where its height is measured.
+                  Text.rich(
+                    TextSpan(
                       children: [
-                        Container(
-                          width: 7,
-                          height: 7,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: available ? _DS.success : _DS.danger,
-                          ),
-                        ),
-                        const SizedBox(width: 5),
-                        Flexible(
-                          child: Text(
-                            product.availabilityLabel,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                        if (product.hasPriceRange)
+                          const TextSpan(
+                            text: 'From ',
+                            style: TextStyle(
                               fontSize: 10.5,
                               fontWeight: FontWeight.w600,
                               color: _DS.body,
                             ),
                           ),
+                        TextSpan(
+                          text: _formatPeso(product.minPrice),
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            color: available ? _DS.brand : _DS.muted,
+                          ),
                         ),
                       ],
                     ),
-                  ],
-                ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      // A dot carries availability at this size better than
+                      // an icon and a word that had to ellipsize anyway.
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: product.availabilityColor,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      Flexible(
+                        child: Text(
+                          product.availabilityLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w600,
+                            color: product.isLowStock ? _DS.warning : _DS.body,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ],
@@ -1417,7 +1445,7 @@ class _ProductActionBar extends StatelessWidget {
                           height: 6,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: available ? _DS.success : _DS.danger,
+                            color: product.availabilityColor,
                           ),
                         ),
                         const SizedBox(width: 5),
@@ -1537,7 +1565,9 @@ class _LikeCount extends StatelessWidget {
       excludeSemantics: true,
       child: Container(
         height: 26,
-        padding: const EdgeInsets.only(left: 7, right: 9),
+        // Heart alone at zero, so an unliked item shows the affordance
+        // without a bare "0" beside it — same as the student card.
+        padding: EdgeInsets.only(left: 7, right: count > 0 ? 9 : 7),
         decoration: BoxDecoration(
           color: Colors.white.withAlpha(240),
           borderRadius: BorderRadius.circular(_DS.radiusPill),
@@ -1551,15 +1581,17 @@ class _LikeCount extends StatelessWidget {
               size: 14,
               color: _DS.body,
             ),
-            const SizedBox(width: 4),
-            Text(
-              NumberFormat.compact().format(count),
-              style: const TextStyle(
-                fontSize: 10.5,
-                fontWeight: FontWeight.w700,
-                color: _DS.body,
+            if (count > 0) ...[
+              const SizedBox(width: 4),
+              Text(
+                NumberFormat.compact().format(count),
+                style: const TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                  color: _DS.body,
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),
@@ -1567,140 +1599,95 @@ class _LikeCount extends StatelessWidget {
   }
 }
 
-/// Sort toggle beside the search field. Icon-only to leave the search field
-/// its width; the tooltip and semantics carry the name.
-class _TrendingToggle extends StatelessWidget {
-  final bool active;
-  final VoidCallback onTap;
-
-  const _TrendingToggle({required this.active, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: active ? 'Showing most liked first' : 'Sort by most liked',
-      child: Semantics(
-        button: true,
-        toggled: active,
-        label: 'Trending: sort by most liked',
-        excludeSemantics: true,
-        child: Material(
-          color: active ? _DS.brand : _DS.well,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(_DS.radiusSm),
-            side: BorderSide(color: active ? _DS.brand : _DS.line),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onTap,
-            child: SizedBox(
-              width: _DS.controlHeight,
-              height: _DS.controlHeight,
-              child: Icon(
-                Icons.local_fire_department_rounded,
-                size: 20,
-                color: active ? Colors.white : _DS.body,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Opens the organization sheet. Once an organization is picked it widens to
-/// show which one, with its own ✕.
-class _FilterButton extends StatelessWidget {
+/// Labeled pill for the two controls that share the category row — Trending
+/// and the organization filter. They used to be icon-only squares beside the
+/// search field whose meaning lived in a long-press tooltip; a word on the
+/// control is what actually says what it does.
+///
+/// Styled apart from the category pills on purpose: a category is a
+/// single-select brand fill, these are toggles/pickers with a soft tint when
+/// on, so the two kinds of control never read as one set.
+class _ControlPill extends StatelessWidget {
   final IconData icon;
+  final String label;
+  final String semanticsLabel;
   final bool active;
   final VoidCallback onTap;
-  final String? label;
+
+  /// Shows a ▾ — this pill opens a picker rather than toggling.
+  final bool opensPicker;
+
+  /// When set and [active], a ✕ that clears the filter without opening it.
   final VoidCallback? onClear;
 
-  const _FilterButton({
+  const _ControlPill({
     required this.icon,
+    required this.label,
+    required this.semanticsLabel,
     required this.active,
     required this.onTap,
-    this.label,
+    this.opensPicker = false,
     this.onClear,
   });
 
   @override
   Widget build(BuildContext context) {
     final foreground = active ? _DS.brand : _DS.body;
-    final showLabel = active && label != null;
+    final showClear = active && onClear != null;
 
-    return Material(
-      color: active ? _DS.brandSoft : _DS.well,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(_DS.radiusSm),
-        side: BorderSide(color: active ? _DS.brand : _DS.line),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: SizedBox(
-        height: _DS.controlHeight,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(
-              child: InkWell(
-                onTap: onTap,
-                child: Semantics(
-                  button: true,
-                  label: showLabel
-                      ? 'Organization filter: $label'
-                      : 'Filter by organization',
-                  excludeSemantics: true,
-                  child: Padding(
-                    padding: EdgeInsets.only(
-                      left: showLabel ? 11 : 12,
-                      right: showLabel ? 4 : 12,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(icon, size: 20, color: foreground),
-                        if (showLabel) ...[
-                          const SizedBox(width: 6),
-                          Flexible(
-                            child: Text(
-                              label!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: foreground,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            if (showLabel && onClear != null)
-              InkWell(
-                onTap: onClear,
-                child: Semantics(
-                  button: true,
-                  label: 'Clear organization filter',
-                  excludeSemantics: true,
-                  child: SizedBox(
-                    width: 32,
-                    height: _DS.controlHeight,
-                    child: Icon(
-                      Icons.close_rounded,
-                      size: 16,
+    return Semantics(
+      button: true,
+      toggled: opensPicker ? null : active,
+      label: semanticsLabel,
+      excludeSemantics: true,
+      child: Material(
+        color: active ? _DS.brandSoft : Colors.white,
+        shape: StadiumBorder(
+          side: BorderSide(color: active ? _DS.brand : _DS.line),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: EdgeInsets.only(left: 11, right: showClear ? 4 : 12),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 16, color: foreground),
+                const SizedBox(width: 5),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 130),
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: active ? FontWeight.w700 : FontWeight.w600,
                       color: foreground,
                     ),
                   ),
                 ),
-              ),
-          ],
+                if (opensPicker && !showClear) ...[
+                  const SizedBox(width: 2),
+                  Icon(Icons.expand_more_rounded, size: 16, color: foreground),
+                ],
+                if (showClear)
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: onClear,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      child: Icon(
+                        Icons.close_rounded,
+                        size: 15,
+                        color: foreground,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );

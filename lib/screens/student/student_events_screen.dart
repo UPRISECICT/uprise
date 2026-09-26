@@ -23,6 +23,7 @@ import '../../widgets/common/loading_widget.dart' show SkeletonLoader;
 import '../../widgets/common/calendar_month.dart';
 import '../../widgets/common/event_badges.dart';
 import '../../widgets/common/event_browsing.dart';
+import '../../widgets/common/event_date_filter.dart';
 import '../../widgets/common/event_card.dart';
 import '../../widgets/common/info_tile.dart';
 import '../../widgets/student/student_app_bar.dart';
@@ -467,6 +468,7 @@ class _UpcomingTabState extends State<UpcomingTab>
   final TextEditingController _searchCtrl = TextEditingController();
   String _searchQuery = '';
   String? _selectedOrgId; // null = All Organizations
+  EventDateFilter? _dateFilter; // null = any date
 
   // Skeleton shown for a beat after each filter change so rapid typing
   // doesn't thrash the list; the timer collapses repeated keystrokes.
@@ -476,7 +478,24 @@ class _UpcomingTabState extends State<UpcomingTab>
   bool get _hasInlineFilter =>
       _searchQuery.trim().isNotEmpty ||
       _activeStatus != null ||
-      _selectedOrgId != null;
+      _selectedOrgId != null ||
+      _dateFilter != null;
+
+  Future<void> _openDateFilter() async {
+    final result = await showEventDateFilterSheet(context, _dateFilter);
+    if (result == null || !mounted) return;
+    setState(() {
+      _dateFilter = result.date;
+      _beginResultsTransition();
+    });
+  }
+
+  void _clearDateFilter() {
+    setState(() {
+      _dateFilter = null;
+      _beginResultsTransition();
+    });
+  }
 
   // Call inside setState after changing any inline filter.
   void _beginResultsTransition() {
@@ -552,15 +571,16 @@ class _UpcomingTabState extends State<UpcomingTab>
   String get _emptyStateMessage {
     final q = _searchQuery.trim();
     if (q.isNotEmpty) return 'No events match "$q"';
+    final when = _dateFilter == null ? '' : ' ${_dateFilter!.phrase}';
     switch (_activeStatus) {
       case _RegStatus.upcoming:
-        return 'No upcoming events';
+        return 'No upcoming events$when';
       case _RegStatus.ongoing:
-        return 'No ongoing events';
+        return 'No ongoing events$when';
       case _RegStatus.completed:
-        return 'No past events';
+        return 'No past events$when';
       case null:
-        return 'No events found';
+        return when.isEmpty ? 'No events found' : 'No events$when';
     }
   }
 
@@ -635,19 +655,30 @@ class _UpcomingTabState extends State<UpcomingTab>
 
             final searchBar = Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-              child: EventSearchField(
-                controller: _searchCtrl,
-                query: _searchQuery,
-                hintText: 'Search events or organizations',
-                onChanged: (v) => setState(() {
-                  _searchQuery = v;
-                  _beginResultsTransition();
-                }),
-                onClear: () => setState(() {
-                  _searchCtrl.clear();
-                  _searchQuery = '';
-                  _beginResultsTransition();
-                }),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: EventSearchField(
+                      controller: _searchCtrl,
+                      query: _searchQuery,
+                      hintText: 'Search events or organizations',
+                      onChanged: (v) => setState(() {
+                        _searchQuery = v;
+                        _beginResultsTransition();
+                      }),
+                      onClear: () => setState(() {
+                        _searchCtrl.clear();
+                        _searchQuery = '';
+                        _beginResultsTransition();
+                      }),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  EventFilterButton(
+                    activeCount: _dateFilter != null ? 1 : 0,
+                    onTap: _openDateFilter,
+                  ),
+                ],
               ),
             );
 
@@ -685,6 +716,9 @@ class _UpcomingTabState extends State<UpcomingTab>
                       if (_selectedOrgId != null && e.orgId != _selectedOrgId) {
                         return false;
                       }
+                      if (_dateFilter != null && !_dateFilter!.matches(e.date)) {
+                        return false;
+                      }
                       if (query.isNotEmpty &&
                           !e.title.toLowerCase().contains(query) &&
                           !e.orgName.toLowerCase().contains(query)) {
@@ -700,6 +734,13 @@ class _UpcomingTabState extends State<UpcomingTab>
                   ViewToggleRow(
                     compact: _compactView,
                     onChanged: (v) => setState(() => _compactView = v),
+                    leading: _dateFilter == null
+                        ? null
+                        : EventDateFilterChip(
+                            filter: _dateFilter!,
+                            onTap: _openDateFilter,
+                            onCleared: _clearDateFilter,
+                          ),
                   ),
                   Expanded(
                     child: EventResultsList(
@@ -840,8 +881,7 @@ class _CategoryEventsScreenState extends State<_CategoryEventsScreen> {
   String _searchQuery = '';
   late bool _compactView = widget.initialCompactView;
 
-  _DateBucket? _dateBucket;
-  DateTime? _customDate;
+  EventDateFilter? _dateFilter;
   _SortBy _sortBy = _SortBy.latest;
 
   @override
@@ -853,30 +893,6 @@ class _CategoryEventsScreenState extends State<_CategoryEventsScreen> {
   void _setCompactView(bool v) {
     setState(() => _compactView = v);
     widget.onCompactViewChanged(v);
-  }
-
-  bool _matchesDateBucket(EventModel e) {
-    final bucket = _dateBucket;
-    if (bucket == null) return true;
-    final now = DateTime.now();
-    bool sameDay(DateTime a, DateTime b) =>
-        a.year == b.year && a.month == b.month && a.day == b.day;
-    switch (bucket) {
-      case _DateBucket.today:
-        return sameDay(e.date, now);
-      case _DateBucket.thisWeek:
-        final startOfWeek = DateTime(
-          now.year,
-          now.month,
-          now.day,
-        ).subtract(Duration(days: now.weekday - 1));
-        final endOfWeek = startOfWeek.add(const Duration(days: 7));
-        return !e.date.isBefore(startOfWeek) && e.date.isBefore(endOfWeek);
-      case _DateBucket.thisMonth:
-        return e.date.year == now.year && e.date.month == now.month;
-      case _DateBucket.custom:
-        return _customDate != null && sameDay(e.date, _customDate!);
-    }
   }
 
   void _sortEvents(List<EventModel> events) {
@@ -893,192 +909,29 @@ class _CategoryEventsScreenState extends State<_CategoryEventsScreen> {
     }
   }
 
-  // Selections stay pending inside the sheet — nothing reaches the results
-  // list until "Filter" is tapped, so dismissing the sheet discards them.
+  // Same date sheet the Discover and My Events tabs open, plus this screen's
+  // Sort By section. Dismissing it leaves the current filters untouched.
   Future<void> _showFilterSheet() async {
-    var pendingBucket = _dateBucket;
-    var pendingCustom = _customDate;
-    var pendingSort = _sortBy;
-
-    final applied = await showModalBottomSheet<bool>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetContext) {
-        return StatefulBuilder(
-          builder: (sheetContext, setSheetState) {
-            Widget optionRow({
-              required String label,
-              required bool selected,
-              required VoidCallback onTap,
-            }) {
-              return InkWell(
-                onTap: onTap,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 12,
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        selected
-                            ? Icons.check_box_rounded
-                            : Icons.check_box_outline_blank_rounded,
-                        color: selected
-                            ? AppColors.primaryDark
-                            : Colors.grey.shade400,
-                        size: 22,
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        label,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: selected
-                              ? FontWeight.w700
-                              : FontWeight.w500,
-                          color: selected ? Colors.black87 : Colors.black54,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }
-
-            void pickBucket(_DateBucket bucket) {
-              setSheetState(() {
-                pendingBucket = pendingBucket == bucket ? null : bucket;
-                if (pendingBucket != _DateBucket.custom) pendingCustom = null;
-              });
-            }
-
-            return SafeArea(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(20, 18, 20, 4),
-                    child: Text(
-                      'Date and Time',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  optionRow(
-                    label: 'Today',
-                    selected: pendingBucket == _DateBucket.today,
-                    onTap: () => pickBucket(_DateBucket.today),
-                  ),
-                  optionRow(
-                    label: 'This Week',
-                    selected: pendingBucket == _DateBucket.thisWeek,
-                    onTap: () => pickBucket(_DateBucket.thisWeek),
-                  ),
-                  optionRow(
-                    label: 'This Month',
-                    selected: pendingBucket == _DateBucket.thisMonth,
-                    onTap: () => pickBucket(_DateBucket.thisMonth),
-                  ),
-                  optionRow(
-                    label:
-                        pendingBucket == _DateBucket.custom &&
-                            pendingCustom != null
-                        ? 'Pick a Date — ${DateFormat('MMM d, yyyy').format(pendingCustom!)}'
-                        : 'Pick a Date (Custom)',
-                    selected: pendingBucket == _DateBucket.custom,
-                    onTap: () async {
-                      final picked = await showDatePicker(
-                        context: sheetContext,
-                        initialDate: pendingCustom ?? DateTime.now(),
-                        firstDate: DateTime.now().subtract(
-                          const Duration(days: 365),
-                        ),
-                        lastDate: DateTime.now().add(
-                          const Duration(days: 365 * 2),
-                        ),
-                      );
-                      if (picked == null) return;
-                      setSheetState(() {
-                        pendingBucket = _DateBucket.custom;
-                        pendingCustom = picked;
-                      });
-                    },
-                  ),
-                  const Divider(height: 24),
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(20, 0, 20, 4),
-                    child: Text(
-                      'Sort By',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  optionRow(
-                    label: 'Latest',
-                    selected: pendingSort == _SortBy.latest,
-                    onTap: () =>
-                        setSheetState(() => pendingSort = _SortBy.latest),
-                  ),
-                  optionRow(
-                    label: 'Most Popular (Most registered event)',
-                    selected: pendingSort == _SortBy.mostPopular,
-                    onTap: () =>
-                        setSheetState(() => pendingSort = _SortBy.mostPopular),
-                  ),
-                  const SizedBox(height: 16),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () => Navigator.pop(sheetContext, true),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primaryDark,
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text(
-                          'Filter',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
+    final result = await showEventFilterSheet<_SortBy>(
+      context,
+      date: _dateFilter,
+      sort: _sortBy,
+      sortOptions: const [
+        (_SortBy.latest, 'Latest'),
+        (_SortBy.mostPopular, 'Most Popular (Most registered event)'),
+      ],
     );
-
-    if (applied != true || !mounted) return;
+    if (result == null || !mounted) return;
     setState(() {
-      _dateBucket = pendingBucket;
-      _customDate = pendingCustom;
-      _sortBy = pendingSort;
+      _dateFilter = result.date;
+      _sortBy = result.sort ?? _SortBy.latest;
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final activeFilterCount =
-        (_dateBucket != null ? 1 : 0) + (_sortBy != _SortBy.latest ? 1 : 0);
+        (_dateFilter != null ? 1 : 0) + (_sortBy != _SortBy.latest ? 1 : 0);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -1127,7 +980,7 @@ class _CategoryEventsScreenState extends State<_CategoryEventsScreen> {
                         !e.orgName.toLowerCase().contains(query)) {
                       return false;
                     }
-                    return _matchesDateBucket(e);
+                    return _dateFilter == null || _dateFilter!.matches(e.date);
                   })
                   .toList();
               _sortEvents(events);
@@ -1151,25 +1004,11 @@ class _CategoryEventsScreenState extends State<_CategoryEventsScreen> {
                           ),
                         ),
                         const SizedBox(width: 10),
-                        Badge(
-                          isLabelVisible: activeFilterCount > 0,
-                          label: Text('$activeFilterCount'),
-                          child: Material(
-                            color: AppColors.primaryDark,
-                            borderRadius: BorderRadius.circular(12),
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(12),
-                              onTap: _showFilterSheet,
-                              child: const Padding(
-                                padding: EdgeInsets.all(11),
-                                child: Icon(
-                                  Icons.tune_rounded,
-                                  size: 18,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ),
+                        EventFilterButton(
+                          activeCount: activeFilterCount,
+                          onTap: _showFilterSheet,
+                          icon: Icons.tune_rounded,
+                          tooltip: 'Filter and sort',
                         ),
                       ],
                     ),
@@ -1227,8 +1066,6 @@ enum _ViewFilter { all, active, attended }
 
 enum _RegStatus { upcoming, ongoing, completed }
 
-enum _DateBucket { today, thisWeek, thisMonth, custom }
-
 enum _SortBy { latest, mostPopular }
 
 // Activity status for My Events — distinct from _RegStatus (which is a
@@ -1247,6 +1084,7 @@ class _MyEventsTabState extends State<MyEventsTab>
   final TextEditingController _searchCtrl = TextEditingController();
   String _searchQuery = '';
   String? _selectedOrgId;
+  EventDateFilter? _dateFilter;
 
   late final Future<List<QueryDocumentSnapshot>> _orgsFuture = FirebaseFirestore
       .instance
@@ -1287,7 +1125,15 @@ class _MyEventsTabState extends State<MyEventsTab>
   }
 
   bool get _hasInlineFilter =>
-      _searchQuery.trim().isNotEmpty || _selectedOrgId != null;
+      _searchQuery.trim().isNotEmpty ||
+      _selectedOrgId != null ||
+      _dateFilter != null;
+
+  Future<void> _openDateFilter() async {
+    final result = await showEventDateFilterSheet(context, _dateFilter);
+    if (result == null || !mounted) return;
+    setState(() => _dateFilter = result.date);
+  }
 
   Future<({Set<String> attended, Set<String> evaluated})> _loadStatusData(
     String uid,
@@ -1415,38 +1261,29 @@ class _MyEventsTabState extends State<MyEventsTab>
         // ⭐ FIX: Build the UI with filter buttons ALWAYS visible
         return Column(
           children: [
-            // ─── Search ───
+            // ─── Search + date filter ───
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-              child: TextField(
-                controller: _searchCtrl,
-                onChanged: (v) => setState(() => _searchQuery = v),
-                style: const TextStyle(fontSize: 13.5),
-                decoration: InputDecoration(
-                  hintText: 'Search events or organizations',
-                  hintStyle: TextStyle(
-                    fontSize: 13,
-                    color: Colors.grey.shade500,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: EventSearchField(
+                      controller: _searchCtrl,
+                      query: _searchQuery,
+                      hintText: 'Search events or organizations',
+                      onChanged: (v) => setState(() => _searchQuery = v),
+                      onClear: () => setState(() {
+                        _searchCtrl.clear();
+                        _searchQuery = '';
+                      }),
+                    ),
                   ),
-                  prefixIcon: const Icon(Icons.search, size: 20),
-                  suffixIcon: _searchQuery.isEmpty
-                      ? null
-                      : IconButton(
-                          icon: const Icon(Icons.close, size: 18),
-                          onPressed: () => setState(() {
-                            _searchCtrl.clear();
-                            _searchQuery = '';
-                          }),
-                        ),
-                  isDense: true,
-                  filled: true,
-                  fillColor: Colors.grey.shade100,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide.none,
+                  const SizedBox(width: 10),
+                  EventFilterButton(
+                    activeCount: _dateFilter != null ? 1 : 0,
+                    onTap: _openDateFilter,
                   ),
-                ),
+                ],
               ),
             ),
 
@@ -1484,6 +1321,18 @@ class _MyEventsTabState extends State<MyEventsTab>
                 ],
               ),
             ),
+            if (_dateFilter != null)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
+                  child: EventDateFilterChip(
+                    filter: _dateFilter!,
+                    onTap: _openDateFilter,
+                    onCleared: () => setState(() => _dateFilter = null),
+                  ),
+                ),
+              ),
             const Divider(height: 1, color: Color(0xFFF0F0F0)),
 
             // ─── Content Area ───
@@ -1603,6 +1452,9 @@ class _MyEventsTabState extends State<MyEventsTab>
         final query = _searchQuery.trim().toLowerCase();
         events = events.where((e) {
           if (_selectedOrgId != null && e.orgId != _selectedOrgId) {
+            return false;
+          }
+          if (_dateFilter != null && !_dateFilter!.matches(e.date)) {
             return false;
           }
           if (query.isNotEmpty &&

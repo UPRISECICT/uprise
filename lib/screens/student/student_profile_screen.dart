@@ -7,10 +7,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../student/student_login.dart';
 import '../student/student_events_screen.dart';
@@ -24,6 +22,8 @@ import '../../widgets/student/student_app_bar.dart';
 import '../../widgets/student/app_image.dart';
 import '../../widgets/common/action_tile.dart';
 import '../../services/app_sign_out.dart';
+import '../../utils/download_saver.dart';
+import '../../utils/feedback_helper.dart';
 
 // kCardDecoration / kSectionLabel / kIconBadge / kActionTile moved to
 // widgets/common/action_tile.dart so the guest screens can share them.
@@ -90,6 +90,11 @@ class ProfileModel extends ChangeNotifier {
   String campus = '';
   String orgId = '';
   String orgName = '';
+  // Read off the same organizations/{orgId} doc as orgName (no extra read),
+  // for the My Organizations row: the acronym as its title, since the full
+  // name ellipsized at phone width, and the org's own logo.
+  String orgShortName = '';
+  String orgLogoUrl = '';
   // Set by org_profile.dart when an org tags this student as an officer or
   // member (org_profile.dart's _tagMatchingStudentAccount writes these same
   // fields onto both `users` and `students`, so they're already sitting in
@@ -152,6 +157,8 @@ class ProfileModel extends ChangeNotifier {
         final cachedData = jsonDecode(cached) as Map<String, dynamic>;
         _applyFields(cachedData);
         orgName = cachedData['orgName'] ?? '';
+        orgShortName = cachedData['orgShortName'] ?? '';
+        orgLogoUrl = cachedData['orgLogoUrl'] ?? '';
         notifyListeners();
       } catch (_) {
         // Corrupt/old cache shape — ignore and fall through to the fetch.
@@ -175,8 +182,10 @@ class ProfileModel extends ChangeNotifier {
               .doc(orgId)
               .get();
           if (orgSnap.exists) {
-            orgName =
-                orgSnap.data()?['orgName'] ?? orgSnap.data()?['name'] ?? '';
+            final org = orgSnap.data() ?? {};
+            orgName = org['orgName'] ?? org['name'] ?? '';
+            orgShortName = (org['shortName'] ?? '').toString().trim();
+            orgLogoUrl = (org['logoUrl'] ?? '').toString();
           }
         } else {
           // Membership was untagged (orgId now cleared above) — drop the
@@ -184,6 +193,8 @@ class ProfileModel extends ChangeNotifier {
           // keeps rendering it since that card's visibility is gated on
           // orgName.isNotEmpty, not on orgId.
           orgName = '';
+          orgShortName = '';
+          orgLogoUrl = '';
         }
 
         await _saveCache(user.uid);
@@ -239,6 +250,8 @@ class ProfileModel extends ChangeNotifier {
         'campus': campus,
         'orgId': orgId,
         'orgName': orgName,
+        'orgShortName': orgShortName,
+        'orgLogoUrl': orgLogoUrl,
         'orgRole': orgRole,
         'isOrgOfficer': isOrgOfficer,
         'isOrgMember': isOrgMember,
@@ -541,40 +554,25 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
   final ProfileModel _profile = ProfileModel();
 
   // Cached once — this whole screen is wrapped in an AnimatedBuilder tied
-  // to _profile, which rebuilds on every notifyListeners() (cache load,
-  // then network load, then any profile edit). A stream created inline in
-  // build() would resubscribe on each of those and flash the "Recent
-  // registrations" list every time, not just on first load.
-  late final Stream<QuerySnapshot> _registrationsStream = FirebaseFirestore
-      .instance
-      .collection('registrations')
-      .where('userId', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
-      .snapshots();
+  // to _profile, which rebuilds on every notifyListeners() (cache load, then
+  // network load, then any profile edit). A future created in build() would
+  // re-run the activity queries on each of those.
+  late final Future<_ActivityStats?> _activityFuture = _loadActivityStats();
 
-  Future<List<QueryDocumentSnapshot>> _fetchEventsByIds(
-    List<String> eventIds,
-  ) async {
-    if (eventIds.isEmpty) return [];
-
-    final chunks = <List<String>>[];
-    for (var i = 0; i < eventIds.length; i += 10) {
-      chunks.add(
-        eventIds.sublist(
-          i,
-          i + 10 > eventIds.length ? eventIds.length : i + 10,
-        ),
-      );
+  /// Events › My Events. The home shell passes a callback that switches tabs
+  /// in place; standalone, the Events screen is pushed on its My Events tab.
+  void _openMyEvents() {
+    final onView = widget.onViewAllRegistrations;
+    if (onView != null) {
+      onView();
+      return;
     }
-
-    final results = <QueryDocumentSnapshot>[];
-    for (final chunk in chunks) {
-      final snap = await FirebaseFirestore.instance
-          .collection('events')
-          .where(FieldPath.documentId, whereIn: chunk)
-          .get();
-      results.addAll(snap.docs);
-    }
-    return results;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const StudentEventsScreen(initialTabIndex: 2),
+      ),
+    );
   }
 
   @override
@@ -793,239 +791,37 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                       child: Container(
                         padding: const EdgeInsets.all(14),
                         decoration: kCardDecoration(),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: kOrange.withOpacity(0.1),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.groups,
-                                color: kOrange,
-                                size: 22,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                _profile.orgName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 14.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.black87,
-                                ),
-                              ),
-                            ),
-                            if (_profile.isOrgOfficer ||
-                                _profile.isOrgMember) ...[
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 9,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: kOrange.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  _profile.isOrgOfficer
-                                      ? (_profile.officerPosition.isNotEmpty
-                                            ? _profile.officerPosition
-                                                  .toUpperCase()
-                                            : 'OFFICER')
-                                      : 'MEMBER',
-                                  style: const TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w800,
-                                    color: kOrange,
-                                    letterSpacing: 0.4,
-                                  ),
-                                ),
-                              ),
-                            ],
-                            const SizedBox(width: 6),
-                            Icon(
-                              Icons.arrow_forward_ios_rounded,
-                              size: 12,
-                              color: Colors.grey[300],
-                            ),
-                          ],
+                        child: _MyOrgRow(
+                          name: _profile.orgName,
+                          shortName: _profile.orgShortName,
+                          logoUrl: _profile.orgLogoUrl,
+                          role: _profile.isOrgOfficer
+                              ? (_profile.officerPosition.isNotEmpty
+                                    ? _profile.officerPosition.toUpperCase()
+                                    : 'OFFICER')
+                              : (_profile.isOrgMember ? 'MEMBER' : null),
                         ),
                       ),
                     ),
                   ),
                 ],
 
-                // ── Events Registered ──
-                kSectionLabel('Events Registered'),
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 16),
-                  padding: const EdgeInsets.all(16),
-                  decoration: kCardDecoration(),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Recent registrations',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
-                              color: Colors.black87,
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: () {
-                              if (widget.onViewAllRegistrations != null) {
-                                widget.onViewAllRegistrations!();
-                              } else {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => const StudentEventsScreen(
-                                      initialTabIndex: 1,
-                                    ),
-                                  ),
-                                );
-                              }
-                            },
-                            child: const Text(
-                              'See All',
-                              style: TextStyle(
-                                color: kOrange,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      StreamBuilder<QuerySnapshot>(
-                        stream: _registrationsStream,
-                        builder: (context, regSnapshot) {
-                          if (regSnapshot.connectionState ==
-                              ConnectionState.waiting) {
-                            return const Center(
-                              child: Padding(
-                                padding: EdgeInsets.all(16),
-                                child: CircularProgressIndicator(
-                                  color: kOrange,
-                                ),
-                              ),
-                            );
-                          }
-
-                          if (!regSnapshot.hasData ||
-                              regSnapshot.data!.docs.isEmpty) {
-                            return _EmptyEventsState();
-                          }
-
-                          final registrations = regSnapshot.data!.docs;
-                          final eventIds = registrations
-                              .map((doc) => doc['eventId'] as String)
-                              .toList();
-
-                          if (eventIds.isEmpty) {
-                            return _EmptyEventsState();
-                          }
-
-                          return FutureBuilder<List<QueryDocumentSnapshot>>(
-                            future: _fetchEventsByIds(eventIds),
-                            builder: (context, eventSnapshot) {
-                              if (eventSnapshot.connectionState ==
-                                  ConnectionState.waiting) {
-                                return const Center(
-                                  child: Padding(
-                                    padding: EdgeInsets.all(16),
-                                    child: CircularProgressIndicator(
-                                      color: kOrange,
-                                    ),
-                                  ),
-                                );
-                              }
-
-                              final events = eventSnapshot.data ?? [];
-
-                              if (events.isEmpty) {
-                                return _EmptyEventsState();
-                              }
-
-                              final displayEvents = events.take(3).toList();
-
-                              return Column(
-                                children: displayEvents.asMap().entries.map((
-                                  entry,
-                                ) {
-                                  final index = entry.key;
-                                  final doc = entry.value;
-                                  final eventData =
-                                      doc.data() as Map<String, dynamic>;
-
-                                  final eventDate =
-                                      eventData['date'] is Timestamp
-                                      ? (eventData['date'] as Timestamp)
-                                            .toDate()
-                                      : DateTime.tryParse(
-                                          eventData['date']?.toString() ?? '',
-                                        );
-                                  final isUpcoming =
-                                      eventDate != null &&
-                                      eventDate.isAfter(DateTime.now());
-                                  final badgeText = isUpcoming
-                                      ? 'UPCOMING'
-                                      : 'PAST';
-                                  final badgeColor = isUpcoming
-                                      ? const Color(0xFF2196F3)
-                                      : Colors.grey;
-
-                                  String displayDate = '';
-                                  if (eventDate != null) {
-                                    if (isUpcoming &&
-                                        eventDate
-                                                .difference(DateTime.now())
-                                                .inDays ==
-                                            1) {
-                                      displayDate =
-                                          'Tomorrow • ${eventData['startTime'] ?? '9:00 AM'}';
-                                    } else {
-                                      displayDate =
-                                          '${DateFormat('MMM d, yyyy').format(eventDate)} • ${eventData['startTime'] ?? '9:00 AM'}';
-                                    }
-                                  }
-
-                                  return Column(
-                                    children: [
-                                      _EventCard(
-                                        title:
-                                            eventData['title'] ??
-                                            'Untitled Event',
-                                        subtitle: displayDate,
-                                        badge: badgeText,
-                                        badgeColor: badgeColor,
-                                        imageUrl: eventData['bannerUrl'] ?? '',
-                                      ),
-                                      if (index < displayEvents.length - 1)
-                                        Divider(
-                                          height: 1,
-                                          color: Colors.grey.shade100,
-                                        ),
-                                    ],
-                                  );
-                                }).toList(),
-                              );
-                            },
-                          );
-                        },
-                      ),
-                    ],
+                // ── My Activity ──
+                kSectionLabel('My Activity'),
+                _MyActivitySection(
+                  future: _activityFuture,
+                  onOpenEvents: _openMyEvents,
+                  onOpenCertificates: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const StudentCertificatesScreen(),
+                    ),
+                  ),
+                  onOpenFeedback: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const StudentFeedbackScreen(),
+                    ),
                   ),
                 ),
                 // ❌ Removed the Log Out button from here (duplicate).
@@ -1038,23 +834,509 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
   }
 }
 
-class _EmptyEventsState extends StatelessWidget {
+// ── My Activity ──
+// Replaces the old "Events Registered" list, which repeated Events › My
+// Events three rows at a time — usually three PAST events behind grey
+// calendar placeholders. A profile reads better as a summary of what the
+// student has done, plus the one thing they can act on.
+
+class _ActivityStats {
+  final int registered;
+  final int attended;
+  final int certificates;
+
+  /// Attended events with no review yet — these hold up certificates.
+  final int needsFeedback;
+
+  const _ActivityStats({
+    required this.registered,
+    required this.attended,
+    required this.certificates,
+    required this.needsFeedback,
+  });
+}
+
+/// One pass over the student's registrations, attendance, certificates and
+/// reviews. Each part fails on its own, so an unreadable certificates query
+/// shows "—" there instead of blanking the whole section.
+Future<_ActivityStats?> _loadActivityStats() async {
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  if (uid == null) return null;
+  final db = FirebaseFirestore.instance;
+
+  final regSnap = await db
+      .collection('registrations')
+      .where('userId', isEqualTo: uid)
+      .get();
+  final registeredIds = {
+    for (final d in regSnap.docs)
+      if ((d.data()['eventId'] ?? '').toString().isNotEmpty)
+        d.data()['eventId'].toString(),
+  };
+
+  // Attendance: one collection-group query (the one My Events uses). If that
+  // index isn't available, read this student's attendance doc under each
+  // registered event instead — every check-in writer keys it by UID.
+  Set<String> attended = {};
+  try {
+    final attSnap = await db
+        .collectionGroup('attendances')
+        .where('studentId', isEqualTo: uid)
+        .get();
+    for (final doc in attSnap.docs) {
+      final status = (doc.data()['status'] ?? '').toString();
+      if (status != 'present' && status != 'late') continue;
+      final eventId = doc.reference.parent.parent?.id;
+      if (eventId != null) attended.add(eventId);
+    }
+  } catch (_) {
+    final docs = await Future.wait(
+      registeredIds.map(
+        (id) => db
+            .collection('events')
+            .doc(id)
+            .collection('attendances')
+            .doc(uid)
+            .get()
+            .then<DocumentSnapshot<Map<String, dynamic>>?>((d) => d)
+            .catchError((_) => null),
+      ),
+    );
+    for (final doc in docs) {
+      final status = (doc?.data()?['status'] ?? '').toString();
+      if (doc != null && (status == 'present' || status == 'late')) {
+        attended.add(doc.reference.parent.parent!.id);
+      }
+    }
+  }
+
+  // Same rule as the Event Feedback screen: only events that still exist and
+  // are approved count. A deleted event leaves its `attendances` subcollection
+  // behind, which the collection-group query above still finds — that's how
+  // this once said "3 need feedback" where the Feedback screen listed 2.
+  if (attended.isNotEmpty) {
+    final ids = attended.toList();
+    final live = <String>{};
+    for (var i = 0; i < ids.length; i += 30) {
+      final chunk = ids.sublist(i, i + 30 > ids.length ? ids.length : i + 30);
+      try {
+        final snap = await db
+            .collection('events')
+            .where(FieldPath.documentId, whereIn: chunk)
+            .get();
+        for (final doc in snap.docs) {
+          if (doc.data()['status'] == 'approved') live.add(doc.id);
+        }
+      } catch (_) {
+        // Unreadable chunk: leave those out rather than over-count.
+      }
+    }
+    attended = live;
+  }
+
+  final results = await Future.wait<Object?>([
+    // An aggregate count — the certificate documents themselves aren't needed.
+    db
+        .collection('certificates')
+        .where('recipientUid', isEqualTo: uid)
+        .count()
+        .get()
+        .then<Object?>((s) => s.count ?? 0)
+        .catchError((_) => null),
+    FeedbackHelper.ratedEventIds(
+      uid,
+    ).then<Object?>((ids) => ids).catchError((_) => <String>{}),
+  ]);
+
+  final rated = results[1] as Set<String>;
+  return _ActivityStats(
+    registered: registeredIds.length,
+    attended: attended.length,
+    certificates: (results[0] as int?) ?? -1,
+    needsFeedback: attended.where((id) => !rated.contains(id)).length,
+  );
+}
+
+class _MyActivitySection extends StatelessWidget {
+  final Future<_ActivityStats?> future;
+  final VoidCallback onOpenEvents;
+  final VoidCallback onOpenCertificates;
+  final VoidCallback onOpenFeedback;
+
+  const _MyActivitySection({
+    required this.future,
+    required this.onOpenEvents,
+    required this.onOpenCertificates,
+    required this.onOpenFeedback,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<_ActivityStats?>(
+      future: future,
+      builder: (context, snap) {
+        final stats = snap.data;
+        final loading = snap.connectionState != ConnectionState.done;
+
+        if (!loading && stats != null && stats.registered == 0) {
+          return Container(
+            width: double.infinity,
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 16),
+            decoration: kCardDecoration(),
+            child: Column(
+              children: [
+                const Text(
+                  'No activity yet',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Events you register for, attend and get certificates '
+                  'from will add up here.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12.5, color: Colors.grey[600]),
+                ),
+              ],
+            ),
+          );
+        }
+
+        String value(int? n) =>
+            loading || n == null || n < 0 ? '—' : n.toString();
+
+        return Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: kCardDecoration(),
+              clipBehavior: Clip.antiAlias,
+              child: IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _ActivityStat(
+                      value: value(stats?.registered),
+                      label: 'Registered',
+                      accent: kOrange,
+                      onTap: onOpenEvents,
+                    ),
+                    const _ActivityDivider(),
+                    _ActivityStat(
+                      value: value(stats?.attended),
+                      label: 'Attended',
+                      accent: const Color(0xFF059669),
+                      onTap: onOpenFeedback,
+                    ),
+                    const _ActivityDivider(),
+                    _ActivityStat(
+                      value: value(stats?.certificates),
+                      label: 'Certificates',
+                      accent: const Color(0xFF2563EB),
+                      onTap: onOpenCertificates,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Only when there is something to do, so it reads as a nudge
+            // rather than a permanent fixture.
+            if (!loading && stats != null && stats.needsFeedback > 0) ...[
+              const SizedBox(height: 10),
+              _NeedsFeedbackBanner(
+                count: stats.needsFeedback,
+                onTap: onOpenFeedback,
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ActivityStat extends StatelessWidget {
+  final String value;
+  final String label;
+  final Color accent;
+  final VoidCallback onTap;
+
+  const _ActivityStat({
+    required this.value,
+    required this.label,
+    required this.accent,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 6),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  child: Text(
+                    value,
+                    key: ValueKey(value),
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                      color: accent,
+                      height: 1.1,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ActivityDivider extends StatelessWidget {
+  const _ActivityDivider();
+
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 24),
-      child: Center(
-        child: Column(
-          children: [
-            Icon(Icons.event_busy_outlined, size: 34, color: Colors.grey[300]),
-            const SizedBox(height: 8),
-            const Text(
-              'No registered events yet',
-              style: TextStyle(color: Colors.grey, fontSize: 13),
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: VerticalDivider(width: 1, color: Colors.grey.shade200),
+    );
+  }
+}
+
+class _NeedsFeedbackBanner extends StatelessWidget {
+  final int count;
+  final VoidCallback onTap;
+
+  const _NeedsFeedbackBanner({required this.count, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    const amber = Color(0xFFD97706);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Material(
+        color: const Color(0xFFFFFBEB),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: amber.withAlpha(70)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: amber.withAlpha(30),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.star_rounded,
+                    color: amber,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        count == 1
+                            ? '1 event needs your feedback'
+                            : '$count events need your feedback',
+                        style: const TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Rate them so organizations can issue your '
+                        'certificates.',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: Colors.grey[700],
+                          height: 1.3,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: amber,
+                  size: 22,
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
+    );
+  }
+}
+
+/// One row of My Organizations: logo, acronym, full name, role.
+///
+/// The acronym is the title because the full name used to be the only line
+/// and ellipsized at phone width ("CICT Student Innov…"). The full name still
+/// sits underneath, small and allowed two lines, since an acronym alone
+/// doesn't tell a newer student which org it is. With no acronym on record,
+/// the full name is the title and isn't repeated.
+class _MyOrgRow extends StatelessWidget {
+  final String name;
+  final String shortName;
+  final String logoUrl;
+
+  /// Badge text — "MEMBER", or the officer's position. Null hides it.
+  final String? role;
+
+  const _MyOrgRow({
+    required this.name,
+    required this.shortName,
+    required this.logoUrl,
+    required this.role,
+  });
+
+  String get _initials {
+    final source = shortName.isNotEmpty ? shortName : name;
+    final words = source.split(RegExp(r'\s+')).where((w) => w.isNotEmpty);
+    if (words.length >= 2) {
+      return words.take(2).map((w) => w[0]).join().toUpperCase();
+    }
+    if (source.isEmpty) return '?';
+    return source.substring(0, source.length < 2 ? 1 : 2).toUpperCase();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasShort = shortName.isNotEmpty && shortName != name;
+    final initials = Center(
+      child: Text(
+        _initials,
+        style: const TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w800,
+          color: kOrange,
+        ),
+      ),
+    );
+
+    return Row(
+      children: [
+        // The org's own logo; its initials on the brand tint when it has none
+        // (or it fails to load) rather than a generic people icon.
+        Container(
+          width: 46,
+          height: 46,
+          decoration: BoxDecoration(
+            color: kOrange.withAlpha(26),
+            shape: BoxShape.circle,
+            border: Border.all(color: const Color(0xFFEEEEEE)),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: logoUrl.isEmpty
+              ? initials
+              : AppImage(
+                  source: logoUrl,
+                  width: 46,
+                  height: 46,
+                  fit: BoxFit.cover,
+                  showLoadingIndicator: false,
+                  placeholder: initials,
+                ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                hasShort ? shortName : name,
+                maxLines: hasShort ? 1 : 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.black87,
+                ),
+              ),
+              if (hasShort) ...[
+                const SizedBox(height: 2),
+                Text(
+                  name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        if (role != null) ...[
+          const SizedBox(width: 8),
+          // Capped so a long officer title can't squeeze the name column.
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 110),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+              decoration: BoxDecoration(
+                color: kOrange.withAlpha(26),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                role!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: kOrange,
+                  letterSpacing: 0.4,
+                ),
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(width: 6),
+        Icon(Icons.arrow_forward_ios_rounded, size: 12, color: Colors.grey[300]),
+      ],
     );
   }
 }
@@ -1062,22 +1344,28 @@ class _EmptyEventsState extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────
 // Personal Identity Screen
 // ─────────────────────────────────────────────────────────────
-class PersonalIdentityScreen extends StatelessWidget {
+class PersonalIdentityScreen extends StatefulWidget {
   final ProfileModel profile;
   const PersonalIdentityScreen({super.key, required this.profile});
 
-  void _showDownloadPreview(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _IdDownloadPreviewSheet(profile: profile),
-    );
-  }
+  @override
+  State<PersonalIdentityScreen> createState() => _PersonalIdentityScreenState();
+}
+
+class _PersonalIdentityScreenState extends State<PersonalIdentityScreen> {
+  final GlobalKey _cardKey = GlobalKey();
+  bool _isDownloading = false;
+
+  /// True for the one frame the card is captured for the PDF: it swaps the
+  /// on-screen "Tap to enlarge" caption for "Scan to verify", which is what a
+  /// printed ID should say.
+  bool _capturing = false;
+
+  ProfileModel get profile => widget.profile;
 
   /// A page, not a dialog — same as the guest Digital ID, so the QR gets the
   /// whole screen and event staff can scan it from a distance.
-  void _openFullscreen(BuildContext context) {
+  void _openFullscreen() {
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -1092,6 +1380,62 @@ class PersonalIdentityScreen extends StatelessWidget {
     );
   }
 
+  Future<Uint8List?> _captureCard() async {
+    setState(() => _capturing = true);
+    try {
+      await WidgetsBinding.instance.endOfFrame;
+      final boundary =
+          _cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) return null;
+      final ui.Image image = await boundary.toImage(pixelRatio: 3.0);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      return byteData?.buffer.asUint8List();
+    } finally {
+      if (mounted) setState(() => _capturing = false);
+    }
+  }
+
+  Future<void> _download() async {
+    if (_isDownloading) return;
+    setState(() => _isDownloading = true);
+    final messenger = ScaffoldMessenger.of(context);
+
+    try {
+      final cardBytes = await _captureCard();
+      if (cardBytes == null) {
+        throw Exception('Could not capture the ID card.');
+      }
+
+      final doc = pw.Document()
+        ..addPage(
+          pw.Page(
+            pageFormat: PdfPageFormat.a4,
+            margin: const pw.EdgeInsets.all(24),
+            build: (context) => pw.Center(
+              child: pw.Image(
+                pw.MemoryImage(cardBytes),
+                fit: pw.BoxFit.contain,
+              ),
+            ),
+          ),
+        );
+      final pdfBytes = await doc.save();
+
+      final studentId = profile.studentId.isNotEmpty
+          ? profile.studentId
+          : 'student';
+      // Straight to Downloads — no share sheet.
+      final saved = await saveToDownloads(pdfBytes, 'BSU_ID_$studentId.pdf');
+      await announceDownload(messenger, saved);
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Failed to download ID: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isDownloading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -1104,51 +1448,44 @@ class PersonalIdentityScreen extends StatelessWidget {
             padding: const EdgeInsets.all(20),
             child: Column(
               children: [
-                _StudentIdCard(
-                  profile: profile,
-                  onFullscreen: () => _openFullscreen(context),
+                RepaintBoundary(
+                  key: _cardKey,
+                  child: _StudentIdCard(
+                    profile: profile,
+                    onFullscreen: _capturing ? null : _openFullscreen,
+                  ),
                 ),
                 const SizedBox(height: 14),
 
-                // Second, more discoverable route to the same screen — the
-                // 100px QR on the card is a small tap target to find on its
-                // own. Mirrors the guest Digital ID's hint row.
-                GestureDetector(
-                  onTap: () => _openFullscreen(context),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFFEEEEEE)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.open_in_full_rounded,
-                          size: 18,
-                          color: kOrange,
+                // Second, more discoverable route to the same screen —
+                // the 100px QR on the card is a small tap target to find
+                // on its own.
+                Material(
+                  color: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: const BorderSide(color: Color(0xFFEEEEEE)),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: _openFullscreen,
+                    child: const SizedBox(
+                      width: double.infinity,
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 13,
                         ),
-                        const SizedBox(width: 10),
-                        const Expanded(
-                          child: Text(
-                            'Tap to show full-screen QR for easy scanning',
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF374151),
-                            ),
+                        child: Text(
+                          'Tap to show full-screen QR for easy scanning',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF374151),
                           ),
                         ),
-                        Icon(
-                          Icons.chevron_right_rounded,
-                          size: 20,
-                          color: Colors.grey[400],
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -1156,167 +1493,41 @@ class PersonalIdentityScreen extends StatelessWidget {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: () => _showDownloadPreview(context),
-                    icon: const Icon(Icons.download_rounded, size: 20),
+                    onPressed: _isDownloading ? null : _download,
+                    icon: _isDownloading
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.4,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.download_rounded, size: 20),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: kOrange,
                       foregroundColor: Colors.white,
+                      disabledBackgroundColor: kOrange.withAlpha(153),
+                      disabledForegroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
-                    label: const Text(
-                      'Download ID',
-                      style: TextStyle(
+                    label: Text(
+                      _isDownloading ? 'Downloading…' : 'Download ID',
+                      style: const TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 16,
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 20),
               ],
             ),
           ),
         );
       },
-    );
-  }
-}
-
-// ── Download Preview Bottom Sheet ──
-class _IdDownloadPreviewSheet extends StatefulWidget {
-  final ProfileModel profile;
-  const _IdDownloadPreviewSheet({required this.profile});
-
-  @override
-  State<_IdDownloadPreviewSheet> createState() =>
-      _IdDownloadPreviewSheetState();
-}
-
-class _IdDownloadPreviewSheetState extends State<_IdDownloadPreviewSheet> {
-  final GlobalKey _cardKey = GlobalKey();
-  bool _isGenerating = false;
-
-  Future<Uint8List?> _captureCard(GlobalKey key) async {
-    final boundary =
-        key.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-    if (boundary == null) return null;
-    final ui.Image image = await boundary.toImage(pixelRatio: 3.0);
-    final ByteData? byteData = await image.toByteData(
-      format: ui.ImageByteFormat.png,
-    );
-    if (byteData == null) return null;
-    return byteData.buffer.asUint8List();
-  }
-
-  Future<void> _downloadAsPdf() async {
-    setState(() => _isGenerating = true);
-
-    try {
-      // One card now, so one capture and one page.
-      final cardBytes = await _captureCard(_cardKey);
-
-      if (cardBytes == null) {
-        throw Exception('Could not capture the ID card.');
-      }
-
-      final cardImage = pw.MemoryImage(cardBytes);
-
-      final doc = pw.Document();
-
-      doc.addPage(
-        pw.Page(
-          pageFormat: PdfPageFormat.a4,
-          margin: const pw.EdgeInsets.all(24),
-          build: (context) => pw.Center(
-            child: pw.Image(cardImage, fit: pw.BoxFit.contain),
-          ),
-        ),
-      );
-
-      final pdfBytes = await doc.save();
-
-      final studentId = widget.profile.studentId.isNotEmpty
-          ? widget.profile.studentId
-          : 'student';
-      final fileName = 'BSU_ID_$studentId.pdf';
-
-      if (!mounted) return;
-      setState(() => _isGenerating = false);
-      Navigator.pop(context);
-
-      await Printing.sharePdf(bytes: pdfBytes, filename: fileName);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _isGenerating = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to generate ID PDF: $e')));
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFFE8E8E8),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: Colors.grey[400],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            RepaintBoundary(
-              key: _cardKey,
-              child: _StudentIdCard(profile: widget.profile),
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _isGenerating ? null : _downloadAsPdf,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: kOrange,
-                  foregroundColor: Colors.white,
-                  disabledBackgroundColor: kOrange.withOpacity(0.6),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-                child: _isGenerating
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.4,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Text(
-                        'Download',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 16,
-                        ),
-                      ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -1339,9 +1550,9 @@ class _IdDownloadPreviewSheetState extends State<_IdDownloadPreviewSheet> {
 class _StudentIdCard extends StatelessWidget {
   final ProfileModel profile;
 
-  /// Opens the full-screen QR. Null when the card is being rendered for the
-  /// PDF capture, where there is nothing to tap and the "Tap to enlarge"
-  /// caption would be baked into the downloaded ID.
+  /// Opens the full-screen QR. Null while the card is being captured for the
+  /// PDF, where there is nothing to tap and the "Tap to enlarge" caption would
+  /// be baked into the downloaded ID.
   final VoidCallback? onFullscreen;
 
   const _StudentIdCard({required this.profile, this.onFullscreen});
@@ -1548,26 +1759,14 @@ class _StudentIdCard extends StatelessWidget {
                         value: profile.yearLevel,
                       ),
                       const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.verified_outlined,
-                            size: 12,
-                            color: Colors.grey[400],
-                          ),
-                          const SizedBox(width: 5),
-                          Expanded(
-                            child: Text(
-                              'A.Y. ${_currentAcademicYear()} · NON-TRANSFERABLE',
-                              style: TextStyle(
-                                fontSize: 9,
-                                letterSpacing: 0.3,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.grey[400],
-                              ),
-                            ),
-                          ),
-                        ],
+                      Text(
+                        'A.Y. ${_currentAcademicYear()} · NON-TRANSFERABLE',
+                        style: TextStyle(
+                          fontSize: 9,
+                          letterSpacing: 0.3,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey[400],
+                        ),
                       ),
                     ],
                   ),
@@ -1607,35 +1806,16 @@ class _StudentIdCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 5),
-                      if (onFullscreen == null)
-                        Text(
-                          'Scan to verify',
-                          style: TextStyle(
-                            fontSize: 9,
-                            color: Colors.grey[500],
-                            fontWeight: FontWeight.w600,
-                          ),
-                        )
-                      else
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.open_in_full_rounded,
-                              size: 9,
-                              color: Colors.grey[500],
-                            ),
-                            const SizedBox(width: 3),
-                            Text(
-                              'Tap to enlarge',
-                              style: TextStyle(
-                                fontSize: 9,
-                                color: Colors.grey[500],
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
+                      Text(
+                        onFullscreen == null
+                            ? 'Scan to verify'
+                            : 'Tap to enlarge',
+                        style: TextStyle(
+                          fontSize: 9,
+                          color: Colors.grey[500],
+                          fontWeight: FontWeight.w600,
                         ),
+                      ),
                     ],
                   ),
                 ),
@@ -1960,82 +2140,6 @@ class _EditField extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _EventCard extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final String badge;
-  final Color badgeColor;
-  final String imageUrl;
-
-  const _EventCard({
-    required this.title,
-    required this.subtitle,
-    required this.badge,
-    required this.badgeColor,
-    required this.imageUrl,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 0),
-      leading: ClipRRect(
-        borderRadius: BorderRadius.circular(10),
-        child: Image.network(
-          imageUrl,
-          width: 56,
-          height: 56,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: Colors.grey[200],
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Icon(Icons.event, color: Colors.grey),
-          ),
-        ),
-      ),
-      title: Text(
-        title,
-        style: const TextStyle(
-          fontWeight: FontWeight.w700,
-          fontSize: 14,
-          color: Colors.black87,
-        ),
-      ),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            subtitle,
-            style: const TextStyle(fontSize: 12, color: Colors.grey),
-          ),
-          const SizedBox(height: 4),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(
-              color: badgeColor.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              badge,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-                color: badgeColor,
-              ),
-            ),
-          ),
-        ],
-      ),
-      trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-      onTap: () {},
     );
   }
 }

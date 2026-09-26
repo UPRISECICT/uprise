@@ -137,6 +137,7 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen>
                 'bannerUrl': (eventData['bannerUrl'] ?? '').toString(),
                 'rated': review != null,
                 'review': review,
+                'attended': true,
               };
             } catch (e) {
               // One unreadable event is skipped, not the whole list.
@@ -186,8 +187,14 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen>
           );
 
           for (var i = 0; i < orphanIds.length; i++) {
+            // The event itself was deleted: its review goes with it, from the
+            // list and every count. A failed read (null) is not a deletion,
+            // so that review still stands.
+            final eventDoc = eventDocs[i];
+            if (eventDoc != null && !eventDoc.exists) continue;
+
             final review = myFeedback[orphanIds[i]]!;
-            final eventData = eventDocs[i]?.data() ?? const <String, dynamic>{};
+            final eventData = eventDoc?.data() ?? const <String, dynamic>{};
 
             events.add({
               'eventId': orphanIds[i],
@@ -202,6 +209,9 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen>
               'bannerUrl': (eventData['bannerUrl'] ?? '').toString(),
               'rated': true,
               'review': review,
+              // Still listed, but not one of the events counted as Attended
+              // (attendance changed, or the event is no longer approved).
+              'attended': false,
             });
           }
         }
@@ -620,7 +630,12 @@ class _StudentFeedbackScreenState extends State<StudentFeedbackScreen>
         children: [
           _stat('$_attendedCount', 'Attended'),
           _statDivider(),
-          _stat('${_reviewed.length}', 'Reviewed'),
+          // Reviews of the events counted as Attended, so Reviewed + To Rate
+          // always adds up to Attended.
+          _stat(
+            '${_reviewed.where((e) => e['attended'] == true).length}',
+            'Reviewed',
+          ),
           _statDivider(),
           _stat('${_toRate.length}', 'To Rate'),
         ],
@@ -1021,6 +1036,15 @@ class _EventFeedbackPageState extends State<_EventFeedbackPage> {
     }
   }
 
+  /// What each star count means, shown under the stars once one is picked.
+  static const List<String> _ratingLabels = [
+    'Poor',
+    'Fair',
+    'Good',
+    'Very Good',
+    'Excellent',
+  ];
+
   Widget _buildStarSelector() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -1070,14 +1094,19 @@ class _EventFeedbackPageState extends State<_EventFeedbackPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Event card
+            // One card: which event, why it matters, then the form. The event
+            // header and the form used to be two separate boxes.
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.grey.shade50,
+                color: _readOnly ? AppColors.successBg : Colors.grey.shade50,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade200),
+                border: Border.all(
+                  color: _readOnly
+                      ? AppColors.success.withAlpha(90)
+                      : Colors.grey.shade200,
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1102,40 +1131,41 @@ class _EventFeedbackPageState extends State<_EventFeedbackPage> {
                       ),
                     ),
                   ],
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Rating form — green once submitted, like the review it now is.
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: _readOnly ? AppColors.successBg : Colors.grey.shade50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: _readOnly
-                      ? AppColors.success.withAlpha(90)
-                      : Colors.grey.shade200,
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+                  // Certificates are only issued once the attendee's feedback
+                  // is in (org_certificates.dart gates on it), which nothing
+                  // on this form used to say.
+                  if (!_readOnly) ...[
+                    const SizedBox(height: 10),
+                    const Text(
+                      'Organizations issue certificates only after you submit '
+                      'your feedback.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textMuted,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+                  Divider(
+                    height: 1,
+                    color: _readOnly
+                        ? AppColors.success.withAlpha(60)
+                        : Colors.grey.shade200,
+                  ),
+                  const SizedBox(height: 14),
+                  // The check stays once submitted — it says something. The
+                  // icon beside "Rate this event" was decoration.
                   Row(
                     children: [
-                      Icon(
-                        _readOnly
-                            ? Icons.check_circle_rounded
-                            : Icons.rate_review_rounded,
-                        color: _readOnly
-                            ? AppColors.success
-                            : AppColors.primaryDark,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
+                      if (_readOnly) ...[
+                        const Icon(
+                          Icons.check_circle_rounded,
+                          color: AppColors.success,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                      ],
                       Text(
                         _readOnly ? 'Feedback Submitted' : 'Rate this event',
                         style: TextStyle(
@@ -1148,6 +1178,29 @@ class _EventFeedbackPageState extends State<_EventFeedbackPage> {
                   ),
                   const SizedBox(height: 12),
                   _buildStarSelector(),
+                  const SizedBox(height: 6),
+                  // What the picked star count means, or a prompt until one is
+                  // picked — the stars alone never said what "3" stood for.
+                  Center(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 150),
+                      child: Text(
+                        _rating == 0
+                            ? 'Tap a star to rate'
+                            : _ratingLabels[_rating - 1],
+                        key: ValueKey(_rating),
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: _rating == 0
+                              ? FontWeight.w500
+                              : FontWeight.w700,
+                          color: _rating == 0
+                              ? AppColors.textMuted
+                              : AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 14),
                   TextField(
                     controller: _feedbackCtrl,
@@ -1156,7 +1209,14 @@ class _EventFeedbackPageState extends State<_EventFeedbackPage> {
                     decoration: InputDecoration(
                       hintText:
                           'Share your thoughts about this event (optional)',
-                      hintStyle: const TextStyle(fontSize: 13),
+                      // Spelled out in full: a bare fontSize merged with the
+                      // app theme's bold, dark hint style and made the
+                      // placeholder look like text already typed in.
+                      hintStyle: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w400,
+                        color: AppColors.textMuted,
+                      ),
                       filled: true,
                       fillColor: Colors.white,
                       contentPadding: const EdgeInsets.all(12),
@@ -1189,9 +1249,14 @@ class _EventFeedbackPageState extends State<_EventFeedbackPage> {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        onPressed: _submitting ? null : _submit,
+                        // Disabled until a star is picked, instead of letting
+                        // the tap through only to answer with a red snackbar.
+                        onPressed: _submitting || _rating == 0 ? null : _submit,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.primaryDark,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: Colors.grey.shade300,
+                          disabledForegroundColor: Colors.grey.shade600,
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
@@ -1202,14 +1267,13 @@ class _EventFeedbackPageState extends State<_EventFeedbackPage> {
                                 width: 20,
                                 height: 20,
                                 child: CircularProgressIndicator(
-                                  color: Colors.white,
+                                  color: AppColors.primaryDark,
                                   strokeWidth: 2.5,
                                 ),
                               )
                             : const Text(
                                 'Submit Feedback',
                                 style: TextStyle(
-                                  color: Colors.white,
                                   fontSize: 14,
                                   fontWeight: FontWeight.w700,
                                 ),

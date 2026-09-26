@@ -5,7 +5,7 @@
 // Students and guests hold different records under different keys, so each
 // role has its own collector. What they *don't* need to differ on is the
 // document: same sections-and-tables layout, same empty-state wording, same
-// share step. That all lives here.
+// save step. That all lives here.
 //
 // Kept out of app_support.dart deliberately — that file is imported by both
 // roles' settings screens and shouldn't take on the pdf/printing dependency.
@@ -17,7 +17,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
+
+import '../utils/download_saver.dart';
 
 /// One exported section: a title, column headers, and the rows to print.
 class ExportSection {
@@ -41,11 +42,12 @@ String exportStr(dynamic value) {
   return s.isEmpty ? '—' : s;
 }
 
-/// Runs [collect] behind a modal spinner and shares the resulting PDF.
+/// Runs [collect] behind a modal spinner and saves the resulting PDF straight
+/// to the phone's Downloads folder — it used to open the share sheet instead.
 ///
-/// The dialog is popped exactly once: a failure inside [Printing.sharePdf]
-/// happens *after* the dialog is dismissed, so an unguarded pop in the catch
-/// would take the underlying screen down with it.
+/// The dialog is popped exactly once: a failure while saving happens *after*
+/// the dialog is dismissed, so an unguarded pop in the catch would take the
+/// underlying screen down with it.
 Future<void> runDataExport({
   required BuildContext context,
   required String subtitle,
@@ -72,10 +74,11 @@ Future<void> runDataExport({
     final sections = await collect();
     final bytes = await buildExportPdf(sections: sections, subtitle: subtitle);
     closeDialog();
-    await Printing.sharePdf(
-      bytes: bytes,
-      filename: 'UPRISE_MyData_$filenameSuffix.pdf',
+    final saved = await saveToDownloads(
+      bytes,
+      'UPRISE_MyData_$filenameSuffix.pdf',
     );
+    await announceDownload(messenger, saved);
   } catch (e) {
     closeDialog();
     messenger.showSnackBar(

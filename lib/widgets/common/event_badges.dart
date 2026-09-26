@@ -71,7 +71,8 @@ class SoonBadge extends StatelessWidget {
   }
 }
 
-/// Red pulse chip for an event that is happening right now.
+/// Brand-colored "ONGOING" chip for an event that is happening right now,
+/// styled to match the "● Ongoing" filter pill on the events screen.
 class LiveBadge extends StatelessWidget {
   const LiveBadge({super.key});
 
@@ -80,7 +81,7 @@ class LiveBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.red.shade600,
+        color: AppColors.primaryDark,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
@@ -103,7 +104,7 @@ class LiveBadge extends StatelessWidget {
           ),
           const SizedBox(width: 5),
           const Text(
-            'LIVE',
+            'ONGOING',
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w800,

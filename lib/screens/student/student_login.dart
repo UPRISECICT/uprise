@@ -4,6 +4,8 @@
 // Auto-triggers "Forgot Password" flow after 3 consecutive failed attempts.
 //
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -36,6 +38,19 @@ class _StudentLoginState extends State<StudentLogin> {
 
   int _failedAttempts = 0;
   static const int _maxFailedAttempts = 3;
+
+  // ── Inline login error ──
+  // Shown in the form, right above the Login button, instead of a floating
+  // SnackBar: the SnackBar covered the bottom of the form, grew to two lines
+  // with its action, and vanished before it was always read. This stays until
+  // the student edits either field.
+  String? _loginError;
+  bool _emailInvalid = false;
+  bool _passwordInvalid = false;
+
+  /// Bumped on every new error so the banner shakes even when the message is
+  /// the same as the one already showing.
+  int _errorTick = 0;
 
   final AuthService _auth = AuthService();
   // Credentials are kept in the platform Keychain/Keystore (encrypted at
@@ -120,28 +135,65 @@ class _StudentLoginState extends State<StudentLogin> {
     }
   }
 
+  void _setLoginError(
+    String message, {
+    bool email = false,
+    bool password = false,
+  }) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    setState(() {
+      _loginError = message;
+      _emailInvalid = email;
+      _passwordInvalid = password;
+      _errorTick++;
+    });
+  }
+
+  /// Cleared as soon as the student starts correcting a field.
+  void _clearLoginError() {
+    if (_loginError == null && !_emailInvalid && !_passwordInvalid) return;
+    setState(() {
+      _loginError = null;
+      _emailInvalid = false;
+      _passwordInvalid = false;
+    });
+  }
+
   Future<void> _login() async {
     final email = _emailCtrl.text.trim();
     final password = _passwordCtrl.text.trim();
 
     if (email.isEmpty || password.isEmpty) {
-      _showError('Please enter email and password');
+      _setLoginError(
+        email.isEmpty && password.isEmpty
+            ? 'Enter your email and password.'
+            : email.isEmpty
+            ? 'Enter your email address.'
+            : 'Enter your password.',
+        email: email.isEmpty,
+        password: password.isEmpty,
+      );
       return;
     }
     if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
-      _showError('Please enter a valid email address');
+      _setLoginError('Enter a valid email address.', email: true);
       return;
     }
 
     if (!mounted) return;
-    setState(() => _isLoading = true);
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _isLoading = true;
+      _loginError = null;
+    });
 
     try {
       final user = await _auth.loginWithEmail(email, password);
 
       if (user == null) {
         if (!mounted) return;
-        _handleFailedAttempt(email, 'Invalid email or password');
+        _handleFailedAttempt(email, _wrongCredentialsMessage);
       } else {
         // The credentials are valid — but valid for *some* account, not
         // necessarily a student one. Guest, org and admin accounts all
@@ -168,7 +220,7 @@ class _StudentLoginState extends State<StudentLogin> {
           // Deliberately not _handleFailedAttempt: that counts toward the
           // lockout and auto-opens Forgot Password after three tries, and a
           // new password will never make this account a student one.
-          _showError(
+          _setLoginError(
             'This isn\'t a student account. If you signed up as a guest, '
             'use the guest option below.',
           );
@@ -207,54 +259,77 @@ class _StudentLoginState extends State<StudentLogin> {
       }
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
-      String message = 'Login failed. Please try again.';
-      switch (e.code) {
-        case 'user-not-found':
-          message = 'No account found with this email';
-          break;
-        case 'wrong-password':
-          message = 'Incorrect password';
-          break;
-        case 'invalid-email':
-          message = 'Please enter a valid email address';
-          break;
-        case 'too-many-requests':
-          message = 'Too many attempts. Please wait and try again.';
-          break;
-      }
       await activity_log.ActivityLogger.log(
         action: 'Failed student login attempt',
         module: 'Authentication',
         severity: 'warning',
         details: {'email': email, 'reason': e.code},
       );
-      _handleFailedAttempt(email, message);
-    } catch (_) {
-      if (mounted) {
-        _handleFailedAttempt(email, 'An error occurred. Please try again.');
+      switch (e.code) {
+        // One message for every wrong-credentials case. Newer Firebase Auth
+        // reports all of them as `invalid-credential` (which used to fall
+        // through to a vague "Login failed"), and saying "no account found"
+        // separately told anyone typing an email whether it was registered.
+        case 'invalid-credential':
+        case 'wrong-password':
+        case 'user-not-found':
+        case 'INVALID_LOGIN_CREDENTIALS':
+          _handleFailedAttempt(email, _wrongCredentialsMessage);
+          break;
+        // None of these is fixed by a new password, so they don't count
+        // toward opening Forgot Password.
+        case 'invalid-email':
+          _setLoginError('Enter a valid email address.', email: true);
+          break;
+        case 'too-many-requests':
+          _setLoginError(
+            'Too many sign-in attempts. Please wait a few minutes and try '
+            'again.',
+          );
+          break;
+        case 'user-disabled':
+          _setLoginError(
+            'This account has been disabled. Please contact your '
+            'administrator.',
+          );
+          break;
+        case 'network-request-failed':
+          _setLoginError('No internet connection. Check it and try again.');
+          break;
+        default:
+          _setLoginError('Couldn\'t sign in right now. Please try again.');
       }
+    } catch (_) {
+      _setLoginError('Couldn\'t sign in right now. Please try again.');
     }
 
     if (!mounted) return;
     setState(() => _isLoading = false);
   }
 
-  // ── Handles a failed attempt: counts it, and after 3 auto-opens reset ──
+  static const String _wrongCredentialsMessage =
+      'Incorrect email or password.';
+
+  // ── Handles a wrong-credentials attempt ──
+  //
+  // No "(2 attempts left)" countdown: there is no lockout here — the third
+  // miss only opens Forgot Password — so a countdown warned of something that
+  // never happens, and told anyone guessing exactly how many tries they had.
+  // Firebase Auth's own rate limit (too-many-requests) is the real throttle.
+  // The form's own "Forgot Password?" link sits right above the error, so the
+  // error doesn't repeat it; the third miss opens the reset for them.
   void _handleFailedAttempt(String email, String errorMessage) {
     _failedAttempts++;
 
     if (_failedAttempts >= _maxFailedAttempts) {
       _failedAttempts = 0; // reset so it doesn't keep firing every time
-      _showError('Too many failed attempts. Let\'s reset your password.');
-      // Small delay so the SnackBar is visible before the dialog pops up
-      Future.delayed(const Duration(milliseconds: 400), () {
+      _setLoginError(errorMessage, email: true, password: true);
+      // A beat for the error to register before the reset dialog opens.
+      Future.delayed(const Duration(milliseconds: 600), () {
         if (mounted) _openForgotPasswordDialog(prefillEmail: email);
       });
     } else {
-      final remaining = _maxFailedAttempts - _failedAttempts;
-      _showError(
-        '$errorMessage ($remaining attempt${remaining == 1 ? '' : 's'} left)',
-      );
+      _setLoginError(errorMessage, email: true, password: true);
     }
   }
 
@@ -265,9 +340,12 @@ class _StudentLoginState extends State<StudentLogin> {
     );
   }
 
+  // Login errors show inline (see _setLoginError); this SnackBar is for the
+  // Forgot Password dialog, where the form behind it can't show anything.
   void _showError(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    final messenger = ScaffoldMessenger.of(context)..hideCurrentSnackBar();
+    messenger.showSnackBar(
       SnackBar(
         content: Text(message, style: GoogleFonts.beVietnamPro(fontSize: 13)),
         backgroundColor: Colors.red.shade700,
@@ -588,6 +666,7 @@ class _StudentLoginState extends State<StudentLogin> {
                             TextField(
                               controller: _emailCtrl,
                               keyboardType: TextInputType.emailAddress,
+                              onChanged: (_) => _clearLoginError(),
                               style: GoogleFonts.beVietnamPro(
                                 fontSize: 15,
                                 color: Colors.black87,
@@ -615,14 +694,18 @@ class _StudentLoginState extends State<StudentLogin> {
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
                                   borderSide: BorderSide(
-                                    color: Colors.grey.shade300,
+                                    color: _emailInvalid
+                                        ? AppColors.error
+                                        : Colors.grey.shade300,
                                     width: 1.5,
                                   ),
                                 ),
                                 focusedBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
                                   borderSide: BorderSide(
-                                    color: AppColors.primaryDark,
+                                    color: _emailInvalid
+                                        ? AppColors.error
+                                        : AppColors.primaryDark,
                                     width: 2,
                                   ),
                                 ),
@@ -653,6 +736,10 @@ class _StudentLoginState extends State<StudentLogin> {
                             TextField(
                               controller: _passwordCtrl,
                               obscureText: _obscurePassword,
+                              onChanged: (_) => _clearLoginError(),
+                              onSubmitted: (_) {
+                                if (!_isLoading) _login();
+                              },
                               style: GoogleFonts.beVietnamPro(
                                 fontSize: 15,
                                 color: Colors.black87,
@@ -696,14 +783,18 @@ class _StudentLoginState extends State<StudentLogin> {
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
                                   borderSide: BorderSide(
-                                    color: Colors.grey.shade300,
+                                    color: _passwordInvalid
+                                        ? AppColors.error
+                                        : Colors.grey.shade300,
                                     width: 1.5,
                                   ),
                                 ),
                                 focusedBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
                                   borderSide: BorderSide(
-                                    color: AppColors.primaryDark,
+                                    color: _passwordInvalid
+                                        ? AppColors.error
+                                        : AppColors.primaryDark,
                                     width: 2,
                                   ),
                                 ),
@@ -767,6 +858,22 @@ class _StudentLoginState extends State<StudentLogin> {
                               ),
                             ),
                           ],
+                        ),
+
+                        // ── Inline login error ──
+                        AnimatedSize(
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOut,
+                          alignment: Alignment.topCenter,
+                          child: _loginError == null
+                              ? const SizedBox(width: double.infinity)
+                              : Padding(
+                                  padding: const EdgeInsets.only(top: 16),
+                                  child: _LoginErrorBanner(
+                                    key: ValueKey(_errorTick),
+                                    message: _loginError!,
+                                  ),
+                                ),
                         ),
 
                         const SizedBox(height: 20),
@@ -891,6 +998,67 @@ class _StudentLoginState extends State<StudentLogin> {
                 ],
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The login form's error line: soft red box, icon, message. No reset link of
+/// its own — the form's "Forgot Password?" is right above it.
+///
+/// Keyed by the caller on every new error, so it replays its short shake even
+/// when the message hasn't changed; the same text reappearing with no motion
+/// read as "nothing happened".
+class _LoginErrorBanner extends StatelessWidget {
+  final String message;
+
+  const _LoginErrorBanner({super.key, required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    final textStyle = GoogleFonts.beVietnamPro(
+      fontSize: 13,
+      height: 1.4,
+      color: const Color(0xFF991B1B),
+      fontWeight: FontWeight.w500,
+    );
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 420),
+      builder: (context, t, child) => Transform.translate(
+        // Three damped swings.
+        offset: Offset(math.sin(t * math.pi * 6) * 6 * (1 - t), 0),
+        child: child,
+      ),
+      child: Semantics(
+        liveRegion: true,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
+          decoration: BoxDecoration(
+            color: AppColors.errorBg,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.error.withAlpha(70)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(top: 1),
+                child: Icon(
+                  Icons.error_outline_rounded,
+                  size: 18,
+                  color: AppColors.error,
+                ),
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(message, style: textStyle),
+              ),
+            ],
           ),
         ),
       ),

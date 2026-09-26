@@ -8,7 +8,7 @@ import 'role_router.dart'; // RoleRouter handles login vs home
 import 'utils/theme.dart';
 import 'firebase_options.dart';
 import 'services/push_notification_service.dart';
-import 'screens/student/student_notifications_screen.dart';
+import 'package:uprise/screens/student/student_notifications_screen.dart';
 import 'providers/event_provider.dart'; // ⭐ IDAGDAG ITO
 
 /// Lets PushNotificationService push a route from outside the widget tree

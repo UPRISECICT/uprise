@@ -12,6 +12,7 @@ import '../../../services/activity_logger.dart' as activity_log;
 import 'package:fl_chart/fl_chart.dart';
 import '../../../widgets/admin_export_button.dart';
 import '../../../widgets/anchored_dropdown.dart';
+import '../../../widgets/app_confirmation_dialog.dart';
 import '../../../widgets/org_action_icon_button.dart';
 import '../../../widgets/org_modal_shell.dart';
 import '../../../widgets/app_toast.dart';
@@ -276,107 +277,13 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
   Future<void> _archiveTransaction(TransactionModel transaction) async {
     final confirm = await showDialog<bool>(
       context: context,
-      barrierColor: Colors.black54,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Container(
-          width: 420,
-          padding: const EdgeInsets.all(28),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF3F4F6),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.archive_outlined,
-                      color: Color(0xFF6B7280),
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Text(
-                    'Archive Transaction',
-                    style: GoogleFonts.beVietnamPro(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: OrgColors.charcoal,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Archive "${transaction.segment.isNotEmpty ? transaction.segment : transaction.eventName}"? It will be removed from the active list but kept on record.',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 14,
-                  color: OrgColors.darkGray,
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  OutlinedButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: OrgColors.mediumGray),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
-                    child: Text(
-                      'Cancel',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        color: OrgColors.charcoal,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  ElevatedButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF6B7280),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 11,
-                      ),
-                    ),
-                    child: Text(
-                      'Archive',
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+      builder: (_) => AppConfirmationDialog(
+        title: 'Archive Transaction',
+        message:
+            'Archive "${transaction.segment.isNotEmpty ? transaction.segment : transaction.eventName}"? You can still view and restore it from the Archived filter.',
+        confirmLabel: 'Archive',
+        accentColor: const Color(0xFFF59E0B),
+        icon: Icons.archive_outlined,
       ),
     );
     if (confirm != true) return;
@@ -463,7 +370,10 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
             ),
           ),
         ],
-        body: Padding(
+        // Scrollable like showRegistrationAnswers — an attached receipt
+        // pushes the content past OrgModalShell's height cap, which
+        // overflowed the plain Column instead of scrolling.
+        body: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -552,14 +462,41 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
                   onTap: () =>
                       _showReceiptFullScreen(transaction.receiptBase64!),
                   borderRadius: BorderRadius.circular(10),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: Image.memory(
-                      base64Decode(transaction.receiptBase64!),
-                      width: double.infinity,
-                      height: 160,
-                      fit: BoxFit.cover,
+                  // contain, not cover — a receipt cropped to a 160px strip
+                  // hid the totals the org actually needs to check.
+                  child: Container(
+                    width: double.infinity,
+                    constraints: const BoxConstraints(maxHeight: 420),
+                    decoration: BoxDecoration(
+                      color: OrgColors.lightGray,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFE2E6EA)),
                     ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.memory(
+                        base64Decode(transaction.receiptBase64!),
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Text(
+                            'Unable to preview this receipt.',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 12,
+                              color: OrgColors.darkGray,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Click the receipt to view full size',
+                  style: GoogleFonts.beVietnamPro(
+                    fontSize: 11,
+                    color: OrgColors.darkGray,
                   ),
                 ),
               ],
@@ -1852,7 +1789,7 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: SizedBox(
-                      width: 900,
+                      width: _tableMinWidth,
                       height: 480,
                       child: tableContainer,
                     ),
@@ -1868,7 +1805,26 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // ── Left: Table ──
-              Expanded(flex: 3, child: tableContainer),
+              // On mid-size desktops the 300px summary panel leaves the
+              // table too narrow for its columns — below the minimum it
+              // scrolls sideways like the mobile layout instead of
+              // overflowing cells.
+              Expanded(
+                flex: 3,
+                child: LayoutBuilder(
+                  builder: (_, c) {
+                    if (c.maxWidth >= _tableMinWidth) return tableContainer;
+                    return SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: SizedBox(
+                        width: _tableMinWidth,
+                        height: c.maxHeight,
+                        child: tableContainer,
+                      ),
+                    );
+                  },
+                ),
+              ),
               const SizedBox(width: 20),
               // ── Right: Summary Panel ──
               SizedBox(width: 300, child: _SummaryPanel(orgId: widget.orgId)),
@@ -1892,13 +1848,16 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
       child: Row(
         children: [
           Expanded(flex: 2, child: _headerCell('DATE')),
-          Expanded(flex: 3, child: _headerCell('EVENT')),
-          Expanded(flex: 2, child: _headerCell('CATEGORY')),
-          Expanded(flex: 2, child: _headerCell('DESCRIPTION')),
+          Expanded(flex: 4, child: _headerCell('EVENT')),
+          Expanded(flex: 3, child: _headerCell('CATEGORY')),
+          Expanded(flex: 3, child: _headerCell('DESCRIPTION')),
           Expanded(flex: 2, child: _headerCell('AMOUNT')),
           Expanded(flex: 2, child: _headerCell('TYPE')),
-          Expanded(
-            flex: 4,
+          // Fixed to exactly fit the three action buttons — as a flex:4
+          // column it took the widest share of the row and squeezed Event
+          // and Description into ellipses.
+          SizedBox(
+            width: _actionsColumnWidth,
             child: Align(
               alignment: Alignment.centerRight,
               child: _headerCell('ACTIONS'),
@@ -1908,6 +1867,12 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
       ),
     );
   }
+
+  static const double _actionsColumnWidth = 116;
+
+  // Narrowest width at which every column (incl. a "Competitions" or
+  // "Partnerships" badge) still fits; below this the table scrolls sideways.
+  static const double _tableMinWidth = 960;
 
   Widget _headerCell(String text) => Text(
     text,
@@ -1952,18 +1917,23 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
             ),
             // Event
             Expanded(
-              flex: 3,
+              flex: 4,
               child: Row(
                 children: [
                   Flexible(
-                    child: Text(
-                      transaction.eventName,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: UpriseColors.primaryDark,
+                    child: Tooltip(
+                      message: transaction.eventName,
+                      waitDuration: const Duration(milliseconds: 400),
+                      child: Text(
+                        transaction.eventName,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: UpriseColors.primaryDark,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   if (transaction.hasReceipt) ...[
@@ -1977,57 +1947,81 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
                       ),
                     ),
                   ],
+                  const SizedBox(width: 12),
                 ],
               ),
             ),
             // Category
             Expanded(
-              flex: 2,
+              flex: 3,
               child: Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: UpriseColors.primaryDark.withOpacity(0.07),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      transaction.category,
-                      style: GoogleFonts.beVietnamPro(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: UpriseColors.primaryDark,
+                  // Flexible so a long category ellipsizes inside its
+                  // badge instead of overflowing into Description.
+                  Flexible(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
                       ),
-                      overflow: TextOverflow.ellipsis,
+                      decoration: BoxDecoration(
+                        color: UpriseColors.primaryDark.withAlpha(18),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        transaction.category,
+                        style: GoogleFonts.beVietnamPro(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: UpriseColors.primaryDark,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ),
+                  const SizedBox(width: 8),
                 ],
               ),
             ),
             // Description
             Expanded(
-              flex: 2,
-              child: Text(
-                transaction.segment.isNotEmpty ? transaction.segment : '—',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 12,
-                  color: OrgColors.darkGray,
+              flex: 3,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: Tooltip(
+                  message: transaction.segment,
+                  waitDuration: const Duration(milliseconds: 400),
+                  child: Text(
+                    transaction.segment.isNotEmpty ? transaction.segment : '—',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 12,
+                      color: OrgColors.darkGray,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-                overflow: TextOverflow.ellipsis,
               ),
             ),
             // Amount
             Expanded(
               flex: 2,
-              child: Text(
-                '₱$amountFmt',
-                style: GoogleFonts.beVietnamPro(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: isIncome ? OrgColors.success : OrgColors.error,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 8),
+                // Scales down instead of wrapping for six-figure amounts.
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '₱$amountFmt',
+                    maxLines: 1,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: isIncome ? OrgColors.success : OrgColors.error,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -2043,8 +2037,8 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
                     ),
                     decoration: BoxDecoration(
                       color: isIncome
-                          ? OrgColors.success.withOpacity(0.12)
-                          : OrgColors.error.withOpacity(0.12),
+                          ? OrgColors.success.withAlpha(31)
+                          : OrgColors.error.withAlpha(31),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
@@ -2062,8 +2056,8 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
               ),
             ),
             // Actions
-            Expanded(
-              flex: 4,
+            SizedBox(
+              width: _actionsColumnWidth,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
@@ -2669,6 +2663,7 @@ class _TransactionModalState extends State<_TransactionModal> {
           'id': doc.id,
           'name': data['title'] ?? 'Untitled',
           'date': data['date'],
+          'category': (data['category'] ?? '').toString(),
         };
       }).toList();
       // Sort client-side by date if available
@@ -2682,10 +2677,43 @@ class _TransactionModalState extends State<_TransactionModal> {
       });
       _loadingEvents = false;
       if (_events.isNotEmpty && !_isEdit) {
-        _selectedEventId = _events.first['id'];
-        _selectedEventName = _events.first['name'];
+        _selectEvent(_events.first);
       }
     });
+  }
+
+  // Event proposals use their own, finer category list (Workshop, Seminar,
+  // Sports, …). Only the ones with a direct finance counterpart map across;
+  // everything else lands in General so old records and the summary panel
+  // keep grouping by the same six finance categories.
+  static String _financeCategoryFor(String eventCategory) {
+    switch (eventCategory) {
+      case 'Workshop':
+        return 'Workshops';
+      case 'Competition':
+        return 'Competitions';
+      case 'Social':
+        return 'Socials';
+      default:
+        return 'General';
+    }
+  }
+
+  // Picking an event pre-fills its category; the Category dropdown stays
+  // editable for the odd transaction that doesn't fit the event's type.
+  void _selectEvent(Map<String, dynamic> event) {
+    _selectedEventId = event['id'] as String;
+    _selectedEventName = event['name'] as String;
+    _category = _financeCategoryFor(event['category'] as String? ?? '');
+  }
+
+  Future<void> _openEventSearch() async {
+    final picked = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) =>
+          _EventSearchDialog(events: _events, selectedId: _selectedEventId),
+    );
+    if (picked != null && mounted) setState(() => _selectEvent(picked));
   }
 
   Future<void> _pickDate() async {
@@ -3051,35 +3079,36 @@ class _TransactionModalState extends State<_TransactionModal> {
                               v?.trim().isEmpty ?? true ? 'Required' : null,
                         )
                       else
-                        DropdownButtonFormField<String>(
-                          value: _selectedEventId,
-                          items: _events
-                              .map<DropdownMenuItem<String>>(
-                                (event) => DropdownMenuItem<String>(
-                                  value: event['id'],
-                                  child: Text(
-                                    event['name'],
-                                    style: GoogleFonts.beVietnamPro(
-                                      fontSize: 13,
+                        // Opens a searchable list instead of a plain
+                        // dropdown, which gets unwieldy once an org has
+                        // dozens of events.
+                        FormField<String>(
+                          validator: (_) =>
+                              _selectedEventId == null ? 'Required' : null,
+                          builder: (field) => InkWell(
+                            onTap: _openEventSearch,
+                            borderRadius: BorderRadius.circular(8),
+                            child: InputDecorator(
+                              isEmpty: _selectedEventName.isEmpty,
+                              decoration: _inputDecoration('Search event')
+                                  .copyWith(
+                                    errorText: field.errorText,
+                                    suffixIcon: const Icon(
+                                      Icons.search_rounded,
+                                      size: 18,
                                     ),
                                   ),
+                              child: Text(
+                                _selectedEventName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.beVietnamPro(
+                                  fontSize: 13,
+                                  color: OrgColors.charcoal,
                                 ),
-                              )
-                              .toList(),
-                          onChanged: (value) {
-                            setState(() {
-                              _selectedEventId = value;
-                              _selectedEventName = _events.firstWhere(
-                                (e) => e['id'] == value,
-                              )['name'];
-                            });
-                          },
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13,
-                            color: OrgColors.charcoal,
+                              ),
+                            ),
                           ),
-                          decoration: _inputDecoration('Select event'),
-                          validator: (v) => v == null ? 'Required' : null,
                         ),
                       const SizedBox(height: 16),
 
@@ -3234,6 +3263,153 @@ class _TransactionModalState extends State<_TransactionModal> {
     ),
     isDense: true,
   );
+}
+
+// Searchable event picker for the transaction modal — filters the org's
+// events by title as the user types and returns the chosen event map.
+class _EventSearchDialog extends StatefulWidget {
+  final List<Map<String, dynamic>> events;
+  final String? selectedId;
+
+  const _EventSearchDialog({required this.events, this.selectedId});
+
+  @override
+  State<_EventSearchDialog> createState() => _EventSearchDialogState();
+}
+
+class _EventSearchDialogState extends State<_EventSearchDialog> {
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final q = _query.trim().toLowerCase();
+    final results = q.isEmpty
+        ? widget.events
+        : widget.events
+              .where(
+                (e) => (e['name'] as String).toLowerCase().contains(q),
+              )
+              .toList();
+
+    return OrgModalShell(
+      accentColor: UpriseColors.primaryDark,
+      icon: Icons.event_outlined,
+      title: 'Select Event',
+      subtitle: '${widget.events.length} events',
+      compactHeader: true,
+      width: 460,
+      maxHeightFraction: 0.75,
+      body: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+            child: TextField(
+              autofocus: true,
+              onChanged: (v) => setState(() => _query = v),
+              style: GoogleFonts.beVietnamPro(fontSize: 13),
+              decoration: InputDecoration(
+                hintText: 'Search by event name…',
+                hintStyle: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: OrgColors.darkGray,
+                ),
+                prefixIcon: const Icon(Icons.search_rounded, size: 18),
+                isDense: true,
+                filled: true,
+                fillColor: OrgColors.lightGray,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 12,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Color(0xFFE2E6EA)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(
+                    color: UpriseColors.primaryDark,
+                    width: 1.5,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Flexible(
+            child: results.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(
+                      'No events match "$_query".',
+                      style: GoogleFonts.beVietnamPro(
+                        fontSize: 13,
+                        color: OrgColors.darkGray,
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+                    itemCount: results.length,
+                    itemBuilder: (_, i) {
+                      final e = results[i];
+                      final selected = e['id'] == widget.selectedId;
+                      final date = e['date'] is Timestamp
+                          ? DateFormat(
+                              'MMM d, yyyy',
+                            ).format((e['date'] as Timestamp).toDate())
+                          : 'No date';
+                      final category = (e['category'] as String? ?? '')
+                          .trim();
+                      return Material(
+                        color: selected
+                            ? UpriseColors.primaryDark.withAlpha(18)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                        child: ListTile(
+                          dense: true,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          onTap: () => Navigator.pop(context, e),
+                          title: Text(
+                            e['name'] as String,
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: selected
+                                  ? UpriseColors.primaryDark
+                                  : OrgColors.charcoal,
+                            ),
+                          ),
+                          subtitle: Text(
+                            category.isEmpty ? date : '$date  •  $category',
+                            style: GoogleFonts.beVietnamPro(
+                              fontSize: 11.5,
+                              color: OrgColors.darkGray,
+                            ),
+                          ),
+                          trailing: selected
+                              ? const Icon(
+                                  Icons.check_rounded,
+                                  size: 18,
+                                  color: UpriseColors.primaryDark,
+                                )
+                              : null,
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // Receipt photo picker — attach/preview/remove, with a plain-text

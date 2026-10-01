@@ -18,6 +18,7 @@ import 'admin_about_page.dart';
 import 'admin_help_page.dart';
 import 'admin_login.dart';
 import 'admin_site_chrome.dart';
+import 'admin_transparency_page.dart';
 
 // Administrator landing page: Admin URL → this page → AdminLogin → the
 // existing AdminDashboard. Built from the shared components in
@@ -25,7 +26,7 @@ import 'admin_site_chrome.dart';
 // and copy). Home is one scrolling page; About and Help swap in below the
 // same navbar, reusing the existing admin About/Help content.
 
-enum _View { home, about, help }
+enum _View { home, about, help, transparency }
 
 class AdminLandingPage extends StatefulWidget {
   const AdminLandingPage({super.key});
@@ -124,6 +125,11 @@ class _AdminLandingPageState extends State<AdminLandingPage> {
           onTap: () => _show(_View.about),
           active: _view == _View.about,
         ),
+        LandingNavItem(
+          label: 'Transparency',
+          onTap: () => _show(_View.transparency),
+          active: _view == _View.transparency,
+        ),
       ],
     );
 
@@ -139,10 +145,16 @@ class _AdminLandingPageState extends State<AdminLandingPage> {
                       onSelect: _onSiteSelect,
                       onTerms: _openTerms,
                     )
-                  : AdminHelpContent(
+                  : _view == _View.help
+                  ? AdminHelpContent(
                       onSelect: _onSiteSelect,
                       onTerms: _openTerms,
-                    ),
+                    )
+                    : AdminTransparencyPage(
+                        onBack: _goTop,
+                        onTerms: _openTerms,
+                        onSelect: _onSiteSelect,
+                      ),
             ),
           ],
         ),

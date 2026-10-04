@@ -348,6 +348,30 @@ Future<void> _clearOfficerUserTag({
 // screen already writes/reads (name/title/email/phone), capped at 3 per org.
 // `type` distinguishes a regular Faculty Adviser from a Student Adviser.
 // ─────────────────────────────────────────────────────────────────────────────
+String _memberPeriodLabel(Map<String, dynamic> period) {
+  final duration = (period['duration'] ?? '').toString();
+  if (duration == 'ongoing') return 'Ongoing';
+  final schoolYear = (period['schoolYear'] ?? '').toString();
+  final term = (period['term'] ?? '').toString();
+  if (duration == 'schoolYear') return '$schoolYear · Whole school year';
+  return '$schoolYear · $term';
+}
+
+bool _memberMatchesPeriodFilter(
+  Map<String, dynamic> period,
+  String filter,
+) {
+  if (_memberPeriodLabel(period) == filter) return true;
+  final duration = (period['duration'] ?? '').toString();
+  if (duration == 'ongoing') return filter != 'No period assigned';
+  final schoolYear = (period['schoolYear'] ?? '').toString();
+  if (filter == '$schoolYear · Whole school year') return true;
+  if (duration == 'schoolYear' && filter.startsWith('$schoolYear · ')) {
+    return true;
+  }
+  return false;
+}
+
 class AdviserInfo {
   final String name;
   final String title;
@@ -835,6 +859,7 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
 
   final TextEditingController _memberSearchCtrl = TextEditingController();
   String _memberSearchQuery = '';
+  String _memberPeriodFilter = 'All periods';
 
   // Each capped list needs its own controller: RawScrollbar asserts unless it
   // and the scrollable it decorates share one explicit controller.
@@ -2140,7 +2165,54 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
                       .toLowerCase();
                   return an.compareTo(bn);
                 });
+              final periodLabels = <String>{};
+              final schoolYears = <String>{};
+              for (final doc in docs) {
+                final data = doc.data() as Map<String, dynamic>;
+                final periods = data['orgMembershipPeriods'];
+                if (periods is List) {
+                  for (final period in periods) {
+                    if (period is Map) {
+                      final membershipPeriod =
+                          Map<String, dynamic>.from(period);
+                      periodLabels.add(_memberPeriodLabel(membershipPeriod));
+                      final schoolYear =
+                          (membershipPeriod['schoolYear'] ?? '').toString();
+                      if (schoolYear.isNotEmpty &&
+                          membershipPeriod['duration'] != 'ongoing') {
+                        schoolYears.add(schoolYear);
+                      }
+                    }
+                  }
+                }
+              }
+              periodLabels.addAll(
+                schoolYears.map((year) => '$year · Whole school year'),
+              );
+              if (_memberPeriodFilter != 'All periods' &&
+                  _memberPeriodFilter != 'No period assigned' &&
+                  !periodLabels.contains(_memberPeriodFilter)) {
+                _memberPeriodFilter = 'All periods';
+              }
               final hadMembersBeforeSearch = docs.isNotEmpty;
+              if (_memberPeriodFilter == 'No period assigned') {
+                docs = docs.where((d) {
+                  final periods =
+                      (d.data() as Map<String, dynamic>)['orgMembershipPeriods'];
+                  return periods is! List || periods.isEmpty;
+                }).toList();
+              } else if (_memberPeriodFilter != 'All periods') {
+                docs = docs.where((d) {
+                  final periods =
+                      (d.data() as Map<String, dynamic>)['orgMembershipPeriods'];
+                  return periods is List && periods.any((period) =>
+                      period is Map &&
+                      _memberMatchesPeriodFilter(
+                        Map<String, dynamic>.from(period),
+                        _memberPeriodFilter,
+                      ));
+                }).toList();
+              }
               if (_memberSearchQuery.isNotEmpty) {
                 docs = docs.where((d) {
                   final m = d.data() as Map<String, dynamic>;
@@ -2156,44 +2228,90 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
               }
 
               if (docs.isEmpty) {
-                return Container(
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: _C.surface,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: _C.borderSoft),
-                  ),
-                  child: Center(
-                    child: Column(
-                      children: [
-                        const Icon(
-                          Icons.groups_outlined,
-                          size: 32,
-                          color: _C.textFaint,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          hadMembersBeforeSearch
-                              ? 'No members match your search.'
-                              : 'No members yet — add one from the student roster',
-                          style: GoogleFonts.beVietnamPro(
-                            fontSize: 13,
-                            color: _C.darkGray,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: DropdownButtonFormField<String>(
+                        value: _memberPeriodFilter,
+                        decoration:
+                            _inputDecoration('Filter by membership period'),
+                        items: [
+                          'All periods',
+                          ...(periodLabels.toList()..sort()),
+                          'No period assigned',
+                        ]
+                            .map((label) => DropdownMenuItem(
+                                  value: label,
+                                  child: Text(label,
+                                      style: GoogleFonts.beVietnamPro(
+                                          fontSize: 12)),
+                                ))
+                            .toList(),
+                        onChanged: (value) => setState(() {
+                          _memberPeriodFilter = value ?? 'All periods';
+                        }),
+                      ),
                     ),
-                  ),
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: _C.surface,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: _C.borderSoft),
+                      ),
+                      child: Center(
+                        child: Column(
+                          children: [
+                            const Icon(Icons.groups_outlined,
+                                size: 32, color: _C.textFaint),
+                            const SizedBox(height: 8),
+                            Text(
+                              hadMembersBeforeSearch
+                                  ? 'No members match the selected filters.'
+                                  : 'No members yet — add one from the student roster',
+                              style: GoogleFonts.beVietnamPro(
+                                  fontSize: 13, color: _C.darkGray),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 );
               }
-              return _scrollableList(
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: DropdownButtonFormField<String>(
+                      value: _memberPeriodFilter,
+                      decoration: _inputDecoration('Filter by membership period'),
+                      items: [
+                        'All periods',
+                        ...(periodLabels.toList()..sort()),
+                        'No period assigned',
+                      ].map((label) => DropdownMenuItem(
+                            value: label,
+                            child: Text(label,
+                                style: GoogleFonts.beVietnamPro(fontSize: 12)),
+                          )).toList(),
+                      onChanged: (value) => setState(() {
+                        _memberPeriodFilter = value ?? 'All periods';
+                      }),
+                    ),
+                  ),
+                  _scrollableList(
                 controller: _membersScrollCtrl,
                 children: docs.map((d) {
                   final m = d.data() as Map<String, dynamic>;
                   return _MemberTile(
                     docId: d.id,
                     data: m,
+                    onAddPeriod: () => _addPeriodToMember(d.id),
                     onRemove: () => _confirmUntagMember(
                       d.id,
                       (m['fullName'] ?? '').toString().isNotEmpty
@@ -2202,6 +2320,8 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
                     ),
                   );
                 }).toList(),
+                  ),
+                ],
               );
             },
           ),
@@ -2401,6 +2521,7 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
 
   Future<Map<String, dynamic>> _createMemberAccount(
     Map<String, String> row,
+    Map<String, String> membershipPeriod,
   ) async {
     final email = row['email']?.trim() ?? '';
     final memberId = row['memberId']?.trim() ?? '';
@@ -2410,7 +2531,11 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
       return {'email': null, 'fullName': fullName, 'memberId': memberId};
     }
 
-    final tagged = await _tagMemberAccount(email: email, memberId: memberId);
+    final tagged = await _tagMemberAccount(
+      email: email,
+      memberId: memberId,
+      membershipPeriod: membershipPeriod,
+    );
     return {
       'email': email,
       'fullName': fullName,
@@ -2422,6 +2547,7 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
   Future<bool> _tagMemberAccount({
     required String email,
     required String memberId,
+    required Map<String, String> membershipPeriod,
   }) async {
     final tagged = await _tagMatchingStudentAccount(
       email: email,
@@ -2431,6 +2557,9 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
         'orgRole': 'member',
         'memberId': memberId,
         'isOrgMember': true,
+        'orgMembershipPeriods': FieldValue.arrayUnion([
+          {...membershipPeriod, 'addedAt': Timestamp.now()},
+        ]),
       },
     );
 
@@ -2454,18 +2583,25 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
   Future<void> _tagMemberAccountByUid({
     required String uid,
     required String memberId,
+    required Map<String, String> membershipPeriod,
   }) async {
+    final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
+    final existing = await userRef.get();
+    final periods = List<Map<String, dynamic>>.from(
+      (existing.data()?['orgMembershipPeriods'] as List? ?? const [])
+          .whereType<Map>()
+          .map((period) => Map<String, dynamic>.from(period)),
+    );
+    periods.add({...membershipPeriod, 'addedAt': Timestamp.now()});
     final updates = {
       'orgId': widget.orgId,
       'orgName': _orgName,
       'orgRole': 'member',
       'memberId': memberId,
       'isOrgMember': true,
+      'orgMembershipPeriods': periods,
     };
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .set(updates, SetOptions(merge: true));
+    await userRef.set(updates, SetOptions(merge: true));
     await FirebaseFirestore.instance
         .collection('students')
         .doc(uid)
@@ -2475,6 +2611,176 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
       module: 'org_profile',
       details: {'orgId': widget.orgId, 'uid': uid},
     );
+  }
+
+  Future<Map<String, String>?> _showMembershipPeriodDialog() async {
+    final now = DateTime.now();
+    final schoolYearStart = now.month >= 6 ? now.year : now.year - 1;
+    final schoolYearController = TextEditingController(
+      text: '$schoolYearStart-${schoolYearStart + 1}',
+    );
+    var term = now.month >= 6 && now.month <= 10
+        ? '1st Semester'
+        : '2nd Semester';
+    var duration = 'semester';
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.transparent,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => OrgModalShell(
+          accentColor: _C.primaryDark,
+          icon: Icons.event_repeat_outlined,
+          title: 'Membership period',
+          subtitle: 'Choose how long this organization membership applies.',
+          width: 500,
+          maxHeightFraction: 0.72,
+          compactHeader: true,
+          onClose: () => Navigator.pop(dialogContext),
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (duration != 'ongoing') ...[
+                  TextField(
+                    controller: schoolYearController,
+                    style: GoogleFonts.beVietnamPro(fontSize: 13),
+                    decoration: _inputDecoration(
+                      'School year',
+                      hint: '2026-2027',
+                    ),
+                  ),
+                  if (duration == 'semester') ...[
+                    const SizedBox(height: 14),
+                    DropdownButtonFormField<String>(
+                      value: term,
+                      decoration: _inputDecoration('Semester'),
+                      items: const ['1st Semester', '2nd Semester', 'Midyear']
+                          .map((value) => DropdownMenuItem(
+                                value: value,
+                                child: Text(value),
+                              ))
+                          .toList(),
+                      onChanged: (value) {
+                        if (value != null) setDialogState(() => term = value);
+                      },
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+                ],
+                DropdownButtonFormField<String>(
+                  value: duration,
+                  decoration: _inputDecoration('Membership duration'),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'semester',
+                      child: Text('This semester'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'schoolYear',
+                      child: Text('Whole school year'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'ongoing',
+                      child: Text('Ongoing, until removed'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) setDialogState(() => duration = value);
+                  },
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _C.primaryDark.withAlpha(10),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    'You can add another period later if the member renews.',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 11.5,
+                      color: _C.darkGray,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          footerActions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(
+                'Cancel',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 13,
+                  color: _C.darkGray,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              onPressed: () {
+                final schoolYear = schoolYearController.text.trim();
+                if (duration != 'ongoing' && schoolYear.isEmpty) return;
+                Navigator.pop(dialogContext, {
+                  'schoolYear': duration == 'ongoing' ? '' : schoolYear,
+                  'term': duration == 'semester' ? term : '',
+                  'duration': duration,
+                });
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _C.primaryDark,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(9),
+                ),
+              ),
+              child: Text(
+                'Save period',
+                style: GoogleFonts.beVietnamPro(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    schoolYearController.dispose();
+    return result;
+  }
+
+  Future<void> _addPeriodToMember(String uid) async {
+    final period = await _showMembershipPeriodDialog();
+    if (period == null) return;
+    try {
+      final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
+      final user = await userRef.get();
+      final periods = List<Map<String, dynamic>>.from(
+        (user.data()?['orgMembershipPeriods'] as List? ?? const [])
+            .whereType<Map>()
+            .map((value) => Map<String, dynamic>.from(value)),
+      );
+      periods.add({...period, 'addedAt': Timestamp.now()});
+      final updates = {'orgMembershipPeriods': periods};
+      await userRef.set(updates, SetOptions(merge: true));
+      await FirebaseFirestore.instance
+          .collection('students')
+          .doc(uid)
+          .set(updates, SetOptions(merge: true));
+      _snack('Membership period added.');
+    } catch (e) {
+      _snack('Could not add membership period: $e', isError: true);
+    }
   }
 
   // Removes this org's tag from a member's student account (their account
@@ -2556,6 +2862,22 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
               .toLowerCase();
           return an.compareTo(bn);
         });
+      if (_memberPeriodFilter == 'No period assigned') {
+        docs = docs.where((d) {
+          final periods = (d.data() as Map<String, dynamic>)['orgMembershipPeriods'];
+          return periods is! List || periods.isEmpty;
+        }).toList();
+      } else if (_memberPeriodFilter != 'All periods') {
+        docs = docs.where((d) {
+          final periods = (d.data() as Map<String, dynamic>)['orgMembershipPeriods'];
+          return periods is List && periods.any((period) =>
+              period is Map &&
+              _memberMatchesPeriodFilter(
+                Map<String, dynamic>.from(period),
+                _memberPeriodFilter,
+              ));
+        }).toList();
+      }
       if (_memberSearchQuery.isNotEmpty) {
         docs = docs.where((d) {
           final m = d.data() as Map<String, dynamic>;
@@ -2573,38 +2895,49 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
         return;
       }
 
-      const headers = ['Name', 'Email', 'Student ID'];
+      const headers = ['Name', 'Email', 'Student ID', 'Membership periods'];
       final rows = docs.map((d) {
         final m = d.data() as Map<String, dynamic>;
         return [
           (m['fullName'] ?? '').toString(),
           (m['email'] ?? '').toString(),
           (m['memberId'] ?? '').toString(),
+          ((m['orgMembershipPeriods'] as List?) ?? const [])
+              .whereType<Map>()
+              .map((period) => _memberPeriodLabel(Map<String, dynamic>.from(period)))
+              .join('; '),
         ];
       }).toList();
 
       final now = DateTime.now().toString().substring(0, 10);
+      final periodSlug = _memberPeriodFilter
+          .toLowerCase()
+          .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+          .replaceAll(RegExp(r'^_|_$'), '');
+      final exportTitle = _memberPeriodFilter == 'All periods'
+          ? '$_orgName Members'
+          : '$_orgName Members - $_memberPeriodFilter';
       if (format == 'excel') {
         final bytes = OrgExportExcel.generateStyledTable(
-          title: '$_orgName Members',
+          title: exportTitle,
           headers: headers,
           rows: rows,
         );
         await OrgExportUtil.saveBytes(
           bytes,
-          'members_$now.xlsx',
+          'members_${periodSlug}_$now.xlsx',
           mimeType: orgXlsxMimeType,
         );
       } else {
         final pdfBytes = await OrgExportPdf.generateTablePdf(
-          title: 'Members',
+          title: exportTitle,
           headers: headers,
           rows: rows,
           orgLogoUrl: _orgLogoUrl,
         );
         await OrgExportUtil.saveBytes(
           pdfBytes,
-          'members_$now.pdf',
+          'members_${periodSlug}_$now.pdf',
           mimeType: 'application/pdf',
         );
       }
@@ -2893,9 +3226,13 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
                                         memberName,
                                       );
                                       if (confirmed) {
+                                        final period =
+                                            await _showMembershipPeriodDialog();
+                                        if (period == null) return;
                                         await _tagMemberAccountByUid(
                                           uid: uid,
                                           memberId: studentId,
+                                          membershipPeriod: period,
                                         );
                                         _snack(
                                           '$memberName added as a member.',
@@ -2955,6 +3292,9 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
               onPressed: isUploading || pickedFile == null
                   ? null
                   : () async {
+                      final membershipPeriod =
+                          await _showMembershipPeriodDialog();
+                      if (membershipPeriod == null) return;
                       setDialogState(() {
                         isUploading = true;
                         resultMessage = null;
@@ -2979,7 +3319,10 @@ class _OrgProfileScreenState extends State<OrgProfileScreen> {
                         final notFoundEmails = <String>[];
                         for (final r in rows) {
                           try {
-                            final createdCred = await _createMemberAccount(r);
+                            final createdCred = await _createMemberAccount(
+                              r,
+                              membershipPeriod,
+                            );
                             if (createdCred['tagged'] == true) {
                               tagged++;
                             } else {
@@ -3397,10 +3740,12 @@ class _MemberTile extends StatelessWidget {
   final String docId;
   final Map<String, dynamic> data;
   final VoidCallback onRemove;
+  final VoidCallback onAddPeriod;
   const _MemberTile({
     required this.docId,
     required this.data,
     required this.onRemove,
+    required this.onAddPeriod,
   });
 
   @override
@@ -3408,6 +3753,11 @@ class _MemberTile extends StatelessWidget {
     final name = (data['fullName'] ?? '').toString();
     final email = (data['email'] ?? '').toString();
     final memberId = (data['memberId'] ?? '').toString();
+    final membershipPeriods = (data['orgMembershipPeriods'] as List? ?? const [])
+        .whereType<Map>()
+        .map((period) => _memberPeriodLabel(Map<String, dynamic>.from(period)))
+        .toSet()
+        .toList();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -3476,10 +3826,29 @@ class _MemberTile extends StatelessWidget {
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
+                if (membershipPeriods.isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    membershipPeriods.join(' • '),
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 10,
+                      color: _C.primaryDark,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ],
             ),
           ),
           const SizedBox(width: 10),
+          _actionIconButton(
+            Icons.event_repeat_outlined,
+            _C.primaryDark,
+            onAddPeriod,
+            'Add membership period',
+          ),
+          const SizedBox(width: 6),
           // Icon-only, matching the Officers/Advisers tiles' action style
           // instead of a standalone text button.
           _actionIconButton(

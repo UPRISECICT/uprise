@@ -10,10 +10,11 @@ import 'firebase_options.dart';
 import 'services/push_notification_service.dart';
 import 'package:uprise/screens/student/student_notifications_screen.dart';
 import 'providers/event_provider.dart'; // ⭐ IDAGDAG ITO
+import 'widgets/common/mobile_bottom_nav_host.dart';
 
 /// Lets PushNotificationService push a route from outside the widget tree
 /// when a student taps a notification in the tray.
-final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
+final GlobalKey<NavigatorState> rootNavigatorKey = mobileRootNavigatorKey;
 
 /// Background/terminated-app FCM handler. Must be a top-level function and
 /// must be registered before runApp, or the plugin drops background messages
@@ -100,12 +101,18 @@ class MyApp extends StatelessWidget {
         builder: (context, child) {
           // This sits above the root Navigator, so the shared web dialog
           // theme also reaches screens opened through Navigator.push.
-          // Mobile keeps its current dialog presentation unchanged.
-          if (!kIsWeb || child == null) return child ?? const SizedBox();
-          return Theme(
-            data: Theme.of(context).copyWith(dialogTheme: upriseWebDialogTheme),
-            child: child,
-          );
+          // Mobile routes share a root-level bottom nav outside the Navigator
+          // so the tabs stay available while detail routes are open.
+          if (child == null) return const SizedBox();
+          if (kIsWeb) {
+            return Theme(
+              data: Theme.of(context).copyWith(
+                dialogTheme: upriseWebDialogTheme,
+              ),
+              child: child,
+            );
+          }
+          return MobileBottomNavHost(child: child);
         },
         debugShowCheckedModeBanner: false,
         home: const RoleRouter(), // ✅ Always start here

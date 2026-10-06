@@ -14,7 +14,7 @@ import '../../models/announcement_model.dart'; // for AnnouncementData
 // Widgets
 import '../../widgets/common/loading_widget.dart'; // for SkeletonLoader
 import '../../widgets/common/countdown_section.dart';
-import '../../widgets/common/bottom_nav_bar.dart'; // BottomNavBar / BottomNavItem
+import '../../widgets/common/mobile_bottom_nav_host.dart';
 import '../../widgets/common/section_header.dart';
 import '../../widgets/common/event_card.dart';
 import '../../widgets/common/home_sections.dart';
@@ -126,6 +126,14 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         _eventsJumpToken++;
       }
     });
+    updateMobileBottomNavIndex(index);
+  }
+
+  void _handleBottomNavTap(int index) {
+    if (!mounted) return;
+    setState(() => _currentIndex = index);
+    updateMobileBottomNavIndex(index);
+    if (index == 0) _refreshUserName();
   }
 
   final GlobalKey<_HomeContentState> _homeKey = GlobalKey<_HomeContentState>();
@@ -133,6 +141,13 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      attachMobileBottomNav(
+        selectedIndex: _currentIndex,
+        onTap: _handleBottomNavTap,
+      );
+    });
     _loadUserName();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
@@ -140,6 +155,12 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       if (!mounted) return;
       await maybeShowNewEventPromo(context);
     });
+  }
+
+  @override
+  void dispose() {
+    detachMobileBottomNav();
+    super.dispose();
   }
 
   Future<void> _loadUserName() async {
@@ -202,28 +223,6 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       // Home's on login, so by the time the student actually taps the
       // Profile tab the data has usually already arrived.
       body: IndexedStack(index: _currentIndex, children: _screens),
-      bottomNavigationBar: BottomNavBar(
-        currentIndex: _currentIndex,
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-
-          if (index == 0) {
-            _refreshUserName();
-          }
-        },
-        items: const [
-          BottomNavItem(Icons.home_outlined, Icons.home, 'Home'),
-          BottomNavItem(
-            Icons.calendar_today_outlined,
-            Icons.calendar_today,
-            'Events',
-          ),
-          BottomNavItem(Icons.groups_outlined, Icons.groups, 'Orgs'),
-          BottomNavItem(Icons.person_outline, Icons.person, 'Profile'),
-        ],
-      ),
     );
   }
 

@@ -21,7 +21,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:uprise/models/event_model.dart';
 import '../../services/guest_event_registration.dart';
-import '../../widgets/common/bottom_nav_bar.dart';
+import '../../widgets/common/mobile_bottom_nav_host.dart';
 import '../../widgets/common/countdown_section.dart';
 import '../../widgets/common/home_sections.dart';
 import '../../widgets/student/app_image.dart';
@@ -86,6 +86,13 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      attachMobileBottomNav(
+        selectedIndex: _currentIndex,
+        onTap: _handleBottomNavTap,
+      );
+    });
     if (widget.mode == GuestMode.authenticated) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) maybeShowGuestDigitalIdNotice(context);
@@ -93,36 +100,34 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
     }
   }
 
-  void switchTab(int index, {int? eventsSubTab}) => setState(() {
-    _currentIndex = index;
-    if (eventsSubTab != null) {
-      _eventsSubTab = eventsSubTab;
-      _eventsJumpToken++;
-    }
-  });
+  @override
+  void dispose() {
+    detachMobileBottomNav();
+    super.dispose();
+  }
+
+  void switchTab(int index, {int? eventsSubTab}) {
+    setState(() {
+      _currentIndex = index;
+      if (eventsSubTab != null) {
+        _eventsSubTab = eventsSubTab;
+        _eventsJumpToken++;
+      }
+    });
+    updateMobileBottomNavIndex(index);
+  }
+
+  void _handleBottomNavTap(int index) {
+    if (!mounted) return;
+    setState(() => _currentIndex = index);
+    updateMobileBottomNavIndex(index);
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: IndexedStack(index: _currentIndex, children: _screens),
       // The shared bar, with the student shell's exact item list — this used
-      // to be a hand-rolled _GuestBottomNav that had drifted (62px fixed
-      // height, a drop shadow instead of the divider, a pill behind only the
-      // icon) purely because the component lived in a student-only file.
-      bottomNavigationBar: BottomNavBar(
-        currentIndex: _currentIndex,
-        onTap: (i) => setState(() => _currentIndex = i),
-        items: const [
-          BottomNavItem(Icons.home_outlined, Icons.home, 'Home'),
-          BottomNavItem(
-            Icons.calendar_today_outlined,
-            Icons.calendar_today,
-            'Events',
-          ),
-          BottomNavItem(Icons.groups_outlined, Icons.groups, 'Orgs'),
-          BottomNavItem(Icons.person_outline, Icons.person, 'Profile'),
-        ],
-      ),
     );
   }
 }

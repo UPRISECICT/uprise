@@ -1,0 +1,6 @@
+{
+  "buildCommand": "git clone https://github.com/flutter/flutter.git --depth 1 -b stable /tmp/flutter && export PATH=\"$PATH:/tmp/flutter/bin\" && flutter config --enable-web && flutter build web --release -t lib/$ENTRYPOINT.dart",
+  "outputDirectory": "build/web",
+  "installCommand": "echo 'Skipping default install'",
+  "framework": null
+}

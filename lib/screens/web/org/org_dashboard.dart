@@ -1,4 +1,4 @@
-// lib/screens/web/org/org_dashboard.dart
+﻿// lib/screens/web/org/org_dashboard.dart
 //
 // Redesigned to match AdminDashboard pattern exactly:
 //  - Gradient welcome header card with icon
@@ -2490,70 +2490,22 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
     final isMobile = width < 720;
     final isTablet = width >= 720 && width < 1200;
 
-    if (isMobile) {
-      return SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(28, 24, 28, 32),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildWelcomeHeader(isMobile),
-            const SizedBox(height: 14),
-            _buildStatCards(isMobile, isTablet),
-            const SizedBox(height: 20),
-            _selectedCard == null ? _buildChartCard() : _buildDynamicPanel(),
-            const SizedBox(height: 20),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(28, 24, 28, 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildWelcomeHeader(isMobile),
+          const SizedBox(height: 14),
+          _buildStatCards(isMobile, isTablet),
+          const SizedBox(height: 20),
+          _selectedCard == null ? _buildChartCard() : _buildDynamicPanel(),
+          const SizedBox(height: 20),
           // Countdown card – now stateful, doesn't cause parent rebuild
-            if (_eventLoaded && _eventDate != null)
-              _CountdownCard(eventDate: _eventDate!, eventLabel: _eventLabel),
-          ],
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(28, 24, 28, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildWelcomeHeader(isMobile),
-              const SizedBox(height: 14),
-              _buildStatCards(isMobile, isTablet),
-            ],
-          ),
-        ),
-        const SizedBox(height: 20),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 28),
-            child: _selectedCard == null
-                ? LayoutBuilder(
-                    builder: (context, constraints) => SingleChildScrollView(
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          minHeight: constraints.maxHeight,
-                        ),
-                        child: _buildChartCard(
-                          availableHeight: constraints.maxHeight,
-                        ),
-                      ),
-                    ),
-                  )
-                : _buildDynamicPanel(),
-          ),
-        ),
-        if (_eventLoaded && _eventDate != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(28, 14, 28, 0),
-            child: _CountdownCard(
-              eventDate: _eventDate!,
-              eventLabel: _eventLabel,
-            ),
-          ),
-        const SizedBox(height: 20),
-      ],
+          if (_eventLoaded && _eventDate != null)
+            _CountdownCard(eventDate: _eventDate!, eventLabel: _eventLabel),
+        ],
+      ),
     );
   }
 
@@ -2676,122 +2628,101 @@ class _OrgDashboardHomeState extends State<_OrgDashboardHome> {
   }
 
   // ── Chart card ────────────────────────────────────────────────────
-  Widget _buildChartCard({double? availableHeight}) {
-    final title = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Proposals Activity Overview',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-            color: OrgColors.charcoal,
-          ),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          'Event proposals per month this year (real-time)',
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 12,
-            color: OrgColors.textFaint,
-          ),
-        ),
-      ],
-    );
-    final yearPicker = Container(
-      height: 36,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+  Widget _buildChartCard() {
+    return Container(
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        border: Border.all(color: OrgColors.borderSoft),
-        borderRadius: BorderRadius.circular(_DS.radiusSm),
-        color: OrgColors.lightGray,
+        color: OrgColors.white,
+        borderRadius: BorderRadius.circular(_DS.radiusLg),
+        border: Border.all(color: OrgColors.border),
+        boxShadow: _DS.cardShadow,
       ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<int>(
-          value: _selectedYear,
-          style: GoogleFonts.beVietnamPro(
-            fontSize: 12,
-            color: OrgColors.textMid,
-          ),
-          icon: const Icon(
-            Icons.keyboard_arrow_down_rounded,
-            size: 16,
-            color: OrgColors.textFaint,
-          ),
-          items: _yearOptions
-              .map((y) => DropdownMenuItem(value: y, child: Text('$y')))
-              .toList(),
-          onChanged: (v) {
-            if (v != null) {
-              setState(() {
-                _selectedYear = v;
-                _setupChartListener();
-              });
-            }
-          },
-        ),
-      ),
-    );
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final compact = constraints.maxWidth < 620;
-        final naturalChartHeight = constraints.maxWidth < 420
-            ? 190.0
-            : constraints.maxWidth < 760
-                ? 220.0
-                : 250.0;
-        final verticalPadding = constraints.maxWidth < 420 ? 32.0 : 48.0;
-        final headerHeight = compact ? 84.0 : 42.0;
-        final cardHeight = availableHeight ?? constraints.maxHeight;
-        final availableChartHeight = cardHeight.isFinite
-            ? cardHeight - verticalPadding - headerHeight - 16
-            : naturalChartHeight;
-        final chartHeight = availableChartHeight > naturalChartHeight
-            ? availableChartHeight.clamp(naturalChartHeight, 560.0).toDouble()
-            : naturalChartHeight;
-        return Container(
-          width: double.infinity,
-          padding: EdgeInsets.all(constraints.maxWidth < 420 ? 16 : 24),
-          decoration: BoxDecoration(
-            color: OrgColors.white,
-            borderRadius: BorderRadius.circular(_DS.radiusLg),
-            border: Border.all(color: OrgColors.border),
-            boxShadow: _DS.cardShadow,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              if (compact) ...[
-                title,
-                const SizedBox(height: 12),
-                Align(alignment: Alignment.centerRight, child: yearPicker),
-              ] else
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [Expanded(child: title), yearPicker],
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Proposals Activity Overview',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: OrgColors.charcoal,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    'Event proposals per month this year (real-time)',
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 12,
+                      color: OrgColors.textFaint,
+                    ),
+                  ),
+                ],
+              ),
+              Container(
+                height: 36,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  border: Border.all(color: OrgColors.borderSoft),
+                  borderRadius: BorderRadius.circular(_DS.radiusSm),
+                  color: OrgColors.lightGray,
                 ),
-              const SizedBox(height: 16),
-              SizedBox(
-                height: chartHeight,
-                child: _chartLoading
-                    ? const Center(
-                        child: CircularProgressIndicator(
-                          color: OrgColors.primaryDark,
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : _ActivityBarChart(
-                        data: _chartData,
-                        selectedMonth: _selectedMonth,
-                        monthLabel: _monthLabel,
-                      ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    value: _selectedYear,
+                    style: GoogleFonts.beVietnamPro(
+                      fontSize: 12,
+                      color: OrgColors.textMid,
+                    ),
+                    icon: const Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 16,
+                      color: OrgColors.textFaint,
+                    ),
+                    items: _yearOptions
+                        .map(
+                          (y) => DropdownMenuItem(value: y, child: Text('$y')),
+                        )
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) {
+                        setState(() {
+                          _selectedYear = v;
+                          _setupChartListener();
+                        });
+                      }
+                    },
+                  ),
+                ),
               ),
             ],
           ),
-        );
-      },
+          const SizedBox(height: 20),
+
+          // Chart — bar-per-month is more legible than a line for discrete
+          // monthly counts, and fl_chart handles touch/tooltips/scaling for us.
+          SizedBox(
+            height: 230,
+            child: _chartLoading
+                ? const Center(
+                    child: CircularProgressIndicator(
+                      color: OrgColors.primaryDark,
+                      strokeWidth: 2,
+                    ),
+                  )
+                : _ActivityBarChart(
+                    data: _chartData,
+                    selectedMonth: _selectedMonth,
+                    monthLabel: _monthLabel,
+                  ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -4117,17 +4048,8 @@ class _ActivityBarChart extends StatelessWidget {
     final maxVal = data.isEmpty ? 0 : data.reduce((a, b) => a > b ? a : b);
     final maxY = (maxVal < 4 ? 4 : maxVal).toDouble() * 1.25;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final rodWidth =
-            (constraints.maxWidth / 18).clamp(8.0, 35.0).toDouble();
-        final monthFontSize = constraints.maxWidth < 360
-            ? 8.0
-            : constraints.maxWidth < 520
-                ? 9.0
-                : 10.0;
-        return BarChart(
-          BarChartData(
+    return BarChart(
+      BarChartData(
         maxY: maxY,
         alignment: BarChartAlignment.spaceAround,
         gridData: FlGridData(
@@ -4177,7 +4099,7 @@ class _ActivityBarChart extends StatelessWidget {
                   child: Text(
                     label,
                     style: GoogleFonts.beVietnamPro(
-                      fontSize: monthFontSize,
+                      fontSize: 10,
                       fontWeight: isSelected
                           ? FontWeight.w700
                           : FontWeight.w500,
@@ -4223,15 +4145,13 @@ class _ActivityBarChart extends StatelessWidget {
                 color: isSelected
                     ? OrgColors.primaryDark
                     : OrgColors.primaryDark.withAlpha(110),
-                width: rodWidth,
+                width: 35,
                 borderRadius: BorderRadius.circular(4),
               ),
             ],
           );
         }),
-          ),
-        );
-      },
+      ),
     );
   }
 }

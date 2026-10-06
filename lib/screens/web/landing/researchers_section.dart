@@ -235,7 +235,9 @@ class _Portrait extends StatelessWidget {
                 child: Image.asset(
                   imagePath,
                   fit: BoxFit.cover,
-                  alignment: Alignment.topCenter,
+                  alignment: gradientBackdrop
+                      ? const Alignment(0, -0.55)
+                      : Alignment.topCenter,
                   filterQuality: FilterQuality.medium,
                   errorBuilder: (_, __, ___) => Container(
                     color: Colors.white,

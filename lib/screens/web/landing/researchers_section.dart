@@ -16,12 +16,12 @@ class Researcher {
   const Researcher(this.name, this.role, this.imagePath);
 }
 
-// Drop the adviser's photo at assets/images/team/adviser.jpg — until it
-// exists a placeholder silhouette is shown.
+// The adviser's portrait is a transparent cutout so it can share the team
+// portraits' soft blue-to-cream background.
 const kCapstoneAdviser = Researcher(
   'Jayson A. Batoon, DIT',
   'Capstone Thesis Adviser',
-  'assets/images/team/adviser.jpg',
+  'assets/images/team/adviser.png',
 );
 
 const kResearchTeam = [
@@ -160,12 +160,14 @@ class _Portrait extends StatelessWidget {
   final String imagePath;
   final double size;
   final bool hover;
+  final bool gradientBackdrop;
 
   const _Portrait({
     required this.palette,
     required this.imagePath,
     required this.size,
     this.hover = false,
+    this.gradientBackdrop = false,
   });
 
   @override
@@ -199,6 +201,21 @@ class _Portrait extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
+            if (gradientBackdrop)
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color.lerp(p.primary, Colors.white, 0.72)!,
+                      const Color(0xFFF7F7FA),
+                      Color.lerp(p.accent, Colors.white, 0.68)!,
+                    ],
+                    stops: const [0, 0.5, 1],
+                  ),
+                ),
+              ),
             ShaderMask(
               blendMode: BlendMode.multiply,
               shaderCallback: (r) => LinearGradient(
@@ -379,6 +396,7 @@ class _AdviserCard extends StatelessWidget {
       palette: p,
       imagePath: adviser.imagePath,
       size: narrow ? 180 : 210,
+      gradientBackdrop: true,
     );
 
     return ConstrainedBox(

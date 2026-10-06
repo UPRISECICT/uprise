@@ -311,9 +311,7 @@ class _AdviserCard extends StatelessWidget {
     final narrow = MediaQuery.of(context).size.width < 760;
 
     final text = Column(
-      crossAxisAlignment: narrow
-          ? CrossAxisAlignment.center
-          : CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
@@ -342,7 +340,7 @@ class _AdviserCard extends StatelessWidget {
         const SizedBox(height: 16),
         Text(
           adviser.name,
-          textAlign: narrow ? TextAlign.center : TextAlign.start,
+          textAlign: TextAlign.center,
           style: GoogleFonts.beVietnamPro(
             fontSize: narrow ? 24 : 30,
             fontWeight: FontWeight.w800,
@@ -367,7 +365,7 @@ class _AdviserCard extends StatelessWidget {
           'insights and expertise have played an important role in shaping '
           'this project and guiding our team from its early stages to '
           'completion.',
-          textAlign: narrow ? TextAlign.center : TextAlign.start,
+          textAlign: TextAlign.center,
           style: GoogleFonts.beVietnamPro(
             fontSize: 14.5,
             height: 1.7,
@@ -392,15 +390,10 @@ class _AdviserCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(28),
           border: Border.all(color: Colors.white.withAlpha(28)),
         ),
-        child: narrow
-            ? Column(children: [portrait, const SizedBox(height: 22), text])
-            : Row(
-                children: [
-                  portrait,
-                  const SizedBox(width: 36),
-                  Expanded(child: text),
-                ],
-              ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [portrait, const SizedBox(height: 22), text],
+        ),
       ),
     );
   }

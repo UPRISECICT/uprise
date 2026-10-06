@@ -618,7 +618,8 @@ class _DayCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final display = events.take(3).toList();
+    // Keep room for the overflow summary in the fixed-height mobile cells.
+    final display = events.take(2).toList();
     final extra = events.length - display.length;
 
     return InkWell(

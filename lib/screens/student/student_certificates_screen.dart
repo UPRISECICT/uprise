@@ -1669,9 +1669,10 @@ class CertificateDetailScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Certificate Preview - Expanded
-            Container(
+            AspectRatio(
+              aspectRatio: 700 / 495,
+              child: Container(
               width: double.infinity,
-              height: 450,
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
@@ -1724,6 +1725,7 @@ class CertificateDetailScreen extends StatelessWidget {
                           ),
                         ),
                       ),
+              ),
               ),
             ),
             const SizedBox(height: 24),
@@ -1905,7 +1907,9 @@ class _CertificateDownloadPreviewSheetState
       final doc = pw.Document();
       doc.addPage(
         pw.Page(
-          pageFormat: PdfPageFormat.a4,
+          // Certificates are landscape; portrait pages left the template
+          // occupying only part of the PDF page on phones.
+          pageFormat: PdfPageFormat.a4.landscape,
           margin: const pw.EdgeInsets.all(0),
           build: (context) =>
               pw.Center(child: pw.Image(pdfImage, fit: pw.BoxFit.contain)),
@@ -1956,9 +1960,10 @@ class _CertificateDownloadPreviewSheetState
               ),
             ),
             // Certificate preview
-            Container(
+            AspectRatio(
+              aspectRatio: 700 / 495,
+              child: Container(
               width: double.infinity,
-              height: 450,
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
@@ -2010,6 +2015,7 @@ class _CertificateDownloadPreviewSheetState
                           ),
                         ),
                 ),
+              ),
               ),
             ),
             const SizedBox(height: 24),

@@ -287,8 +287,8 @@ class _DayCell<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Three chips is what fits in a 100px cell; the rest collapse to "+N more".
-    final display = events.take(3).toList();
+    // Two chips leave enough room for the "+N more" summary in a 100px cell.
+    final display = events.take(2).toList();
     final extra = events.length - display.length;
 
     return InkWell(

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -22,6 +24,7 @@ class PushNotificationService {
       'BIJQbpd6E_WwV55OlGEaSI0-AMLy7a9sahbAZrza0YvJBY1mk9EqMKZVwtvLO_L2QXVC-C5snpoShhwX54aSMEI';
 
   static String? _registeredUid;
+  static StreamSubscription<String>? _tokenRefreshSubscription;
 
   // ── Tap handling ──
   //
@@ -135,7 +138,14 @@ class PushNotificationService {
       await _saveToken(uid, token);
       _registeredUid = uid;
 
-      messaging.onTokenRefresh.listen((refreshed) => _saveToken(uid, refreshed));
+      await _tokenRefreshSubscription?.cancel();
+      _tokenRefreshSubscription = messaging.onTokenRefresh.listen((refreshed) {
+        // A token refresh can race with sign-out or an account switch. Only
+        // attach it to the account that is still registered on this device.
+        if (_registeredUid == uid) {
+          _saveToken(uid, refreshed);
+        }
+      });
 
       // Cold start: the app was fully closed and launched BY the tap, so
       // onMessageOpenedApp never fires and the message is waiting here
@@ -168,7 +178,11 @@ class PushNotificationService {
   // that account forever.
   static Future<void> unregister(String uid) async {
     if (uid.isEmpty) return;
-    _registeredUid = null;
+    if (_registeredUid == uid) {
+      _registeredUid = null;
+      await _tokenRefreshSubscription?.cancel();
+      _tokenRefreshSubscription = null;
+    }
     try {
       final messaging = FirebaseMessaging.instance;
       final token = kIsWeb

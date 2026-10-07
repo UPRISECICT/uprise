@@ -42,21 +42,21 @@ const BATCH_LIMIT = 200;
 // changes.
 async function sendPushFor(notifDoc) {
   const notif = notifDoc.data();
-  if (!notif || !notif.userId) return;
+  if (!notif || !notif.userId) return true;
 
   const userRef = db.collection('users').doc(notif.userId);
   const userSnap = await userRef.get();
-  if (!userSnap.exists) return;
+  if (!userSnap.exists) return true;
   const userData = userSnap.data();
   const tokens = userData.fcmTokens || [];
-  if (tokens.length === 0) return;
+  if (tokens.length === 0) return true;
 
   const role = userData.role || '';
   const isMobileUser = role === 'student' || role === 'guest';
   const portal = notif.portal;
   const mobileVisiblePortal =
       portal === undefined || portal === null || portal === '' || portal === 'student';
-  if (isMobileUser && !mobileVisiblePortal) return;
+  if (isMobileUser && !mobileVisiblePortal) return true;
 
   const message = {
     notification: {
@@ -95,37 +95,54 @@ async function sendPushFor(notifDoc) {
       });
     }
     console.log(`Push for ${notifDoc.id}: ${response.successCount}/${tokens.length} succeeded`);
+    return true;
   } catch (err) {
     console.error(`Error sending push for ${notifDoc.id}:`, err);
+    return false;
   }
 }
 
 async function main() {
   const cursorSnap = await cursorRef.get();
+  const cursorData = cursorSnap.exists ? cursorSnap.data() : {};
   const lastProcessedAt =
-      cursorSnap.exists && cursorSnap.data().lastProcessedAt
-        ? cursorSnap.data().lastProcessedAt
+      cursorData.lastProcessedAt
+        ? cursorData.lastProcessedAt
         : admin.firestore.Timestamp.fromMillis(Date.now() - DEFAULT_LOOKBACK_MS);
+  const lastProcessedId = cursorData.lastProcessedId;
 
-  const snap = await db
-      .collection('notifications')
-      .where('createdAt', '>', lastProcessedAt)
+  let query = db.collection('notifications')
+      .where('createdAt', '>=', lastProcessedAt)
       .orderBy('createdAt', 'asc')
-      .limit(BATCH_LIMIT)
-      .get();
+      .orderBy(admin.firestore.FieldPath.documentId(), 'asc');
+  if (lastProcessedId) {
+    query = query.startAfter(lastProcessedAt, lastProcessedId);
+  } else if (cursorData.lastProcessedAt) {
+    query = query.startAfter(lastProcessedAt);
+  }
+  const snap = await query.limit(BATCH_LIMIT).get();
 
   if (snap.empty) {
     console.log('No new notifications to push.');
     return;
   }
 
+  let processed = 0;
   for (const doc of snap.docs) {
-    await sendPushFor(doc);
+    const sent = await sendPushFor(doc);
+    if (!sent) {
+      // Keep the cursor before the failed document so the next scheduled run
+      // retries it instead of silently skipping a transient FCM/Firestore error.
+      break;
+    }
+    await cursorRef.set({
+      lastProcessedAt: doc.data().createdAt,
+      lastProcessedId: doc.id,
+    }, { merge: true });
+    processed++;
   }
 
-  const newestCreatedAt = snap.docs[snap.docs.length - 1].data().createdAt;
-  await cursorRef.set({ lastProcessedAt: newestCreatedAt }, { merge: true });
-  console.log(`Processed ${snap.docs.length} notification(s).`);
+  console.log(`Processed ${processed}/${snap.docs.length} notification(s).`);
 }
 
 main()

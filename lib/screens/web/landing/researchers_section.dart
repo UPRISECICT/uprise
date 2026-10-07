@@ -159,6 +159,7 @@ class _Portrait extends StatelessWidget {
   final LandingPalette palette;
   final String imagePath;
   final double size;
+  final double? height;
   final bool hover;
   final bool gradientBackdrop;
 
@@ -166,6 +167,7 @@ class _Portrait extends StatelessWidget {
     required this.palette,
     required this.imagePath,
     required this.size,
+    this.height,
     this.hover = false,
     this.gradientBackdrop = false,
   });
@@ -177,7 +179,7 @@ class _Portrait extends StatelessWidget {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 260),
       width: size,
-      height: size,
+      height: height ?? size,
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(radius + 3),
@@ -234,10 +236,8 @@ class _Portrait extends StatelessWidget {
                 curve: Curves.easeOutCubic,
                 child: Image.asset(
                   imagePath,
-                  fit: BoxFit.cover,
-                  alignment: gradientBackdrop
-                      ? const Alignment(0, -0.55)
-                      : Alignment.topCenter,
+                  fit: gradientBackdrop ? BoxFit.contain : BoxFit.cover,
+                  alignment: Alignment.center,
                   filterQuality: FilterQuality.medium,
                   errorBuilder: (_, __, ___) => Container(
                     color: Colors.white,
@@ -330,7 +330,9 @@ class _AdviserCard extends StatelessWidget {
     final narrow = MediaQuery.of(context).size.width < 760;
 
     final text = Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
+      crossAxisAlignment: narrow
+          ? CrossAxisAlignment.center
+          : CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
@@ -359,7 +361,7 @@ class _AdviserCard extends StatelessWidget {
         const SizedBox(height: 16),
         Text(
           adviser.name,
-          textAlign: TextAlign.center,
+          textAlign: narrow ? TextAlign.center : TextAlign.start,
           style: GoogleFonts.beVietnamPro(
             fontSize: narrow ? 24 : 30,
             fontWeight: FontWeight.w800,
@@ -384,7 +386,7 @@ class _AdviserCard extends StatelessWidget {
           'insights and expertise have played an important role in shaping '
           'this project and guiding our team from its early stages to '
           'completion.',
-          textAlign: TextAlign.center,
+          textAlign: narrow ? TextAlign.center : TextAlign.start,
           style: GoogleFonts.beVietnamPro(
             fontSize: 14.5,
             height: 1.7,
@@ -397,7 +399,8 @@ class _AdviserCard extends StatelessWidget {
     final portrait = _Portrait(
       palette: p,
       imagePath: adviser.imagePath,
-      size: narrow ? 180 : 210,
+      size: narrow ? 216 : 240,
+      height: narrow ? 270 : 300,
       gradientBackdrop: true,
     );
 
@@ -410,10 +413,16 @@ class _AdviserCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(28),
           border: Border.all(color: Colors.white.withAlpha(28)),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [portrait, const SizedBox(height: 22), text],
-        ),
+        child: narrow
+            ? Column(children: [portrait, const SizedBox(height: 22), text])
+            : Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  portrait,
+                  const SizedBox(width: 36),
+                  Expanded(child: text),
+                ],
+              ),
       ),
     );
   }

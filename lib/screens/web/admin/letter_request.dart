@@ -1513,6 +1513,8 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     double previewAspectRatio = 8.5 / 11; // sensible guess if rasterizing fails
     double positionXPct = 0.72;
     double positionYPct = 0.82;
+    double remarkXPct = 0.27;
+    double remarkYPct = 0.82;
 
     if (isPdfAttachment) {
       try {
@@ -1934,7 +1936,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Drag the signature to where it should sit on the last page.',
+                              'Drag the signature and remark to place them on the last page.',
                               style: GoogleFonts.beVietnamPro(
                                 fontSize: 11.5,
                                 color: const Color(0xFF9AA5B4),
@@ -2044,6 +2046,120 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                                             ),
                                           ),
                                         ),
+                                        if (remarkCtrl.text.trim().isNotEmpty)
+                                          Positioned(
+                                            left:
+                                                (remarkXPct *
+                                                            boxSize.width -
+                                                        61)
+                                                    .clamp(
+                                                      0.0,
+                                                      math.max(
+                                                        0.0,
+                                                        boxSize.width - 122,
+                                                      ),
+                                                    ),
+                                            top:
+                                                (remarkYPct *
+                                                            boxSize.height -
+                                                        31)
+                                                    .clamp(
+                                                      0.0,
+                                                      math.max(
+                                                        0.0,
+                                                        boxSize.height - 62,
+                                                      ),
+                                                    ),
+                                            width: 122,
+                                            height: 62,
+                                            child: MouseRegion(
+                                              cursor: SystemMouseCursors.grab,
+                                              child: GestureDetector(
+                                                behavior: HitTestBehavior
+                                                    .translucent,
+                                                onPanUpdate: (details) {
+                                                  setDialogState(() {
+                                                    remarkXPct =
+                                                        ((remarkXPct *
+                                                                    boxSize
+                                                                        .width +
+                                                                details
+                                                                    .delta
+                                                                    .dx) /
+                                                            boxSize.width)
+                                                        .clamp(0.0, 1.0);
+                                                    remarkYPct =
+                                                        ((remarkYPct *
+                                                                    boxSize
+                                                                        .height +
+                                                                details
+                                                                    .delta
+                                                                    .dy) /
+                                                            boxSize.height)
+                                                        .clamp(0.0, 1.0);
+                                                  });
+                                                },
+                                                child: Container(
+                                                  padding: const EdgeInsets.all(
+                                                    5,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: const Color(
+                                                      0xFFFFFBEB,
+                                                    ).withAlpha(238),
+                                                    border: Border.all(
+                                                      color: const Color(
+                                                        0xFFD97706,
+                                                      ),
+                                                    ),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          5,
+                                                        ),
+                                                  ),
+                                                  child: Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    children: [
+                                                      Text(
+                                                        'REMARK  ↕',
+                                                        style: GoogleFonts
+                                                            .beVietnamPro(
+                                                              fontSize: 7,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w700,
+                                                              color:
+                                                                  const Color(
+                                                                    0xFF92400E,
+                                                                  ),
+                                                            ),
+                                                      ),
+                                                      const SizedBox(height: 2),
+                                                      Expanded(
+                                                        child: Text(
+                                                          remarkCtrl.text
+                                                              .trim(),
+                                                          maxLines: 4,
+                                                          overflow: TextOverflow
+                                                              .ellipsis,
+                                                          style: GoogleFonts
+                                                              .beVietnamPro(
+                                                                fontSize: 8,
+                                                                color:
+                                                                    const Color(
+                                                                      0xFF374151,
+                                                                    ),
+                                                              ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
                                       ],
                                     ),
                                   );
@@ -2066,6 +2182,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                             controller: remarkCtrl,
                             maxLines: 2,
                             maxLength: 300,
+                            onChanged: (_) => setDialogState(() {}),
                             style: GoogleFonts.beVietnamPro(fontSize: 13),
                             decoration: InputDecoration(
                               labelText: 'Remark (optional)',
@@ -2182,6 +2299,12 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                                       yPct: isPdfAttachment
                                           ? positionYPct
                                           : null,
+                                      remarkXPct: isPdfAttachment
+                                          ? remarkXPct
+                                          : null,
+                                      remarkYPct: isPdfAttachment
+                                          ? remarkYPct
+                                          : null,
                                     );
 
                                     if (ctx.mounted) Navigator.pop(ctx);
@@ -2249,6 +2372,8 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     String remark = '',
     double? xPct,
     double? yPct,
+    double? remarkXPct,
+    double? remarkYPct,
     void Function(String stage)? onStageChanged,
   }) async {
     try {
@@ -2277,6 +2402,8 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
           role: signedByRole,
           xPct: xPct,
           yPct: yPct,
+          remarkXPct: remarkXPct,
+          remarkYPct: remarkYPct,
           compactForUpload: true,
         ).timeout(
           const Duration(minutes: 2),

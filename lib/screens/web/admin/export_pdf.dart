@@ -310,6 +310,8 @@ class AdminExportPdf {
   /// last page. Visually identical to the original, but with a real stamp
   /// on the actual document instead of a bolted-on cover sheet.
   static const double _signatureStampWidth = 170;
+  static const double _remarkStampWidth = 190;
+  static const double _remarkStampHeight = 110;
 
   /// [xPct]/[yPct] are the drag position (0..1 of the last page's own
   /// width/height) an admin picked in the on-screen preview, marking the
@@ -328,6 +330,8 @@ class AdminExportPdf {
     String role = 'Admin, Uprise',
     double? xPct,
     double? yPct,
+    double? remarkXPct,
+    double? remarkYPct,
     bool compactForUpload = false,
   }) async {
     // Keep the established output quality by default. Letter approval opts
@@ -383,6 +387,22 @@ class AdminExportPdf {
           : (yPct * pageHeightPts - stampHeight / 2)
                 .clamp(0.0, math.max(0.0, pageHeightPts - stampHeight))
                 .toDouble();
+      final double? remarkLeft = remarkXPct == null
+          ? null
+          : (remarkXPct * pageWidthPts - _remarkStampWidth / 2)
+                .clamp(
+                  0.0,
+                  math.max(0.0, pageWidthPts - _remarkStampWidth),
+                )
+                .toDouble();
+      final double? remarkTop = remarkYPct == null
+          ? null
+          : (remarkYPct * pageHeightPts - _remarkStampHeight / 2)
+                .clamp(
+                  0.0,
+                  math.max(0.0, pageHeightPts - _remarkStampHeight),
+                )
+                .toDouble();
 
       pdf.addPage(
         pw.Page(
@@ -404,9 +424,16 @@ class AdminExportPdf {
                     signatureImage: signatureImage,
                     signedByName: signedByName,
                     signedAt: signedAt,
-                    remark: remark,
                     role: role,
                   ),
+                ),
+              if (isLastPage && remark.trim().isNotEmpty)
+                pw.Positioned(
+                  left: remarkLeft,
+                  top: remarkTop,
+                  right: remarkLeft == null ? 36 : null,
+                  bottom: remarkTop == null ? 48 : null,
+                  child: _remarkStamp(remark),
                 ),
             ],
           ),
@@ -416,6 +443,40 @@ class AdminExportPdf {
 
     return pdf.save();
   }
+
+  static pw.Widget _remarkStamp(String remark) => pw.Container(
+    width: _remarkStampWidth,
+    padding: const pw.EdgeInsets.all(8),
+    decoration: pw.BoxDecoration(
+      color: PdfColors.grey100,
+      borderRadius: pw.BorderRadius.circular(5),
+      border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
+    ),
+    child: pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      mainAxisSize: pw.MainAxisSize.min,
+      children: [
+        pw.Text(
+          'REMARK',
+          style: pw.TextStyle(
+            fontSize: 6.5,
+            fontWeight: pw.FontWeight.bold,
+            color: PdfColors.grey600,
+            letterSpacing: 0.5,
+          ),
+        ),
+        pw.SizedBox(height: 2),
+        pw.Text(
+          remark.trim(),
+          style: pw.TextStyle(
+            fontSize: 8,
+            color: PdfColors.grey900,
+            fontStyle: pw.FontStyle.italic,
+          ),
+        ),
+      ],
+    ),
+  );
 
   /// Signature ink rendered overlapping down onto the printed name beneath
   /// it — like a real signed document — instead of sitting in its own

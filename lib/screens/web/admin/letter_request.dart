@@ -1,5 +1,6 @@
 ﻿// lib/screens/web/admin/letter_request.dart - CORRECTED VERSION
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -7,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show compute;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image/image.dart' as img;
@@ -1497,6 +1499,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     String? selectedSignatoryTitle;
     bool isProcessing = false;
     bool isSaving = false;
+    String signingStage = 'Preparing signed PDF…';
     String? error;
 
     // Drag-to-position state — percentages of the last page's own width/
@@ -2168,6 +2171,11 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                                           'Admin, Uprise',
                                       signatureBytes: signatureBytes!,
                                       remark: remarkCtrl.text.trim(),
+                                      onStageChanged: (stage) {
+                                        if (ctx.mounted) {
+                                          setDialogState(() => signingStage = stage);
+                                        }
+                                      },
                                       xPct: isPdfAttachment
                                           ? positionXPct
                                           : null,
@@ -2198,7 +2206,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                                   size: 16,
                                 ),
                           label: Text(
-                            isSaving ? 'Signing…' : 'Sign & Approve',
+                            isSaving ? signingStage : 'Sign & Approve',
                             style: GoogleFonts.beVietnamPro(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
@@ -2241,6 +2249,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
     String remark = '',
     double? xPct,
     double? yPct,
+    void Function(String stage)? onStageChanged,
   }) async {
     try {
       final signedAt = DateTime.now();
@@ -2258,6 +2267,7 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
 
       final Uint8List pdfBytes;
       if (isPdfAttachment) {
+        onStageChanged?.call('Stamping PDF…');
         pdfBytes = await AdminExportPdf.stampSignatureOnPdf(
           originalPdfBytes: base64Decode(attachmentBase64),
           signatureBytes: signatureBytes,
@@ -2267,8 +2277,15 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
           role: signedByRole,
           xPct: xPct,
           yPct: yPct,
+          compactForUpload: true,
+        ).timeout(
+          const Duration(minutes: 2),
+          onTimeout: () => throw TimeoutException(
+            'PDF stamping took longer than 2 minutes. The source PDF may be too large or complex.',
+          ),
         );
       } else {
+        onStageChanged?.call('Creating signed copy…');
         pdfBytes = await AdminExportPdf.generateSignedLetterPdf(
           letterId: letterId,
           subject: subject,
@@ -2281,9 +2298,74 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
         );
       }
 
+      final signedBase64 = base64Encode(pdfBytes);
+      final originalBase64Length =
+          (data['attachmentBase64'] ?? '').toString().length;
+      // Firestore's per-document limit is 1 MiB. Leave room for the rest of
+      // the request fields and document encoding; small signed letters can
+      // remain inline, as the org client already supports, avoiding an
+      // unnecessary Storage dependency for normal one-page letters.
+      const inlinePayloadBudget = 800 * 1024;
+      final canStoreInline =
+          signedBase64.length + originalBase64Length <= inlinePayloadBudget;
+
+      String? signedUrl;
+      String? signedPath;
+      if (canStoreInline) {
+        onStageChanged?.call('Saving signed letter…');
+      } else {
+        final signedRef = FirebaseStorage.instance
+            .ref()
+            .child('letter_requests/$docId/signed.pdf');
+        onStageChanged?.call('Uploading signed PDF…');
+        // Show actual transfer progress so large scanned letters don't look
+        // frozen while Firebase uploads them.
+        final uploadTask = signedRef.putData(
+          pdfBytes,
+          SettableMetadata(contentType: 'application/pdf'),
+        );
+        final progressSub = uploadTask.snapshotEvents.listen((snapshot) {
+          final total = snapshot.totalBytes;
+          if (total > 0) {
+            final percent = (snapshot.bytesTransferred * 100 / total)
+                .clamp(0, 100)
+                .round();
+            final transferredMb = (snapshot.bytesTransferred / (1024 * 1024))
+                .toStringAsFixed(1);
+            final totalMb = (total / (1024 * 1024)).toStringAsFixed(1);
+            onStageChanged?.call(
+              'Uploading signed PDF… $percent% ($transferredMb/$totalMb MB)',
+            );
+          }
+        });
+        try {
+          await uploadTask.timeout(
+            const Duration(minutes: 4),
+            onTimeout: () {
+              uploadTask.cancel();
+              throw TimeoutException(
+                'This signed PDF is too large to save with the request, and '
+                'its Storage upload did not finish. Check Firebase Storage '
+                'permissions and connection, then try again.',
+              );
+            },
+          );
+        } finally {
+          await progressSub.cancel();
+        }
+        onStageChanged?.call('Saving approval…');
+        signedUrl = await signedRef.getDownloadURL();
+        signedPath = signedRef.fullPath;
+      }
+
       await FirestoreCollections.letterRequests.doc(docId).update({
         'status': 'approved',
-        'signedDocumentBase64': base64Encode(pdfBytes),
+        if (signedUrl != null) 'signedDocumentUrl': signedUrl,
+        if (signedPath != null) 'signedDocumentPath': signedPath,
+        if (canStoreInline) 'signedDocumentBase64': signedBase64,
+        if (canStoreInline) 'signedDocumentUrl': FieldValue.delete(),
+        if (canStoreInline) 'signedDocumentPath': FieldValue.delete(),
+        if (!canStoreInline) 'signedDocumentBase64': FieldValue.delete(),
         'signedAt': Timestamp.fromDate(signedAt),
         if (remark.isNotEmpty) 'signRemark': remark,
         'signedBy': signedByName,
@@ -2303,13 +2385,19 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
 
       final orgId = (data['orgId'] ?? '').toString();
       if (orgId.isNotEmpty) {
-        NotificationService.sendToOrgMembers(
-          orgId: orgId,
-          title: 'Letter request approved',
-          body:
-              'Your letter request "$subject" has been approved and digitally signed.',
-          type: 'letter_status',
-        );
+        try {
+          await NotificationService.sendToOrgMembers(
+            orgId: orgId,
+            title: 'Letter request approved',
+            body:
+                'Your letter request "$subject" has been approved and digitally signed.',
+            type: 'letter_status',
+          );
+        } catch (e) {
+          // The request and signed file are already saved. A notification
+          // delivery issue must not make the completed approval look failed.
+          debugPrint('Letter approval notification failed: $e');
+        }
       }
 
       if (mounted) {
@@ -2825,10 +2913,12 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
                           ],
 
                           // ── Signed Certificate ──────────────────────
-                          if (data['signedDocumentBase64'] != null &&
-                              data['signedDocumentBase64']
-                                  .toString()
-                                  .isNotEmpty) ...[
+                          if ((data['signedDocumentBase64'] != null &&
+                                  data['signedDocumentBase64']
+                                      .toString()
+                                      .isNotEmpty) ||
+                              (data['signedDocumentUrl']?.toString().isNotEmpty ??
+                                  false)) ...[
                             _sectionLabel(
                               'Digitally Signed',
                               icon: Icons.verified_rounded,
@@ -3115,12 +3205,34 @@ class _AdminLetterRequestScreenState extends State<AdminLetterRequestScreen> {
 
   void _viewSignedCertificate(Map<String, dynamic> data) {
     final base64 = data['signedDocumentBase64'];
-    if (base64 == null || base64.toString().isEmpty) {
+    final url = data['signedDocumentUrl']?.toString();
+    if ((base64 == null || base64.toString().isEmpty) &&
+        (url == null || url.isEmpty)) {
       AppToast.error(context, 'No signed certificate found');
       return;
     }
     final letterId = (data['letterId'] ?? 'letter').toString();
-    _openFileFromBase64(base64, '$letterId-signed.pdf');
+    if (url != null && url.isNotEmpty) {
+      _openSignedUrl(url, '$letterId-signed.pdf');
+    } else {
+      _openFileFromBase64(base64, '$letterId-signed.pdf');
+    }
+  }
+
+  Future<void> _openSignedUrl(String url, String fileName) async {
+    try {
+      final bytes = await FirebaseStorage.instance
+          .refFromURL(url)
+          .getData(30 * 1024 * 1024);
+      if (bytes == null || bytes.isEmpty) throw Exception('Signed file is empty');
+      await platform_file_utils.saveBytesToTempAndOpen(
+        bytes,
+        fileName,
+        mimeType: 'application/pdf',
+      );
+    } catch (e) {
+      if (mounted) AppToast.error(context, 'Error opening signed copy: $e');
+    }
   }
 
   Future<void> _openFileFromBase64(String base64String, String fileName) async {

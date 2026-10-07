@@ -328,11 +328,11 @@ class AdminExportPdf {
     String role = 'Admin, Uprise',
     double? xPct,
     double? yPct,
+    bool compactForUpload = false,
   }) async {
-    // 110 DPI keeps the stamped copy legible while meaningfully cutting the
-    // raster + re-encode work for multi-page documents (this whole pipeline
-    // runs on the UI thread on web, so fewer pixels = less visible freeze).
-    const dpi = 110.0;
+    // Keep the established output quality by default. Letter approval opts
+    // into the smaller version because it has to upload the stamped PDF.
+    final dpi = compactForUpload ? 90.0 : 110.0;
     final rasterPages = await Printing.raster(
       originalPdfBytes,
       dpi: dpi,
@@ -346,7 +346,23 @@ class AdminExportPdf {
 
     for (var i = 0; i < rasterPages.length; i++) {
       final raster = rasterPages[i];
-      final pageImage = pw.MemoryImage(await raster.toPng());
+      final Uint8List pageBytes;
+      if (compactForUpload) {
+        // PNG screenshots of scanned pages can make signed files enormous.
+        // JPEG keeps pages readable while making Storage uploads smaller.
+        final rasterImage = img.Image.fromBytes(
+          width: raster.width,
+          height: raster.height,
+          bytes: raster.pixels.buffer,
+          bytesOffset: raster.pixels.offsetInBytes,
+          numChannels: 4,
+          order: img.ChannelOrder.rgba,
+        );
+        pageBytes = Uint8List.fromList(img.encodeJpg(rasterImage, quality: 78));
+      } else {
+        pageBytes = await raster.toPng();
+      }
+      final pageImage = pw.MemoryImage(pageBytes);
       final pageWidthPts = raster.width / dpi * PdfPageFormat.inch;
       final pageHeightPts = raster.height / dpi * PdfPageFormat.inch;
       final pageFormat = PdfPageFormat(pageWidthPts, pageHeightPts);

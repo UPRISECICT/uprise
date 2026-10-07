@@ -5,6 +5,7 @@ import 'dart:convert';
 import '../../../widgets/stat_cards.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
@@ -1129,9 +1130,11 @@ class _RequestDetailsDialog extends StatelessWidget {
 
   void _openSignedDocument(BuildContext context) async {
     final base64 = request.signedDocumentBase64;
-    if (base64 == null || base64.isEmpty) return;
     try {
-      final bytes = base64Decode(base64);
+      final bytes = request.signedDocumentUrl?.isNotEmpty == true
+          ? await FirebaseStorage.instance.refFromURL(request.signedDocumentUrl!).getData(30 * 1024 * 1024)
+          : (base64 == null || base64.isEmpty ? null : base64Decode(base64));
+      if (bytes == null || bytes.isEmpty) throw Exception('Signed file is empty');
       await platform_file_utils.saveBytesToTempAndOpen(
         bytes,
         '${request.letterId}-signed.pdf',
@@ -1348,8 +1351,9 @@ class _RequestDetailsDialog extends StatelessWidget {
                   iconColor: _DS.primary,
                 ),
               ],
-              if (request.signedDocumentBase64 != null &&
-                  request.signedDocumentBase64!.isNotEmpty) ...[
+              if ((request.signedDocumentBase64 != null &&
+                      request.signedDocumentBase64!.isNotEmpty) ||
+                  (request.signedDocumentUrl?.isNotEmpty ?? false)) ...[
                 const SizedBox(height: 14),
                 Container(
                   width: double.infinity,
@@ -2563,6 +2567,7 @@ class LetterRequestModel {
   final bool isArchived;
   final Timestamp timestamp;
   final String? signedDocumentBase64;
+  final String? signedDocumentUrl;
   final Timestamp? signedAt;
   final String? signedBy;
   final String? signRemark;
@@ -2593,6 +2598,7 @@ class LetterRequestModel {
     required this.isArchived,
     required this.timestamp,
     this.signedDocumentBase64,
+    this.signedDocumentUrl,
     this.signedAt,
     this.signedBy,
     this.signRemark,
@@ -2626,6 +2632,7 @@ class LetterRequestModel {
       isArchived: d['isArchived'] ?? false,
       timestamp: d['timestamp'] as Timestamp? ?? Timestamp.now(),
       signedDocumentBase64: d['signedDocumentBase64'],
+      signedDocumentUrl: d['signedDocumentUrl'],
       signedAt: d['signedAt'] as Timestamp?,
       signedBy: d['signedBy'],
       signRemark: d['signRemark'],

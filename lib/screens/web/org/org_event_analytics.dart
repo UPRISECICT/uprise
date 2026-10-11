@@ -363,6 +363,55 @@ class _AnalyticsData {
 
   ({double income, double expense})? financeForEvent(String eventTitle) =>
       financeByEventTitle[eventTitle];
+
+  _AnalyticsData filteredByEventQuery(String query) {
+    final normalizedQuery = query.trim().toLowerCase();
+    if (normalizedQuery.isEmpty) return this;
+
+    final candidateIds = <String>{
+      ...registrationCountByEvent.keys,
+      ...attendanceDocCountByEvent.keys,
+      ...avgByEvent.keys,
+      for (final event in events) ...[
+        (event['id'] ?? '').toString(),
+        (event['eventId'] ?? '').toString(),
+      ],
+    }..removeWhere((id) => id.isEmpty);
+
+    final matchingIds = candidateIds.where((id) {
+      return id.toLowerCase().contains(normalizedQuery) ||
+          eventDisplayTitle(id).toLowerCase().contains(normalizedQuery);
+    }).toSet();
+    final matchingTitles = matchingIds
+        .map(eventDisplayTitle)
+        .map((title) => title.toLowerCase())
+        .toSet();
+    final matchingEvents = events.where((event) {
+      final id = (event['id'] ?? '').toString();
+      final eventId = (event['eventId'] ?? '').toString();
+      final title = (event['title'] ?? '').toString().toLowerCase();
+      return matchingIds.contains(id) ||
+          matchingIds.contains(eventId) ||
+          title.contains(normalizedQuery);
+    }).toList();
+
+    bool belongsToMatchingEvent(Map<String, dynamic> item) =>
+        matchingIds.contains((item['eventId'] ?? '').toString());
+
+    return _AnalyticsData(
+      events: matchingEvents,
+      registrations: registrations.where(belongsToMatchingEvent).toList(),
+      attendances: attendances.where(belongsToMatchingEvent).toList(),
+      feedbacks: feedbacks.where(belongsToMatchingEvent).toList(),
+      transactions: transactions.where((transaction) {
+        final eventName = (transaction['eventName'] ?? '')
+            .toString()
+            .toLowerCase();
+        return eventName.contains(normalizedQuery) ||
+            matchingTitles.contains(eventName);
+      }).toList(),
+    );
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -379,6 +428,8 @@ class OrgEventAnalyticsScreen extends StatefulWidget {
 
 class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
   late Future<_AnalyticsData> _dataFuture;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   // Every collection _loadAll() reads is watched, so the page keeps itself
   // current and there is no Refresh button to press. It used to watch only
@@ -423,6 +474,7 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
 
   @override
   void dispose() {
+    _searchController.dispose();
     _reloadDebounce?.cancel();
     for (final subscription in _subscriptions) {
       subscription.cancel();
@@ -617,7 +669,9 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
   // exactly rather than checking for 'csv', which the button never
   // actually sends.
   Future<void> _exportAnalytics(String format) async {
-    final data = await _dataFuture;
+    final allData = await _dataFuture;
+    final query = _searchQuery.trim();
+    final data = query.isEmpty ? allData : allData.filteredByEventQuery(query);
     final byEvent = data.registrationVsAttendanceByEvent;
     final avgByEvent = data.avgByEvent;
     final feedbackCountByEvent = data.feedbackCountByEvent;
@@ -741,22 +795,18 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
               // had nothing to fall on, so the groups stopped reading as
               // separate and the whole tab flattened into one slab.
               //
-              // Page actions (Live sync, Export) sit on a slim row at the
-              // top, then the four KPI cards, then the charts - the cards
-              // and charts sit one normal gap apart instead of having an
-              // actions row wedged between them.
+              // Keep the clickable KPI cards first, then place search and
+              // export together immediately before the detailed charts.
               return SingleChildScrollView(
                 padding: EdgeInsets.fromLTRB(
                   horizontalPadding,
-                  isMobile ? _DS.s4 : _DS.s5,
+                  isMobile ? _DS.s3 : _DS.s4,
                   horizontalPadding,
                   _DS.s7,
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildHeader(isMobile: isMobile),
-                    const SizedBox(height: _DS.s3),
                     _KpiStatsRow(
                       data: data,
                       onTapEvents: () => _scrollToSection(_distributionKey),
@@ -766,8 +816,14 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
                           _scrollToSection(_regAttendanceKey),
                       onTapRating: () => _scrollToSection(_ratingKey),
                     ),
+                    const SizedBox(height: _DS.s4),
+                    _buildSearchExportRow(),
                     const SizedBox(height: _DS.s5),
-                    _buildAnalyticsTab(data),
+                    _buildAnalyticsTab(
+                      _searchQuery.trim().isEmpty
+                          ? data
+                          : data.filteredByEventQuery(_searchQuery),
+                    ),
                   ],
                 ),
               );
@@ -778,20 +834,52 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
     );
   }
 
-  // Actions row above the KPI cards. No page-level heading here: the app
-  // bar already says "Analytics".
-  //
-  // Export is the only action. The Refresh button that used to sit next to
-  // it is gone: every collection this page reads is watched (see
-  // _listenForUpdates), so a manual refresh would fetch nothing new.
-  // _refresh() itself stays for the Retry in the error state.
-  Widget _buildHeader({required bool isMobile}) {
+  // Search narrows the event charts and the adjacent export to matching
+  // events. The KPI cards above remain org-wide totals.
+  Widget _buildSearchExportRow() {
     return Row(
-      mainAxisAlignment: isMobile
-          ? MainAxisAlignment.start
-          : MainAxisAlignment.end,
       children: [
-        const _LiveSyncPill(),
+        Expanded(
+          child: TextField(
+            controller: _searchController,
+            onChanged: (value) => setState(() => _searchQuery = value),
+            style: GoogleFonts.beVietnamPro(fontSize: 13),
+            decoration: InputDecoration(
+              hintText: 'Search events',
+              hintStyle: GoogleFonts.beVietnamPro(
+                fontSize: 13,
+                color: _C.muted,
+              ),
+              prefixIcon: const Icon(Icons.search_rounded, size: 19),
+              suffixIcon: _searchQuery.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Clear search',
+                      icon: const Icon(Icons.close_rounded, size: 18),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _searchQuery = '');
+                      },
+                    ),
+              filled: true,
+              fillColor: _C.white,
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(_DS.radiusMd),
+                borderSide: const BorderSide(color: _C.border),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(_DS.radiusMd),
+                borderSide: const BorderSide(color: _C.border),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(_DS.radiusMd),
+                borderSide: const BorderSide(color: _C.chartBrand),
+              ),
+            ),
+          ),
+        ),
         const SizedBox(width: _DS.s3),
         AdminExportButton(onSelected: _exportAnalytics),
       ],
@@ -826,47 +914,6 @@ class _OrgEventAnalyticsScreenState extends State<OrgEventAnalyticsScreen> {
 // ════════════════════════════════════════════════════════════════════════════
 // Supporting widgets
 // ════════════════════════════════════════════════════════════════════════════
-
-// The live-sync indicator. Was a bare 7px green dot plus green 11px text
-// floating in the title bar; as a contained chip it reads as a status badge
-// instead of stray decoration, and the label stops wearing a status colour
-// as text at 3.3:1.
-class _LiveSyncPill extends StatelessWidget {
-  const _LiveSyncPill();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: _DS.s2, vertical: 3),
-      decoration: BoxDecoration(
-        color: _C.statusGood.withAlpha(20),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: const BoxDecoration(
-              color: _C.statusGood,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            'Live sync',
-            style: GoogleFonts.beVietnamPro(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: _C.charcoal,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 // One header for every section card. The three cards each built their own -
 // different icon tints (blue / amber / none at all) and different paddings -

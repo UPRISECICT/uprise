@@ -20,6 +20,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import 'push_notification_service.dart';
+import '../widgets/common/mobile_bottom_nav_host.dart';
 
 class AppSignOut {
   /// How long to wait for the push cleanup before signing out regardless.
@@ -50,5 +51,6 @@ class AppSignOut {
     }
 
     await instance.signOut();
+    if (!kIsWeb) detachMobileBottomNav();
   }
 }

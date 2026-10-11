@@ -3,7 +3,7 @@
 
 import 'dart:typed_data';
 
-Future<({String path, bool inDownloads})> writeToDownloads(
+Future<({String path, String name, bool inDownloads})> writeToDownloads(
   Uint8List bytes,
   String fileName,
 ) {

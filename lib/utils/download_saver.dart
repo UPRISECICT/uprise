@@ -21,14 +21,17 @@ import 'download_saver_stub.dart'
 /// Where a download ended up.
 class SavedDownload {
   final String path;
+  final String name;
 
   /// True when it went to the public Downloads folder; false when that wasn't
   /// writable and it was kept in the app's own storage instead.
   final bool inDownloads;
 
-  const SavedDownload(this.path, {required this.inDownloads});
-
-  String get name => Uri.file(path).pathSegments.last;
+  const SavedDownload(
+    this.path, {
+    required this.name,
+    required this.inDownloads,
+  });
 
   Future<void> open() => platform.openPath(path);
 }
@@ -40,16 +43,20 @@ String _safeFileName(String name) {
   return cleaned.isEmpty ? 'download' : cleaned;
 }
 
-/// Writes [bytes] straight to the phone's public Downloads folder. Android 11+
-/// lets an app create files there without any permission; older Android (or
-/// a denied write) falls back to the app's own documents folder. A name that
-/// is already taken gets " (1)", " (2)", ... rather than overwriting.
+/// Writes [bytes] straight to the phone's public Downloads folder on Android
+/// through MediaStore. Other mobile platforms keep the file in app documents.
+/// A name that is already taken gets " (1)", " (2)", ... rather than
+/// overwriting.
 Future<SavedDownload> saveToDownloads(Uint8List bytes, String fileName) async {
   final result = await platform.writeToDownloads(
     bytes,
     _safeFileName(fileName),
   );
-  return SavedDownload(result.path, inDownloads: result.inDownloads);
+  return SavedDownload(
+    result.path,
+    name: result.name,
+    inDownloads: result.inDownloads,
+  );
 }
 
 /// Tells the user where [saved] went. In Downloads: a snackbar with an Open

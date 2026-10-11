@@ -11,13 +11,13 @@ import 'package:image_picker/image_picker.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/certificate_preview.dart';
 import '../../widgets/student/app_colors.dart';
 import '../../widgets/student/student_app_bar.dart';
 import '../../widgets/student/app_image.dart';
 import '../../widgets/common/loading_widget.dart';
+import '../../utils/download_saver.dart';
 import 'dart:math' as math;
 import 'package:google_fonts/google_fonts.dart';
 
@@ -1919,12 +1919,13 @@ class _CertificateDownloadPreviewSheetState
       final pdfBytes = await doc.save();
       final title = (widget.certificate['title'] ?? 'certificate').toString();
       final fileName = '${title.replaceAll(RegExp(r'[^\w\s]+'), '')}.pdf';
+      final messenger = ScaffoldMessenger.of(context);
+      final saved = await saveToDownloads(pdfBytes, fileName);
 
       if (!mounted) return;
       setState(() => _isGenerating = false);
       Navigator.pop(context);
-
-      await Printing.sharePdf(bytes: pdfBytes, filename: fileName);
+      await announceDownload(messenger, saved);
     } catch (e) {
       if (!mounted) return;
       setState(() => _isGenerating = false);

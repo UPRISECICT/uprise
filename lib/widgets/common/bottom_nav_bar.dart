@@ -9,6 +9,7 @@
 // resolved to their `AppColors` sources here.
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../student/app_colors.dart';
 
 class BottomNavItem {
@@ -41,6 +42,10 @@ class BottomNavBar extends StatelessWidget {
         border: Border(top: BorderSide(color: Color(0xFFF0F0F0), width: 1)),
       ),
       child: SafeArea(
+        top: false,
+        left: false,
+        right: false,
+        bottom: true,
         child: Padding(
           padding: EdgeInsets.fromLTRB(
             isCompact ? 4 : 8,
@@ -91,7 +96,7 @@ class BottomNavBar extends StatelessWidget {
                             fit: BoxFit.scaleDown,
                             child: Text(
                               item.label,
-                              style: TextStyle(
+                              style: GoogleFonts.inter(
                                 fontSize: isCompact ? 11 : 12,
                                 fontWeight: isSelected
                                     ? FontWeight.w700

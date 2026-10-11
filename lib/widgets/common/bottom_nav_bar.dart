@@ -33,14 +33,21 @@ class BottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = MediaQuery.sizeOf(context).width < 360;
+
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(top: BorderSide(color: AppColors.divider, width: 1)),
+        border: Border(top: BorderSide(color: Color(0xFFF0F0F0), width: 1)),
       ),
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          padding: EdgeInsets.fromLTRB(
+            isCompact ? 4 : 8,
+            isCompact ? 3 : 5,
+            isCompact ? 4 : 8,
+            2,
+          ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: List.generate(items.length, (index) {
@@ -52,13 +59,15 @@ class BottomNavBar extends StatelessWidget {
                   onTap: () => onTap(index),
                   behavior: HitTestBehavior.opaque,
                   child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    duration: const Duration(milliseconds: 180),
+                    padding: EdgeInsets.symmetric(
+                      vertical: isCompact ? 4 : 5,
+                    ),
                     decoration: BoxDecoration(
                       color: isSelected
-                          ? AppColors.primaryDark.withAlpha(15)
+                          ? AppColors.surfaceTint
                           : Colors.transparent,
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -68,9 +77,9 @@ class BottomNavBar extends StatelessWidget {
                           color: isSelected
                               ? AppColors.primaryDark
                               : AppColors.textSecondary,
-                          size: 22,
+                          size: isCompact ? 22 : 24,
                         ),
-                        const SizedBox(height: 4),
+                        SizedBox(height: isCompact ? 3 : 4),
                         // FittedBox instead of overflow:visible — a label
                         // longer than "Announce" (e.g. "Announcements")
                         // would otherwise spill past its Expanded slot and
@@ -83,13 +92,14 @@ class BottomNavBar extends StatelessWidget {
                             child: Text(
                               item.label,
                               style: TextStyle(
-                                fontSize: 10,
+                                fontSize: isCompact ? 11 : 12,
                                 fontWeight: isSelected
                                     ? FontWeight.w700
                                     : FontWeight.w500,
                                 color: isSelected
                                     ? AppColors.primaryDark
                                     : AppColors.textSecondary,
+                                decoration: TextDecoration.none,
                               ),
                               textAlign: TextAlign.center,
                               maxLines: 1,

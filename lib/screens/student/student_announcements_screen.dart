@@ -102,6 +102,23 @@ bool shouldShowAnnouncementToStudent(Map<String, dynamic> data) {
   return data['isPublished'] != false;
 }
 
+/// Students have one formal organization membership stored on their profile.
+/// Private org announcements are visible only when that membership matches.
+bool announcementAudienceAllowsStudent(
+  Map<String, dynamic> data,
+  String? memberOrgId,
+) {
+  final audience = (data['targetAudience'] ?? 'Public').toString().trim();
+  if (audience.isEmpty || audience == 'Public') return true;
+  if (audience == 'Members Only') {
+    final orgId = (data['orgId'] ?? '').toString().trim();
+    return orgId.isNotEmpty && memberOrgId != null && memberOrgId == orgId;
+  }
+  // CICT-only announcements are not public. Keep the existing student feed
+  // behavior for that separate audience while enforcing the membership case.
+  return true;
+}
+
 // ─────────────────────────────────────────────────────────────
 //  DATA MODEL
 // ─────────────────────────────────────────────────────────────
@@ -248,6 +265,7 @@ class StudentAnnouncementsScreen extends StatefulWidget {
 class _StudentAnnouncementsScreenState
     extends State<StudentAnnouncementsScreen> {
   final String? _userId = FirebaseAuth.instance.currentUser?.uid;
+  String? _memberOrgId;
 
   AnnouncementFilters _filters = const AnnouncementFilters();
 
@@ -260,11 +278,27 @@ class _StudentAnnouncementsScreenState
   @override
   void initState() {
     super.initState();
+    _loadMemberOrgId();
     OrgDirectory.start();
     // Org names and logos are resolved at card-build time, so the feed has to
     // rebuild when the directory's first snapshot lands — otherwise every card
     // keeps the fallback name it was built with.
     OrgDirectory.revision.addListener(_onOrgDirectoryChanged);
+  }
+
+  Future<void> _loadMemberOrgId() async {
+    final uid = _userId;
+    if (uid == null) return;
+    try {
+      final profile = await FirebaseFirestore.instance
+          .collection('students')
+          .doc(uid)
+          .get();
+      if (!mounted) return;
+      setState(() => _memberOrgId = (profile.data()?['orgId'] ?? '').toString());
+    } catch (_) {
+      // Fail closed for Members Only announcements.
+    }
   }
 
   @override
@@ -365,7 +399,8 @@ class _StudentAnnouncementsScreenState
           // never offered an org or category they can't actually see.
           final visible = (snapshot.data?.docs ?? []).where((d) {
             final data = d.data() as Map<String, dynamic>;
-            return shouldShowAnnouncementToStudent(data);
+            return shouldShowAnnouncementToStudent(data) &&
+                announcementAudienceAllowsStudent(data, _memberOrgId);
           }).toList();
 
           final visibleMaps = visible

@@ -720,6 +720,7 @@ class _GuestEventsScreenState extends State<GuestEventsScreen>
               child: Row(
                 children: [
                   Expanded(
+                    flex: 4,
                     child: OrgFilterDropdown(
                       orgs: _orgOptions,
                       selectedOrgId: _selectedOrgId,
@@ -730,15 +731,21 @@ class _GuestEventsScreenState extends State<GuestEventsScreen>
                     ),
                   ),
                   const SizedBox(width: 8),
-                  FilterChips<EventTimeStatus>(
-                    options: const [
-                      (EventTimeStatus.upcoming, 'Upcoming'),
-                      (EventTimeStatus.ongoing, 'Ongoing'),
-                      (EventTimeStatus.completed, 'Past'),
-                    ],
-                    selected: _activeStatus,
-                    onTap: _toggleStatus,
-                    dotValue: EventTimeStatus.ongoing,
+                  Expanded(
+                    flex: 6,
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: FilterChips<EventTimeStatus>(
+                        options: const [
+                          (EventTimeStatus.upcoming, 'Upcoming'),
+                          (EventTimeStatus.ongoing, 'Ongoing'),
+                          (EventTimeStatus.completed, 'Past'),
+                        ],
+                        selected: _activeStatus,
+                        onTap: _toggleStatus,
+                        dotValue: EventTimeStatus.ongoing,
+                      ),
+                    ),
                   ),
                 ],
               ),

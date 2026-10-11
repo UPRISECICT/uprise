@@ -632,6 +632,7 @@ class _UpcomingTabState extends State<UpcomingTab>
               child: Row(
                 children: [
                   Expanded(
+                    flex: 4,
                     child: FutureBuilder<List<QueryDocumentSnapshot>>(
                       future: _orgsFuture,
                       builder: (context, orgSnap) {
@@ -648,7 +649,13 @@ class _UpcomingTabState extends State<UpcomingTab>
                     ),
                   ),
                   const SizedBox(width: 8),
-                  _buildStatusChips(),
+                  Expanded(
+                    flex: 6,
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: _buildStatusChips(),
+                    ),
+                  ),
                 ],
               ),
             );
@@ -1293,6 +1300,7 @@ class _MyEventsTabState extends State<MyEventsTab>
               child: Row(
                 children: [
                   Expanded(
+                    flex: 4,
                     child: FutureBuilder<List<QueryDocumentSnapshot>>(
                       future: _orgsFuture,
                       builder: (context, orgSnap) {
@@ -1307,16 +1315,23 @@ class _MyEventsTabState extends State<MyEventsTab>
                     ),
                   ),
                   const SizedBox(width: 8),
-                  FilterChips<_ViewFilter>(
-                    options: const [
-                      (_ViewFilter.all, 'All'),
-                      (_ViewFilter.active, 'Active'),
-                      (_ViewFilter.attended, 'Attended'),
-                    ],
-                    selected: _viewFilter,
-                    // Single-select: tapping the active chip keeps it, since
-                    // `all` is already the cleared state.
-                    onTap: (v) => setState(() => _viewFilter = v),
+                  Expanded(
+                    flex: 6,
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: FilterChips<_ViewFilter>(
+                        options: const [
+                          (_ViewFilter.all, 'All'),
+                          (_ViewFilter.active, 'Active'),
+                          (_ViewFilter.attended, 'Attended'),
+                        ],
+                        selected: _viewFilter,
+                        // Keep all filter options on one row. On narrow
+                        // phones, this section scrolls instead of forcing
+                        // the organization picker or chips to wrap/overflow.
+                        onTap: (v) => setState(() => _viewFilter = v),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -3302,7 +3317,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             final picked = await showDatePicker(
               context: context,
               initialDate: DateTime.now(),
-              firstDate: DateTime(2020),
+              // Registration forms may ask for dates far in the past (for
+              // example, a date of birth), so allow years back to 1900.
+              firstDate: DateTime(1900),
               lastDate: DateTime(2100),
             );
             if (picked != null) {

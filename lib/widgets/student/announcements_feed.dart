@@ -1,5 +1,6 @@
 // lib/widgets/student/announcements_feed.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../screens/student/student_announcements_screen.dart';
@@ -40,6 +41,7 @@ class AnnouncementsFeed extends StatefulWidget {
 }
 
 class _AnnouncementsFeedState extends State<AnnouncementsFeed> {
+  String? _memberOrgId;
   // Created once, not a getter — re-evaluating .snapshots() on every
   // rebuild (this widget sits on the home screen, which rebuilds often)
   // was re-subscribing to Firestore from scratch each time.
@@ -68,10 +70,26 @@ class _AnnouncementsFeedState extends State<AnnouncementsFeed> {
   @override
   void initState() {
     super.initState();
+    if (widget.allowedAudiences == null) _loadMemberOrgId();
     // Cards resolve their org name and logo through OrgDirectory at build
     // time, so this has to rebuild once that index loads.
     OrgDirectory.start();
     OrgDirectory.revision.addListener(_onOrgDirectoryChanged);
+  }
+
+  Future<void> _loadMemberOrgId() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final profile = await FirebaseFirestore.instance
+          .collection('students')
+          .doc(uid)
+          .get();
+      if (!mounted) return;
+      setState(() => _memberOrgId = (profile.data()?['orgId'] ?? '').toString());
+    } catch (_) {
+      // Fail closed for Members Only announcements.
+    }
   }
 
   @override
@@ -128,6 +146,10 @@ class _AnnouncementsFeedState extends State<AnnouncementsFeed> {
             .where((d) {
               final data = d.data() as Map<String, dynamic>;
               if (!shouldShowAnnouncementToStudent(data)) {
+                return false;
+              }
+              if (widget.allowedAudiences == null &&
+                  !announcementAudienceAllowsStudent(data, _memberOrgId)) {
                 return false;
               }
               if (allowed == null) return true;
